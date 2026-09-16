@@ -4,12 +4,12 @@
 #include "gui_classic_menu.h"
 #include "gui_about.h"
 #include "gui_confirm.h"
-#include "menus/gui_optionsMenu.h"
-#include "menus/gui_memCardsMenu.h"
-#include "menus/gui_gameManagerMenu.h"
-#include "../evoui/gui_launcher.h"
-#include "../core/services/environment.h"
-#include "../core/services/system.h"
+#include "../menus/gui_options_menu.h"
+#include "../menus/gui_memcards_menu.h"
+#include "../menus/gui_game_manager_menu.h"
+#include "../../evoui/screens/evoui_launcher.h"
+#include "../../core/services/environment.h"
+#include "../../core/services/system.h"
 
 using namespace std;
 

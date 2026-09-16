@@ -3,8 +3,8 @@
 //
 
 #include "gui_splash.h"
-#include "gui.h"
-#include "../engine/scanner.h"
+#include "../gui.h"
+#include "../../engine/scanner.h"
 using namespace std;
 
 //*******************************

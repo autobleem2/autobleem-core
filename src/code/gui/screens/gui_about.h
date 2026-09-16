@@ -3,9 +3,9 @@
 //
 #pragma once
 
-#include "gui_screen.h"
-#include "starfx.h"
-#include "gui_font.h"
+#include "../gui_screen.h"
+#include "../starfx.h"
+#include "../gui_font.h"
 #include <ableem/ui/texture.h>
 
 //********************

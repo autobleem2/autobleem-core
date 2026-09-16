@@ -1,8 +1,8 @@
 
-#include "gui_padTest.h"
+#include "gui_pad_test.h"
 #include <unistd.h>
 #include <string>
-#include "gui.h"
+#include "../gui.h"
 #include <iostream>
 #include <sstream>
 

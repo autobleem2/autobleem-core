@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include "gui_screen.h"
+#include "../gui_screen.h"
 #include <vector>
-#include "gui.h"
+#include "../gui.h"
 
 //********************
 // GuiScrollWin

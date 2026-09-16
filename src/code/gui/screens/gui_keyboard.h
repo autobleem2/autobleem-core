@@ -4,8 +4,8 @@
 #pragma once
 
 #include <string>
-#include "gui_screen.h"
-#include "gui.h"
+#include "../gui_screen.h"
+#include "../gui.h"
 
 //********************
 // GuiKeyboard

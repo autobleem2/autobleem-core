@@ -5,8 +5,8 @@
 #include "gui_confirm.h"
 #include "gui_about.h"
 #include <string>
-#include "gui.h"
-#include "../engine/scanner.h"
+#include "../gui.h"
+#include "../../engine/scanner.h"
 using namespace std;
 
 //*******************************
