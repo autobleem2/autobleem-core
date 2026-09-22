@@ -6,6 +6,9 @@
 
 option(ABLEEM_SHARED "Build lib_ableem as a shared library instead of static" OFF)
 option(ABLEEM_BUILD_DEMO "Build the ableem_demo example executable" ON)
+# OFF builds only ableem_engine (SDL-free) - for a consumer that needs the engine but not the UI (the PC
+# tools cross-compiled with llvm-mingw, which has no UCRT SDL2), so no SDL is required at all.
+option(ABLEEM_BUILD_UI "Build the SDL2 ui library (ableem); OFF = engine only, no SDL" ON)
 option(ABLEEM_EMBEDDED_TARGET "Building for an embedded target (PSC/RPi): no cursor grab, no keyboard-as-pad" OFF)
 option(ABLEEM_ENABLE_CHD "CHD disc image support (builds the vendored libchdr)" ON)
 
@@ -99,8 +102,9 @@ if (ABLEEM_SHARED)
 endif()
 
 #*******************************
-# ableem (ui)
+# ableem (ui)  - only when ABLEEM_BUILD_UI (skips SDL entirely for engine-only consumers)
 #*******************************
+if (ABLEEM_BUILD_UI)
 add_library(ableem ${ABLEEM_LIB_KIND}
         src/ui/platform.cpp
         src/ui/renderer.cpp
@@ -153,3 +157,4 @@ if (ABLEEM_BUILD_DEMO)
     add_executable(ableem_demo examples/demo.cpp)
     target_link_libraries(ableem_demo PRIVATE ableem)
 endif()
+endif() # ABLEEM_BUILD_UI

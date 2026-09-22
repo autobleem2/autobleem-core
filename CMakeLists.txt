@@ -11,6 +11,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(AB_ENABLE_CHD "Enable CHD image support (builds the vendored libchdr)" ON)
 option(AB_ONLINE_UPDATE "Build the online update check and download" ON)
 option(AB_BUILD_TESTS "Build the ab_core unit tests" ON)
+# OFF builds the SDL-free half only: ableem_engine + ab_core, no ableem (SDL) and no ab_classic. A consumer
+# that needs the services but not the UI (the PC tools, cross-compiled with llvm-mingw and no UCRT SDL2)
+# sets this OFF so no SDL is required.
+option(AB_CORE_UI "Build the classic UI (ab_classic + the SDL ableem lib)" ON)
 
 # a standalone core build is a development/host build
 add_compile_definitions(AB_PLATFORM_DEV)
@@ -21,6 +25,9 @@ endif()
 find_package(Threads REQUIRED)
 
 set(ABLEEM_ENABLE_CHD ${AB_ENABLE_CHD} CACHE BOOL "" FORCE)
+# AB_CORE_UI OFF -> lib_ableem builds engine only (no SDL); the demo is never part of a core build
+set(ABLEEM_BUILD_UI ${AB_CORE_UI} CACHE BOOL "" FORCE)
+set(ABLEEM_BUILD_DEMO OFF CACHE BOOL "" FORCE)
 add_subdirectory(lib_ableem)
 if (NOT AB_ENABLE_CHD)
     add_compile_definitions(AB_NO_CHD)
@@ -75,7 +82,8 @@ add_custom_target(ab_version
         COMMENT "core/version.h from git")
 add_dependencies(ab_core ab_version)
 
-# ---- ab_classic: the classic-UI framework (links ab_core + ableem) ----
+# ---- ab_classic: the classic-UI framework (links ab_core + ableem) ---- (only with AB_CORE_UI)
+if (AB_CORE_UI)
 add_library(ab_classic STATIC
         src/code/app_base.cpp
         src/code/gui/app_audio.cpp
@@ -96,6 +104,7 @@ add_library(ab_classic STATIC
         src/code/gui/theme_assets.cpp)
 target_link_libraries(ab_classic ab_core ableem)
 target_include_directories(ab_classic PUBLIC src/code)
+endif() # AB_CORE_UI
 
 if (AB_BUILD_TESTS)
     enable_testing()
