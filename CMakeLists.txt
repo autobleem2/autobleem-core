@@ -66,9 +66,11 @@ endif()
 
 # core/version.h, regenerated from git on every build
 set(AB_VERSION_FALLBACK "v2.0.0-pre0")
+# CMAKE_CURRENT_SOURCE_DIR, not CMAKE_SOURCE_DIR, so this works whether core is the top-level project or a
+# submodule of a consumer (launcher/tools): the generator script and version.h.in are core's own.
 add_custom_target(ab_version
-        COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR} -DBINARY_DIR=${CMAKE_BINARY_DIR}
-                -DVERSION_FALLBACK=${AB_VERSION_FALLBACK} -P ${CMAKE_SOURCE_DIR}/cmake/generate_version.cmake
+        COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -DBINARY_DIR=${CMAKE_BINARY_DIR}
+                -DVERSION_FALLBACK=${AB_VERSION_FALLBACK} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate_version.cmake
         BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/core/version.h
         COMMENT "core/version.h from git")
 add_dependencies(ab_core ab_version)
