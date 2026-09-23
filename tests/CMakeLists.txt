@@ -54,4 +54,8 @@ ab_add_test(test_update_catalog_packs core/test_update_catalog_packs.cpp)
 ab_add_test(test_harness core/test_env_fixture.cpp)
 
 # the tools' suites live with the tools: autobleem-console-tools (pscbios, abflashkit) and
-# autobleem-pc-tools (updateroms, installer) run them on this harness
+# autobleem-pc-tools (updateroms) run them on this harness; the installer job is here (ab_installer)
+
+# the stick installer and the Windows product's data tree (ab_installer)
+ab_add_test(test_installer_core installer/test_installer_core.cpp LIBS ab_installer)
+ab_add_test(test_windows_install_job installer/test_windows_install_job.cpp LIBS ab_installer)

@@ -7,14 +7,23 @@
 # every program (25 s on the PC for nothing). A release is a clean tree built once, so its stamp is real.
 #
 # Where there is no .git (the console build server gets an rsync without it - see make_psc.sh), the
-# AB_GIT_VERSION / AB_GIT_HASH / AB_GIT_BRANCH / AB_GIT_DIRTY environment variables say what the tree is.
+# AB_GIT_VERSION / AB_GIT_HASH / AB_GIT_BRANCH / AB_GIT_DIRTY (and AB_GIT_DESCRIBE, else the version)
+# environment variables say what the tree is. No `--match v*` on the describes: under CMake on Windows the
+# pattern matched nothing ("no names found"); leaving out the rolling nightly tag is all that is needed.
 #
-# Expects SOURCE_DIR, BINARY_DIR and VERSION_FALLBACK to be passed with -D.
+# Expects SOURCE_DIR (this tree: version.h.in), BINARY_DIR and VERSION_FALLBACK to be passed with -D, and
+# optionally GIT_SOURCE_DIR - the repository whose git facts are the version: the project that builds
+# autobleem-core as a submodule (the launcher, pc-tools, console-tools), not the submodule's own history.
+
+if (NOT GIT_SOURCE_DIR)
+    set(GIT_SOURCE_DIR "${SOURCE_DIR}")
+endif()
 
 if (DEFINED ENV{AB_GIT_HASH} AND NOT "$ENV{AB_GIT_HASH}" STREQUAL "")
     set(GIT_HASH "$ENV{AB_GIT_HASH}")
     set(GIT_BRANCH "$ENV{AB_GIT_BRANCH}")
     set(GIT_VERSION "$ENV{AB_GIT_VERSION}")
+    set(GIT_DESCRIBE "$ENV{AB_GIT_DESCRIBE}")
     if ("$ENV{AB_GIT_DIRTY}" STREQUAL "true")
         set(GIT_DIRTY "true")
     else()
@@ -22,18 +31,23 @@ if (DEFINED ENV{AB_GIT_HASH} AND NOT "$ENV{AB_GIT_HASH}" STREQUAL "")
     endif()
 else()
     execute_process(COMMAND git rev-parse --short HEAD
-            WORKING_DIRECTORY ${SOURCE_DIR} OUTPUT_VARIABLE GIT_HASH OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+            WORKING_DIRECTORY ${GIT_SOURCE_DIR} OUTPUT_VARIABLE GIT_HASH OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
     execute_process(COMMAND git rev-parse --abbrev-ref HEAD
-            WORKING_DIRECTORY ${SOURCE_DIR} OUTPUT_VARIABLE GIT_BRANCH OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+            WORKING_DIRECTORY ${GIT_SOURCE_DIR} OUTPUT_VARIABLE GIT_BRANCH OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
     execute_process(COMMAND git describe --tags --abbrev=0 --exclude nightly
-            WORKING_DIRECTORY ${SOURCE_DIR} OUTPUT_VARIABLE GIT_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+            WORKING_DIRECTORY ${GIT_SOURCE_DIR} OUTPUT_VARIABLE GIT_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    # the build's full name: the tag at a tag, v2.0.0-alpha2-6-gba7365c between tags - exactly how the
+    # download site names a release folder and a nightly folder, so the update check compares the two as
+    # they are (Version::DESCRIBE)
+    execute_process(COMMAND git describe --tags --exclude nightly
+            WORKING_DIRECTORY ${GIT_SOURCE_DIR} OUTPUT_VARIABLE GIT_DESCRIBE OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
     # diff-index trusts the index's cached stat info; without a refresh first, a file whose mtime changed
     # (a merge, a checkout, another git build - MSYS2's git and Git for Windows keep different stat data) is
     # reported as modified when its content is not, and the build is stamped "dirty" for nothing
     execute_process(COMMAND git update-index -q --refresh
-            WORKING_DIRECTORY ${SOURCE_DIR} RESULT_VARIABLE _ignored ERROR_QUIET OUTPUT_QUIET)
+            WORKING_DIRECTORY ${GIT_SOURCE_DIR} RESULT_VARIABLE _ignored ERROR_QUIET OUTPUT_QUIET)
     execute_process(COMMAND git diff-index --quiet HEAD --
-            WORKING_DIRECTORY ${SOURCE_DIR} RESULT_VARIABLE GIT_DIRTY_RESULT ERROR_QUIET)
+            WORKING_DIRECTORY ${GIT_SOURCE_DIR} RESULT_VARIABLE GIT_DIRTY_RESULT ERROR_QUIET)
     if (GIT_HASH AND NOT GIT_DIRTY_RESULT EQUAL 0)
         set(GIT_DIRTY "true")
     else()
@@ -43,6 +57,9 @@ endif()
 
 if (NOT GIT_VERSION)
     set(GIT_VERSION "${VERSION_FALLBACK}")
+endif()
+if (NOT GIT_DESCRIBE)
+    set(GIT_DESCRIBE "${GIT_VERSION}")
 endif()
 if (NOT GIT_HASH)
     set(GIT_HASH "unknown")

@@ -107,12 +107,28 @@ endif()
 set(AB_VERSION_FALLBACK "v2.0.0-pre0")
 # CMAKE_CURRENT_SOURCE_DIR, not CMAKE_SOURCE_DIR, so this works whether core is the top-level project or a
 # submodule of a consumer (launcher/tools): the generator script and version.h.in are core's own.
+# the version is the consumer's: git describe of the top-level project (the launcher, a tool repo), or of
+# this repository when it is built on its own
+set(AB_VERSION_SOURCE_DIR "${CMAKE_SOURCE_DIR}" CACHE PATH "the repository whose git facts are the version")
 add_custom_target(ab_version
         COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -DBINARY_DIR=${CMAKE_BINARY_DIR}
+                -DGIT_SOURCE_DIR=${AB_VERSION_SOURCE_DIR}
                 -DVERSION_FALLBACK=${AB_VERSION_FALLBACK} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate_version.cmake
         BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/core/version.h
         COMMENT "core/version.h from git")
 add_dependencies(ab_core ab_version)
+
+# ab_installer: AutoBleem onto a PlayStation Classic stick (InstallerJob - unpack the stick package keeping
+# everything of the user's, the legacy-layout conversion, the ROM folders, the site's packs) and the Windows
+# product's data tree (WindowsInstallJob). SDL-free, ab_core only, with the download behind a Downloader the
+# program supplies - WinINet in autobleem-pc-tools' installers, a shell command on the console's own updater
+# (the launcher). Moved here from autobleem-pc-tools' installer_core (2026-09-23) so both use one copy.
+add_library(ab_installer STATIC
+        src/code/installer/install_job_base.cpp
+        src/code/installer/installer_job.cpp
+        src/code/installer/legacy_layout.cpp
+        src/code/installer/windows_install_job.cpp)
+target_link_libraries(ab_installer ab_core)
 
 # ---- ab_classic: the classic-UI framework (links ab_core + ableem) ---- (only with AB_CORE_UI)
 if (AB_CORE_UI)
