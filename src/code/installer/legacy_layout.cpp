@@ -187,6 +187,31 @@ string lower(string s) {
     return s;
 }
 
+// every line "<key> = ..." (any spacing, a trailing \r kept) becomes `line` - what a regex with
+// std::regex::multiline did, which the console's gcc-6 does not have (the console's own updater runs this)
+string replaceKeyLines(const string &text, const string &key, const string &line) {
+    string out;
+    size_t start = 0;
+    while (start <= text.size()) {
+        size_t end = text.find('\n', start);
+        string current = text.substr(start, end == string::npos ? string::npos : end - start);
+        const bool cr = !current.empty() && current.back() == '\r';
+        size_t i = key.size();
+        if (current.compare(0, key.size(), key) == 0) {
+            while (i < current.size() && (current[i] == ' ' || current[i] == '\t'))
+                i++;
+            if (i < current.size() && current[i] == '=')
+                current = line + (cr ? "\r" : "");
+        }
+        out += current;
+        if (end == string::npos)
+            break;
+        out += '\n';
+        start = end + 1;
+    }
+    return out;
+}
+
 } // namespace
 
 //*******************************
@@ -349,10 +374,8 @@ bool LegacyLayout::migrate(const string &root, const Say &say, string &error) {
         bin + "/retroarch.cfg",
         [](const string &text) {
             string s = rewritePaths(text);
-            s = regex_replace(s, regex(R"(^system_directory\s*=.*$)", regex::multiline),
-                              "system_directory = \"/media/RetroArch/bios\"");
-            s = regex_replace(s, regex(R"(^rgui_browser_directory\s*=.*$)", regex::multiline),
-                              "rgui_browser_directory = \"/media/RetroArch/roms/\"");
+            s = replaceKeyLines(s, "system_directory", "system_directory = \"/media/RetroArch/bios\"");
+            s = replaceKeyLines(s, "rgui_browser_directory", "rgui_browser_directory = \"/media/RetroArch/roms/\"");
             return s;
         },
         say);
