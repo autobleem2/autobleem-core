@@ -102,12 +102,16 @@ struct Environment : ableem::Environment {
     // one in the resources dir (what the wizard writes otherwise)
     static std::vector<std::string> padMappingFiles();
 
-    // the version every program on the stick shows (the splash, About, Hardware Information, the log banner,
-    // and through AB_VERSION the emulators and the console tools the launcher starts): the package's -
-    // $AB_VERSION when a parent set it, else the first line of <root>/VERSION (what the package and the
-    // installer name it), else this build's git describe. The owner's rule (2026-09-23): everything but
-    // RetroArch shows the package's version, written the same way
+    // the version every program shows (the splash, About, Hardware Information, the log banner, the PC
+    // programs' windows, and through AB_VERSION the emulators and the console tools the launcher starts):
+    // the package's - $AB_VERSION when a parent set it, else the first line of a VERSION file: the data
+    // root's (the stick's own), the one next to the program (the installer's, flasher's and Windows
+    // product's folders - the assembly writes them), or the one a folder up (<stick>/UpdateRoms/); else this
+    // build's git describe. The owner's rule (2026-09-23): everything but RetroArch shows the package's
+    // version, written the same way
     static std::string productVersion();
+    // the folder the running program is in, "" when unknown
+    static std::string executableDir();
     // puts productVersion() into AB_VERSION, so every program started from here inherits it
     static void exportProductVersion();
 };

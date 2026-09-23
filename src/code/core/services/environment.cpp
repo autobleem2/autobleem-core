@@ -4,6 +4,11 @@
 
 #include <cstdlib>
 #include <fstream>
+#ifdef _WIN32
+#include "windows_host.h"
+#else
+#include <unistd.h>
+#endif
 
 using namespace std;
 
@@ -45,14 +50,46 @@ std::string Env::productVersion() {
     const char *inherited = getenv("AB_VERSION");
     if (inherited && *inherited)
         return inherited;
-    ifstream file(getPathToUSBRoot() + sep + "VERSION");
-    string line;
-    if (file && getline(file, line)) {
-        trim(line);
-        if (!line.empty())
-            return line;
+    // the data root's (the stick's own), then next to the program (the assembly writes one into the
+    // installer's and the flasher's zips and the Windows program folder), then one folder up
+    // (<stick>/UpdateRoms/UpdateRoms.exe reads the stick's)
+    vector<string> files;
+    if (!getPathToUSBRoot().empty())
+        files.push_back(getPathToUSBRoot() + sep + "VERSION");
+    const string program = executableDir();
+    if (!program.empty()) {
+        files.push_back(program + sep + "VERSION");
+        const size_t slash = program.find_last_of("/\\");
+        if (slash != string::npos && slash > 0)
+            files.push_back(program.substr(0, slash) + sep + "VERSION");
+    }
+    for (const string &path : files) {
+        ifstream file(path);
+        string line;
+        if (file && getline(file, line)) {
+            trim(line);
+            if (!line.empty())
+                return line;
+        }
     }
     return Version::DESCRIBE;
+}
+
+//*******************************
+// Env::executableDir
+//*******************************
+std::string Env::executableDir() {
+#ifdef _WIN32
+    return WindowsHost::programDir();
+#else
+    char buf[4096];
+    const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n <= 0)
+        return "";
+    const string exe(buf, static_cast<size_t>(n));
+    const size_t slash = exe.rfind('/');
+    return slash == string::npos ? "" : exe.substr(0, slash);
+#endif
 }
 
 //*******************************
