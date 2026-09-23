@@ -286,7 +286,7 @@ InfoSection SystemInfoService::network() const {
 //*******************************
 InfoSection SystemInfoService::software() const {
     InfoSection section{_("AutoBleem"), {}};
-    addRow(section, _("Version"), Version::FULL_VERSION);
+    addRow(section, _("Version"), Env::productVersion());
     addRow(section, _("Built"), Version::BUILD_TIMESTAMP);
     addRow(section, _("Platform"), Env::platformName());
     addRow(section, _("Data root"), Env::getPathToUSBRoot());

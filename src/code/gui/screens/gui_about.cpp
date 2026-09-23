@@ -7,7 +7,6 @@
 #include <string>
 #include "../gui.h"
 #include "../../core/services/environment.h"
-#include "core/version.h" // generated into the build tree
 
 const std::string GuiAbout::HeadingMark = "";
 
@@ -127,7 +126,7 @@ void GuiAbout::render() {
         gui->text().renderText_WithColor(f, text, SCREEN_WIDTH / 2 - gui->text().textWidth(f, text) / 2, y, color,
                                          XALIGN_LEFT);
     };
-    centred(fonts[FONT_15_BOLD], Version::FULL_VERSION, rect.y + rect.h + 4, style.secondary);
+    centred(fonts[FONT_15_BOLD], Env::productVersion(), rect.y + rect.h + 4, style.secondary);
 
     // the credits as sections - a heading (the launcher's bold) and its names wrapped under it - flowed
     // into two columns, the left one first

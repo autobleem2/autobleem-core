@@ -101,6 +101,15 @@ struct Environment : ableem::Environment {
     // (/etc/autobleem on the console - what the pscbios wizard writes when it is there), then the shipped
     // one in the resources dir (what the wizard writes otherwise)
     static std::vector<std::string> padMappingFiles();
+
+    // the version every program on the stick shows (the splash, About, Hardware Information, the log banner,
+    // and through AB_VERSION the emulators and the console tools the launcher starts): the package's -
+    // $AB_VERSION when a parent set it, else the first line of <root>/VERSION (what the package and the
+    // installer name it), else this build's git describe. The owner's rule (2026-09-23): everything but
+    // RetroArch shows the package's version, written the same way
+    static std::string productVersion();
+    // puts productVersion() into AB_VERSION, so every program started from here inherits it
+    static void exportProductVersion();
 };
 
 using Env = Environment;

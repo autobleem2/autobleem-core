@@ -4,7 +4,6 @@
 
 #include "gui_splash.h"
 #include "../gui.h"
-#include "core/version.h" // generated into the build tree
 #include "../../core/model/timing.h"
 #include "../../core/services/environment.h"
 
@@ -41,7 +40,7 @@ void GuiSplash::render() {
     renderer.fillRect(rect);
 
     int y = bar.textY;
-    string splashText = _("AutoBleem") + " " + Version::VERSION;
+    string splashText = _("AutoBleem") + " " + Env::productVersion();
     gui->text().renderText(gui->assets().themeFont, splashText, 0, y, XALIGN_CENTER);
 
     renderer.present();

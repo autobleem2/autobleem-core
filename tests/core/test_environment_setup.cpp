@@ -8,6 +8,9 @@
 
 #include "core/services/environment.h"
 #include "core/services/environment_setup.h"
+#include "core/version.h"
+
+#include <cstdlib>
 
 #include <string>
 #include <vector>
@@ -187,4 +190,34 @@ TEST_CASE("fromWindowsInstall: the registry's data root first, then the pointer 
         EnvironmentSetup::fromWindowsInstall(facts);
         CHECK(tmp.readFile("Documents/AutoBleem/Themes/ab2/theme.json") == "{updated}");
     }
+}
+
+namespace {
+void clearVersionEnv() {
+#ifdef _WIN32
+    _putenv_s("AB_VERSION", "");
+#else
+    unsetenv("AB_VERSION");
+#endif
+}
+} // namespace
+
+TEST_CASE("productVersion is the package's VERSION file, a parent's AB_VERSION, else the build's describe") {
+    EnvFixture env;
+    TempDir tmp("product_version");
+    clearVersionEnv();
+    env.setUsbRoot(tmp.path());
+    CHECK(Env::productVersion() == Version::DESCRIBE); // no VERSION on the stick
+
+    tmp.writeFile("VERSION", "v2.0.0-alpha2-17-g1760cc8\r\n");
+    CHECK(Env::productVersion() == "v2.0.0-alpha2-17-g1760cc8");
+
+    Env::exportProductVersion(); // what the launcher does at start, for the programs it starts
+    const char *exported = getenv("AB_VERSION");
+    REQUIRE(exported != nullptr);
+    CHECK(string(exported) == "v2.0.0-alpha2-17-g1760cc8");
+
+    tmp.writeFile("VERSION", "something else\n"); // a started program keeps what its parent said
+    CHECK(Env::productVersion() == "v2.0.0-alpha2-17-g1760cc8");
+    clearVersionEnv();
 }

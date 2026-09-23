@@ -1,5 +1,9 @@
 #include "environment.h"
 #include "../main.h"
+#include "core/version.h"
+
+#include <cstdlib>
+#include <fstream>
 
 using namespace std;
 
@@ -31,6 +35,35 @@ const char *Env::platformName() {
     return "win";
 #else
     return "pc";
+#endif
+}
+
+//*******************************
+// Env::productVersion
+//*******************************
+std::string Env::productVersion() {
+    const char *inherited = getenv("AB_VERSION");
+    if (inherited && *inherited)
+        return inherited;
+    ifstream file(getPathToUSBRoot() + sep + "VERSION");
+    string line;
+    if (file && getline(file, line)) {
+        trim(line);
+        if (!line.empty())
+            return line;
+    }
+    return Version::DESCRIBE;
+}
+
+//*******************************
+// Env::exportProductVersion
+//*******************************
+void Env::exportProductVersion() {
+    const string version = productVersion();
+#ifdef _WIN32
+    _putenv_s("AB_VERSION", version.c_str());
+#else
+    setenv("AB_VERSION", version.c_str(), 1);
 #endif
 }
 
