@@ -32,8 +32,6 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
       - name: Build
         run: cmake --build build
-      # ab_core's tests were written against the launcher tree; some reference src/resources, which lives in
-      # the launcher now. Run them and surface failures, but don't fail the build on a missing-resource test
-      # until the test data that belongs with the core is carried here (a follow-up).
+      # a failing suite fails the build; the one case that needs the launcher's src/resources skips itself here
       - name: Test
-        run: ctest --test-dir build --output-on-failure || echo "::warning::some ctest suites failed (likely launcher resources not present in core yet)"
+        run: ctest --test-dir build --output-on-failure -j4

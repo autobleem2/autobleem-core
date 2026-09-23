@@ -166,7 +166,10 @@ TEST_CASE("PlatformConfig: the update, launch and core-extension keys") {
     }
 }
 
-TEST_CASE("every shipped platform ini loads, and each target's file is there") {
+// the platform inis ship in the launcher's src/resources, which this repo does not have on its own - the
+// case runs in the launcher's tree and is skipped in a standalone core build
+TEST_CASE("every shipped platform ini loads, and each target's file is there" *
+          doctest::skip(!DirEntry::exists(std::string(AB_RESOURCES_DIR) + "/platform"))) {
     const std::string dir = std::string(AB_RESOURCES_DIR) + "/platform";
     for (const char *name : {"psc", "rpi", "pcusb", "pc"}) {
         INFO(name);

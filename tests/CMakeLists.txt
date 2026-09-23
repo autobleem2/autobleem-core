@@ -6,32 +6,9 @@
 #
 # Run with:  ctest --test-dir build_win --output-on-failure    (make_win.sh does this after a build)
 
-add_library(doctest_main STATIC doctest_main.cpp)
-target_link_libraries(doctest_main ableem_engine)
-target_include_directories(doctest_main PUBLIC third_party)
-
-# the support pieces every test links: EnvFixture (Environment's setters are global), TempDir and
-# makeFakeGame (a real verifiable PS1 game on disk, for tests that exercise the scanner itself).
-add_library(ab_test_support STATIC support/temp_dir.cpp support/fake_game.cpp)
-target_include_directories(ab_test_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
-        # support/tar_builder.h gzips with the engine's own miniz (a private header of ableem_engine)
-        ${CMAKE_SOURCE_DIR}/lib_ableem/third_party/miniz)
-target_link_libraries(ab_test_support ableem_engine)
-
-# one executable per suite; add_test per executable so a crash in one does not hide the others.
-# ab_add_test(<name> <sources...> [LIBS <targets...>]) - the suite links ab_core, plus what LIBS names
-# (a tool's *_core library, for the suites under apps/)
-function(ab_add_test name)
-    cmake_parse_arguments(AB_TEST "" "" "LIBS" ${ARGN})
-    add_executable(${name} ${AB_TEST_UNPARSED_ARGUMENTS})
-    # tests include app headers as "core/services/config.h", the way the app will once src/code is a root
-    target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/src/code)
-    # tests/data: checked-in fixtures (the test disc images, see tests/data/generate_test_files.sh)
-    target_compile_definitions(${name} PRIVATE AB_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
-                                               AB_RESOURCES_DIR="${CMAKE_SOURCE_DIR}/src/resources")
-    target_link_libraries(${name} doctest_main ab_test_support ab_core ${AB_TEST_LIBS})
-    add_test(NAME ${name} COMMAND ${name})
-endfunction()
+# doctest_main, ab_test_support and ab_add_test() - in harness.cmake so the tool repos that take this one as
+# a submodule run their own suites (tests/apps/ there) on the same harness
+include(${CMAKE_CURRENT_SOURCE_DIR}/harness.cmake)
 
 ab_add_test(test_cd_image core/test_cd_image.cpp)
 ab_add_test(test_clock core/test_clock.cpp)
@@ -76,15 +53,5 @@ ab_add_test(test_tar_archive core/test_tar_archive.cpp)
 ab_add_test(test_update_catalog_packs core/test_update_catalog_packs.cpp)
 ab_add_test(test_harness core/test_env_fixture.cpp)
 
-# the console tools' suites (apps/), linking each tool's SDL-free core - built where the tools are
-if (AB_TARGET STREQUAL "psc" OR AB_TARGET STREQUAL "dev")
-    ab_add_test(test_pscbios_core apps/test_pscbios_core.cpp LIBS pscbios_core)
-    ab_add_test(test_abflashkit_core apps/test_abflashkit_core.cpp LIBS abflashkit_core)
-endif()
-# UpdateRoms and the installer are PC programs, built for dev and win (the targets are defined after this
-# directory; CMake resolves the names at generate time) - not for an appliance whose tests run (pcusb)
-if (AB_TARGET STREQUAL "dev" OR AB_TARGET STREQUAL "win")
-    ab_add_test(test_updateroms_core apps/test_updateroms_core.cpp LIBS updateroms_core)
-    ab_add_test(test_installer_core apps/test_installer_core.cpp LIBS installer_core)
-    ab_add_test(test_windows_install_job apps/test_windows_install_job.cpp LIBS installer_core)
-endif()
+# the tools' suites live with the tools: autobleem-console-tools (pscbios, abflashkit) and
+# autobleem-pc-tools (updateroms, installer) run them on this harness
