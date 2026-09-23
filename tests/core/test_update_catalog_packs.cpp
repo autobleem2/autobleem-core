@@ -6,6 +6,35 @@
 using namespace std;
 using ableem::PackCatalog;
 using ableem::PscRetroArchCatalog;
+using ableem::ReleaseCatalog;
+
+TEST_CASE("ReleaseCatalog reads the images of a nightly and of pc/images") {
+    ReleaseCatalog nightly;
+    REQUIRE(nightly.parse(R"({"version": "v2.0.0-alpha2-6-gba7365c", "channel": "dev",
+        "files": {"pcusb": {"name": "p.tar.gz", "url": "https://site/p.tar.gz", "sha256": "aa", "size": 1}},
+        "images": {"pc-i386": {"name": "i.img.xz", "url": "https://site/i.img.xz", "sha256": "bb", "size": 2},
+                   "armhf": {"name": "a.img.xz", "url": "https://site/a.img.xz", "sha256": "cc", "size": 3}}})"));
+    REQUIRE(nightly.imageFor("pc-i386"));
+    CHECK(nightly.imageFor("pc-i386")->size == 2);
+    CHECK(nightly.images.size() == 2);
+    CHECK(nightly.fileFor("pcusb"));
+    CHECK_FALSE(nightly.imageFor("pcusb"));
+
+    ReleaseCatalog pc;
+    REQUIRE(pc.parse(R"({"version": "v2.0.0-alpha2", "prerelease": true,
+        "i386": {"name": "autobleem-v2.0.0-alpha2-pcusb-i386.img.xz", "size": 663360396, "sha256": "d8",
+                 "url": "https://site/pc/images/v2.0.0-alpha2/autobleem-v2.0.0-alpha2-pcusb-i386.img.xz"}})"));
+    CHECK(pc.prerelease);
+    REQUIRE(pc.imageFor("i386"));
+    CHECK(pc.imageFor("i386")->size == 663360396);
+    CHECK(pc.images.size() == 1);
+    CHECK(pc.files.empty());
+
+    // a release.json of releases/ has no images
+    ReleaseCatalog release;
+    REQUIRE(release.parse(R"({"version": "v2.0.0", "files": {}})"));
+    CHECK(release.images.empty());
+}
 
 TEST_CASE("PackCatalog reads a dated pack's latest.json") {
     PackCatalog cores;

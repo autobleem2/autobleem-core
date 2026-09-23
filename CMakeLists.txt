@@ -123,11 +123,13 @@ add_dependencies(ab_core ab_version)
 # product's data tree (WindowsInstallJob). SDL-free, ab_core only, with the download behind a Downloader the
 # program supplies - WinINet in autobleem-pc-tools' installers, a shell command on the console's own updater
 # (the launcher). Moved here from autobleem-pc-tools' installer_core (2026-09-23) so both use one copy.
+# FlasherJob too: the PC stick's image onto a disk the program supplies (autobleem-pc-tools' flasher).
 add_library(ab_installer STATIC
         src/code/installer/install_job_base.cpp
         src/code/installer/installer_job.cpp
         src/code/installer/legacy_layout.cpp
-        src/code/installer/windows_install_job.cpp)
+        src/code/installer/windows_install_job.cpp
+        src/code/installer/flasher_job.cpp)
 target_link_libraries(ab_installer ab_core)
 
 # ---- ab_classic: the classic-UI framework (links ab_core + ableem) ---- (only with AB_CORE_UI)

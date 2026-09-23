@@ -8,6 +8,7 @@ The payload is "line 0\\n" .. "line 19999\\n" (the test rebuilds it to compare):
   test_damaged.xz    test_crc64.xz with one byte of the compressed data flipped
   test_truncated.xz  the first half of test_crc64.xz
   test_blocks.xz     one stream of four 64 KiB blocks (needs the xz command)
+  test_image.xz      a 9 MB disk image for the flasher's tests (see below)
 """
 import lzma
 import os
@@ -36,4 +37,8 @@ write("test_truncated.xz", one[: len(one) // 2])
 blocks = subprocess.run(["xz", "-c", "--block-size=65536", "--check=crc64"], input=payload,
                         stdout=subprocess.PIPE, check=True).stdout
 write("test_blocks.xz", blocks)
+# a disk image for tests/installer/test_flasher_job.cpp: 144 runs of 64 KiB (run k is byte k) and 1200 bytes of
+# "tail" - more than one of the flasher's 4 MiB chunks, and not a whole number of 512-byte sectors
+image = b"".join(bytes([k & 0xff]) * 65536 for k in range(144)) + b"tail" * 300
+write("test_image.xz", lzma.compress(image, format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64))
 print("payload %d bytes, test_crc64.xz %d bytes" % (len(payload), len(one)))

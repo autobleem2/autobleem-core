@@ -28,15 +28,20 @@ struct UpdateFile {
 //******************
 // One release as the site describes it: the version tag ("v2.0.0-pre0-df68521" for a pre-release, the
 // tag plus the short hash), and its packages by platform key - "rpi", "rpi64", "psc", "win", "updateroms".
+// Its disk images too, by architecture: a nightly's release.json lists them under "images" ("armhf",
+// "arm64", "pc-i386"), pc/images/{release,testing,latest}.json has them at the top level ("i386") - the
+// PC stick flasher reads both.
 struct ReleaseCatalog {
     std::string version;
     bool prerelease = false;
     std::string date;
     std::map<std::string, UpdateFile> files;
+    std::map<std::string, UpdateFile> images;
 
     bool parse(const std::string &jsonText);
     bool load(const std::string &path);
     const UpdateFile *fileFor(const std::string &platformKey) const;
+    const UpdateFile *imageFor(const std::string &arch) const;
 };
 
 //******************

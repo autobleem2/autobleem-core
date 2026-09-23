@@ -91,6 +91,7 @@ bool ReleaseCatalog::parse(const string &jsonText) {
     auto pre = j.find("prerelease");
     prerelease = pre != j.end() && pre->is_boolean() && pre->get<bool>();
     files.clear();
+    images.clear();
     auto f = j.find("files");
     if (f != j.end() && f->is_object()) {
         for (auto it = f->begin(); it != f->end(); ++it) {
@@ -98,6 +99,14 @@ bool ReleaseCatalog::parse(const string &jsonText) {
             if (parseFile(it.value(), file))
                 files[it.key()] = file;
         }
+    }
+    // a nightly's "images" object, or pc/images' shape: every other top-level member that is a file
+    auto im = j.find("images");
+    const json &imageSource = im != j.end() && im->is_object() ? *im : j;
+    for (auto it = imageSource.begin(); it != imageSource.end(); ++it) {
+        UpdateFile file;
+        if (it.key() != "files" && parseFile(it.value(), file))
+            images[it.key()] = file;
     }
     return !version.empty();
 }
@@ -109,6 +118,11 @@ bool ReleaseCatalog::load(const string &path) {
 const UpdateFile *ReleaseCatalog::fileFor(const string &platformKey) const {
     auto it = files.find(platformKey);
     return it == files.end() ? nullptr : &it->second;
+}
+
+const UpdateFile *ReleaseCatalog::imageFor(const string &arch) const {
+    auto it = images.find(arch);
+    return it == images.end() ? nullptr : &it->second;
 }
 
 //*******************************
