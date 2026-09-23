@@ -17,6 +17,14 @@ add_library(lzma7z STATIC
         src/Lzma2Dec.c
         src/Ppmd7.c
         src/Ppmd7Dec.c
+        # the .xz container (2026-09-23, for ableem::XzFile - the PC stick image a flasher writes): the
+        # stream parser and unpacker, its CRC64 and SHA-256 checks; single-threaded (Z7_ST, no MtDec)
+        src/Xz.c
+        src/XzDec.c
+        src/XzCrc64.c
+        src/XzCrc64Opt.c
+        src/Sha256.c
+        src/Sha256Opt.c
 )
 target_compile_definitions(lzma7z PRIVATE Z7_PPMD_SUPPORT Z7_EXTRACT_ONLY Z7_ST)
 target_include_directories(lzma7z PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

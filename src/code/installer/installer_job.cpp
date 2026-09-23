@@ -621,8 +621,8 @@ private:
                            : "Installed. Put the stick into the console's second controller port and boot it.");
     }
 
-    InstallOptions opt; // a copy: a channel's package lands in opt.packageFile
-    StickInfo info;     // and its version in info.packageVersion
+    InstallOptions opt;                   // a copy: a channel's package lands in opt.packageFile
+    StickInfo info;                       // and its version in info.packageVersion
     ableem::UpdateFile channelUpdateRoms; // UpdateRoms of the channel's release, when it has one
     string root;
     vector<string> shippedThemes;

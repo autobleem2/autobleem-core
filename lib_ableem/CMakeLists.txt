@@ -52,6 +52,7 @@ add_library(ableem_engine ${ABLEEM_LIB_KIND}
         src/engine/tar_archive.cpp
         src/engine/zip_writer.cpp
         src/engine/seven_zip_archive.cpp
+        src/engine/xz_file.cpp
         src/engine/game_library.cpp
         src/engine/md5.cpp
         src/engine/sha256.cpp
