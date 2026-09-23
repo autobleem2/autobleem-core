@@ -56,6 +56,27 @@ TEST_CASE("generateM3UForDirectory strips the image extension a PBP or CHD base 
     CHECK(lines(tmp, "Chd/Chd (Disc 1).m3u") == "Chd (Disc 1).chd\nChd (Disc 2).chd\n");
 }
 
+TEST_CASE("copy and copyFile copy every byte of a file bigger than one buffer") {
+    // was a readsome() loop, which copies nothing under libc++ (the llvm-mingw Windows builds)
+    TempDir tmp("copy");
+    string data;
+    for (int i = 0; i < 300000; ++i)
+        data += static_cast<char>(i * 7 + i / 256);
+    tmp.writeFile("source.bin", data);
+
+    CHECK(DirEntry::copy(tmp.at("source.bin"), tmp.at("copy.bin")));
+    CHECK(tmp.readFile("copy.bin") == data);
+    CHECK(DirEntry::copyFile(tmp.at("source.bin"), tmp.at("copyFile.bin")));
+    CHECK(tmp.readFile("copyFile.bin") == data);
+
+    tmp.writeFile("empty.bin", "");
+    CHECK(DirEntry::copy(tmp.at("empty.bin"), tmp.at("empty-copy.bin")));
+    CHECK(DirEntry::exists(tmp.at("empty-copy.bin")));
+    CHECK(tmp.readFile("empty-copy.bin").empty());
+
+    CHECK_FALSE(DirEntry::copy(tmp.at("missing.bin"), tmp.at("never.bin")));
+}
+
 TEST_CASE("generateM3UForDirectory writes nothing for a single disc and replaces a stale .m3u") {
     TempDir tmp("m3u");
     tmp.makeSubDir("Single");

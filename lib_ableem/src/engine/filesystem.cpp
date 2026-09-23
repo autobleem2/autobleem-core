@@ -469,13 +469,19 @@ bool DirEntry::copy(const string &source, const string &dest) {
     if (!outfile.good())
         return false;
 
+    // read() + gcount(), never readsome(): readsome() only hands back what is already buffered, and libc++
+    // (llvm-mingw, what the Windows installer is built with) never reports anything buffered on a fresh
+    // stream - every copy came out empty and was still reported as a success (2026-09-23, an empty
+    // UpdateRoms.exe on a stick). libstdc++ happened to ask the file's size, so GCC builds never showed it.
     vector<char> buffer(FILE_BUFFER_SIZE);
-    while (true) {
-        streamsize read = infile.readsome(buffer.data(), buffer.size());
-        if (read == 0)
-            break;
-        outfile.write(buffer.data(), read);
+    while (infile) {
+        infile.read(buffer.data(), static_cast<streamsize>(buffer.size()));
+        const streamsize got = infile.gcount();
+        if (got > 0)
+            outfile.write(buffer.data(), got);
     }
+    if (infile.bad())
+        return false;
     outfile.flush();
     return outfile.good();
 }
