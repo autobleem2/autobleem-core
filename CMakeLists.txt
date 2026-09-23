@@ -43,10 +43,7 @@ string(TOUPPER "${AB_TARGET}" _ab_core_target_upper)
 message(STATUS "autobleem-core: building for target ${AB_TARGET} (AB_PLATFORM_${_ab_core_target_upper})")
 add_compile_definitions(AB_PLATFORM_${_ab_core_target_upper})
 
-if (AB_TARGET STREQUAL "psc")
-    # the console has no network: its updater is offline (root CMakeLists.txt's own rule)
-    set(AB_ONLINE_UPDATE OFF)
-endif()
+# the console too since 2026-09-23: it checks only when it has a network (the AutoBleem kernel's WiFi)
 if (AB_ONLINE_UPDATE)
     add_compile_definitions(AB_ONLINE_UPDATE)
 endif()
@@ -129,7 +126,8 @@ add_library(ab_installer STATIC
         src/code/installer/installer_job.cpp
         src/code/installer/legacy_layout.cpp
         src/code/installer/windows_install_job.cpp
-        src/code/installer/flasher_job.cpp)
+        src/code/installer/flasher_job.cpp
+        src/code/installer/command_downloader.cpp)
 target_link_libraries(ab_installer ab_core)
 
 # ---- ab_classic: the classic-UI framework (links ab_core + ableem) ---- (only with AB_CORE_UI)

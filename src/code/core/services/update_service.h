@@ -1,7 +1,8 @@
 //
 // UpdateService: the launcher's online update - is there a newer AutoBleem (or RetroArch, on a Pi) on the
-// download repository, and fetching it when the user says yes. Built only with AB_ONLINE_UPDATE (CMake:
-// on for the Pi and the dev hosts, off for the console, whose updater is an offline stick affair).
+// download repository, and fetching it when the user says yes. Built only with AB_ONLINE_UPDATE (CMake: on
+// everywhere since 2026-09-23; the console checks only when it has a network - Config::networkUp, a default
+// route, which only the AutoBleem kernel with WiFi gives it - and fetches with the kernel payload's curl).
 //
 // The check: the channel's list on the site - "release" releases/latest.json (the newest stable), "testing"
 // releases/unstable.json (the one pre-release; the stable list when there is none), "nightly"
@@ -16,7 +17,8 @@
 //
 // The download: each needed tarball into <usb>/System/Updates/, sha256-checked against the catalog, then
 // pending.json for the Pi's autobleem-update script (the launcher exits with MENU_OPTION_UPDATE and the
-// session loop runs it - payload_linux/system/autobleem-session.sh). Progress is the growing file's size.
+// session loop runs it - payload_linux/system/autobleem-session.sh) or, on the console, for the launcher's
+// abupdate (rc/selection.sh runs it: InstallerJob over the stick). Progress is the growing file's size.
 //
 #pragma once
 
@@ -58,6 +60,9 @@ public:
         std::string downloadCommand;    // the same without a timeout, for the tarballs
         std::string stateFile;          // <usb>/System/update.json
         std::string updatesDir;         // <usb>/System/Updates
+        // whether there is a network to check over (System::hasDefaultRoute); unset = assume there is. The
+        // console asks it: only a console with the AutoBleem kernel and WiFi has one
+        std::function<bool()> networkUp;
     };
     using CommandRunner = std::function<int(const std::string &commandLine)>;
 
@@ -73,6 +78,7 @@ public:
     };
 
     static const int64_t CheckInterval = 24 * 60 * 60; // seconds
+    static const int64_t NetworkProbeInterval = 30;    // seconds between two Config::networkUp calls
 
     explicit UpdateService(CommandRunner runner = CommandRunner());
     ~UpdateService();
@@ -124,5 +130,7 @@ private:
     uint64_t workerTotal_ = 0;
     std::string workerOutPath_; // the .part being written - its size is the progress
     bool workerOk_ = false;
-    bool checkPending_ = false; // a check finished, poll() has not reported it yet
+    bool checkPending_ = false;         // a check finished, poll() has not reported it yet
+    mutable int64_t probedAt_ = -1;     // when Config::networkUp was last asked (checkDue)
+    mutable bool networkWasUp_ = false; // and what it said
 };

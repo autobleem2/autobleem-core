@@ -372,6 +372,24 @@ TEST_CASE("UpdateService: the check against the site, and what the user's answer
         CHECK_FALSE(service.enabled());
         CHECK_FALSE(service.checkDue(1000));
     }
+    SUBCASE("no network: not due, the network asked every NetworkProbeInterval, due once it is up") {
+        bool up = false;
+        int asked = 0;
+        UpdateService::Config c = config(tmp);
+        c.networkUp = [&]() {
+            asked++;
+            return up;
+        };
+        service.configure(c);
+        CHECK_FALSE(service.checkDue(1000));
+        CHECK_FALSE(service.checkDue(1001)); // not asked again yet
+        CHECK(asked == 1);
+        up = true;
+        CHECK_FALSE(service.checkDue(1000 + UpdateService::NetworkProbeInterval - 1));
+        CHECK(service.checkDue(1000 + UpdateService::NetworkProbeInterval));
+        CHECK(asked == 2);
+        CHECK(site.fetched("http://site/releases/unstable.json") == 0); // nothing fetched while it was down
+    }
 }
 
 TEST_CASE("UpdateService: the download lands in Updates/ verified, with pending.json for the installer") {

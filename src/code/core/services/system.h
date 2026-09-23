@@ -69,6 +69,12 @@ public:
     static bool diskSpace(const std::string &path, uint64_t &freeBytes, uint64_t &totalBytes);
     static std::string getAvailableSpace(); // "N GB / M GB (P%)" for the status bar, of the USB root's filesystem
 
+    // whether the machine has a way out at all - a default route that is up (Linux's /proc/net/route; true
+    // where there is no such table to read). The console's update check asks this before it spends a
+    // download command on a machine that has no network (a stock console never has one)
+    static bool hasDefaultRoute();
+    static bool defaultRouteIn(const std::string &routeTable); // the parse, for the tests
+
     static unsigned int getRandomNumber();
     static unsigned int getRandomIndex(unsigned int size); // 0 .. size-1
 };

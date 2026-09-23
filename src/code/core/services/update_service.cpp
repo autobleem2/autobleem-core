@@ -144,7 +144,17 @@ bool UpdateService::checkDue(int64_t now) const {
         return false;
     if (status_.phase == Phase::Downloading || status_.phase == Phase::Downloaded)
         return false;
-    return state_.lastCheck == 0 || now - state_.lastCheck >= CheckInterval || now < state_.lastCheck;
+    if (!(state_.lastCheck == 0 || now - state_.lastCheck >= CheckInterval || now < state_.lastCheck))
+        return false;
+    // due - if there is a network: asked at most every NetworkProbeInterval, so a machine without one is
+    // not probed every frame, and the check starts within that time of the network coming up
+    if (!config_.networkUp)
+        return true;
+    if (probedAt_ < 0 || now - probedAt_ >= NetworkProbeInterval || now < probedAt_) {
+        probedAt_ = now;
+        networkWasUp_ = config_.networkUp();
+    }
+    return networkWasUp_;
 }
 
 //*******************************

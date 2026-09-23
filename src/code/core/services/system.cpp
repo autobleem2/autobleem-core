@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -176,6 +177,39 @@ string System::getAvailableSpace() {
     int freeSpacePerc = totalBytes > 0 ? static_cast<int>(freeBytes * 100 / totalBytes) : 0;
     return floatToString(static_cast<float>(freeBytes / gb), 2) + " GB / " +
            floatToString(static_cast<float>(totalBytes / gb), 2) + " GB (" + to_string(freeSpacePerc) + "%)";
+}
+
+//*******************************
+// System::hasDefaultRoute
+//*******************************
+// /proc/net/route: a header, then Iface, Destination, Gateway, Flags, ... in hex; the default route is the
+// one to 00000000 that is up (RTF_UP, flag 1) on anything but the loopback
+bool System::defaultRouteIn(const string &routeTable) {
+    istringstream in(routeTable);
+    string line;
+    getline(in, line); // the header
+    while (getline(in, line)) {
+        istringstream fields(line);
+        string iface, destination, gateway, flags;
+        if (!(fields >> iface >> destination >> gateway >> flags))
+            continue;
+        if (iface != "lo" && destination == "00000000" && (strtoul(flags.c_str(), nullptr, 16) & 1u) != 0)
+            return true;
+    }
+    return false;
+}
+
+bool System::hasDefaultRoute() {
+#ifdef _WIN32
+    return true; // Windows is asked by the download itself
+#else
+    ifstream in("/proc/net/route");
+    if (!in)
+        return true; // no procfs to ask: let the download decide
+    stringstream text;
+    text << in.rdbuf();
+    return defaultRouteIn(text.str());
+#endif
 }
 
 //*******************************
