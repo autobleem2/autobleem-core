@@ -16,10 +16,42 @@ option(AB_BUILD_TESTS "Build the ab_core unit tests" ON)
 # sets this OFF so no SDL is required.
 option(AB_CORE_UI "Build the classic UI (ab_classic + the SDL ableem lib)" ON)
 
-# a standalone core build is a development/host build
-add_compile_definitions(AB_PLATFORM_DEV)
+# AB_TARGET: the same switch the launcher's own root CMakeLists.txt has (psc | rpi | pcusb | win | dev),
+# ported here 2026-09-23 so a cross build works through this submodule too - it had always been hardcoded
+# to AB_PLATFORM_DEV, which is correct for a standalone host build but wrong the moment a CONSUMER cross-
+# compiles against this submodule (autobleem-console-tools targeting psc). A CACHE variable, not a plain
+# one, precisely because directory scope does NOT flow sideways in CMake: a consumer that add_subdirectory()s
+# this submodule AND its own targets (both as siblings of its own top level) needs BOTH sides to agree on
+# the platform, and a CACHE variable is the one thing genuinely global across that split - the consumer sets
+# it (or passes -DAB_TARGET=psc on the command line) before add_subdirectory(autobleem-core), and its own
+# top-level CMakeLists.txt reads the SAME variable for its own add_compile_definitions()/CPU-flags calls
+# (see autobleem-console-tools/CMakeLists.txt). Empty (the default): psc when cross-compiling for ARM/
+# AArch64, dev otherwise - exactly root's own auto-detect.
+set(AB_TARGET "" CACHE STRING "psc | rpi | pcusb | win | dev (empty: psc on ARM, dev elsewhere)")
+if (AB_TARGET STREQUAL "")
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^arm" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+        set(AB_TARGET "psc")
+    else()
+        set(AB_TARGET "dev")
+    endif()
+endif()
+set(_ab_core_targets psc rpi pcusb win dev)
+if (NOT AB_TARGET IN_LIST _ab_core_targets)
+    message(FATAL_ERROR "AB_TARGET must be one of: ${_ab_core_targets} (got '${AB_TARGET}')")
+endif()
+string(TOUPPER "${AB_TARGET}" _ab_core_target_upper)
+message(STATUS "autobleem-core: building for target ${AB_TARGET} (AB_PLATFORM_${_ab_core_target_upper})")
+add_compile_definitions(AB_PLATFORM_${_ab_core_target_upper})
+
+if (AB_TARGET STREQUAL "psc")
+    # the console has no network: its updater is offline (root CMakeLists.txt's own rule)
+    set(AB_ONLINE_UPDATE OFF)
+endif()
 if (AB_ONLINE_UPDATE)
     add_compile_definitions(AB_ONLINE_UPDATE)
+endif()
+if (AB_TARGET STREQUAL "psc" OR AB_TARGET STREQUAL "rpi" OR AB_TARGET STREQUAL "pcusb")
+    set(ABLEEM_EMBEDDED_TARGET ON CACHE BOOL "" FORCE)
 endif()
 
 find_package(Threads REQUIRED)
