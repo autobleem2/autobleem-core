@@ -1,3 +1,9 @@
+// 64-bit file offsets and sizes on 32-bit Linux (the console, the Pi): stat() of a file over 2 GB fails
+// without it, and sizeBySeeking() is asked for partitions
+#ifndef _WIN32
+#define _FILE_OFFSET_BITS 64
+#endif
+
 #include "ableem/engine/filesystem.h"
 #include "ableem/engine/environment.h"
 #include "ableem/engine/strings.h"
@@ -183,6 +189,25 @@ long long DirEntry::fileSize(const string &path) {
     if (S_ISDIR(path_stat.st_mode))
         return -1;
     return static_cast<long long>(path_stat.st_size);
+}
+
+//*******************************
+// DirEntry::sizeBySeeking
+//*******************************
+long long DirEntry::sizeBySeeking(const string &path) {
+    FILE *file = fopen(path.c_str(), "rb");
+    if (!file)
+        return -1;
+    long long size = -1;
+#ifdef _WIN32
+    if (_fseeki64(file, 0, SEEK_END) == 0)
+        size = _ftelli64(file);
+#else
+    if (fseeko(file, 0, SEEK_END) == 0)
+        size = static_cast<long long>(ftello(file));
+#endif
+    fclose(file);
+    return size;
 }
 
 //*******************************
@@ -461,6 +486,13 @@ bool DirEntry::checkWritable(const ofstream &os, const string &path) {
 // DirEntry::copy
 //*******************************
 bool DirEntry::copy(const string &source, const string &dest) {
+    return copy(source, dest, ByteProgress());
+}
+
+bool DirEntry::copy(const string &source, const string &dest, const ByteProgress &progress) {
+    const long long size = progress ? fileSize(source) : -1;
+    const uint64_t total = size > 0 ? static_cast<uint64_t>(size) : 0;
+    uint64_t done = 0;
     ifstream infile(source, ios::binary);
     ofstream outfile(dest, ios::binary);
 
@@ -477,8 +509,12 @@ bool DirEntry::copy(const string &source, const string &dest) {
     while (infile) {
         infile.read(buffer.data(), static_cast<streamsize>(buffer.size()));
         const streamsize got = infile.gcount();
-        if (got > 0)
+        if (got > 0) {
             outfile.write(buffer.data(), got);
+            done += static_cast<uint64_t>(got);
+            if (progress)
+                progress(done, total);
+        }
     }
     if (infile.bad())
         return false;

@@ -2,6 +2,8 @@
 // that touches the vendored miniz; the app never includes it.
 #pragma once
 
+#include "byte_progress.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -36,6 +38,8 @@ public:
     // unpacks into destDir (created if missing). False, with the reason logged, on a bad archive, a bad
     // name, or a file that could not be written; whatever was already extracted is left for the caller.
     static bool extract(const std::string &zipPath, const std::string &destDir);
+    // the same, reporting the bytes written so far against the sum of every entry's recorded size
+    static bool extract(const std::string &zipPath, const std::string &destDir, const ByteProgress &progress);
 
     // an entry name the extractor will accept: relative, forward slashes, no ".." segment
     static bool isSafeName(const std::string &name);

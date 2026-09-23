@@ -5,6 +5,7 @@
 
 #include "../support/temp_dir.h"
 
+#include <ableem/engine/filesystem.h>
 #include <ableem/engine/md5.h>
 #include <ableem/engine/zip_archive.h>
 #include <ableem/engine/zip_writer.h>
@@ -91,4 +92,59 @@ TEST_CASE("a zip with 4 KB of trailing data (a recovery trailer) still lists") {
     vector<string> names;
     CHECK(ableem::ZipArchive::list(zipPath, names));
     CHECK(names.size() == 1);
+}
+
+// abflashkit's progress bars: every streamed read or write reports bytes against the whole, and ends there
+TEST_CASE("zip, unzip, md5 and copy report their bytes as they go") {
+    TempDir tmp("byte_progress");
+    string big(300 * 1024, 'p');
+    tmp.writeFile("big.bin", big);
+    tmp.writeFile("small.bin", "12345");
+    CHECK(ableem::DirEntry::sizeBySeeking(tmp.at("big.bin")) == static_cast<long long>(big.size()));
+    CHECK(ableem::DirEntry::sizeBySeeking(tmp.at("absent.bin")) == -1);
+
+    // calls counted, and each one's (done, total) kept: done grows, total stays, the last is total
+    struct Recorder {
+        vector<std::pair<uint64_t, uint64_t>> calls;
+        ableem::ByteProgress fn() {
+            return [this](uint64_t done, uint64_t total) { calls.emplace_back(done, total); };
+        }
+        bool wellFormed(uint64_t expectedTotal) const {
+            if (calls.size() < 2)
+                return false;
+            for (size_t i = 0; i < calls.size(); i++) {
+                if (calls[i].second != expectedTotal || (i > 0 && calls[i].first <= calls[i - 1].first))
+                    return false;
+            }
+            return calls.back().first == expectedTotal;
+        }
+    };
+
+    Recorder zipping;
+    string zipPath = tmp.at("out.zip");
+    {
+        ableem::ZipWriter writer;
+        REQUIRE(writer.open(zipPath));
+        CHECK(writer.addFile(tmp.at("big.bin"), "big.bin", zipping.fn()));
+        CHECK(writer.addFile(tmp.at("small.bin"), "small.bin")); // no progress asked: the old call
+        CHECK(writer.close());
+    }
+    CHECK(zipping.wellFormed(big.size()));
+
+    Recorder unzipping;
+    REQUIRE(ableem::ZipArchive::extract(zipPath, tmp.at("unpacked"), unzipping.fn()));
+    CHECK(unzipping.wellFormed(big.size() + 5)); // both entries, one total
+    CHECK(tmp.readFile("unpacked/big.bin") == big);
+    CHECK(tmp.readFile("unpacked/small.bin") == "12345");
+
+    Recorder hashing;
+    CHECK(ableem::Md5::ofFile(tmp.at("big.bin"), hashing.fn()) == ableem::Md5::ofString(big));
+    CHECK(hashing.wellFormed(big.size()));
+
+    string large(1200 * 1024, 'c'); // more than DirEntry::copy's 512 KB buffer
+    tmp.writeFile("large.bin", large);
+    Recorder copying;
+    CHECK(ableem::DirEntry::copy(tmp.at("large.bin"), tmp.at("copy.bin"), copying.fn()));
+    CHECK(copying.wellFormed(large.size()));
+    CHECK(tmp.readFile("copy.bin") == large);
 }

@@ -3,6 +3,8 @@
 // side. Deflate at the default level, no time stamps (the console has no clock worth recording).
 #pragma once
 
+#include "byte_progress.h"
+
 #include <memory>
 #include <string>
 
@@ -20,6 +22,8 @@ public:
     // adds the file at `path` as entry `name` (forward slashes), read in chunks - a block device or a
     // multi-GB image is fine. False, logged, on a read or write error.
     bool addFile(const std::string &path, const std::string &name);
+    // the same, reporting the bytes read from `path` so far against its size after every chunk
+    bool addFile(const std::string &path, const std::string &name, const ByteProgress &progress);
     // adds `bytes` as entry `name`
     bool addBytes(const std::string &name, const std::string &bytes);
     // writes the central directory and closes the file; false when that failed

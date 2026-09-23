@@ -2,6 +2,8 @@
 // published sum without shelling out to md5sum (which does not exist on every target).
 #pragma once
 
+#include "byte_progress.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -18,6 +20,8 @@ public:
     static std::string ofString(const std::string &text);
     // streamed, so a partition image of any size is fine; "" when the file cannot be read
     static std::string ofFile(const std::string &path);
+    // the same, reporting the bytes hashed so far against the file's size after every chunk
+    static std::string ofFile(const std::string &path, const ByteProgress &progress);
 
 private:
     void transform(const unsigned char block[64]);

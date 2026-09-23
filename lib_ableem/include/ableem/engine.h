@@ -34,6 +34,7 @@
 #include "engine/zip_archive.h"
 #include "engine/tar_archive.h"
 #include "engine/zip_writer.h"
+#include "engine/byte_progress.h"
 #include "engine/crc32.h"
 #include "engine/md5.h"
 #include "engine/sha256.h"

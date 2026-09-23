@@ -1,4 +1,5 @@
 #include "ableem/engine/md5.h"
+#include "ableem/engine/filesystem.h"
 
 #include <fstream>
 
@@ -137,13 +138,24 @@ std::string Md5::ofString(const std::string &text) {
 }
 
 std::string Md5::ofFile(const std::string &path) {
+    return ofFile(path, ByteProgress());
+}
+
+std::string Md5::ofFile(const std::string &path, const ByteProgress &progress) {
     std::ifstream in(path, std::ios::binary);
     if (!in)
         return "";
+    const long long size = progress ? DirEntry::sizeBySeeking(path) : -1;
+    const uint64_t total = size > 0 ? static_cast<uint64_t>(size) : 0;
+    uint64_t done = 0;
     Md5 md5;
     char buffer[64 * 1024];
-    while (in.read(buffer, sizeof(buffer)) || in.gcount() > 0)
+    while (in.read(buffer, sizeof(buffer)) || in.gcount() > 0) {
         md5.update(reinterpret_cast<const unsigned char *>(buffer), static_cast<size_t>(in.gcount()));
+        done += static_cast<uint64_t>(in.gcount());
+        if (progress)
+            progress(done, total);
+    }
     return md5.hexDigest();
 }
 
