@@ -103,9 +103,11 @@ private:
     // 1. the package
     //******************
     bool package(string &error) {
-        phase("Reading the package");
+        phase("Getting the package");
+        if (opt.packageFile.empty() && !opt.channel.empty() && !fromChannel(error))
+            return false;
         if (opt.packageFile.empty() || !DirEntry::exists(opt.packageFile)) {
-            error = "No package: autobleem-psc-<version>.tar.gz should sit next to the installer";
+            error = "No package: pick a channel to download it from";
             return false;
         }
         vector<TarEntry> entries;
@@ -123,6 +125,27 @@ private:
             return false;
         }
         say("  " + opt.packageFile + ": " + info.packageVersion + ", " + to_string(entries.size()) + " entries");
+        return true;
+    }
+
+    // the channel's release: its stick package downloaded (sha256-checked) into the scratch folder, its
+    // version read from the package, its UpdateRoms remembered for the UpdateRoms phase
+    bool fromChannel(string &error) {
+        ChannelRelease rel;
+        if (!InstallerJob::channelRelease(repoUrl, opt.channel, dl, scratch, rel, error))
+            return false;
+        say("  the " + opt.channel + " channel: AutoBleem " + rel.version);
+        const string file = scratch + "/" + rel.package.name;
+        if (!downloadVerified(rel.package, file, error))
+            return false;
+        string data;
+        if (!TarArchive::readEntry(file, VersionFile, data, error)) {
+            error = rel.package.name + " has no VERSION - " + error;
+            return false;
+        }
+        opt.packageFile = file;
+        info.packageVersion = firstLine(data);
+        channelUpdateRoms = rel.updateRoms;
         return true;
     }
 
@@ -235,18 +258,18 @@ private:
                 say("  could not copy UpdateRoms from this installer's folder - going on without it");
             return true;
         }
-        const UpdateFile *file = nullptr;
+        const UpdateFile *file = channelUpdateRoms.name.empty() ? nullptr : &channelUpdateRoms;
         ReleaseCatalog unstable, stable;
         string text, why;
-        if (fetchCatalog("releases/unstable.json", text, why))
+        if (!file && fetchCatalog("releases/unstable.json", text, why))
             unstable.parse(text);
-        if (fetchCatalog("releases/latest.json", text, why))
+        if (!file && fetchCatalog("releases/latest.json", text, why))
             stable.parse(text);
         // the release whose console package this is, else the pre-release, else the stable one
         const string mine = "autobleem-psc-" + info.packageVersion + ".tar.gz";
         for (const ReleaseCatalog *r : {&unstable, &stable}) {
             const UpdateFile *fs = r->fileFor("psc-fs");
-            if (fs && fs->name == mine && r->fileFor("updateroms")) {
+            if (!file && fs && fs->name == mine && r->fileFor("updateroms")) {
                 file = r->fileFor("updateroms");
                 break;
             }
@@ -598,8 +621,9 @@ private:
                            : "Installed. Put the stick into the console's second controller port and boot it.");
     }
 
-    const InstallOptions &opt;
-    const StickInfo &info;
+    InstallOptions opt; // a copy: a channel's package lands in opt.packageFile
+    StickInfo info;     // and its version in info.packageVersion
+    ableem::UpdateFile channelUpdateRoms; // UpdateRoms of the channel's release, when it has one
     string root;
     vector<string> shippedThemes;
     string savedConfig;
@@ -652,6 +676,45 @@ string InstallerJob::packageNextTo(const string &programPath) {
 }
 
 //*******************************
+// InstallerJob::channelLists
+//*******************************
+vector<string> InstallerJob::channelLists(const string &channel) {
+    if (channel == "nightly")
+        return {"nightly/latest.json", "releases/unstable.json", "releases/latest.json"};
+    if (channel == "testing")
+        return {"releases/unstable.json", "releases/latest.json"};
+    return {"releases/latest.json"};
+}
+
+//*******************************
+// InstallerJob::channelRelease
+//*******************************
+bool InstallerJob::channelRelease(const string &repoUrl, const string &channel, Downloader &downloader,
+                                  const string &scratchDir, ChannelRelease &out, string &error) {
+    out = ChannelRelease();
+    out.channel = channel;
+    string lastError;
+    for (const string &list : channelLists(channel)) {
+        string text;
+        ReleaseCatalog release;
+        if (!downloader.fetchText(repoUrl + "/" + list, scratchDir + "/channel.json", text, lastError) ||
+            !release.parse(text))
+            continue;
+        const UpdateFile *pkg = release.fileFor("psc-fs");
+        if (!pkg)
+            continue; // this list has no stick package (a PC-only build) - the next one stands in
+        out.version = release.version;
+        out.package = *pkg;
+        if (const UpdateFile *ur = release.fileFor("updateroms"))
+            out.updateRoms = *ur;
+        return true;
+    }
+    error = "The " + channel + " channel has no PlayStation Classic package" +
+            (lastError.empty() ? string() : " (" + lastError + ")");
+    return false;
+}
+
+//*******************************
 // InstallerJob::inspect
 //*******************************
 StickInfo InstallerJob::inspect(const InstallOptions &options) {
@@ -674,8 +737,8 @@ StickInfo InstallerJob::inspect(const InstallOptions &options) {
             info.packageVersion = firstLine(data);
         else
             info.error = error;
-    } else {
-        info.error = "no package next to the installer";
+    } else if (options.channel.empty()) {
+        info.error = "no package and no channel";
     }
     return info;
 }
@@ -684,7 +747,7 @@ StickInfo InstallerJob::inspect(const InstallOptions &options) {
 // InstallerJob::phasesFor
 //*******************************
 vector<string> InstallerJob::phasesFor(const InstallOptions &options, const StickInfo &info) {
-    vector<string> phases{"Reading the package", info.installed ? "Preparing the update" : "Preparing the stick"};
+    vector<string> phases{"Getting the package", info.installed ? "Preparing the update" : "Preparing the stick"};
     if (info.legacyLayout)
         phases.push_back("Bringing the old layout up to date");
     phases.push_back("Unpacking AutoBleem");
@@ -714,7 +777,7 @@ bool InstallerJob::run(const InstallOptions &input, Downloader &downloader, Inst
         error = "No such drive: " + options.root;
         return false;
     }
-    if (info.packageVersion.empty()) {
+    if (info.packageVersion.empty() && options.channel.empty()) { // a channel's package is read in the run
         error = info.error.empty() ? "The package has no VERSION" : info.error;
         return false;
     }

@@ -16,6 +16,8 @@
 //
 #pragma once
 
+#include <ableem/engine/update_catalog.h>
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -26,7 +28,11 @@
 //******************
 struct InstallOptions {
     std::string root;        // the stick's root: "F:" / "F:/" / "/media/me/SONY"
-    std::string packageFile; // autobleem-psc-<version>.tar.gz
+    std::string packageFile; // autobleem-psc-<version>.tar.gz; "" = the channel's, downloaded
+    // the download site's channel the stick package (psc-fs) and UpdateRoms come from when packageFile is
+    // empty: "release" (releases/latest.json), "testing" (releases/unstable.json, else the release),
+    // "nightly" (nightly/latest.json, else testing's, else the release's)
+    std::string channel;
     std::string repoUrl = "https://autobleem.retromenele.pl";
     std::string buildbotUrl = "https://buildbot.libretro.com/assets/frontend"; // libretro's bundles
     std::string scratchDir; // where downloads land before they are unpacked; "" = <root>/System/Install
@@ -70,6 +76,17 @@ public:
 };
 
 //******************
+// ChannelRelease
+//******************
+// what a channel of the download site offers a stick: the version, the stick package, UpdateRoms
+struct ChannelRelease {
+    std::string channel;
+    std::string version;
+    ableem::UpdateFile package;    // psc-fs: autobleem-psc-<version>.tar.gz
+    ableem::UpdateFile updateRoms; // name "" when the release has none
+};
+
+//******************
 // InstallListener
 //******************
 class InstallListener {
@@ -89,6 +106,11 @@ public:
 
     // the package next to the program: the newest autobleem-psc-*.tar.gz in argv[0]'s directory, "" if none
     static std::string packageNextTo(const std::string &programPath);
+    // the lists a channel reads on the site, in order (its own, then what stands in when it has none)
+    static std::vector<std::string> channelLists(const std::string &channel);
+    // what the channel offers a stick now - for the window to show before the run, and the run itself
+    static bool channelRelease(const std::string &repoUrl, const std::string &channel, Downloader &downloader,
+                               const std::string &scratchDir, ChannelRelease &out, std::string &error);
     // the stick and the package as they are
     static StickInfo inspect(const InstallOptions &options);
     // the phases the options ask for, for a preview (the listener gets the same titles)

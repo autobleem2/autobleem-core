@@ -262,13 +262,13 @@ TEST_CASE("a fresh install with the default options: the package and the three c
     CHECK(before.isStick);
     CHECK_FALSE(before.installed);
     CHECK(before.packageVersion == "v2.0.0-pre0-abc1234");
-    CHECK(InstallerJob::phasesFor(fx.options, before) == vector<string>{"Reading the package", "Preparing the stick",
+    CHECK(InstallerJob::phasesFor(fx.options, before) == vector<string>{"Getting the package", "Preparing the stick",
                                                                         "Unpacking AutoBleem", "UpdateRoms",
                                                                         "Cover databases", "Finishing"});
 
     string error;
     REQUIRE_MESSAGE(fx.run(error), error);
-    CHECK(fx.out.phases == vector<string>{"Reading the package", "Preparing the stick", "Unpacking AutoBleem",
+    CHECK(fx.out.phases == vector<string>{"Getting the package", "Preparing the stick", "Unpacking AutoBleem",
                                           "UpdateRoms", "Cover databases", "Finishing"});
     // UpdateRoms from the release this package belongs to (the pre-release names it)
     CHECK(fx.tmp.readFile("stick/UpdateRoms/UpdateRoms.exe") == "MZ updateroms");
@@ -664,4 +664,54 @@ TEST_CASE("UpdateRoms: the installer's own copy first; a broken site copy leaves
         CHECK(log.find("AutoBleemInstaller: ") == 0);
         CHECK(log.find("the stick keeps what it had") != string::npos);
     }
+}
+
+TEST_CASE("a channel: the stick package and UpdateRoms come from that channel's release on the site") {
+    Fixture fx;
+    const string pkg = fx.options.packageFile;
+    fx.site.files[string(Site) + "/autobleem-psc-v2.0.0-pre0-abc1234.tar.gz"] = pkg;
+    fx.options.packageFile.clear();
+
+    SUBCASE("testing: the pre-release's package, downloaded and checked, and its own UpdateRoms") {
+        fx.options.channel = "testing";
+        ChannelRelease rel;
+        string error;
+        REQUIRE_MESSAGE(InstallerJob::channelRelease(Site, "testing", fx.site, fx.tmp.path(), rel, error), error);
+        CHECK(rel.version == "v2.0.0-pre0-abc1234");
+        CHECK(rel.package.name == "autobleem-psc-v2.0.0-pre0-abc1234.tar.gz");
+        CHECK(rel.updateRoms.name == "UpdateRoms-v2.0.0-pre0-abc1234.zip");
+
+        REQUIRE_MESSAGE(fx.run(error), error);
+        CHECK(fx.out.phases.front() == "Getting the package");
+        CHECK(fx.out.said("the testing channel: AutoBleem v2.0.0-pre0-abc1234"));
+        CHECK(fx.tmp.readFile("stick/VERSION") == "v2.0.0-pre0-abc1234\n");
+        CHECK(fx.tmp.readFile("stick/UpdateRoms/UpdateRoms.exe") == "MZ updateroms");
+        CHECK(fx.site.count("autobleem-psc-v2.0.0-pre0-abc1234.tar.gz") == 1);
+    }
+    SUBCASE("nightly with no development build on the site stands on testing's release") {
+        fx.options.channel = "nightly";
+        string error;
+        REQUIRE_MESSAGE(fx.run(error), error);
+        CHECK(fx.site.count("nightly/latest.json") == 1);
+        CHECK(fx.tmp.readFile("stick/VERSION") == "v2.0.0-pre0-abc1234\n");
+    }
+    SUBCASE("release: a list without a stick package is no install") {
+        fx.options.channel = "release"; // the fixture's latest.json carries only an old "psc" zip
+        string error;
+        CHECK_FALSE(fx.run(error));
+        CHECK(error.find("no PlayStation Classic package") != string::npos);
+        CHECK_FALSE(fx.has("Autobleem"));
+    }
+    SUBCASE("a package that is not what the catalog says is not unpacked") {
+        fx.options.channel = "testing";
+        fx.tmp.writeFile("site/other.tar.gz", "not the package");
+        fx.site.files[string(Site) + "/autobleem-psc-v2.0.0-pre0-abc1234.tar.gz"] = fx.tmp.at("site/other.tar.gz");
+        string error;
+        CHECK_FALSE(fx.run(error));
+        CHECK_FALSE(fx.has("Autobleem"));
+    }
+    CHECK(InstallerJob::channelLists("nightly") ==
+          vector<string>{"nightly/latest.json", "releases/unstable.json", "releases/latest.json"});
+    CHECK(InstallerJob::channelLists("testing") == vector<string>{"releases/unstable.json", "releases/latest.json"});
+    CHECK(InstallerJob::channelLists("release") == vector<string>{"releases/latest.json"});
 }
