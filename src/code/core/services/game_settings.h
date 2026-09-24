@@ -43,6 +43,9 @@ struct PcsxSettings {
 struct GameSettings {
     PsGamePtr game;
     bool internal = false;
+    // the game has its own config, saved in an emulator's menu (PcsxConfig): `pcsx` shows its values and
+    // the pcsx.cfg setters below do nothing until unlock()
+    bool custom = false;
     ableem::IniFile ini;
     PcsxSettings pcsx;
 };
@@ -59,12 +62,18 @@ public:
     explicit GameSettingsService(ableem::GameLibrary &library) : library_(library) {}
 
     // Loads the game's Game.ini (or, for an internal game, fills one in from the record) and reads its
-    // pcsx.cfg. A memory-card set the ini names but which no longer exists is shown as the console's own
-    // card - in memory only; the file is not touched until something else is saved.
+    // pcsx.cfg - or its own config over it, when it has one (`custom`; what older builds left is folded in
+    // first, PcsxConfig::migrateLegacy). A memory-card set the ini names but which no longer exists is
+    // shown as the console's own card - in memory only; the file is not touched until something else is
+    // saved.
     GameSettings open(PsGamePtr game) const;
 
-    // re-reads the pcsx.cfg values; the setters below do this themselves after writing
+    // re-reads the pcsx values as the emulator will see them; the setters below do this after writing
     void refreshPcsx(GameSettings &s) const;
+
+    // Deletes the game's own config, so pcsx.cfg - untouched while it existed - is the game's again, and
+    // re-reads the values. False if the file could not be removed (`custom` then stays true).
+    bool unlock(GameSettings &s);
 
     // --- Game.ini for a USB game, internal.db for an internal one ---
     void setFavorite(GameSettings &s, bool on);
@@ -86,10 +95,11 @@ public:
     // renamed in the database by the caller, after the editor closes - see GuiLauncher's use of lastName.
     void rename(GameSettings &s, const std::string &title);
 
-    // --- pcsx.cfg: the game folder's copy plus every copy under !SaveStates (ConfigFileEditor::replace) ---
+    // --- pcsx.cfg: the game folder's copy plus the one under !SaveStates (ConfigFileEditor::replace) ---
     // Each one rewrites the line, then re-reads all the values, so what the caller sees is what the file
     // says (nothing, if the game has no pcsx.cfg). The 0/1 flags are written in decimal, the levels in
-    // hex - that is what PCSX reads. Levels are clamped to their ranges here.
+    // hex - that is what PCSX reads. Levels are clamped to their ranges here. All of them do nothing while
+    // the game has its own config (`custom`): the emulator's file speaks for it until unlock().
     void setHighres(GameSettings &s, bool on); // also remembered in the Game.ini as Highres
     void setSpeedhack(GameSettings &s, bool on);
     void setScanlines(GameSettings &s, bool on);
