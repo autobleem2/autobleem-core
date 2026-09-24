@@ -71,6 +71,10 @@ public:
     std::string takeCrashed();
 
     static ExtensionNetwork parseNetwork(const std::string &value);
+    // what the installers do for a data tree: Extensions/ made, with a README.txt saying what goes there -
+    // written only when it is not there (the quiet stick). False when the folder could not be made.
+    static bool ensureFolder(const std::string &extensionsDir);
+    static const char *folderReadme();
     std::string disabledFile() const;
     std::string activeFile() const;          // <runtime>/extensions.active
     std::string persistedActiveFile() const; // System/Extensions/.active - a crash's copy, or an older launcher's

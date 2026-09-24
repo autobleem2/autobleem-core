@@ -210,6 +210,7 @@ TEST_CASE("a fresh install: the data tree, the shipped themes and the three cove
     // the scanner processors' folder, with its README
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/README.txt").find("scanner processors") !=
           string::npos);
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/Extensions/README.txt").find("AutoBleem extensions") != string::npos);
 }
 
 TEST_CASE("an update keeps the user's settings and themes, removes the scan fingerprints") {

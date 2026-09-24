@@ -352,6 +352,9 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     CHECK(fx.has("Autobleem/bin/db/coversJ.db"));
     // the scanner processors' folder is made, with its README
     CHECK(fx.tmp.readFile("stick/System/Processors/README.txt").find("scanner processors") != string::npos);
+    // and the extensions', next to the one the user put there (kept)
+    CHECK(fx.tmp.readFile("stick/Extensions/README.txt").find("AutoBleem extensions") != string::npos);
+    CHECK(fx.has("Extensions/store/extension.ini"));
     CHECK_FALSE(fx.has("Themes/ab2/stale.png"));
     CHECK_FALSE(fx.has("Autobleem/bin/autobleem/old-file.txt"));
     CHECK_FALSE(fx.has("Autobleem/rc/stale.sh"));

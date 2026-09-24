@@ -1,5 +1,6 @@
 #include "installer/windows_install_job.h"
 #include "installer/install_job_base.h"
+#include "core/services/extension_catalog.h"
 #include "core/services/processor_catalog.h"
 
 #include <ableem/engine/filesystem.h>
@@ -103,6 +104,11 @@ private:
         // the scanner processors' folder, with a README saying what goes there (docs/scanner-processors-plan.md)
         if (!ProcessorCatalog::ensureFolder(at("System/Processors"))) {
             error = "cannot create " + at("System/Processors");
+            return false;
+        }
+        // and the extensions' (docs/extensions-plan.md), installed by hand
+        if (!ExtensionCatalog::ensureFolder(at("Extensions"))) {
+            error = "cannot create " + at("Extensions");
             return false;
         }
         // the shipped themes, copied in once: the launcher reads them from the data tree (a user drops

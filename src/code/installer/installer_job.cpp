@@ -1,6 +1,7 @@
 #include "installer/installer_job.h"
 #include "installer/install_job_base.h"
 #include "installer/legacy_layout.h"
+#include "core/services/extension_catalog.h"
 #include "core/services/processor_catalog.h"
 
 #include <ableem/engine/filesystem.h>
@@ -224,6 +225,8 @@ private:
             DirEntry::createDirs(at(dir));
         // the scanner processors' folder, with a README saying what goes there (docs/scanner-processors-plan.md)
         ProcessorCatalog::ensureFolder(at("System/Processors"));
+        // and the extensions' (docs/extensions-plan.md), installed by hand
+        ExtensionCatalog::ensureFolder(at("Extensions"));
         if (opt.retroarch || info.hasRetroArch)
             romFolders();
         say("  done");
