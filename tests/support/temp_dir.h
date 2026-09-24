@@ -7,11 +7,14 @@
 #include <cstdlib>
 #include <string>
 #ifdef _WIN32
+#include <direct.h>
 #include <process.h>
 #define AB_TEST_PID _getpid()
+#define AB_TEST_GETCWD _getcwd
 #else
 #include <unistd.h>
 #define AB_TEST_PID getpid()
+#define AB_TEST_GETCWD getcwd
 #endif
 
 //******************
@@ -35,9 +38,15 @@ public:
         const char *base = getenv("TMPDIR");
         if (base == nullptr)
             base = getenv("TEMP");
-        if (base == nullptr)
-            base = ".";
-        path_ = ableem::DirEntry::removeSeparatorFromEndOfPath(base) + ableem::sep + "ab_test_" + label + "_" +
+        std::string root = base != nullptr ? base : ".";
+        // absolute, always: a test that starts a program in another directory (a scanner processor runs in
+        // its own folder) hands it these paths, and "./ab_test_..." means something else there
+        if (root[0] != '/' && root[0] != '\\' && root.find(':') == std::string::npos) {
+            char here[4096];
+            if (AB_TEST_GETCWD(here, sizeof(here)))
+                root = root == "." ? std::string(here) : std::string(here) + "/" + root;
+        }
+        path_ = ableem::DirEntry::removeSeparatorFromEndOfPath(root) + ableem::sep + "ab_test_" + label + "_" +
                 std::to_string(AB_TEST_PID) + "_" + std::to_string(++counter);
         ableem::DirEntry::removeDirAndContents(path_); // a previous run that was killed mid-test
         ableem::DirEntry::createDir(path_);

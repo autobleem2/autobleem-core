@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <sstream>
 
 using namespace std;
 
@@ -88,10 +89,9 @@ bool ProcessorSequences::load(const vector<ProcessorInfo> &installed) {
 //*******************************
 // ProcessorSequences::save
 //*******************************
+// through writeFileIfChanged, like everything a scan writes (the quiet stick)
 bool ProcessorSequences::save() const {
-    ofstream out(file_, ios::binary);
-    if (!DirEntry::checkWritable(out, file_))
-        return false;
+    ostringstream out;
     out << "; the order the scan runs the processors in, per sequence; a leading '-' switches one off\n"
            "; (the System menu's Scanner processors edits this file)\n";
     for (ProcessorSequence sequence : {ProcessorSequence::Ps1, ProcessorSequence::Roms}) {
@@ -99,8 +99,7 @@ bool ProcessorSequences::save() const {
         for (const Entry &e : entries(sequence))
             out << (e.enabled ? "" : "-") << e.name << "\n";
     }
-    out.close();
-    return !out.fail();
+    return DirEntry::writeFileIfChanged(file_, out.str()) != DirEntry::WriteResult::Failed;
 }
 
 //*******************************

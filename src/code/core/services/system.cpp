@@ -432,8 +432,16 @@ int System::runStreaming(const string &exe, const vector<string> &args, const st
         return -1;
     }
 
+    // the child changes to `cwd` before its exec: a relative path to the program has to be made absolute
+    // first, or it is looked for in the wrong directory
+    string program = exe;
+    if (!cwd.empty() && !program.empty() && program[0] != '/' && program.find('/') != string::npos) {
+        char here[PATH_MAX];
+        if (getcwd(here, sizeof(here)))
+            program = string(here) + "/" + program;
+    }
     vector<const char *> argv;
-    argv.push_back(exe.c_str());
+    argv.push_back(program.c_str());
     for (const string &arg : args)
         argv.push_back(arg.c_str());
     argv.push_back(nullptr);
@@ -465,7 +473,13 @@ int System::runStreaming(const string &exe, const vector<string> &args, const st
             _exit(126);
         for (const auto &kv : env)
             setenv(kv.first.c_str(), kv.second.c_str(), 1);
-        execvp(exe.c_str(), const_cast<char **>(argv.data()));
+        execvp(program.c_str(), const_cast<char **>(argv.data()));
+        // why, on stderr - which is the caller's onLine: a processor that cannot run says so in the log
+        const char *why = strerror(errno);
+        ssize_t ignored = write(2, "exec failed: ", 13);
+        ignored = write(2, why, strlen(why));
+        ignored = write(2, "\n", 1);
+        (void)ignored;
         _exit(127);
     }
     setpgid(pid, pid); // both sides, so there is no window where the group does not exist yet

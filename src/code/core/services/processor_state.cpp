@@ -139,18 +139,18 @@ bool ProcessorState::load() {
 //*******************************
 // ProcessorState::save
 //*******************************
+// through writeFileIfChanged: a scan that ran nothing new leaves the stick alone (the quiet stick)
 bool ProcessorState::save() const {
-    ofstream out(file_, ios::binary);
-    if (!DirEntry::checkWritable(out, file_))
-        return false;
+    ostringstream out;
     for (const auto &e : entries_) {
         // the key is processor \t kind \t target already
         size_t t1 = e.first.find('\t');
         out << e.first.substr(0, t1) << "\t" << e.second.version << "\t" << e.first.substr(t1 + 1) << "\t"
             << e.second.digest << "\t" << resultName(e.second.result) << "\n";
     }
-    out.close();
-    return !out.fail();
+    if (entries_.empty() && !DirEntry::exists(file_))
+        return true; // nothing ever ran: no file at all
+    return DirEntry::writeFileIfChanged(file_, out.str()) != DirEntry::WriteResult::Failed;
 }
 
 //*******************************

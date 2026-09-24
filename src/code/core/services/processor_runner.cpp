@@ -123,6 +123,7 @@ ProcessorRunner::Outcome ProcessorRunner::start(const ProcessorInfo &processor, 
     auto lastLine = started;
     bool timedOut = false;
     string logged;
+    string lastError; // its last stderr line, for a run that could not start ("exec failed: ...")
 
     System::OutputLine onLine = [&](const string &line, bool fromStderr) {
         lastLine = chrono::steady_clock::now();
@@ -130,6 +131,8 @@ ProcessorRunner::Outcome ProcessorRunner::start(const ProcessorInfo &processor, 
         bool percent = !line.empty() && line.find_first_not_of("0123456789 ") == string::npos;
         if (fromStderr || !percent)
             logged += (fromStderr ? "! " : "") + line + "\n";
+        if (fromStderr)
+            lastError = line;
         if (logged.size() > 4096) { // written in batches, not a file open per percent
             log(logged);
             logged.clear();
@@ -165,7 +168,7 @@ ProcessorRunner::Outcome ProcessorRunner::start(const ProcessorInfo &processor, 
         outcome.result = ProcessorResult::Interrupted;
     } else if (code == -1) {
         outcome.result = ProcessorResult::Failed;
-        outcome.message = "could not be started";
+        outcome.message = lastError.empty() ? "could not be started" : "could not be started: " + lastError;
     } else if (output.succeeded(code)) {
         outcome.result = ProcessorResult::Ok;
     } else {

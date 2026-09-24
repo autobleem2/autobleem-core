@@ -9,6 +9,7 @@
 #include "../support/game_library_fixture.h"
 #include "../support/rdb_builder.h"
 #include "../support/string_maker.h"
+#include "../support/tree_snapshot.h"
 
 #include "core/services/scan_service.h"
 
@@ -672,12 +673,22 @@ TEST_CASE("processors: the preprocessor first, then each game's chain in the use
     CHECK_FALSE(update.processorNotices[0].failed);
     // the sequence file was written with the new ones, by Order
     CHECK(fx.tmp.readFile("System/Processors/sequence.ini").find("[ps1]\nunzip\nrvz\nchecker\n") != string::npos);
-    CHECK(fx.tmp.readFile("System/Logs/processors.log").find("=== exit 0, ok") != string::npos);
+    std::ifstream log(ScanService::processorsLogFilePath()); // the runtime dir's logs/ unless kept
+    string logText((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+    CHECK(logText.find("=== exit 0, ok") != string::npos);
 
-    // nothing changed: the next scan starts nothing at all
+    // nothing changed: the next scan starts nothing at all - and writes nothing to the stick (the quiet
+    // stick: the state and sequence.ini go through writeFileIfChanged, the log to the runtime dir)
     procs.clearLog();
+    test_support::TreeSnapshot before(fx.tmp.path());
     fx.runAndPoll();
     CHECK(procs.ran().empty());
+    vector<string> changed;
+    for (const string &c : before.changesTo(test_support::TreeSnapshot(fx.tmp.path()))) {
+        if (c.find("Runtime") == string::npos && c.find("proc.log") == string::npos) // RAM, and this test's own
+            changed.push_back(c);
+    }
+    CHECK(changed == vector<string>{});
 }
 
 TEST_CASE("processors: the user's order decides, a switched-off one is skipped, a failure stops that game's chain") {
