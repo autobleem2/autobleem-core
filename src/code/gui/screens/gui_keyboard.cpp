@@ -1,40 +1,275 @@
 //
-// Created by screemer on 2019-01-24.
+// GuiKeyboard - see the header.
 //
-
 #include "gui_keyboard.h"
-#include <algorithm>
-#include "gui_about.h"
-#include <string>
+
 #include "../gui.h"
-#include <iostream>
+
+#include <algorithm>
 
 using namespace std;
 
-vector<string> row0 = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
-vector<string> row1 = {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p"};
-vector<string> row2 = {"a", "s", "d", "f", "g", "h", "j", "k", "l", "."};
-vector<string> row3 = {"z", "x", "c", "v", "b", "n", "m", "_", "-", " "};
+namespace {
 
-#define numColumns 10
-#define numRows 4
-#define xlast (numColumns - 1)
-#define ylast (numRows - 1)
-#define indentOffset 5
+// a page: four rows of ten keys, lower case and shifted (the symbols page is the same both ways)
+struct PageRows {
+    const char *lower[GuiKeyboard::CharRows][GuiKeyboard::Columns];
+    const char *upper[GuiKeyboard::CharRows][GuiKeyboard::Columns];
+};
 
-vector<vector<string>> rows = {row0, row1, row2, row3};
+const PageRows PagesTable[GuiKeyboard::Pages] = {
+    // letters
+    {{{"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"},
+      {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p"},
+      {"a", "s", "d", "f", "g", "h", "j", "k", "l", "'"},
+      {"z", "x", "c", "v", "b", "n", "m", ",", ".", "-"}},
+     {{"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"},
+      {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"},
+      {"A", "S", "D", "F", "G", "H", "J", "K", "L", "\""},
+      {"Z", "X", "C", "V", "B", "N", "M", ";", ":", "_"}}},
+    // symbols: what URLs, paths and passwords need
+    {{{"!", "@", "#", "$", "%", "^", "&", "*", "(", ")"},
+      {"/", "\\", ":", ";", "?", "=", "+", "-", "_", "~"},
+      {"\"", "'", "`", "|", "<", ">", "[", "]", "{", "}"},
+      {".", ",", "€", "£", "¥", "¢", "§", "°", "¿", "¡"}},
+     {{"!", "@", "#", "$", "%", "^", "&", "*", "(", ")"},
+      {"/", "\\", ":", ";", "?", "=", "+", "-", "_", "~"},
+      {"\"", "'", "`", "|", "<", ">", "[", "]", "{", "}"},
+      {".", ",", "€", "£", "¥", "¢", "§", "°", "¿", "¡"}}},
+    // accents: the Western and Central European letters
+    {{{"à", "á", "â", "ä", "ã", "å", "æ", "ç", "è", "é"},
+      {"ê", "ë", "ì", "í", "î", "ï", "ñ", "ò", "ó", "ô"},
+      {"ö", "õ", "ø", "ù", "ú", "û", "ü", "ý", "ÿ", "ß"},
+      {"ą", "ć", "ę", "ł", "ń", "ś", "ź", "ż", "œ", "ð"}},
+     {{"À", "Á", "Â", "Ä", "Ã", "Å", "Æ", "Ç", "È", "É"},
+      {"Ê", "Ë", "Ì", "Í", "Î", "Ï", "Ñ", "Ò", "Ó", "Ô"},
+      {"Ö", "Õ", "Ø", "Ù", "Ú", "Û", "Ü", "Ý", "Ÿ", "ß"},
+      {"Ą", "Ć", "Ę", "Ł", "Ń", "Ś", "Ź", "Ż", "Œ", "Ð"}}},
+    // more: Czech/Slovak, Turkish, Romanian, Hungarian, Nordic
+    {{{"č", "ď", "ě", "ň", "ř", "š", "ť", "ů", "ž", "ľ"},
+      {"ĺ", "ŕ", "ş", "ğ", "ı", "ș", "ț", "ă", "ő", "ű"},
+      {"þ", "ā", "ē", "ī", "ō", "ū", "ė", "į", "ų", "ģ"},
+      {"ķ", "ļ", "ņ", "«", "»", "„", "“", "”", "…", "·"}},
+     {{"Č", "Ď", "Ě", "Ň", "Ř", "Š", "Ť", "Ů", "Ž", "Ľ"},
+      {"Ĺ", "Ŕ", "Ş", "Ğ", "I", "Ș", "Ț", "Ă", "Ő", "Ű"},
+      {"Þ", "Ā", "Ē", "Ī", "Ō", "Ū", "Ė", "Į", "Ų", "Ģ"},
+      {"Ķ", "Ļ", "Ņ", "«", "»", "„", "“", "”", "…", "·"}}},
+};
+
+const int FunctionRow = GuiKeyboard::CharRows;
+
+} // namespace
+
+//*******************************
+// GuiKeyboard::keyAt / pageKeyLabel
+//*******************************
+GuiKeyboard::KeyCap GuiKeyboard::keyAt(int page, int row, int column, bool shifted) {
+    KeyCap cap;
+    if (row < FunctionRow) {
+        const PageRows &p = PagesTable[max(0, min(Pages - 1, page))];
+        cap.text = shifted ? p.upper[row][column] : p.lower[row][column];
+        cap.firstColumn = column;
+        return cap;
+    }
+    // Shift 0-1, Page 2-3, Space 4-6, Backspace 7, Done 8-9
+    static const struct {
+        KeyKind kind;
+        int first, span;
+    } function[] = {{KeyKind::Shift, 0, 2},
+                    {KeyKind::Page, 2, 2},
+                    {KeyKind::Space, 4, 3},
+                    {KeyKind::Backspace, 7, 1},
+                    {KeyKind::Done, 8, 2}};
+    for (const auto &f : function)
+        if (column >= f.first && column < f.first + f.span) {
+            cap.kind = f.kind;
+            cap.firstColumn = f.first;
+            cap.span = f.span;
+            cap.text = f.kind == KeyKind::Space ? " " : "";
+        }
+    return cap;
+}
+
+string GuiKeyboard::pageKeyLabel(int page) {
+    static const char *const next[Pages] = {"?123", "àé", "čş", "abc"};
+    return next[max(0, min(Pages - 1, page))];
+}
+
+//*******************************
+// GuiKeyboard::previousChar / nextChar
+//*******************************
+size_t GuiKeyboard::previousChar(const string &text, size_t at) {
+    if (at == 0)
+        return 0;
+    size_t i = min(at, text.size()) - 1;
+    while (i > 0 && (static_cast<unsigned char>(text[i]) & 0xC0) == 0x80)
+        i--; // a continuation byte: back to the character's first
+    return i;
+}
+
+size_t GuiKeyboard::nextChar(const string &text, size_t at) {
+    if (at >= text.size())
+        return text.size();
+    size_t i = at + 1;
+    while (i < text.size() && (static_cast<unsigned char>(text[i]) & 0xC0) == 0x80)
+        i++;
+    return i;
+}
 
 //*******************************
 // GuiKeyboard::init
 //*******************************
 void GuiKeyboard::init() {
     gui = Gui::getInstance();
-    cursorIndex = result.size(); // the "#" cursor position starts out at the end of the string
+    cursorIndex = result.size(); // the cursor starts at the end of the text
+}
+
+//*******************************
+// GuiKeyboard::editing
+//*******************************
+void GuiKeyboard::type(const string &text) {
+    if (text.empty())
+        return;
+    result.insert(cursorIndex, text);
+    cursorIndex += text.size();
+    if (shift == Shift::Once)
+        shift = Shift::Off;
+}
+
+void GuiKeyboard::backspace() {
+    if (cursorIndex == 0)
+        return;
+    const size_t from = previousChar(result, cursorIndex);
+    result.erase(from, cursorIndex - from);
+    cursorIndex = from;
+}
+
+void GuiKeyboard::deleteForward() {
+    if (cursorIndex >= result.size())
+        return;
+    result.erase(cursorIndex, nextChar(result, cursorIndex) - cursorIndex);
+}
+
+void GuiKeyboard::nextShift() {
+    shift = shift == Shift::Off ? Shift::Once : shift == Shift::Once ? Shift::Lock : Shift::Off;
+}
+
+void GuiKeyboard::confirm() {
+    cancelled = false;
+    menuVisible = false;
+}
+
+void GuiKeyboard::cancel() {
+    cancelled = true;
+    menuVisible = false;
+}
+
+void GuiKeyboard::press() {
+    const KeyCap cap = keyAt(page, row, column, shift != Shift::Off);
+    switch (cap.kind) {
+    case KeyKind::Char:
+    case KeyKind::Space:
+        type(cap.text);
+        break;
+    case KeyKind::Shift:
+        nextShift();
+        break;
+    case KeyKind::Page:
+        page = (page + 1) % Pages;
+        break;
+    case KeyKind::Backspace:
+        backspace();
+        break;
+    case KeyKind::Done:
+        confirm();
+        break;
+    }
+}
+
+//*******************************
+// GuiKeyboard::moveSelection
+//*******************************
+// round the grid both ways; on the function row a step is a key, and going up or down keeps the column
+void GuiKeyboard::moveSelection(int dx, int dy) {
+    if (dy != 0) {
+        row = (row + dy + CharRows + 1) % (CharRows + 1);
+        if (row == FunctionRow)
+            column = keyAt(page, row, column, false).firstColumn;
+    }
+    if (dx != 0) {
+        if (row == FunctionRow) {
+            const KeyCap cap = keyAt(page, row, column, false);
+            column = dx > 0 ? cap.firstColumn + cap.span : cap.firstColumn - 1;
+            column = (column + Columns) % Columns;
+            column = keyAt(page, row, column, false).firstColumn;
+        } else {
+            column = (column + dx + Columns) % Columns;
+        }
+    }
 }
 
 //*******************************
 // GuiKeyboard::render
 //*******************************
+void GuiKeyboard::drawKey(const ableem::Rect &key, const KeyCap &cap, bool selected) {
+    PanelStyle style = gui->panelStyle();
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    const bool lit = cap.kind == KeyKind::Shift && shift != Shift::Off;
+    if (selected) {
+        renderer.setDrawColor(ableem::Color(style.text.r, style.text.g, style.text.b, 60));
+        renderer.fillRect(key);
+        renderer.setDrawColor(style.text);
+        renderer.drawRect(key);
+    } else {
+        // the function keys a shade darker than the letters, as on a phone's keyboard
+        const unsigned char fill = cap.kind == KeyKind::Char ? 18 : 8;
+        renderer.setDrawColor(ableem::Color(255, 255, 255, lit ? 50 : fill));
+        renderer.fillRect(key);
+        renderer.setDrawColor(ableem::Color(style.secondary.r, style.secondary.g, style.secondary.b, 110));
+        renderer.drawRect(key);
+    }
+    // the letters in the text colour (readable at a glance), the function keys' words in the secondary one
+    const ableem::Color ink = selected || lit || cap.kind == KeyKind::Char ? style.text : style.secondary;
+    const int cx = key.x + key.w / 2, cy = key.y + key.h / 2;
+    Fonts &fonts = gui->assets().themeFonts;
+    // drawn as it is: "|" and "@" are keys here, not the text renderer's markers
+    auto label = [&](const string &text, FontEnum f) {
+        const ableem::Font &font = fonts[f];
+        font.drawColor(renderer, cx - font.width(text) / 2, cy - font.lineHeight() / 2, ink, text);
+    };
+    renderer.setDrawColor(ink);
+    switch (cap.kind) {
+    case KeyKind::Char:
+        label(cap.text, FONT_22_MED);
+        break;
+    case KeyKind::Space:
+        label(_("Space"), FONT_20_BOLD);
+        break;
+    case KeyKind::Done:
+        label(_("Confirm"), FONT_20_BOLD);
+        break;
+    case KeyKind::Page:
+        label(pageKeyLabel(page), FONT_20_BOLD);
+        break;
+    case KeyKind::Shift: {
+        // an arrow up; a bar under it for caps lock
+        for (int i = 0; i < 9; i++)
+            renderer.fillRect(ableem::Rect(cx - i, cy - 12 + i, 2 * i + 1, 1));
+        renderer.fillRect(ableem::Rect(cx - 4, cy - 3, 9, 9));
+        if (shift == Shift::Lock)
+            renderer.fillRect(ableem::Rect(cx - 8, cy + 9, 17, 3));
+        break;
+    }
+    case KeyKind::Backspace: {
+        // an arrow left
+        for (int i = 0; i < 9; i++)
+            renderer.fillRect(ableem::Rect(cx - 12 + i, cy - i, 1, 2 * i + 1));
+        renderer.fillRect(ableem::Rect(cx - 3, cy - 3, 15, 7));
+        break;
+    }
+    }
+}
+
 void GuiKeyboard::render() {
     gui->renderBackground();
     gui->renderTextBar();
@@ -44,8 +279,18 @@ void GuiKeyboard::render() {
     Fonts &fonts = gui->assets().themeFonts;
 
     // the text field: a band across the panel with the text in the launcher's medium font and a caret
-    // where the cursor is (a bar; the old '#' character is history)
-    string displayResult = displayAsterisksInstead ? string(result.size(), '*') : result;
+    string shown = result;
+    if (displayAsterisksInstead) {
+        shown.clear();
+        for (size_t i = 0; i < result.size(); i = nextChar(result, i))
+            shown += '*';
+    }
+    size_t caretIn = cursorIndex;
+    if (displayAsterisksInstead) {
+        caretIn = 0;
+        for (size_t i = 0; i < cursorIndex; i = nextChar(result, i))
+            caretIn++;
+    }
     const ableem::Font &fieldFont = fonts[FONT_22_MED];
     const int fieldH = 48;
     ableem::Rect field(content.x + PanelStyle::RowInset, yoffset + 6, content.w - 2 * PanelStyle::RowInset, fieldH);
@@ -54,431 +299,127 @@ void GuiKeyboard::render() {
     renderer.fillRect(field);
     renderer.setDrawColor(ableem::Color(style.secondary.r, style.secondary.g, style.secondary.b, 160));
     renderer.drawRect(field);
-    const int textX = field.x + 16;
+    // a long text scrolls so the caret stays in the field
+    const int fieldInner = field.w - 32;
+    // the text drawn as it is (a "|" or "@" typed is text, not a marker), scrolled to keep the caret in view
+    const int before = caretIn > 0 ? fieldFont.width(shown.substr(0, caretIn)) : 0;
+    const int scroll = max(0, before - fieldInner);
+    const int textX = field.x + 16 - scroll;
     const int textY = field.y + (fieldH - fieldFont.lineHeight()) / 2;
-    gui->text().renderText_WithColor(fieldFont, displayResult, textX, textY, style.text, XALIGN_LEFT);
-    {
-        const int before = cursorIndex > 0 ? gui->text().textWidth(fieldFont, displayResult.substr(0, cursorIndex)) : 0;
-        // the caret: solid while the cursor is being moved (L2 held, or a USB keyboard), blinking otherwise
-        const bool on = L2_cursor_shift || usingUsbKeyboard || (gui->platform().ticks() / 500) % 2 == 0;
-        if (on) {
-            renderer.setDrawColor(style.text);
-            renderer.fillRect(ableem::Rect(textX + before, textY + 2, 2, fieldFont.lineHeight() - 4));
-        }
+    fieldFont.drawColor(renderer, textX, textY, style.text, shown);
+    if ((gui->platform().ticks() / 500) % 2 == 0) {
+        renderer.setDrawColor(style.text);
+        renderer.fillRect(ableem::Rect(textX + before, textY + 2, 2, fieldFont.lineHeight() - 4));
     }
 
-    // the keys: a grid centred in what is left, each a tile with its character, the selected one on a band
-    // with the text-colour edge; the caps shift shows on the keys themselves
-    if (!usingUsbKeyboard) {
-        const int gridTop = field.y + fieldH + 24;
-        const int gridBottom = content.y + content.h - 12;
-        const int gap = 8;
-        const int keyW = min(96, (content.w - 2 * PanelStyle::RowInset - gap * (numColumns - 1)) / numColumns);
-        const int keyH = min(72, (gridBottom - gridTop - gap * (numRows - 1)) / numRows);
-        const int gridW = keyW * numColumns + gap * (numColumns - 1);
-        const int gridH = keyH * numRows + gap * (numRows - 1);
-        const int gridX = content.x + (content.w - gridW) / 2;
-        const int gridY = gridTop + max(0, (gridBottom - gridTop - gridH) / 2);
-        const ableem::Font &keyFont = fonts[FONT_22_MED];
-        for (int y = 0; y < numRows; y++) {
-            for (int x = 0; x < numColumns; x++) {
-                ableem::Rect key(gridX + x * (keyW + gap), gridY + y * (keyH + gap), keyW, keyH);
-                const bool selected = !L2_cursor_shift && selx == x && sely == y;
-                renderer.setBlendMode(ableem::BlendMode::Blend);
-                if (selected) {
-                    renderer.setDrawColor(ableem::Color(style.text.r, style.text.g, style.text.b, 60));
-                    renderer.fillRect(key);
-                    renderer.setDrawColor(style.text);
-                    renderer.drawRect(key);
-                } else {
-                    renderer.setDrawColor(ableem::Color(255, 255, 255, 18));
-                    renderer.fillRect(key);
-                    renderer.setDrawColor(ableem::Color(style.secondary.r, style.secondary.g, style.secondary.b, 110));
-                    renderer.drawRect(key);
-                }
-                string text = rows[y][x];
-                if (L1_caps_shift)
-                    text = ucase(text);
-                if (text == " ")
-                    text = _("Space"); // the space key reads as a word
-                const int tw = gui->text().textWidth(keyFont, text);
-                gui->text().renderText_WithColor(keyFont, text, key.x + (keyW - tw) / 2,
-                                                 key.y + (keyH - keyFont.lineHeight()) / 2,
-                                                 selected ? style.text : style.secondary, XALIGN_LEFT);
-            }
+    // the keys: four rows of the page and the function row, centred in what is left
+    const int gridTop = field.y + fieldH + 20;
+    const int gridBottom = content.y + content.h - 8;
+    const int gap = 8, rows = CharRows + 1;
+    const int keyW = min(96, (content.w - 2 * PanelStyle::RowInset - gap * (Columns - 1)) / Columns);
+    const int keyH = min(64, (gridBottom - gridTop - gap * (rows - 1)) / rows);
+    const int gridW = keyW * Columns + gap * (Columns - 1);
+    const int gridH = keyH * rows + gap * (rows - 1);
+    const int gridX = content.x + (content.w - gridW) / 2;
+    const int gridY = gridTop + max(0, (gridBottom - gridTop - gridH) / 2);
+    const bool shifted = shift != Shift::Off;
+    for (int y = 0; y < rows; y++)
+        for (int x = 0; x < Columns;) {
+            const KeyCap cap = keyAt(page, y, x, shifted);
+            const ableem::Rect key(gridX + x * (keyW + gap), gridY + y * (keyH + gap),
+                                   keyW * cap.span + gap * (cap.span - 1), keyH);
+            const bool selected = row == y && keyAt(page, row, column, shifted).firstColumn == cap.firstColumn;
+            drawKey(key, cap, selected);
+            x += cap.span;
         }
-    }
 
-    if (usingUsbKeyboard) {
-        gui->renderStatus("|@Tab| " + _("Use controller") + "  |@Enter| " + _("Confirm") + "  |@Esc| " + _("Cancel") +
-                          " |");
-    } else {
-        gui->renderStatus("|@X| " + _("Select") + "  |@T|  " + _("Backspace") + "  |@L1| " + _("Caps") + "  |@L2| " +
-                          _("Move cursor") + " |@S| " + _("Space") + "      |@Start| " + _("Confirm") + "  |@O| " +
-                          _("Cancel") + " |");
-    }
+    gui->renderStatus("|@X| " + _("Select") + "  |@T| " + _("Backspace") + "  |@S| " + _("Space") + "  |@L1| " +
+                      _("Shift") + "  |@R1| " + _("Symbols") + "  |@L2|/|@R2| " + _("Move cursor") + "  |@Start| " +
+                      _("Confirm") + "  |@O| " + _("Cancel") + " |");
     renderer.present();
-}
-
-//*******************************
-// GuiKeyboard::doKbdRight
-//*******************************
-void GuiKeyboard::doKbdRight() {
-    L2_cursor_shift = true;
-    usingUsbKeyboard = true;
-    doJoyRight();
-}
-
-//*******************************
-// GuiKeyboard::doKbdLeft
-//*******************************
-void GuiKeyboard::doKbdLeft() {
-    L2_cursor_shift = true;
-    usingUsbKeyboard = true;
-    doJoyLeft();
-}
-
-//*******************************
-// GuiKeyboard::doKbdHome
-//*******************************
-void GuiKeyboard::doKbdHome() {
-    L2_cursor_shift = true;
-    usingUsbKeyboard = true;
-    cursorIndex = 0;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doKbdEnd
-//*******************************
-void GuiKeyboard::doKbdEnd() {
-    L2_cursor_shift = true;
-    usingUsbKeyboard = true;
-    cursorIndex = result.size();
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doKbdBackspace
-//*******************************
-void GuiKeyboard::doKbdBackspace() {
-    app.audio().cursor.play();
-    if (!result.empty() && cursorIndex > 0) {
-        result = result.erase(cursorIndex - 1, 1);
-        --cursorIndex;
-    }
-    L2_cursor_shift = true;
-    usingUsbKeyboard = true;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doKbdDelete
-//*******************************
-void GuiKeyboard::doKbdDelete() {
-    app.audio().cursor.play();
-    if (!result.empty() && cursorIndex < result.size()) {
-        result = result.erase(cursorIndex, 1);
-    }
-    L2_cursor_shift = true;
-    usingUsbKeyboard = true;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doKbdTab
-//*******************************
-void GuiKeyboard::doKbdTab() {
-    app.audio().cursor.play();
-    L2_cursor_shift = !L2_cursor_shift;
-    usingUsbKeyboard = !usingUsbKeyboard;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doKbdEscape
-//*******************************
-void GuiKeyboard::doKbdEscape() {
-    app.audio().cursor.play();
-    cancelled = true;
-    menuVisible = false;
-}
-
-//*******************************
-// GuiKeyboard::doKbdReturn
-//*******************************
-void GuiKeyboard::doKbdReturn() {
-    app.audio().cursor.play();
-    cancelled = false;
-    menuVisible = false;
-}
-
-//*******************************
-// GuiKeyboard::doKbdTextInput
-//*******************************
-void GuiKeyboard::doKbdTextInput(const std::string &text) {
-    app.audio().cursor.play();
-    result.insert(cursorIndex, text);
-    cursorIndex += text.size();
-    L2_cursor_shift = true;
-    usingUsbKeyboard = true;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doL1_up
-//*******************************
-void GuiKeyboard::doL1_up() {
-    app.audio().cursor.play();
-    L1_caps_shift = false;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doL2_up
-//*******************************
-void GuiKeyboard::doL2_up() {
-    app.audio().cursor.play();
-    L2_cursor_shift = false;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doL1_down
-//*******************************
-void GuiKeyboard::doL1_down() {
-    app.audio().cursor.play();
-    L1_caps_shift = true;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doL2_down
-//*******************************
-void GuiKeyboard::doL2_down() {
-    app.audio().cursor.play();
-    L2_cursor_shift = true;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doTrianglePressed
-//*******************************
-void GuiKeyboard::doTriangle() {
-    app.audio().cursor.play();
-    if (!result.empty() && cursorIndex > 0) {
-        result = result.erase(cursorIndex - 1, 1);
-        --cursorIndex;
-    }
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doSquarePressed
-//*******************************
-void GuiKeyboard::doSquare() {
-    app.audio().cursor.play();
-    result.insert(cursorIndex, " ");
-    ++cursorIndex;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doCrossPressed
-//*******************************
-void GuiKeyboard::doCross() {
-    app.audio().cursor.play();
-    string character = rows[sely][selx];
-    string ch;
-    if (L1_caps_shift)
-        ch = ucase(character);
-    else
-        ch = character;
-    result.insert(cursorIndex, ch);
-    ++cursorIndex;
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doStartPressed
-//*******************************
-void GuiKeyboard::doStart() {
-    app.audio().cursor.play();
-    cancelled = false;
-    menuVisible = false;
-}
-
-//*******************************
-// GuiKeyboard::doCirclePressed
-//*******************************
-void GuiKeyboard::doCircle() {
-    app.audio().cursor.play();
-    cancelled = true;
-    menuVisible = false;
-}
-
-//*******************************
-// GuiKeyboard::doJoyRight
-//*******************************
-void GuiKeyboard::doJoyRight() {
-    app.audio().cursor.play();
-    if (L2_cursor_shift) {
-        if (cursorIndex != result.size())
-            ++cursorIndex;
-    } else {
-        selx++;
-        if (selx > xlast) {
-            selx = 0;
-        }
-    }
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doJoyLeft
-//*******************************
-void GuiKeyboard::doJoyLeft() {
-    app.audio().cursor.play();
-    if (L2_cursor_shift) {
-        if (cursorIndex > 0)
-            --cursorIndex;
-    } else {
-        selx--;
-        if (selx < 0) {
-            selx = xlast;
-        }
-    }
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doJoyDown
-//*******************************
-void GuiKeyboard::doJoyDown() {
-    app.audio().cursor.play();
-    if (!L2_cursor_shift) {
-        sely++;
-        if (sely > ylast) {
-            sely = 0;
-        }
-    }
-    render();
-}
-
-//*******************************
-// GuiKeyboard::doJoyUp
-//*******************************
-void GuiKeyboard::doJoyUp() {
-    app.audio().cursor.play();
-    if (!L2_cursor_shift) {
-        sely--;
-        if (sely < 0) {
-            sely = ylast;
-        }
-    }
-    render();
 }
 
 //*******************************
 // GuiKeyboard::loop
 //*******************************
 void GuiKeyboard::loop() {
-    shared_ptr<Gui> gui(Gui::getInstance());
+    // letters typed on a keyboard are letters here, and Esc cancels - both put back when the keyboard goes
+    ableem::Input &input = gui->input();
+    const bool keyboardAsPad = input.keyboardAsPad();
+    const bool rawKeyboard = input.rawKeyboard();
+    input.setKeyboardAsPad(false);
+    input.setRawKeyboard(true);
 
     menuVisible = true;
     while (menuVisible) {
+        render();
         Event e;
-        while (gui->input().poll(e)) {
-            if (e.type == Event::Type::Quit) {
-                menuVisible = false;
-                continue;
-            }
-
+        while (menuVisible && input.poll(e)) {
             switch (e.type) {
-            case Event::Type::KeyDown:
-                if (e.key == Key::Right) {
-                    doKbdRight();
-
-                } else if (e.key == Key::Left) {
-                    doKbdLeft();
-
-                } else if (e.key == Key::Home) {
-                    doKbdHome();
-
-                } else if (e.key == Key::End) {
-                    doKbdEnd();
-
-                } else if (e.key == Key::Backspace) {
-                    doKbdBackspace();
-
-                } else if (e.key == Key::Delete) {
-                    doKbdDelete();
-
-                } else if (e.key == Key::Tab) {
-                    doKbdTab();
-
-                } else if (e.key == Key::Escape) {
-                    doKbdEscape();
-
-                } else if (e.key == Key::Return) {
-                    doKbdReturn();
-                }
+            case Event::Type::Quit:
+                cancel();
                 break;
-
             case Event::Type::TextInput:
-                doKbdTextInput(e.text);
+                app.audio().cursor.play();
+                type(e.text);
                 break;
-
-            case Event::Type::ButtonUp:
-                if (e.button == Button::L1) {
-                    doL1_up();
-                } else if (e.button == Button::L2) {
-                    doL2_up();
-                }
+            case Event::Type::KeyDown:
+                if (e.key == Key::Left)
+                    cursorIndex = previousChar(result, cursorIndex);
+                else if (e.key == Key::Right)
+                    cursorIndex = nextChar(result, cursorIndex);
+                else if (e.key == Key::Home)
+                    cursorIndex = 0;
+                else if (e.key == Key::End)
+                    cursorIndex = result.size();
+                else if (e.key == Key::Backspace)
+                    backspace();
+                else if (e.key == Key::Delete)
+                    deleteForward();
+                else if (e.key == Key::Return)
+                    confirm();
+                else if (e.key == Key::Escape)
+                    cancel();
                 break;
-
             case Event::Type::ButtonDown:
-                if (e.button == Button::L1) { // caps shift
-                    doL1_down();
-                } else if (e.button == Button::L2) { // move cursor shift
-                    doL2_down();
-                }
-
-                if (!L2_cursor_shift) {
-                    if (e.button == Button::Triangle) { // delete char on the left
-                        doTriangle();
-                    } else if (e.button == Button::Square) { // insert space
-                        doSquare();
-                    } else if (e.button == Button::Cross) {
-                        doCross();
-                    } else if (e.button == Button::Start) { // Confirm
-                        doStart();
-                    } else if (e.button == Button::Circle) { // Cancel
-                        doCircle();
-                    }
+                app.audio().cursor.play();
+                if (e.button == Button::Cross)
+                    press();
+                else if (e.button == Button::Triangle)
+                    backspace();
+                else if (e.button == Button::Square)
+                    type(" ");
+                else if (e.button == Button::L1)
+                    nextShift();
+                else if (e.button == Button::R1)
+                    page = (page + 1) % Pages;
+                else if (e.button == Button::L2)
+                    cursorIndex = previousChar(result, cursorIndex);
+                else if (e.button == Button::R2)
+                    cursorIndex = nextChar(result, cursorIndex);
+                else if (e.button == Button::Start)
+                    confirm();
+                else if (e.button == Button::Circle) {
+                    app.audio().cancel.play();
+                    cancel();
                 }
                 break;
-
             case Event::Type::DpadDown:
-            case Event::Type::DpadUp:
-                if (gui->input().dpadRight()) {
-                    doJoyRight();
-                } else if (gui->input().dpadLeft()) {
-                    doJoyLeft();
-                }
-
-                if (!L2_cursor_shift) {
-                    if (gui->input().dpadDown()) {
-                        doJoyDown();
-                    } else if (gui->input().dpadUp()) {
-                        doJoyUp();
-                    }
-                }
-
+                app.audio().cursor.play();
+                if (input.dpadUp())
+                    moveSelection(0, -1);
+                else if (input.dpadDown())
+                    moveSelection(0, 1);
+                else if (input.dpadLeft())
+                    moveSelection(-1, 0);
+                else if (input.dpadRight())
+                    moveSelection(1, 0);
                 break;
             default:
                 break;
             }
         }
     }
+    input.setKeyboardAsPad(keyboardAsPad);
+    input.setRawKeyboard(rawKeyboard);
 }

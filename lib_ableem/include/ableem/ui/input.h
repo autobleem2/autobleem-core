@@ -166,6 +166,7 @@ public:
     // on a dev host (see Platform::isDevHost), keyboard keys are turned into pad Button/Dpad events so the
     // app is usable without a real controller. On by default on dev hosts, off elsewhere.
     void setKeyboardAsPad(bool enabled);
+    bool keyboardAsPad() const;
 
     // the power button / Esc: normally poll() calls the power-off handler and swallows it; with this on it
     // comes through as a KeyDown of Key::Sleep instead (a screen that uses it as "cancel", like a pad
@@ -176,6 +177,7 @@ public:
     // other key, and only the console's power button still powers off. Off by default. It does not turn
     // the keyboard-as-pad of a dev host off - setKeyboardAsPad(false) does
     void setRawKeyboard(bool enabled);
+    bool rawKeyboard() const;
 
     void loadMappings(const std::vector<std::string> &gameControllerDbPaths);
     // the gamecontrollerdb.txt probePads() loaded, "" when none of the paths existed
