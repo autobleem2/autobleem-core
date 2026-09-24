@@ -1,6 +1,7 @@
 #include "ableem/engine/games_fingerprint.h"
 #include "ableem/engine/filesystem.h"
 #include "ableem/engine/game_types.h"
+#include "ableem/engine/strings.h"
 
 #include <fstream>
 #include <iostream>
@@ -16,11 +17,22 @@ namespace {
 //*******************************
 // path is the directory being visited, relPath is its path relative to the scan root ("" at the root, no
 // trailing separator otherwise). allFiles records every file rather than the game images only.
-void walk(const string &path, const string &relPath, map<string, string> &entries, bool allFiles) {
+// matchExtension only knows three-letter extensions
+bool isPart(const string &name) {
+    if (name.size() <= 5)
+        return false;
+    string tail = name.substr(name.size() - 5);
+    return lcase(tail) == ".part";
+}
+
+void walk(const string &path, const string &relPath, map<string, string> &entries, bool allFiles,
+          const GamesFingerprint::FileFilter &alsoWatch) {
     for (const DirEntry &entry : DirEntry::diru(path)) {
         if (entry.name == SAVESTATES_DIR_NAME || entry.name == MEMCARDS_DIR_NAME)
             continue;
         if (allFiles && (entry.name.empty() || entry.name[0] == '.'))
+            continue;
+        if (!entry.isDir && isPart(entry.name))
             continue;
 
         string childRel = relPath.empty() ? entry.name : relPath + "/" + entry.name;
@@ -28,8 +40,9 @@ void walk(const string &path, const string &relPath, map<string, string> &entrie
 
         if (entry.isDir) {
             entries[childRel + "/"] = "";
-            walk(childPath, childRel, entries, allFiles);
-        } else if (allFiles || DirEntry::isAGameFile(entry.name) || DirEntry::matchExtension(entry.name, EXT_ECM)) {
+            walk(childPath, childRel, entries, allFiles, alsoWatch);
+        } else if (allFiles || DirEntry::isAGameFile(entry.name) || DirEntry::matchExtension(entry.name, EXT_ECM) ||
+                   (alsoWatch && entry.name[0] != '.' && alsoWatch(entry.name))) {
             long long size = DirEntry::fileSize(childPath);
             entries[childRel] = to_string(size);
         }
@@ -42,8 +55,12 @@ void walk(const string &path, const string &relPath, map<string, string> &entrie
 // GamesFingerprint::take
 //*******************************
 GamesFingerprint GamesFingerprint::take(const string &gamesDir) {
+    return take(gamesDir, nullptr);
+}
+
+GamesFingerprint GamesFingerprint::take(const string &gamesDir, const FileFilter &alsoWatch) {
     GamesFingerprint fp;
-    walk(DirEntry::removeSeparatorFromEndOfPath(gamesDir), "", fp.entries_, false);
+    walk(DirEntry::removeSeparatorFromEndOfPath(gamesDir), "", fp.entries_, false, alsoWatch);
     return fp;
 }
 
@@ -52,7 +69,7 @@ GamesFingerprint GamesFingerprint::take(const string &gamesDir) {
 //*******************************
 GamesFingerprint GamesFingerprint::takeAllFiles(const string &dir) {
     GamesFingerprint fp;
-    walk(DirEntry::removeSeparatorFromEndOfPath(dir), "", fp.entries_, true);
+    walk(DirEntry::removeSeparatorFromEndOfPath(dir), "", fp.entries_, true, nullptr);
     return fp;
 }
 

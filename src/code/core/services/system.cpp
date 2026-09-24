@@ -11,6 +11,7 @@
 #endif
 #include "../main.h"
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <climits>
@@ -27,6 +28,8 @@
 #include <windows.h>
 #else
 #include <csignal>
+#include <fcntl.h>
+#include <poll.h>
 #include <sys/statvfs.h>
 #include <sys/wait.h>
 #include <sched.h>
@@ -233,6 +236,306 @@ bool System::diskSpace(const string &path, uint64_t &freeBytes, uint64_t &totalB
     freeBytes = static_cast<uint64_t>(fs.f_bavail) * fs.f_frsize;
     totalBytes = static_cast<uint64_t>(fs.f_blocks) * fs.f_frsize;
     return true;
+#endif
+}
+
+namespace {
+//******************
+// LineSplitter
+//******************
+// bytes from a pipe -> whole lines; '\n', '\r\n' and a bare '\r' all end one, an empty line is dropped
+class LineSplitter {
+public:
+    LineSplitter(const System::OutputLine &onLine, bool fromStderr) : onLine_(onLine), stderr_(fromStderr) {}
+    void add(const char *data, size_t size) {
+        for (size_t i = 0; i < size; ++i) {
+            char c = data[i];
+            if (c == '\n' || c == '\r') {
+                flush();
+            } else {
+                pending_ += c;
+            }
+        }
+    }
+    void flush() {
+        if (!pending_.empty() && onLine_)
+            onLine_(pending_, stderr_);
+        pending_.clear();
+    }
+
+private:
+    const System::OutputLine &onLine_;
+    bool stderr_;
+    string pending_;
+};
+} // namespace
+
+//*******************************
+// System::runStreaming
+//*******************************
+int System::runStreaming(const string &exe, const vector<string> &args, const string &cwd,
+                         const vector<pair<string, string>> &env, const OutputLine &onLine,
+                         const function<bool()> &shouldStop) {
+    string what = "'" + exe + "'";
+    for (const string &arg : args)
+        what += " '" + arg + "'";
+    PLOG_INFO << "Streaming: " << what;
+
+    LineSplitter out(onLine, false), err(onLine, true);
+
+#ifdef _WIN32
+    SECURITY_ATTRIBUTES sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    HANDLE outRead = nullptr, outWrite = nullptr, errRead = nullptr, errWrite = nullptr;
+    if (!CreatePipe(&outRead, &outWrite, &sa, 0) || !CreatePipe(&errRead, &errWrite, &sa, 0)) {
+        PLOG_WARNING << "runStreaming: CreatePipe failed: " << GetLastError();
+        return -1;
+    }
+    SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0);
+    HANDLE nul = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
+
+    // the environment block: ours, with `env` laid over it (names compared without case, as Windows does)
+    vector<wstring> entries;
+    if (LPWCH block = GetEnvironmentStringsW()) {
+        for (LPWCH p = block; *p; p += wcslen(p) + 1)
+            entries.emplace_back(p);
+        FreeEnvironmentStringsW(block);
+    }
+    for (const auto &kv : env) {
+        wstring name = wide(kv.first);
+        auto sameName = [&name](const wstring &entry) {
+            size_t eq = entry.find(L'=', 1);
+            return eq == name.size() && _wcsnicmp(entry.c_str(), name.c_str(), name.size()) == 0;
+        };
+        entries.erase(remove_if(entries.begin(), entries.end(), sameName), entries.end());
+        entries.push_back(name + L"=" + wide(kv.second));
+    }
+    vector<wchar_t> envBlock;
+    for (const wstring &entry : entries) {
+        envBlock.insert(envBlock.end(), entry.begin(), entry.end());
+        envBlock.push_back(L'\0');
+    }
+    envBlock.push_back(L'\0');
+
+    wstring commandLine = commandLineFor(exe, args);
+    vector<wchar_t> cmd(commandLine.begin(), commandLine.end());
+    cmd.push_back(L'\0');
+    wstring dir = wide(cwd);
+
+    STARTUPINFOW si;
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = nul;
+    si.hStdOutput = outWrite;
+    si.hStdError = errWrite;
+    PROCESS_INFORMATION pi;
+    memset(&pi, 0, sizeof(pi));
+    BOOL started =
+        CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE,
+                       CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED | IDLE_PRIORITY_CLASS,
+                       envBlock.data(), dir.empty() ? nullptr : dir.c_str(), &si, &pi);
+    CloseHandle(outWrite);
+    CloseHandle(errWrite);
+    if (nul != INVALID_HANDLE_VALUE)
+        CloseHandle(nul);
+    if (!started) {
+        PLOG_WARNING << "could not start " << what << ": error " << GetLastError();
+        CloseHandle(outRead);
+        CloseHandle(errRead);
+        return -1;
+    }
+    // everything the processor starts goes into the job, and goes with it
+    HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    if (job) {
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+        memset(&limits, 0, sizeof(limits));
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
+        AssignProcessToJobObject(job, pi.hProcess);
+    }
+    ResumeThread(pi.hThread);
+    CloseHandle(pi.hThread);
+
+    auto drain = [](HANDLE pipe, LineSplitter &splitter, bool &open) {
+        bool any = false;
+        while (open) {
+            DWORD available = 0;
+            if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr)) {
+                open = false; // the writer is gone
+                break;
+            }
+            if (available == 0)
+                break;
+            char buffer[4096];
+            DWORD got = 0;
+            if (!ReadFile(pipe, buffer, available < sizeof(buffer) ? available : sizeof(buffer), &got, nullptr) ||
+                got == 0) {
+                open = false;
+                break;
+            }
+            splitter.add(buffer, got);
+            any = true;
+        }
+        return any;
+    };
+
+    bool outOpen = true, errOpen = true, stopped = false;
+    for (;;) {
+        bool any = drain(outRead, out, outOpen);
+        any = drain(errRead, err, errOpen) || any;
+        if (WaitForSingleObject(pi.hProcess, 0) == WAIT_OBJECT_0) {
+            drain(outRead, out, outOpen);
+            drain(errRead, err, errOpen);
+            break;
+        }
+        if (shouldStop && shouldStop()) {
+            stopped = true;
+            if (job)
+                TerminateJobObject(job, 1);
+            else
+                TerminateProcess(pi.hProcess, 1);
+            WaitForSingleObject(pi.hProcess, 3000);
+            break;
+        }
+        if (!any)
+            Sleep(50);
+    }
+    out.flush();
+    err.flush();
+    DWORD code = 0;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(outRead);
+    CloseHandle(errRead);
+    if (job)
+        CloseHandle(job);
+    if (stopped) {
+        PLOG_INFO << what << " stopped";
+        return -2;
+    }
+    PLOG_INFO << what << " exited with " << code;
+    return static_cast<int>(code);
+#else
+    int outPipe[2], errPipe[2];
+    if (pipe(outPipe) != 0) {
+        PLOG_WARNING << "runStreaming: pipe() failed: " << strerror(errno);
+        return -1;
+    }
+    if (pipe(errPipe) != 0) {
+        PLOG_WARNING << "runStreaming: pipe() failed: " << strerror(errno);
+        close(outPipe[0]);
+        close(outPipe[1]);
+        return -1;
+    }
+
+    vector<const char *> argv;
+    argv.push_back(exe.c_str());
+    for (const string &arg : args)
+        argv.push_back(arg.c_str());
+    argv.push_back(nullptr);
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        PLOG_WARNING << "fork() failed: " << strerror(errno);
+        close(outPipe[0]);
+        close(outPipe[1]);
+        close(errPipe[0]);
+        close(errPipe[1]);
+        return -1;
+    }
+    if (pid == 0) {
+        // a group of its own, so a stop reaches whatever it started too
+        setpgid(0, 0);
+        int nullFd = open("/dev/null", O_RDONLY);
+        if (nullFd >= 0) {
+            dup2(nullFd, 0);
+            close(nullFd);
+        }
+        dup2(outPipe[1], 1);
+        dup2(errPipe[1], 2);
+        close(outPipe[0]);
+        close(outPipe[1]);
+        close(errPipe[0]);
+        close(errPipe[1]);
+        if (!cwd.empty() && chdir(cwd.c_str()) != 0)
+            _exit(126);
+        for (const auto &kv : env)
+            setenv(kv.first.c_str(), kv.second.c_str(), 1);
+        execvp(exe.c_str(), const_cast<char **>(argv.data()));
+        _exit(127);
+    }
+    setpgid(pid, pid); // both sides, so there is no window where the group does not exist yet
+    close(outPipe[1]);
+    close(errPipe[1]);
+
+    struct pollfd fds[2];
+    fds[0].fd = outPipe[0];
+    fds[0].events = POLLIN;
+    fds[1].fd = errPipe[0];
+    fds[1].events = POLLIN;
+    bool outOpen = true, errOpen = true, stopped = false;
+    while (outOpen || errOpen) {
+        fds[0].fd = outOpen ? outPipe[0] : -1;
+        fds[1].fd = errOpen ? errPipe[0] : -1;
+        int ready = poll(fds, 2, 100);
+        if (ready < 0 && errno != EINTR)
+            break;
+        for (int i = 0; i < 2 && ready > 0; ++i) {
+            if (fds[i].fd < 0 || !(fds[i].revents & (POLLIN | POLLHUP | POLLERR)))
+                continue;
+            char buffer[4096];
+            ssize_t got = read(fds[i].fd, buffer, sizeof(buffer));
+            if (got > 0) {
+                (i == 0 ? out : err).add(buffer, static_cast<size_t>(got));
+            } else if (got == 0 || (errno != EINTR && errno != EAGAIN)) {
+                (i == 0 ? outOpen : errOpen) = false;
+            }
+        }
+        if (shouldStop && shouldStop()) {
+            stopped = true;
+            break;
+        }
+    }
+    out.flush();
+    err.flush();
+    close(outPipe[0]);
+    close(errPipe[0]);
+
+    int status = 0;
+    if (stopped) {
+        kill(-pid, SIGTERM);
+        bool gone = false;
+        for (int i = 0; i < 30 && !gone; ++i) {
+            if (waitpid(pid, &status, WNOHANG) == pid)
+                gone = true;
+            else
+                usleep(100 * 1000);
+        }
+        kill(-pid, SIGKILL); // what is left of the group, the processor itself included when it ignored TERM
+        if (!gone)
+            waitpid(pid, &status, 0);
+        PLOG_INFO << what << " stopped";
+        return -2;
+    }
+    if (waitpid(pid, &status, 0) == -1) {
+        PLOG_WARNING << "waitpid() failed: " << strerror(errno);
+        return -1;
+    }
+    if (WIFEXITED(status)) {
+        int code = WEXITSTATUS(status);
+        if (code == 127) {
+            PLOG_WARNING << "could not start: " << exe;
+            return -1;
+        }
+        PLOG_INFO << what << " exited with " << code;
+        return code;
+    }
+    PLOG_WARNING << what << " was killed by a signal";
+    return 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
 #endif
 }
 

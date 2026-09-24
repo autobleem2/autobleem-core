@@ -109,3 +109,26 @@ TEST_CASE("loading a missing fingerprint file fails and leaves it comparable to 
     GamesFingerprint loaded;
     CHECK_FALSE(loaded.load(tmp.at("does_not_exist")));
 }
+
+TEST_CASE("a processor's *.part output never counts, in either kind of fingerprint") {
+    TempDir tmp("fp");
+    tmp.writeFile("Crash/Crash.bin", "bin");
+    GamesFingerprint games = GamesFingerprint::take(tmp.path());
+    GamesFingerprint all = GamesFingerprint::takeAllFiles(tmp.path());
+    tmp.writeFile("Crash/Crash.bin.part", "half");
+    tmp.writeFile("Crash/Sonic.md.part", "half");
+    CHECK(GamesFingerprint::take(tmp.path()) == games);
+    CHECK(GamesFingerprint::takeAllFiles(tmp.path()) == all);
+}
+
+TEST_CASE("a file a processor watches for is a change even when it is not a game file") {
+    TempDir tmp("fp");
+    tmp.writeFile("Crash/Crash.bin", "bin");
+    auto zips = [](const string &name) { return name.size() > 4 && name.substr(name.size() - 4) == ".zip"; };
+    GamesFingerprint before = GamesFingerprint::take(tmp.path(), zips);
+    GamesFingerprint plainBefore = GamesFingerprint::take(tmp.path());
+    tmp.writeFile("Spyro.zip", "zip");
+    CHECK(GamesFingerprint::take(tmp.path()) == plainBefore); // not a game file: the plain one does not see it
+    CHECK(GamesFingerprint::take(tmp.path(), nullptr) == plainBefore);
+    CHECK(GamesFingerprint::take(tmp.path(), zips) != before);
+}

@@ -42,6 +42,7 @@ add_library(ableem_engine ${ABLEEM_LIB_KIND}
         src/engine/usb_game.cpp
         src/engine/games_hierarchy.cpp
         src/engine/games_fingerprint.cpp
+        src/engine/processor_output.cpp
         src/engine/game_scanner.cpp
         src/engine/retroarch_playlist.cpp
         src/engine/retroarch_cores.cpp

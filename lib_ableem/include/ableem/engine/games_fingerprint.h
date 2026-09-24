@@ -5,6 +5,7 @@
 // see; games are added/removed/replaced as whole files, so that trade-off is accepted.
 #pragma once
 
+#include <functional>
 #include <map>
 #include <string>
 
@@ -19,11 +20,15 @@ public:
     // "relpath|size" for every game image file (DirEntry::isAGameFile()) plus .ecm, and "relpath/" for
     // every directory - so a renamed/moved directory is seen as a change even when its contents are not.
     // Files the app itself writes (Game.ini, pcsx.cfg, .png, .m3u) are not recorded: editing one must
-    // not trigger a rescan.
+    // not trigger a rescan. Neither is a *.part file: a scanner processor's output while it is being written.
     static GamesFingerprint take(const std::string &gamesDir);
+    // the same, also recording every file `alsoWatch` accepts (by name) - the scanner processors' Match
+    // patterns, so a dropped .zip is a change even though it is not a game file yet
+    using FileFilter = std::function<bool(const std::string &fileName)>;
+    static GamesFingerprint take(const std::string &gamesDir, const FileFilter &alsoWatch);
 
     // the same over a tree of anything - RetroArch's ROM folders, where every file is a game (or hides
-    // one): every file is recorded, only dot entries are skipped. An empty fingerprint for a missing dir.
+    // one): every file is recorded, only dot entries (and *.part) are skipped. An empty fingerprint for a missing dir.
     static GamesFingerprint takeAllFiles(const std::string &dir);
 
     bool load(const std::string &path); // false (fingerprint left empty) if the file does not exist/parse

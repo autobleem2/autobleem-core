@@ -28,6 +28,19 @@ public:
     static int runAndWait(const std::string &exe, const std::vector<std::string> &args, const std::string &cwd = "",
                           const std::function<void()> &whileWaiting = {},
                           const std::vector<std::pair<std::string, std::string>> &env = {});
+    // one line of a child's output, without its end of line ('\n', '\r\n' or a bare '\r' - a progress
+    // counter that rewrites one line is a line per update), and whether it came from stderr
+    using OutputLine = std::function<void(const std::string &line, bool fromStderr)>;
+    // the other way to start a program, for a scanner processor (docs/scanner-processors-plan.md): like
+    // runAndWait, but the child's stdout and stderr come back line by line through `onLine` as they are
+    // written (stdin is empty), and `shouldStop` is asked every ~100 ms - once it answers true the child and
+    // everything it started (its process group; a job object on Windows) gets SIGTERM, 3 s, then SIGKILL
+    // (TerminateJobObject at once on Windows) and -2 is returned. The child runs at the calling thread's
+    // priority on Linux (the scan worker's idle one) and at IDLE_PRIORITY_CLASS on Windows. Returns the
+    // exit code, -1 when it could not be started.
+    static int runStreaming(const std::string &exe, const std::vector<std::string> &args, const std::string &cwd,
+                            const std::vector<std::pair<std::string, std::string>> &env, const OutputLine &onLine,
+                            const std::function<bool()> &shouldStop);
     // starts a program and does not wait: the Windows product's update, which the launcher hands the
     // installer and leaves. True when it started.
     static bool startDetached(const std::string &exe, const std::vector<std::string> &args);
