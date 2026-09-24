@@ -127,6 +127,43 @@ TEST_CASE("StoreSourceTsv: a bad line is skipped and reported, the rest loads") 
     CHECK(s.problems[2].find("line 4: size") == 0);
 }
 
+TEST_CASE("StoreSourceTsv: the NoPayStation column layout, one item per regional release") {
+    // made-up rows in that layout - no link points anywhere real
+    const string tsv = "Title ID\tRegion\tName\tPKG direct link\tContent ID\tLast Modification Date\tOriginal Name"
+                       "\tFile Size\tSHA256\n"
+                       "NPUJ00001\tJP\tPlaceholder\thttp://example.invalid/a.pkg\tJP0000-NPUJ00001_00-01\t2020-01-01"
+                       "\t\t1000\tAB12\n"
+                       "NPUF00002\tEU\tPlaceholder\thttp://example.invalid/b.pkg\tEP0000-NPUF00002_00-02\t2020-01-01"
+                       "\t\t2000\t\n"
+                       "NPUI00003\tUS\tOther\tMISSING\tUP0000-NPUI00003_00-03\t2020-01-01\t\t0\t\n";
+    StoreSourceTsv s = StoreSourceTsv::parse(tsv, "nps");
+    REQUIRE(s.items.size() == 2); // the MISSING link is skipped
+    REQUIRE(s.problems.size() == 1);
+    CHECK(s.problems[0] == "line 4: no http(s) url");
+
+    CHECK(s.items[0].kind == "ps1");
+    CHECK(s.items[0].title == "Placeholder");
+    CHECK(s.items[0].serial == "NPUJ00001");
+    CHECK(s.items[0].id == "ps1/Placeholder/NPUJ00001"); // two releases of one title: the serial tells them apart
+    REQUIRE(s.items[0].files.size() == 1);
+    CHECK(s.items[0].files[0].url == "http://example.invalid/a.pkg");
+    CHECK(s.items[0].files[0].size == 1000);
+    CHECK(s.items[0].files[0].sha256 == "ab12");
+    CHECK(s.items[1].serial == "NPUF00002");
+    CHECK(s.items[1].id == "ps1/Placeholder/NPUF00002");
+}
+
+TEST_CASE("StoreSourceTsv: our layout's multi-disc lines still make one item, the serial on one of them") {
+    const string tsv = "kind\ttitle\turl\tdisc\tserial\tname\n"
+                       "ps1\tTwo Discs\thttps://x/d1.chd\t1\tSLUS-00001\tdisc-one.chd\n"
+                       "ps1\tTwo Discs\thttps://x/d2.chd\t2\t\tdisc-two.chd\n";
+    StoreSourceTsv s = StoreSourceTsv::parse(tsv, "ours");
+    REQUIRE(s.items.size() == 1);
+    CHECK(s.items[0].id == "ps1/Two Discs"); // one item of that title: no serial in the id
+    CHECK(s.items[0].files.size() == 2);
+    CHECK(s.items[0].files[0].name == "disc-one.chd"); // "name" is still the file's name when there is a "title"
+}
+
 TEST_CASE("StoreSourceTsv: empty, comments only, a missing file") {
     CHECK(StoreSourceTsv::parse("", "e").items.empty());
     CHECK(StoreSourceTsv::parse("# only\n# comments\n\n", "c").items.empty());
