@@ -45,6 +45,15 @@ function(ab_add_extension name)
         target_compile_definitions(${name} PRIVATE $<TARGET_PROPERTY:${sdk},INTERFACE_COMPILE_DEFINITIONS>)
     endforeach ()
     target_compile_definitions(${name} PRIVATE PLOG_DEFAULT_INSTANCE_ID=1)
+    # Nothing of the plugin is visible to the others but the two AB_EXTENSION entry points (marked visible
+    # there). Otherwise the dynamic linker merges what two plugins both define - a static in an inline or
+    # template function is a GNU "unique" symbol, one per process - and plog's instance-1 logger was one
+    # logger for every plugin, each chaining its tagged appender into it: every line logged once per
+    # extension, under each one's tag. Hidden, each plugin keeps its own, as a Windows DLL always does.
+    set_target_properties(${name} PROPERTIES
+            CXX_VISIBILITY_PRESET hidden
+            C_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN ON)
     add_dependencies(${name} ${EXT_HOST})
     if (WIN32)
         target_link_libraries(${name} PRIVATE $<TARGET_LINKER_FILE:${EXT_HOST}>)
