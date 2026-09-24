@@ -77,6 +77,7 @@ PlatformConfig PlatformConfig::load(const string &iniPath) {
     cfg.repoUrl = value("repo_url");
     cfg.updateDownloadCommand = value("update_download_command");
     cfg.retroarchCatalog = value("retroarch_catalog");
+    cfg.storeDownloadCommand = value("store_download_command");
     cfg.usbRoot = value("usb_root");
     if (!value("launch_mode").empty()) {
         if (value("launch_mode") == "script" || value("launch_mode") == "direct")
@@ -117,4 +118,5 @@ void PlatformConfig::apply() const {
     Env::setPcsxDir(pcsxDir.empty() ? "" : under(Env::getWorkingPath(), pcsxDir));
     Env::setPcsxNxtDir(pcsxNxtDir.empty() ? "" : under(Env::getWorkingPath(), pcsxNxtDir));
     Env::setExtraAppPlatformKeys(appPlatformKeys);
+    Env::setStoreDownloadCommand(storeDownloadCommand);
 }

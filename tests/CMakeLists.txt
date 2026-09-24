@@ -17,6 +17,8 @@ ab_add_test(test_disc_suffix core/test_disc_suffix.cpp)
 ab_add_test(test_environment_setup core/test_environment_setup.cpp)
 ab_add_test(test_platform_config core/test_platform_config.cpp)
 ab_add_test(test_app_manifest core/test_app_manifest.cpp)
+ab_add_test(test_content_installer core/test_content_installer.cpp)
+ab_add_test(test_downloader core/test_downloader.cpp)
 ab_add_test(test_extension_catalog core/test_extension_catalog.cpp)
 if (AB_CORE_UI)
     # the runtime is ab_classic's (it knows Extension), tested with in-process fake plugins

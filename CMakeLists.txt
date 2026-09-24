@@ -5,6 +5,9 @@
 cmake_minimum_required(VERSION 3.12)
 project(autobleem-core)
 
+# ab_add_extension(): how an extension (a plugin of the launcher) is built - docs/extensions-plan.md
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/ab_extension.cmake)
+
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -70,6 +73,8 @@ add_library(ab_core STATIC
         src/code/core/model/session.h
         src/code/core/model/timing.h
         src/code/core/services/app_manifest.cpp
+        src/code/core/services/content_installer.cpp
+        src/code/core/services/downloader.cpp
         src/code/core/services/extension_catalog.cpp
         src/code/core/services/plugin_loader.cpp
         src/code/core/services/config.cpp

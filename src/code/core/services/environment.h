@@ -105,6 +105,11 @@ struct Environment : ableem::Environment {
     static const std::string &repoUrl();
     static const std::string &updateDownloadCommand();
     static const std::string &retroArchCatalog();
+    // PlatformConfig's store_download_command, %r (the launcher's own folder, where abfetch is) replaced: what
+    // an extension - the AutoBleem Store - fetches a file with. It continues a partly downloaded %o, so the
+    // same command is a fresh download and a resumed one. The update's command when the platform has none.
+    static void setStoreDownloadCommand(const std::string &command);
+    static std::string storeDownloadCommand();
 
     // PlatformConfig's launch_mode: "direct" - the launcher starts the emulators itself (the Windows
     // product); otherwise through the rc/launch*.sh scripts (the console, the appliances, a dev host)
