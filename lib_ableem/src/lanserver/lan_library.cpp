@@ -115,7 +115,9 @@ uint64_t LanGame::size() const {
 //*******************************
 LanLibrary::LanLibrary(Config config) : config_(std::move(config)), snapshot_(make_shared<LanSnapshot>()) {
     config_.gamesDir = DirEntry::removeSeparatorFromEndOfPath(config_.gamesDir);
-    metadata_ = make_unique<ableem::MetadataLookup>(config_.coversDir, config_.rdbFile);
+    for (Root &r : config_.roots)
+        r.dir = DirEntry::removeSeparatorFromEndOfPath(r.dir);
+    metadata_ =make_unique<ableem::MetadataLookup>(config_.coversDir, config_.rdbFile);
     loadChecksums();
 }
 
@@ -127,15 +129,41 @@ shared_ptr<const LanSnapshot> LanLibrary::snapshot() const {
 }
 
 //*******************************
+// LanLibrary::effectiveRoots / absolutePath
+//*******************************
+vector<LanLibrary::Root> LanLibrary::effectiveRoots() const {
+    if (config_.roots.size() == 1)
+        return {{"", config_.roots.front().dir}};
+    if (config_.roots.empty())
+        return {{"", config_.gamesDir}};
+    return config_.roots;
+}
+
+string LanLibrary::absolutePath(const string &relPath) const {
+    for (const Root &r : effectiveRoots()) {
+        if (r.name.empty())
+            return r.dir + sep + relPath;
+        if (relPath.size() > r.name.size() && relPath.compare(0, r.name.size(), r.name) == 0 &&
+            relPath[r.name.size()] == '/')
+            return r.dir + sep + relPath.substr(r.name.size() + 1);
+    }
+    return "";
+}
+
+//*******************************
 // LanLibrary::scan
 //*******************************
 void LanLibrary::scan() {
     const auto started = chrono::steady_clock::now();
     auto next = make_shared<LanSnapshot>();
-    if (!DirEntry::isDirectory(config_.gamesDir))
-        next->problems.push_back({"", "the games folder " + config_.gamesDir + " is not there", true});
-    else
-        walk(config_.gamesDir, "", *next, true);
+    string where;
+    for (const Root &r : effectiveRoots()) {
+        where += (where.empty() ? "" : ", ") + r.dir;
+        if (!DirEntry::isDirectory(r.dir))
+            next->problems.push_back({r.name, "the games folder " + r.dir + " is not there", true});
+        else
+            walk(r.dir, r.name, *next, true);
+    }
 
     // two games of one title would be one item in the Store: the folder's name tells them apart
     map<string, int> uses;
@@ -152,7 +180,7 @@ void LanLibrary::scan() {
     int errors = 0;
     for (const LanProblem &p : next->problems)
         errors += p.error ? 1 : 0;
-    PLOG_INFO << "scanned " << config_.gamesDir << ": " << next->games.size() << " games, " << errors << " errors, "
+    PLOG_INFO << "scanned " << where << ": " << next->games.size() << " games, " << errors << " errors, "
               << next->problems.size() - errors << " warnings";
     lock_guard<mutex> lock(mutex_);
     snapshot_ = next;
@@ -169,7 +197,7 @@ void LanLibrary::walk(const string &dir, const string &rel, LanSnapshot &out, bo
     });
     if (gameFiles) {
         if (root) {
-            out.problems.push_back({"",
+            out.problems.push_back({rel,
                                     "game files lie loose in the games folder - a game has to be in a folder "
                                     "of its own to be served",
                                     true});
@@ -324,7 +352,8 @@ string LanLibrary::fingerprint() const {
             }
         }
     };
-    list(config_.gamesDir, "");
+    for (const Root &r : effectiveRoots())
+        list(r.dir, r.name);
     return ableem::Md5::ofString(all.str());
 }
 
@@ -378,7 +407,7 @@ void LanLibrary::hashPending(const function<bool()> &stop) {
                 if (checksums_.count(key))
                     continue;
             }
-            ifstream in(config_.gamesDir + sep + file.relPath, ios::binary);
+            ifstream in(absolutePath(file.relPath), ios::binary);
             if (!in)
                 continue;
             ableem::Sha256 sha;
@@ -412,7 +441,7 @@ string LanLibrary::servablePath(const string &relPath) const {
     for (const LanGame &game : snap->games)
         for (const LanFile &file : game.files)
             if (file.relPath == relPath)
-                return config_.gamesDir + sep + relPath;
+                return absolutePath(relPath);
     return "";
 }
 
