@@ -52,13 +52,15 @@ TEST_CASE("saving an unchanged ini file leaves it alone") {
     CHECK(before.changesTo(TreeSnapshot(tmp.path())) == vector<string>{});
 }
 
-TEST_CASE("setting a cfg line to the value it already has leaves the file alone" *
-          doctest::should_fail()) { // until plan step 2.3
+TEST_CASE("setting cfg lines to the values they already have leaves the file alone") {
     TempDir tmp("quiet_cfg");
     tmp.writeFile("retroarch.cfg", "video_smooth = \"false\"\naspect_ratio_index = \"22\"\n");
 
     TreeSnapshot before(tmp.path());
-    ableem::ConfigFileEditor().replaceInFile(tmp.at("retroarch.cfg"), "video_smooth", "video_smooth = \"false\"");
+    ableem::ConfigFileEditor editor;
+    editor.replaceInFile(tmp.at("retroarch.cfg"), "video_smooth", "video_smooth = \"false\"");
+    editor.replaceProperties(tmp.at("retroarch.cfg"), {{"aspect_ratio_index", "aspect_ratio_index = \"22\""},
+                                                       {"video_smooth", "video_smooth = \"false\""}});
     CHECK(before.changesTo(TreeSnapshot(tmp.path())) == vector<string>{});
 }
 
@@ -76,4 +78,17 @@ TEST_CASE("a rescan with nothing changed writes nothing" * doctest::should_fail(
     svc.runScan();
     svc.poll();
     CHECK(before.changesTo(TreeSnapshot(fx.tmp.path())) == vector<string>{});
+}
+
+TEST_CASE("replaceProperties: a batch is one write, a missing key is appended, CRLF becomes LF") {
+    TempDir tmp("quiet_cfg_batch");
+    tmp.writeFile("pcsx.cfg", "Bios = SET_BY_PCSX\r\nFrameskip3 = 0\r\nScanlines = 0\r\n");
+
+    ableem::ConfigFileEditor().replaceProperties(tmp.at("pcsx.cfg"),
+                                                 {{"frameskip3", "Frameskip3 = 1"}, {"SlowBoot", "SlowBoot = 0"}});
+    CHECK(tmp.readFile("pcsx.cfg") == "Bios = SET_BY_PCSX\nFrameskip3 = 1\nScanlines = 0\nSlowBoot = 0\n");
+
+    // a file that is not there is not created
+    ableem::ConfigFileEditor().replaceProperties(tmp.at("missing.cfg"), {{"a", "a = 1"}});
+    CHECK_FALSE(ableem::DirEntry::exists(tmp.at("missing.cfg")));
 }

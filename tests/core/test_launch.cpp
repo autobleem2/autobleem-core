@@ -408,19 +408,19 @@ TEST_CASE("with raconfig on, the game's pcsx.cfg settings are RetroArch's for th
     CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_dithering = \"enabled\""));
     CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_psxclock = \"57\""));
     CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_spu_interpolation = \"gaussian\""));
-    CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_frameskip  = \"1\""));
+    CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_frameskip = \"1\""));
     CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_show_bios_bootlogo = \"enabled\"")); // no SlowBoot line = shown
-    CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_nocdaudio  = \"enabled\""));
+    CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_nocdaudio = \"enabled\""));
     // retroarch.cfg: the scanline overlay from pcsx.cfg, the viewport and filter from config.ini
     // "input_overlay" is a prefix of the next two keys; each line must be matched as a whole key or the
     // first replacement clobbers the other two (it did, until 2026-09-16)
-    CHECK(contains(raConfigInPlay, "input_overlay  = \":/overlay/scanlines.cfg\""));
-    CHECK(contains(raConfigInPlay, "input_overlay_enable  = \"true\""));
-    CHECK(contains(raConfigInPlay, "input_overlay_opacity  = \"0.500000\""));
-    CHECK(contains(raConfigInPlay, "custom_viewport_width  = \"1280\""));
-    CHECK(contains(raConfigInPlay, "custom_viewport_x  = \"0\""));
-    CHECK(contains(raConfigInPlay, "aspect_ratio_index  = \"23\""));
-    CHECK(contains(raConfigInPlay, "video_smooth  = \"true\"")); // the game's filter: Linear smooths
+    CHECK(contains(raConfigInPlay, "input_overlay = \":/overlay/scanlines.cfg\""));
+    CHECK(contains(raConfigInPlay, "input_overlay_enable = \"true\""));
+    CHECK(contains(raConfigInPlay, "input_overlay_opacity = \"0.500000\""));
+    CHECK(contains(raConfigInPlay, "custom_viewport_width = \"1280\""));
+    CHECK(contains(raConfigInPlay, "custom_viewport_x = \"0\""));
+    CHECK(contains(raConfigInPlay, "aspect_ratio_index = \"23\""));
+    CHECK(contains(raConfigInPlay, "video_smooth = \"true\"")); // the game's filter: Linear smooths
 
     // and afterwards both are exactly what they were
     CHECK(lib.tmp.readFile("RetroArch/bin/config/retroarch-core-options.cfg") == coreOptionsBefore);
@@ -444,7 +444,7 @@ TEST_CASE("a foreign game with raconfig on still gets the viewport, but no core 
     lib.service->launch(game, EmuMode::RetroArch, -1);
 
     CHECK(coreOptionsInPlay == "pcsx_rearmed_psxclock = \"50\"\n");
-    CHECK(contains(raConfigInPlay, "custom_viewport_width  = \"960\""));
+    CHECK(contains(raConfigInPlay, "custom_viewport_width = \"960\""));
     CHECK(contains(raConfigInPlay, "video_smooth = \"true\"")); // RetroArch's own - no pcsx.cfg to read
 }
 

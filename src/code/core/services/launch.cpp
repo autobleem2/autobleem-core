@@ -129,8 +129,8 @@ LaunchPlan LaunchService::planPcsx(const PsGame &game, const string &discImage, 
         plan.cwd = pcsxRunDir();
     }
     const string filterArg = nxt ? filter : pcsxAbFilter(atoi(filter.c_str()));
-    for (const char *a :
-         {"-filter", filterArg.c_str(), "-ratio", aspect.c_str(), "-lang", lang.c_str(), "-region", "4", "-enter", "1"}) {
+    for (const char *a : {"-filter", filterArg.c_str(), "-ratio", aspect.c_str(), "-lang", lang.c_str(), "-region", "4",
+                          "-enter", "1"}) {
         plan.args.push_back(a);
     }
     if (plan.cwd == emuDir) {
@@ -622,13 +622,15 @@ void LaunchService::restoreRaConfig() {
 // LaunchService::transferRaConfig
 //*******************************
 void LaunchService::transferRaConfig(PsGame &game) {
-    const string coreOptions = raCoreOptionsFile();
-    const string raConfig = raConfigFile();
+    ConfigFileEditor::CfgLines coreOptions;
+    ConfigFileEditor::CfgLines raConfig;
+    auto set = [](ConfigFileEditor::CfgLines &lines, const string &key, const string &value) {
+        lines.emplace_back(key, key + " = \"" + value + "\"");
+    };
 
     if (!game.foreign) {
         // the game's values as the emulator would see them: its own config over pcsx.cfg
         auto value = [&game](const char *key) { return PcsxConfig::value(game, key); };
-        ConfigFileEditor processor;
 
         int highres = atoi(value("gpu_neon.enhancement_enable").c_str());
         int speedhack = atoi(value("gpu_neon.enhancement_no_main").c_str());
@@ -643,85 +645,43 @@ void LaunchService::transferRaConfig(PsGame &game) {
         bool bootLogo = slowBoot.empty() || atoi(slowBoot.c_str()) != 0;
 
         // the core options
-        if (highres != 0)
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_neon_enhancement_enable",
-                                    "pcsx_rearmed_neon_enhancement_enable = \"enabled\" ");
-        else
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_neon_enhancement_enable",
-                                    "pcsx_rearmed_neon_enhancement_enable = \"disabled\" ");
+        set(coreOptions, "pcsx_rearmed_neon_enhancement_enable", highres != 0 ? "enabled" : "disabled");
+        set(coreOptions, "pcsx_rearmed_dithering", dither != 0 ? "enabled" : "disabled");
+        set(coreOptions, "pcsx_rearmed_neon_enhancement_no_main", speedhack != 0 ? "enabled" : "disabled");
+        set(coreOptions, "pcsx_rearmed_psxclock", to_string(clock));
+        set(coreOptions, "pcsx_rearmed_show_bios_bootlogo", bootLogo ? "enabled" : "disabled");
+        set(coreOptions, "pcsx_rearmed_nocdaudio", "enabled");
+        static const char *const interpolations[] = {"off", "simple", "gaussian", "cubic"};
+        if (interpolation >= 0 && interpolation <= 3)
+            set(coreOptions, "pcsx_rearmed_spu_interpolation", interpolations[interpolation]);
+        set(coreOptions, "pcsx_rearmed_frameskip", to_string(frameskip));
 
-        if (dither != 0)
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_dithering", "pcsx_rearmed_dithering = \"enabled\" ");
-        else
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_dithering", "pcsx_rearmed_dithering = \"disabled\" ");
-
-        if (speedhack != 0)
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_neon_enhancement_no_main",
-                                    "pcsx_rearmed_neon_enhancement_no_main = \"enabled\" ");
-        else
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_neon_enhancement_no_main",
-                                    "pcsx_rearmed_neon_enhancement_no_main = \"disabled\" ");
-
-        processor.replaceInFile(coreOptions, "pcsx_rearmed_psxclock",
-                                "pcsx_rearmed_psxclock = \"" + to_string(clock) + "\" ");
-        processor.replaceInFile(coreOptions, "pcsx_rearmed_show_bios_bootlogo",
-                                string("pcsx_rearmed_show_bios_bootlogo = \"") + (bootLogo ? "enabled" : "disabled") +
-                                    "\" ");
-        processor.replaceInFile(coreOptions, "pcsx_rearmed_nocdaudio", "pcsx_rearmed_nocdaudio  = \"enabled\" ");
-
-        if (interpolation == 0) {
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_spu_interpolation",
-                                    "pcsx_rearmed_spu_interpolation = \"off\" ");
-        }
-        if (interpolation == 1) {
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_spu_interpolation",
-                                    "pcsx_rearmed_spu_interpolation = \"simple\" ");
-        }
-        if (interpolation == 2) {
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_spu_interpolation",
-                                    "pcsx_rearmed_spu_interpolation = \"gaussian\" ");
-        }
-        if (interpolation == 3) {
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_spu_interpolation",
-                                    "pcsx_rearmed_spu_interpolation = \"cubic\" ");
-        }
-
-        processor.replaceInFile(coreOptions, "pcsx_rearmed_frameskip",
-                                "pcsx_rearmed_frameskip  = \"" + to_string(frameskip) + "\" ");
         if (scanlines == 1) {
             float opacity = scanline_level / 100.0f;
-            processor.replaceInFile(raConfig, "input_overlay", "input_overlay  = \":/overlay/scanlines.cfg\" ");
-            processor.replaceInFile(raConfig, "input_overlay_enable", "input_overlay_enable  = \"true\" ");
-            processor.replaceInFile(raConfig, "input_overlay_opacity",
-                                    "input_overlay_opacity  = \"" + to_string(opacity) + "\" ");
+            set(raConfig, "input_overlay", ":/overlay/scanlines.cfg");
+            set(raConfig, "input_overlay_enable", "true");
+            set(raConfig, "input_overlay_opacity", to_string(opacity));
         }
     }
 
-    // retroarch.cfg
-    ConfigFileEditor processor;
-    string aspect = config_.inifile.values["aspect"]; // true - 1280x720 - false 960x720
-    if (aspect == "true") {
-        // widescreen
-        processor.replaceInFile(raConfig, "custom_viewport_width", "custom_viewport_width  = \"1280\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_height", "custom_viewport_height  = \"720\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_x", "custom_viewport_x  = \"0\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_y", "custom_viewport_y  = \"0\" ");
-        processor.replaceInFile(raConfig, "aspect_ratio_index", "aspect_ratio_index  = \"23\" ");
-    } else {
-        // 4:3
-        processor.replaceInFile(raConfig, "custom_viewport_width", "custom_viewport_width  = \"960\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_height", "custom_viewport_height  = \"720\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_x", "custom_viewport_x  = \"160\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_y", "custom_viewport_y  = \"0\" ");
-        processor.replaceInFile(raConfig, "aspect_ratio_index", "aspect_ratio_index  = \"0\" ");
-    }
+    // retroarch.cfg: 1280x720 for widescreen (config.ini aspect=true), 960x720 centred for 4:3
+    bool wide = config_.inifile.values["aspect"] == "true";
+    set(raConfig, "custom_viewport_width", wide ? "1280" : "960");
+    set(raConfig, "custom_viewport_height", "720");
+    set(raConfig, "custom_viewport_x", wide ? "0" : "160");
+    set(raConfig, "custom_viewport_y", "0");
+    set(raConfig, "aspect_ratio_index", wide ? "23" : "0");
 
     // a PS1 game's own filter (its pcsx.cfg): RetroArch smooths or it does not - Sharp is Off here, as in the
     // classic pcsx-ab. A foreign game has no pcsx.cfg and keeps RetroArch's own video_smooth.
-    if (!game.foreign) {
-        processor.replaceInFile(raConfig, "video_smooth",
-                                string("video_smooth  = \"") + (filterModeFor(game) == 1 ? "true" : "false") + "\" ");
-    }
+    if (!game.foreign)
+        set(raConfig, "video_smooth", filterModeFor(game) == 1 ? "true" : "false");
+
+    // one read and at most one write per file (they were rewritten whole for every key)
+    ConfigFileEditor processor;
+    if (!coreOptions.empty())
+        processor.replaceProperties(raCoreOptionsFile(), coreOptions);
+    processor.replaceProperties(raConfigFile(), raConfig);
 }
 
 //*******************************

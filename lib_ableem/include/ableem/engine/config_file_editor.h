@@ -4,6 +4,8 @@
 #pragma once
 
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace ableem {
 
@@ -11,9 +13,10 @@ namespace ableem {
 // ConfigFileEditor
 //******************
 class ConfigFileEditor {
-    void replaceProperty(std::string fullCfgFilePath, std::string property, std::string newline);
-
 public:
+    // (property, the whole new line) pairs, e.g. {"video_smooth", "video_smooth = \"true\""}
+    using CfgLines = std::vector<std::pair<std::string, std::string>>;
+
     // example gamePath = "/media/Games/!SaveStates/7"
     // example gamePath = "/media/Games/!SaveStates/Driver 2" or
     // example gamePath = "/media/Games/Racing/Driver 2"
@@ -35,6 +38,9 @@ public:
 
     // one arbitrary cfg file (RetroArch's retroarch.cfg, a core override, ...)
     void replaceInFile(std::string fullCfgFilePath, std::string property, std::string newline);
+    // several settings in one file: one read, and one write only if a line changed; a property the file has
+    // no line for is appended; a missing file is left missing
+    void replaceProperties(const std::string &fullCfgFilePath, const CfgLines &properties);
 };
 
 } // namespace ableem
