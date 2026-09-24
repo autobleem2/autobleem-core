@@ -4,6 +4,7 @@
 #include "game_settings.h"
 #include "../main.h"
 #include "environment.h"
+#include "pcsx_config.h"
 
 #include <ableem/engine/config_file_editor.h>
 
@@ -73,6 +74,8 @@ GameSettings GameSettingsService::open(PsGamePtr game) const {
     }
     fallBackToSonyCardIfSetIsGone(s);
 
+    PcsxConfig::migrateLegacy(*game);
+    s.custom = PcsxConfig::isCustom(*game);
     refreshPcsx(s);
     return s;
 }
@@ -80,27 +83,38 @@ GameSettings GameSettingsService::open(PsGamePtr game) const {
 //*******************************
 // GameSettingsService::refreshPcsx
 //*******************************
+// The values as the emulator will see them: the game's own config over pcsx.cfg (PcsxConfig::value).
 // frameskip3 is written in hex like the other levels but read in decimal; with a range of 0..3 the two
 // agree, so it has never mattered. Left as it was.
 void GameSettingsService::refreshPcsx(GameSettings &s) const {
-    ConfigFileEditor processor;
-    string path = cfgFolder(s);
+    const PsGame &game = *s.game;
+    auto value = [&game](const char *key) { return PcsxConfig::value(game, key); };
     PcsxSettings &p = s.pcsx;
-    p.highres = atoi(processor.getValue(path, "gpu_neon.enhancement_enable").c_str());
-    p.speedhack = atoi(processor.getValue(path, "gpu_neon.enhancement_no_main").c_str());
-    p.clock = strtol(processor.getValue(path, "psx_clock").c_str(), nullptr, 16);
-    p.gpu = processor.getValue(path, "gpu3");
-    p.frameskip = atoi(processor.getValue(path, "frameskip3").c_str());
-    p.dither = atoi(processor.getValue(path, "gpu_peops.iUseDither").c_str());
-    p.scanlines = atoi(processor.getValue(path, "scanlines").c_str());
-    string level = processor.getValue(path, "scanline_level");
+    p.highres = atoi(value("gpu_neon.enhancement_enable").c_str());
+    p.speedhack = atoi(value("gpu_neon.enhancement_no_main").c_str());
+    p.clock = strtol(value("psx_clock").c_str(), nullptr, 16);
+    p.gpu = value("gpu3");
+    p.frameskip = atoi(value("frameskip3").c_str());
+    p.dither = atoi(value("gpu_peops.iUseDither").c_str());
+    p.scanlines = atoi(value("scanlines").c_str());
+    string level = value("scanline_level");
     p.scanlineLevel = level.empty() ? 80 : strtol(level.c_str(), nullptr, 16); // hex in the file; 80% by default
-    p.interpolation = strtol(processor.getValue(path, "spu_config.iUseInterpolation").c_str(), nullptr, 16);
-    string slowBoot = processor.getValue(path, "SlowBoot");
-    p.bootLogo = slowBoot.empty() ? 1 : atoi(slowBoot.c_str()); // pcsx-ab's own default is 1
-    p.smoothing = clampTo(strtol(processor.getValue(path, "soft_filter").c_str(), nullptr, 16), 0, 4); // no line = none
-    p.sonyHacks = atoi(processor.getValue(path, "sonyhacks").c_str()) != 0;                            // no line = off
-    p.filter = clampTo(atoi(processor.getValue(path, "plat_target.hwfilter").c_str()), 0, 2);          // no line = off
+    p.interpolation = strtol(value("spu_config.iUseInterpolation").c_str(), nullptr, 16);
+    string slowBoot = value("SlowBoot");
+    p.bootLogo = slowBoot.empty() ? 1 : atoi(slowBoot.c_str());                     // pcsx-ab's own default is 1
+    p.smoothing = clampTo(strtol(value("soft_filter").c_str(), nullptr, 16), 0, 4); // no line = none
+    p.sonyHacks = atoi(value("sonyhacks").c_str()) != 0;                            // no line = off
+    p.filter = clampTo(atoi(value("plat_target.hwfilter").c_str()), 0, 2);          // no line = off
+}
+
+//*******************************
+// GameSettingsService::unlock
+//*******************************
+bool GameSettingsService::unlock(GameSettings &s) {
+    bool ok = PcsxConfig::unlock(*s.game);
+    s.custom = PcsxConfig::isCustom(*s.game);
+    refreshPcsx(s);
+    return ok;
 }
 
 //*******************************
@@ -116,6 +130,9 @@ void GameSettingsService::saveIni(GameSettings &s) const {
 // GameSettingsService::replaceCfgLine
 //*******************************
 void GameSettingsService::replaceCfgLine(GameSettings &s, const string &property, const string &value) {
+    if (s.custom) {
+        return; // locked: the emulator's own config speaks for the game, pcsx.cfg waits for an unlock
+    }
     ConfigFileEditor processor;
     processor.replace(s.ini.entry, cfgFolder(s), property, property + " = " + value, s.internal);
     refreshPcsx(s);
@@ -207,6 +224,9 @@ void GameSettingsService::rename(GameSettings &s, const string &title) {
 // GameSettingsService::setHighres
 //*******************************
 void GameSettingsService::setHighres(GameSettings &s, bool on) {
+    if (s.custom) {
+        return; // the emulator's own config speaks for the game (PcsxConfig)
+    }
     s.ini.values["highres"] = to_string(on ? 1 : 0);
     replaceCfgLine(s, "gpu_neon.enhancement_enable", s.ini.values["highres"]);
     saveIni(s);

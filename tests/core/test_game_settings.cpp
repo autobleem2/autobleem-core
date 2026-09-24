@@ -61,11 +61,11 @@ struct Editing : GameLibraryFixture {
     void writeGameIni(const string &body) { tmp.writeFile("Games/Driver 2/" + string(ableem::GAME_INI), body); }
     string readGameIni() const { return tmp.readFile("Games/Driver 2/" + string(ableem::GAME_INI)); }
 
-    // the three places ConfigFileEditor::replaceUsb writes: the game's own copy and the two under !SaveStates
+    // the two places ConfigFileEditor::replaceUsb writes: the game's own copy and the one under !SaveStates
+    // (a per-disc cfg/*.cfg is an older build's leftover now - see the PcsxConfig tests)
     void writeAllUsbCfgs(const string &body = PcsxCfg) {
         tmp.writeFile("Games/Driver 2/pcsx.cfg", body);
         tmp.writeFile("Games/!SaveStates/Driver 2/pcsx.cfg", body);
-        tmp.writeFile("Games/!SaveStates/Driver 2/cfg/slot1.cfg", body);
     }
 
     std::unique_ptr<GameSettingsService> service;
@@ -212,7 +212,6 @@ TEST_CASE("high res is written to every pcsx.cfg copy and remembered in the Game
     CHECK(s.pcsx.highres == 1); // read back from the file, not assumed
     CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "gpu_neon.enhancement_enable = 1"));
     CHECK(contains(lib.tmp.readFile("Games/!SaveStates/Driver 2/pcsx.cfg"), "gpu_neon.enhancement_enable = 1"));
-    CHECK(contains(lib.tmp.readFile("Games/!SaveStates/Driver 2/cfg/slot1.cfg"), "gpu_neon.enhancement_enable = 1"));
     CHECK(contains(lib.readGameIni(), "Highres=1"));
 
     lib.service->setHighres(s, false);
@@ -223,7 +222,6 @@ TEST_CASE("high res is written to every pcsx.cfg copy and remembered in the Game
 TEST_CASE("an internal game's pcsx.cfg is the one under its !SaveStates folder, and no ini is written") {
     Editing lib;
     lib.tmp.writeFile("Games/!SaveStates/10/pcsx.cfg", PcsxCfg);
-    lib.tmp.writeFile("Games/!SaveStates/10/cfg/slot1.cfg", PcsxCfg);
     GameSettings s = lib.service->open(lib.internalGame());
     REQUIRE(s.pcsx.clock == 57);
 
@@ -233,7 +231,7 @@ TEST_CASE("an internal game's pcsx.cfg is the one under its !SaveStates folder, 
     CHECK(s.pcsx.highres == 1);
     CHECK(s.pcsx.speedhack == 1);
     CHECK(contains(lib.tmp.readFile("Games/!SaveStates/10/pcsx.cfg"), "gpu_neon.enhancement_enable = 1"));
-    CHECK(contains(lib.tmp.readFile("Games/!SaveStates/10/cfg/slot1.cfg"), "gpu_neon.enhancement_no_main = 1"));
+    CHECK(contains(lib.tmp.readFile("Games/!SaveStates/10/pcsx.cfg"), "gpu_neon.enhancement_no_main = 1"));
     CHECK(s.ini.values["highres"] == "1"); // kept in the in-memory ini like a USB game's
     CHECK(s.ini.path == "");               // but there is no file to save it to
 
@@ -445,4 +443,82 @@ TEST_CASE("setMemcard records the set in the ini and nowhere else") {
 
     lib.service->setMemcard(s, "SONY");
     CHECK(contains(lib.readGameIni(), "Memcard=SONY"));
+}
+
+// --- the game's own config (PcsxConfig): saved in an emulator's menu, it locks the pcsx.cfg rows ---
+// (this fixture keeps a USB game's save states in Games/<title>/sstates - its record's ssFolder)
+
+TEST_CASE("a game with its own config opens locked, shows its values, and leaves pcsx.cfg alone") {
+    Editing lib;
+    lib.writeAllUsbCfgs();
+    lib.tmp.writeFile("Games/Driver 2/sstates/pcsx.custom.cfg", "psx_clock = 50\nscanlines = 1\n");
+
+    GameSettings s = lib.service->open(lib.usbGame());
+
+    CHECK(s.custom);
+    CHECK(s.pcsx.clock == 0x50); // the game's own value
+    CHECK(s.pcsx.scanlines == 1);
+    CHECK(s.pcsx.scanlineLevel == 70); // a key it lacks keeps AutoBleem's, as the emulators load it
+
+    lib.service->setClock(s, 10);
+    lib.service->setHighres(s, true);
+    CHECK(s.pcsx.clock == 0x50);
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "psx_clock = 39"));
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "gpu_neon.enhancement_enable = 0"));
+    CHECK_FALSE(contains(lib.readGameIni(), "Highres=1"));
+}
+
+TEST_CASE("unlocking deletes the game's own config, and AutoBleem's pcsx.cfg speaks again") {
+    Editing lib;
+    lib.writeAllUsbCfgs();
+    lib.tmp.writeFile("Games/Driver 2/sstates/pcsx.custom.cfg", "psx_clock = 50\n");
+    GameSettings s = lib.service->open(lib.usbGame());
+    REQUIRE(s.custom);
+
+    CHECK(lib.service->unlock(s));
+
+    CHECK_FALSE(s.custom);
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/Driver 2/sstates/pcsx.custom.cfg")));
+    CHECK(s.pcsx.clock == 57);
+    lib.service->setClock(s, 10); // and the rows write again
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "psx_clock = a"));
+}
+
+TEST_CASE("an older build's autobleem.cfg becomes the game's own config, with the BIOS by region again") {
+    Editing lib;
+    lib.writeAllUsbCfgs();
+    lib.tmp.writeFile("Games/Driver 2/sstates/autobleem.cfg", "Bios = romw.bin\npsx_clock = 50\n");
+
+    GameSettings s = lib.service->open(lib.usbGame());
+
+    CHECK(s.custom);
+    CHECK(s.pcsx.clock == 0x50);
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/Driver 2/sstates/autobleem.cfg")));
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/sstates/pcsx.custom.cfg"), "Bios = SET_BY_PCSX"));
+}
+
+TEST_CASE("the per-disc cfg/ files an older build wrote become the game's own config, and go") {
+    Editing lib;
+    lib.writeAllUsbCfgs();
+    lib.tmp.writeFile("Games/Driver 2/sstates/cfg/DRIVER2-SLUS01161.cfg", "psx_clock = 50\n");
+
+    GameSettings s = lib.service->open(lib.usbGame());
+
+    CHECK(s.custom);
+    CHECK(s.pcsx.clock == 0x50);
+    CHECK(ableem::DirEntry::diru_FilesOnly(lib.tmp.at("Games/Driver 2/sstates/cfg")).empty());
+}
+
+TEST_CASE("an older build's leftovers just go when the game already has its own config") {
+    Editing lib;
+    lib.writeAllUsbCfgs();
+    lib.tmp.writeFile("Games/Driver 2/sstates/pcsx.custom.cfg", "psx_clock = 50\n");
+    lib.tmp.writeFile("Games/Driver 2/sstates/autobleem.cfg", "psx_clock = 20\n");
+    lib.tmp.writeFile("Games/Driver 2/sstates/cfg/DRIVER2-SLUS01161.cfg", "psx_clock = 30\n");
+
+    GameSettings s = lib.service->open(lib.usbGame());
+
+    CHECK(s.pcsx.clock == 0x50);
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/Driver 2/sstates/autobleem.cfg")));
+    CHECK(ableem::DirEntry::diru_FilesOnly(lib.tmp.at("Games/Driver 2/sstates/cfg")).empty());
 }

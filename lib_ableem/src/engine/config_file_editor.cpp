@@ -144,29 +144,12 @@ string ConfigFileEditor::getValue(string gamePath, string property) {
 }
 
 //*******************************
-// ConfigFileEditor::replacePropertyInAllCfgsInDir
-// example pathToCfgDir = "/media/Games/!SaveStates/12/cfg"
-// example pathToCfgDir = "/media/Games/!SaveStates/Driver 2/cfg"
-//*******************************
-void ConfigFileEditor::replacePropertyInAllCfgsInDir(string pathToCfgDir, string property, string newline) {
-    PLOG_INFO << "cfg replaceInAllCfg, '" << pathToCfgDir << "', '" << property << "'";
-    for (const DirEntry &cfgEntry : DirEntry::diru_FilesOnly(pathToCfgDir)) {
-        if (DirEntry::matchExtension(cfgEntry.name, ".cfg")) {
-            string fullCfgFilePath = pathToCfgDir + sep + cfgEntry.name;
-            replaceProperty(fullCfgFilePath, property, newline);
-        }
-    }
-}
-
-//*******************************
 // ConfigFileEditor::replaceInternal
 // example gamePathInSaveStates = "/media/Games/!SaveStates/12"
 //*******************************
 void ConfigFileEditor::replaceInternal(string gamePathInSaveStates, string property, string newline) {
     string realCfgPath = gamePathInSaveStates + sep + PCSX_CFG;
     replaceProperty(realCfgPath, property, newline);
-
-    replacePropertyInAllCfgsInDir(gamePathInSaveStates + sep + "cfg", property, newline);
 }
 
 //*******************************
@@ -180,9 +163,6 @@ void ConfigFileEditor::replaceUsb(string entry, string gamePath, string property
 
     realCfgPath = Environment::getPathToSaveStatesDir() + sep + entry + sep + PCSX_CFG;
     replaceProperty(realCfgPath, property, newline); // replace in the !SaveStates/game/pcsx.cfg
-
-    // replace in the !SaveStates/game/cfg/*.cfg
-    replacePropertyInAllCfgsInDir(Environment::getPathToSaveStatesDir() + sep + entry + sep + "cfg", property, newline);
 }
 
 //*******************************

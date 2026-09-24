@@ -5,6 +5,7 @@
 #include "environment.h"
 #include "../main.h"
 #include "system.h"
+#include "pcsx_config.h"
 
 #include <ableem/engine/config_file_editor.h>
 
@@ -162,8 +163,9 @@ string LaunchService::pcsxAbFilter(int mode) {
 }
 
 int LaunchService::filterModeFor(const PsGame &game) {
-    ConfigFileEditor processor;
-    int mode = atoi(processor.getValue(game.internal ? game.ssFolder : game.folder, "plat_target.hwfilter").c_str());
+    // the game's own config's filter when it has one: pcsx-abnxt would keep that one over -filter anyway,
+    // the classic pcsx-ab only knows -filter
+    int mode = atoi(PcsxConfig::value(game, "plat_target.hwfilter").c_str());
     return mode < 0 || mode > 2 ? 0 : mode;
 }
 
@@ -281,11 +283,16 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
     case Path::Pcsx:
         memcards_.swapInForLaunch(*game);
         resumePoints_.prepareForLaunch(*game, resumePoint);
+        PcsxConfig::migrateLegacy(*game); // what an older build left becomes the game's own config
         launchPcsx(*game, resumePoint);
+        PcsxConfig::migrateLegacy(*game); // ...and what an older emulator left just now
         memcards_.swapOutAfterLaunch(*game);
         break;
 
     case Path::RetroArch:
+        if (!game->foreign) {
+            PcsxConfig::migrateLegacy(*game); // the RetroArch set-up reads the game's PCSX values
+        }
         raMemcardIn(*game);
         launchRetroArch(*game);
         raMemcardOut(*game);
@@ -427,30 +434,7 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint) {
             System::removeDirectoryLink(pcsxRunDir() + sep + l);
         }
     }
-    cleanupPcsxConfig(game);
-
     usleep(3 * 1000);
-}
-
-//*******************************
-// LaunchService::cleanupPcsxConfig
-//*******************************
-void LaunchService::cleanupPcsxConfig(PsGame &game) {
-    // copy back config to its place
-    ConfigFileEditor processor;
-    string newConfig = game.ssFolder + sep + "autobleem.cfg";
-    if (DirEntry::exists(newConfig)) {
-        // fix bios
-        processor.replaceInFile(newConfig, "Bios", "Bios = SET_BY_PCSX");
-
-        if (!game.internal) {
-            DirEntry::copy(newConfig, game.ssFolder + sep + PCSX_CFG);
-            DirEntry::copy(newConfig, game.folder + sep + PCSX_CFG);
-        } else {
-            DirEntry::copy(newConfig, game.ssFolder + sep + PCSX_CFG);
-        }
-        DirEntry::removeFile(newConfig);
-    }
 }
 
 //*******************************
@@ -485,13 +469,7 @@ void LaunchService::launchRetroArch(PsGame &game) {
     // figure out which plugin is selected
     string gpu;
     if (!game.foreign) {
-        ConfigFileEditor processor;
-        string path = game.folder;
-        if (game.internal) {
-            path = game.ssFolder;
-        }
-
-        gpu = processor.getValue(path, "gpu3");
+        gpu = PcsxConfig::value(game, "gpu3"); // the game's own config's, when it has one
         gpu = Strings::trim(gpu);
         if (gpu.empty()) {
             gpu = PcsxNeonGpu;
@@ -598,22 +576,20 @@ void LaunchService::transferRaConfig(PsGame &game) {
     const string raConfig = raConfigFile();
 
     if (!game.foreign) {
-        string path = game.folder;
-        if (game.internal) {
-            path = game.ssFolder;
-        }
+        // the game's values as the emulator would see them: its own config over pcsx.cfg
+        auto value = [&game](const char *key) { return PcsxConfig::value(game, key); };
         ConfigFileEditor processor;
 
-        int highres = atoi(processor.getValue(path, "gpu_neon.enhancement_enable").c_str());
-        int speedhack = atoi(processor.getValue(path, "gpu_neon.enhancement_no_main").c_str());
-        int clock = strtol(processor.getValue(path, "psx_clock").c_str(), nullptr, 16);
-        int dither = atoi(processor.getValue(path, "gpu_peops.iUseDither").c_str());
-        int interpolation = strtol(processor.getValue(path, "spu_config.iUseInterpolation").c_str(), nullptr, 16);
+        int highres = atoi(value("gpu_neon.enhancement_enable").c_str());
+        int speedhack = atoi(value("gpu_neon.enhancement_no_main").c_str());
+        int clock = strtol(value("psx_clock").c_str(), nullptr, 16);
+        int dither = atoi(value("gpu_peops.iUseDither").c_str());
+        int interpolation = strtol(value("spu_config.iUseInterpolation").c_str(), nullptr, 16);
 
-        int scanlines = atoi(processor.getValue(path, "scanlines").c_str());
-        int scanline_level = strtol(processor.getValue(path, "scanline_level").c_str(), nullptr, 16);
-        int frameskip = atoi(processor.getValue(path, "frameskip3").c_str());
-        string slowBoot = processor.getValue(path, "SlowBoot");
+        int scanlines = atoi(value("scanlines").c_str());
+        int scanline_level = strtol(value("scanline_level").c_str(), nullptr, 16);
+        int frameskip = atoi(value("frameskip3").c_str());
+        string slowBoot = value("SlowBoot");
         bool bootLogo = slowBoot.empty() || atoi(slowBoot.c_str()) != 0;
 
         // the core options

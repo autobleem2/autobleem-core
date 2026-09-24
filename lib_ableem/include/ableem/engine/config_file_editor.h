@@ -12,24 +12,23 @@ namespace ableem {
 //******************
 class ConfigFileEditor {
     void replaceProperty(std::string fullCfgFilePath, std::string property, std::string newline);
-    std::string getValueFromCfgFile(std::string fullCfgFilePath, std::string property);
-
-    // example pathToCfgDir = "/media/Games/!SaveStates/12/cfg"
-    // example pathToCfgDir = "/media/Games/!SaveStates/Driver 2/cfg"
-    void replacePropertyInAllCfgsInDir(std::string pathToCfgDir, std::string property, std::string newline);
 
 public:
     // example gamePath = "/media/Games/!SaveStates/7"
     // example gamePath = "/media/Games/!SaveStates/Driver 2" or
     // example gamePath = "/media/Games/Racing/Driver 2"
     std::string getValue(std::string gamePath, std::string property); // from gamePath/pcsx.cfg
+    // from one cfg file; "" when it is missing or has no such line
+    std::string getValueFromCfgFile(std::string fullCfgFilePath, std::string property);
 
     // example gamePathInSaveStates = "/media/Games/!SaveStates/12"
     void replaceInternal(std::string gamePathInSaveStates, std::string property, std::string newline);
 
     // example entry = "Driver 2"
     // example gamePath = "/media/Games/Racing"
-    // replaces in the game dir pcsx.cfg, the !SaveStates/<entry>/pcsx.cfg and every !SaveStates/<entry>/cfg/*.cfg
+    // replaces in the game dir pcsx.cfg and the !SaveStates/<entry>/pcsx.cfg. Not in the per-disc
+    // !SaveStates/<entry>/cfg/*.cfg any more (2026-09-24): the emulators no longer read those, a game's own
+    // config is its pcsx.custom.cfg, which only the emulators write (the launcher's PcsxConfig)
     void replaceUsb(std::string entry, std::string gamePath, std::string property, std::string newline);
 
     void replace(std::string entry, std::string gamePath, std::string property, std::string newline, bool internal);

@@ -217,9 +217,10 @@ TEST_CASE("resuming a slot hands PCSX the disc that slot was playing, and says s
     CHECK(contains(lib.tmp.readFile("Games/Tekken 3/sstates/lastcdimg.txt"), lib.tmp.at("Games/Tekken 3/Disc 2.cue")));
 }
 
-TEST_CASE("the config PCSX writes on exit is copied back where it is read from, with the Bios line reset") {
+TEST_CASE("an older emulator's autobleem.cfg becomes the game's own config, and pcsx.cfg is left alone") {
     Launching lib;
     PsGamePtr game = lib.usbGame();
+    lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "Bios = SET_BY_PCSX\nGpu3 = gpu_peops.so\n");
     lib.runner.whileRunning = [&] {
         lib.tmp.writeFile("Games/Tekken 3/sstates/autobleem.cfg", "Bios = /tmp/scph1001.bin\nGpu3 = builtin_gpu\n");
     };
@@ -227,14 +228,13 @@ TEST_CASE("the config PCSX writes on exit is copied back where it is read from, 
     lib.service->launch(game, EmuMode::Pcsx, -1);
 
     CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/Tekken 3/sstates/autobleem.cfg")));
-    for (const char *copy : {"Games/Tekken 3/sstates/pcsx.cfg", "Games/Tekken 3/pcsx.cfg"}) {
-        string cfg = lib.tmp.readFile(copy);
-        CHECK(contains(cfg, "Bios = SET_BY_PCSX"));
-        CHECK(contains(cfg, "Gpu3 = builtin_gpu"));
-    }
+    string custom = lib.tmp.readFile("Games/Tekken 3/sstates/pcsx.custom.cfg");
+    CHECK(contains(custom, "Bios = SET_BY_PCSX")); // what the old copy-back did to it
+    CHECK(contains(custom, "Gpu3 = builtin_gpu"));
+    CHECK(contains(lib.tmp.readFile("Games/Tekken 3/pcsx.cfg"), "Gpu3 = gpu_peops.so")); // AutoBleem's, untouched
 }
 
-TEST_CASE("an internal game's config only goes back under !SaveStates - there is no game folder to write") {
+TEST_CASE("an internal game's own config is under its !SaveStates folder too") {
     Launching lib;
     PsGamePtr game = lib.internalGame();
     lib.tmp.makeSubDir("Games/!SaveStates/10");
@@ -245,8 +245,25 @@ TEST_CASE("an internal game's config only goes back under !SaveStates - there is
     lib.service->launch(game, EmuMode::Pcsx, -1);
 
     CHECK(lib.runner.only().args[0] == lib.tmp.at("Games/!SaveStates/10"));
-    CHECK(contains(lib.tmp.readFile("Games/!SaveStates/10/pcsx.cfg"), "Bios = SET_BY_PCSX"));
+    CHECK(contains(lib.tmp.readFile("Games/!SaveStates/10/pcsx.custom.cfg"), "Bios = SET_BY_PCSX"));
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/!SaveStates/10/autobleem.cfg")));
     CHECK(lib.internalGame()->last_played > 0);
+}
+
+TEST_CASE("the filter passed on is the game's own config's while it has one") {
+    Launching lib;
+    PsGamePtr game = lib.usbGame();
+    lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "plat_target.hwfilter = 1\n");
+    lib.tmp.writeFile("Games/Tekken 3/sstates/pcsx.custom.cfg", "plat_target.hwfilter = 2\n");
+
+    lib.service->launch(game, EmuMode::Pcsx, -1);
+    CHECK(lib.runner.only().args[7] == "2");
+
+    // a custom config without the key keeps AutoBleem's
+    lib.tmp.writeFile("Games/Tekken 3/sstates/pcsx.custom.cfg", "scanlines = 1\n");
+    lib.runner.calls.clear();
+    lib.service->launch(game, EmuMode::Pcsx, -1);
+    CHECK(lib.runner.only().args[7] == "1");
 }
 
 TEST_CASE("the game's memory-card set is in play while PCSX runs and is written back afterwards") {

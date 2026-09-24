@@ -105,8 +105,8 @@ private:
 
     // --- PCSX ---
     void launchPcsx(PsGame &game, int resumePoint);
-    // PCSX writes its edited config next to the save states as autobleem.cfg; copy it back where it is read from
-    void cleanupPcsxConfig(PsGame &game);
+    // (a config saved in the emulator is the game's own pcsx.custom.cfg, which the emulators write and
+    // read themselves - PcsxConfig; the autobleem.cfg this used to copy back after the run is gone)
 
     // --- RetroArch ---
     void launchRetroArch(PsGame &game);
