@@ -99,6 +99,14 @@ Gui::Gui()
 }
 
 //*******************************
+// Gui::getInstance
+//*******************************
+shared_ptr<Gui> Gui::getInstance() {
+    static shared_ptr<Gui> s{new Gui};
+    return s;
+}
+
+//*******************************
 // Gui::splash
 //*******************************
 void Gui::splash(const string &message) {

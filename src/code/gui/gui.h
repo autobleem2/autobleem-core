@@ -56,10 +56,9 @@ public:
 
     Gui &operator=(Gui const &) = delete;
 
-    static std::shared_ptr<Gui> getInstance() {
-        static std::shared_ptr<Gui> s{new Gui};
-        return s;
-    }
+    // out of line on purpose: a function-local static in an inline function is one per binary on Windows, so
+    // an extension (a DLL) calling an inline getInstance() would have made a second Gui - a second window
+    static std::shared_ptr<Gui> getInstance();
 
     // the theme's textures and fonts
     ThemeAssets &assets() { return assets_; }

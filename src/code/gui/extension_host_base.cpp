@@ -2,6 +2,7 @@
 // ExtensionHostBase - see the header.
 //
 #include "extension_host_base.h"
+#include "app_base.h"
 #include "core/main.h"
 #include "core/services/system.h"
 
@@ -27,6 +28,10 @@ ExtensionHostBase::ExtensionHostBase(AppBase &app, const ExtensionInfo &extensio
     : app_(app), name_(extension.name), folder_(extension.folder), stateDir_(stateRoot + sep + extension.name),
       appender_(extension.name) {
     DirEntry::createDirs(stateDir_);
+    // its own translations over the launcher's: <folder>/lang/<the current language>.txt
+    const string lang = folder_ + sep + "lang";
+    if (DirEntry::isDirectory(lang))
+        app.lang().loadMore(lang);
 }
 
 //*******************************

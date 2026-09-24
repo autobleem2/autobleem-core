@@ -26,6 +26,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <csignal>
 #include <sys/statvfs.h>
 #include <sys/wait.h>
 #include <sched.h>
@@ -316,6 +317,103 @@ int System::runShellCommand(const string &commandLine) {
     int status = system(commandLine.c_str());
     if (status == -1) {
         return -1;
+    }
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+#endif
+}
+
+//*******************************
+// System::runShellCommand (cancellable)
+//*******************************
+// The same command line, run so it can be stopped: `cancelled` is asked every 100 ms, and when it says yes
+// the command and everything it started goes - a process group on Linux (SIGTERM, then SIGKILL a second
+// later), a job object on Windows (cmd.exe and the curl it runs alike). An extension's download worker needs
+// this: a power-off or a game launch must not wait for a download of hundreds of MB to finish.
+int System::runShellCommand(const string &commandLine, const function<bool()> &cancelled) {
+    PLOG_INFO << "Shell: " << commandLine;
+#ifdef _WIN32
+    const char *comspec = getenv("ComSpec");
+    wstring cmd = L"\"" + wide(comspec ? comspec : "cmd.exe") + L"\" /c \"" + wide(commandLine) + L"\"";
+    vector<wchar_t> buffer(cmd.begin(), cmd.end());
+    buffer.push_back(L'\0');
+    HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    if (job != nullptr) {
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+        memset(&limits, 0, sizeof(limits));
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
+    }
+    STARTUPINFOW si;
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi;
+    memset(&pi, 0, sizeof(pi));
+    if (!CreateProcessW(nullptr, buffer.data(), nullptr, nullptr, FALSE,
+                        CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED, nullptr, nullptr, &si, &pi)) {
+        PLOG_WARNING << "could not start cmd /c " << commandLine << ": error " << GetLastError();
+        if (job != nullptr)
+            CloseHandle(job);
+        return -1;
+    }
+    if (job != nullptr)
+        AssignProcessToJobObject(job, pi.hProcess);
+    ResumeThread(pi.hThread);
+    CloseHandle(pi.hThread);
+    int result = 0;
+    while (WaitForSingleObject(pi.hProcess, 100) == WAIT_TIMEOUT) {
+        if (cancelled && cancelled()) {
+            PLOG_INFO << "Shell command stopped: " << commandLine;
+            if (job != nullptr)
+                TerminateJobObject(job, 1);
+            else
+                TerminateProcess(pi.hProcess, 1);
+            WaitForSingleObject(pi.hProcess, 5000);
+            result = -2;
+            break;
+        }
+    }
+    if (result == 0) {
+        DWORD code = 0;
+        GetExitCodeProcess(pi.hProcess, &code);
+        result = static_cast<int>(code);
+    }
+    CloseHandle(pi.hProcess);
+    if (job != nullptr)
+        CloseHandle(job);
+    return result;
+#else
+    pid_t pid = fork();
+    if (pid == -1) {
+        PLOG_WARNING << "fork() failed: " << strerror(errno);
+        return -1;
+    }
+    if (pid == 0) {
+        setpgid(0, 0); // a group of its own: stopping it stops what the shell started too
+        execl("/bin/sh", "sh", "-c", commandLine.c_str(), static_cast<char *>(nullptr));
+        _exit(127);
+    }
+    setpgid(pid, pid); // the parent too, so the group exists before either side can race past it
+    int status = 0;
+    for (;;) {
+        pid_t done = waitpid(pid, &status, WNOHANG);
+        if (done == pid)
+            break;
+        if (done == -1) {
+            PLOG_WARNING << "waitpid() failed: " << strerror(errno);
+            return -1;
+        }
+        if (cancelled && cancelled()) {
+            PLOG_INFO << "Shell command stopped: " << commandLine;
+            kill(-pid, SIGTERM);
+            for (int i = 0; i < 10 && waitpid(pid, &status, WNOHANG) == 0; i++)
+                usleep(100 * 1000);
+            if (waitpid(pid, &status, WNOHANG) == 0) {
+                kill(-pid, SIGKILL);
+                waitpid(pid, &status, 0);
+            }
+            return -2;
+        }
+        usleep(100 * 1000);
     }
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 #endif

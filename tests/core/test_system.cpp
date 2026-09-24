@@ -8,6 +8,7 @@
 
 #include "core/services/system.h"
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 
@@ -60,4 +61,23 @@ TEST_CASE("runShellCommand runs a line through the shell and returns its exit st
     CHECK(System::runShellCommand(touch) == 0);
     CHECK(ableem::DirEntry::exists(tmp.at("made.txt")));
     CHECK(System::runShellCommand("exit 3") == 3);
+}
+
+TEST_CASE("runShellCommand with a cancel: runs to the end when not asked, stops the command when asked") {
+    TempDir tmp("shell");
+#ifdef _WIN32
+    const string touch = "echo hi > \"" + tmp.at("made.txt") + "\"";
+    const string slow = "ping -n 30 127.0.0.1 > nul";
+#else
+    const string touch = "echo hi > '" + tmp.at("made.txt") + "'";
+    const string slow = "sleep 30";
+#endif
+    CHECK(System::runShellCommand(touch, [] { return false; }) == 0);
+    CHECK(ableem::DirEntry::exists(tmp.at("made.txt")));
+    CHECK(System::runShellCommand("exit 4", [] { return false; }) == 4);
+
+    auto start = std::chrono::steady_clock::now();
+    int asked = 0;
+    CHECK(System::runShellCommand(slow, [&asked] { return ++asked > 3; }) == -2);
+    CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(10));
 }
