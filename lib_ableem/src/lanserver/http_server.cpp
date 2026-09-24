@@ -190,7 +190,7 @@ bool HttpServer::listen(int port, string &error) {
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_ANY);
     address.sin_port = htons(static_cast<uint16_t>(port));
-    if (bind(s, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0 || ::listen(s, 16) != 0) {
+    if (::bind(s, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0 || ::listen(s, 16) != 0) {
         error = "port " + to_string(port) + " is in use or not allowed";
         AB_CLOSE_SOCKET(s);
         return false;
@@ -210,7 +210,7 @@ void HttpServer::serve(const atomic<bool> &stop) {
         sockaddr_in from{};
         SocketLength length = sizeof(from);
         const int client =
-            static_cast<int>(accept(static_cast<int>(listener_), reinterpret_cast<sockaddr *>(&from), &length));
+            static_cast<int>(::accept(static_cast<int>(listener_), reinterpret_cast<sockaddr *>(&from), &length));
         if (client < 0)
             continue;
         char peer[64] = {0};
