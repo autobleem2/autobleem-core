@@ -117,7 +117,7 @@ LanLibrary::LanLibrary(Config config) : config_(std::move(config)), snapshot_(ma
     config_.gamesDir = DirEntry::removeSeparatorFromEndOfPath(config_.gamesDir);
     for (Root &r : config_.roots)
         r.dir = DirEntry::removeSeparatorFromEndOfPath(r.dir);
-    metadata_ =make_unique<ableem::MetadataLookup>(config_.coversDir, config_.rdbFile);
+    metadata_ = make_unique<ableem::MetadataLookup>(config_.coversDir, config_.rdbFile);
     loadChecksums();
 }
 

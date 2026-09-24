@@ -25,7 +25,6 @@ namespace ableem {
 
 class MetadataLookup;
 
-
 //******************
 // LanFile / LanGame / LanProblem / LanSnapshot
 //******************

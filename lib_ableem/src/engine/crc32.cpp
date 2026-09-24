@@ -32,6 +32,13 @@ bool Crc32::ofFile(const string &path, uint32_t &crc, uint64_t maxBytes) {
 }
 
 //*******************************
+// Crc32::update
+//*******************************
+uint32_t Crc32::update(uint32_t crc, const void *data, size_t size) {
+    return static_cast<uint32_t>(mz_crc32(crc, static_cast<const unsigned char *>(data), size));
+}
+
+//*******************************
 // Crc32::ofBytes
 //*******************************
 uint32_t Crc32::ofBytes(const string &bytes) {
