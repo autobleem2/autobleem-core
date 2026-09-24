@@ -7,6 +7,7 @@
 #include <tuple>
 #include <vector>
 
+#include "byte_progress.h"
 #include "game_types.h"
 
 namespace ableem {
@@ -62,6 +63,8 @@ public:
     static std::vector<std::string> listNames(const std::string &path);
 
     static bool copy(const std::string &source, const std::string &dest);
+    // the same, reporting the bytes copied so far against the source's size after every chunk
+    static bool copy(const std::string &source, const std::string &dest, const ByteProgress &progress);
     // logs when an output file could not be opened. returns false in that case so the caller can bail out.
     static bool checkWritable(const std::ofstream &os, const std::string &path);
     static bool exists(const std::string &name); // file or dir
@@ -69,6 +72,9 @@ public:
     // PSC has no battery-backed clock, so a file's stored modification time cannot be trusted to stay put
     // across a reboot (see Clock's comment) - GamesFingerprint uses this instead to notice a changed game.
     static long long fileSize(const std::string &path);
+    // the size found by opening `path` and seeking to its end - what a block device answers with (its stat
+    // size is 0), a regular file too; -1 when it cannot be opened. 64-bit on the 32-bit console.
+    static long long sizeBySeeking(const std::string &path);
     static bool filesAreIdentical(const std::string &a,
                                   const std::string &b); // same size and bytes; false if either is missing
     static bool createDir(const std::string &name);
