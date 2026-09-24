@@ -231,11 +231,10 @@ void GuiAbout::loop() {
         if (surpriseMode) {
             game.update(ticks, gui->input().dpadLeft(), gui->input().dpadRight(), crossHeld);
 
-            if (game.currentHighScore() > savedHighScore) {
+            // remembered here, written once when the screen closes: config.ini on every point scored was
+            // a write per frame at the end of a good game
+            if (game.currentHighScore() > savedHighScore)
                 savedHighScore = game.currentHighScore();
-                app.config().inifile.values["surprisehighscore"] = to_string(savedHighScore);
-                app.config().save();
-            }
         }
 
         render();
@@ -306,5 +305,9 @@ void GuiAbout::loop() {
                 break;
             }
         }
+    }
+    if (to_string(savedHighScore) != app.config().inifile.values["surprisehighscore"]) {
+        app.config().inifile.values["surprisehighscore"] = to_string(savedHighScore);
+        app.config().save();
     }
 }

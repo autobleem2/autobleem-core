@@ -129,8 +129,8 @@ LaunchPlan LaunchService::planPcsx(const PsGame &game, const string &discImage, 
         plan.cwd = pcsxRunDir();
     }
     const string filterArg = nxt ? filter : pcsxAbFilter(atoi(filter.c_str()));
-    for (const char *a :
-         {"-filter", filterArg.c_str(), "-ratio", aspect.c_str(), "-lang", lang.c_str(), "-region", "4", "-enter", "1"}) {
+    for (const char *a : {"-filter", filterArg.c_str(), "-ratio", aspect.c_str(), "-lang", lang.c_str(), "-region", "4",
+                          "-enter", "1"}) {
         plan.args.push_back(a);
     }
     if (plan.cwd == emuDir) {
@@ -148,6 +148,39 @@ LaunchPlan LaunchService::planPcsx(const PsGame &game, const string &discImage, 
     plan.args.push_back("-cdfile");
     plan.args.push_back(discImage);
     return plan;
+}
+
+//*******************************
+// LaunchService::pcsxDirForLaunch / pcsxFeatures / pcsxExitDir
+//*******************************
+string LaunchService::pcsxDirForLaunch() const {
+    if (Env::directLaunch()) {
+        const string exe = pcsxExecutable();
+        return exe.empty() ? "" : exe.substr(0, exe.find_last_of('/'));
+    }
+    // what launch.sh picks: config.ini's emulator, Autobleem/bin/emu when emunxt has no binary
+    const string bin = Env::getPathToAutobleemDir() + sep + "bin" + sep;
+    const string nxt = bin + "emunxt";
+    if (config_.inifile.values.at("emulator") == "pcsx-abnxt" && DirEntry::exists(nxt + sep + "pcsx-ab"))
+        return nxt;
+    return bin + "emu";
+}
+
+vector<string> LaunchService::pcsxFeatures() const {
+    vector<string> features;
+    const string dir = pcsxDirForLaunch();
+    ifstream in(dir + sep + "abfeatures");
+    string line;
+    while (getline(in, line)) {
+        line = Strings::trim(line);
+        if (!line.empty() && line[0] != '#')
+            features.push_back(line);
+    }
+    return features;
+}
+
+string LaunchService::pcsxExitDir() {
+    return Env::getPathToRuntimeDir() + sep + "exit";
 }
 
 //*******************************
@@ -186,7 +219,7 @@ LaunchPlan LaunchService::planRetroArch(const string &file, const string &core) 
     plan.exe = retroArchExecutable();
     plan.cwd = Env::getPathToRetroarchDir();
     const string corePath = (core == RaNeonCore || core == RaPeopsCore) ? Env::getPathToRetroarchCoreFile() : core;
-    plan.args = {"--config", raConfigFile(), "-L", corePath, "--fullscreen", file};
+    plan.args = {"--config", raConfigFile(), "--appendconfig", raAppendFile(), "-L", corePath, "--fullscreen", file};
     return plan;
 }
 
@@ -197,7 +230,7 @@ LaunchPlan LaunchService::planRetroArchMenu() {
     LaunchPlan plan;
     plan.exe = retroArchExecutable();
     plan.cwd = Env::getPathToRetroarchDir();
-    plan.args = {"--config", raConfigFile(), "--fullscreen"};
+    plan.args = {"--config", raConfigFile(), "--appendconfig", raAppendFile(), "--fullscreen"};
     return plan;
 }
 
@@ -207,7 +240,10 @@ void LaunchService::launchRetroArchMenu() {
         PLOG_WARNING << "no RetroArch binary to run";
         return;
     }
+    restoreLegacyRaBackup();
+    prepareRaAppend(nullptr);
     runner_.run(plan);
+    restoreAppended();
 }
 
 //*******************************
@@ -285,11 +321,19 @@ string LaunchService::raCoreOptionsFile() {
     return Env::getPathToRetroarchDir() + sep + "config" + sep + "retroarch-core-options.cfg";
 }
 
+string LaunchService::raAppendFile() {
+    return Env::getPathToRuntimeDir() + sep + "ra-append.cfg";
+}
+
+string LaunchService::raRuntimeCoreOptionsFile() {
+    return Env::getPathToRuntimeDir() + sep + "ra-core-options.cfg";
+}
+
 //*******************************
 // LaunchService::selectionScriptFile
 //*******************************
 string LaunchService::selectionScriptFile() {
-    return Env::getPathToRCDir() + sep + "autobleem_cfg.sh";
+    return Env::getPathToRuntimeDir() + sep + "autobleem_cfg.sh";
 }
 
 //*******************************
@@ -299,18 +343,16 @@ void LaunchService::writeSelectionScript() {
     if (Env::directLaunch()) {
         return; // no rc script runs after the launcher on a desktop - and no rc directory to write into
     }
-    ofstream os;
-    string path = selectionScriptFile();
-    os.open(path);
-    if (!DirEntry::checkWritable(os, path))
-        return; // the rc scripts then keep the previous selection
-    os << "#!/bin/sh" << endl << endl;
-    os << "AB_SELECTION=" << session_.menuOption << endl;
-    os << "AB_THEME=" << config_.inifile.values["theme"] << endl;
-    os << "AB_PCSX=" << config_.inifile.values["pcsx"] << endl;
-
-    os.flush();
-    os.close();
+    // a hand-over to the script that runs after us, so RAM, not the stick (docs/quiet-stick-plan.md)
+    DirEntry::createDirs(Env::getPathToRuntimeDir());
+    string text = "#!/bin/sh\n\n";
+    text += "AB_SELECTION=" + to_string(session_.menuOption) + "\n";
+    text += "AB_THEME=" + config_.inifile.values["theme"] + "\n";
+    text += "AB_PCSX=" + config_.inifile.values["pcsx"] + "\n";
+    DirEntry::writeFileIfChanged(selectionScriptFile(), text);
+    // RetroArch's own menu, started by the scripts once we have left: it gets config_save_on_exit too
+    if (session_.menuOption == MENU_OPTION_RETRO)
+        prepareRaAppend(nullptr);
 }
 
 //*******************************
@@ -327,17 +369,33 @@ LaunchService::Path LaunchService::pathFor(const PsGame &game, EmuMode mode) {
 // LaunchService::launch
 //*******************************
 void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
-    writeSelectionScript();
-
     switch (pathFor(*game, mode)) {
-    case Path::Pcsx:
-        memcards_.swapInForLaunch(*game);
-        resumePoints_.prepareForLaunch(*game, resumePoint);
+    case Path::Pcsx: {
+        // what this emulator can take off the stick's hands (docs/quiet-stick-plan.md): the set played
+        // where it is, the resume point of the way out in RAM, a kept slot read where it is
+        const vector<string> features = pcsxFeatures();
+        auto has = [&features](const char *f) {
+            return std::find(features.begin(), features.end(), f) != features.end();
+        };
+        LaunchPlan::Env env;
+        string cardSet = has("memcarddir") ? memcards_.setDirForLaunch(*game) : "";
+        if (cardSet.empty())
+            memcards_.swapInForLaunch(*game); // copies the set in, and out again below
+        else
+            env.emplace_back("AB_MEMCARD_DIR", cardSet);
+        resumePoints_.setExitDir(has("exitdir") ? pcsxExitDir() : "");
+        if (has("exitdir"))
+            env.emplace_back("AB_EXIT_DIR", pcsxExitDir());
+        const string loadState = resumePoints_.prepareForLaunch(*game, resumePoint, has("loadstate"));
+        if (!loadState.empty())
+            env.emplace_back("AB_LOAD_STATE", loadState);
         PcsxConfig::migrateLegacy(*game); // what an older build left becomes the game's own config
-        launchPcsx(*game, resumePoint);
+        launchPcsx(*game, resumePoint, env);
         PcsxConfig::migrateLegacy(*game); // ...and what an older emulator left just now
-        memcards_.swapOutAfterLaunch(*game);
+        if (cardSet.empty())
+            memcards_.swapOutAfterLaunch(*game);
         break;
+    }
 
     case Path::RetroArch:
         if (!game->foreign) {
@@ -379,29 +437,20 @@ string LaunchService::raBaseNameFor(const PsGame &game) {
 // LaunchService::copyCfgAsLf
 //*******************************
 // Copy a cfg file forcing LF line endings: the emulator reads its config in text mode and a CRLF file (or
-// a stray carriage return on a value) breaks it. Falls back to a plain copy if the file cannot be read.
+// a stray carriage return on a value) breaks it. Every launch comes here, so the copy is written only when
+// it differs from what dst already holds.
 void LaunchService::copyCfgAsLf(const string &src, const string &dst) {
-    ifstream in(src, ios::in | ios::binary);
-    if (!in.is_open()) {
-        DirEntry::copy(src, dst);
-        return;
-    }
-    string content((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
-    in.close();
+    string content;
+    if (!DirEntry::readFile(src, content))
+        return; // nothing to copy - the emulator falls back to its own defaults, as it did before
     content.erase(std::remove(content.begin(), content.end(), '\r'), content.end());
-    ofstream out(dst, ios::out | ios::trunc | ios::binary);
-    if (!out.is_open()) {
-        DirEntry::copy(src, dst);
-        return;
-    }
-    out << content;
-    out.close();
+    DirEntry::writeFileIfChanged(dst, content);
 }
 
 //*******************************
 // LaunchService::launchPcsx
 //*******************************
-void LaunchService::launchPcsx(PsGame &game, int resumePoint) {
+void LaunchService::launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::Env &env) {
     PLOG_INFO << "calling LaunchService::launchPcsx()";
 
     library_.updateDatePlayed(game, time(nullptr));
@@ -421,11 +470,17 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint) {
     trim(game.ssFolder);
     game.ssFolder = DirEntry::removeSeparatorFromEndOfPath(game.ssFolder);
 
-    remove(lastCDpoint.c_str());
+    const bool exitDir = std::find_if(env.begin(), env.end(), [](const pair<string, string> &e) {
+                             return e.first == "AB_EXIT_DIR";
+                         }) != env.end();
+    if (!exitDir && DirEntry::exists(lastCDpoint))
+        remove(lastCDpoint.c_str()); // (an emulator with an exit dir writes its own there, not here)
 
     if (DirEntry::exists(lastCDpointX)) {
         // resuming: the state's own record of which disc was in the drive is what PCSX must be given
-        DirEntry::copy(lastCDpointX, lastCDpoint);
+        // (-cdfile below; the copy is for an emulator that reads it from its folder)
+        if (!exitDir)
+            DirEntry::copy(lastCDpointX, lastCDpoint);
         ifstream is(lastCDpointX.c_str());
         if (is.is_open()) {
             std::string line;
@@ -459,6 +514,7 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint) {
     }
 
     LaunchPlan plan = planPcsx(game, gameFile, langStr, resumePoint, aspect, filter);
+    plan.env.insert(plan.env.end(), env.begin(), env.end());
     // the old pcsx-ab started directly: its run directory as launch.sh lays it out - .pcsx the save-state
     // folder, bios the PS1 BIOS, plugins the emulator's - as directory links, cleared again after
     const bool runDir = plan.cwd == pcsxRunDir();
@@ -538,19 +594,11 @@ void LaunchService::launchRetroArch(PsGame &game) {
         RACore = game.core_path;
     }
 
-    // core config here - to be optional
-    if (config_.inifile.values["raconfig"] == "true") {
-        backupRaConfig();
-        transferRaConfig(game);
-    }
-
+    restoreLegacyRaBackup();
+    prepareRaAppend(&game);
     runner_.run(planRetroArch(gameFile, RACore));
     usleep(3 * 1000);
-
-    // core config here - to be optional
-    if (config_.inifile.values["raconfig"] == "true") {
-        restoreRaConfig();
-    }
+    restoreAppended();
 }
 
 //*******************************
@@ -597,38 +645,89 @@ void LaunchService::raMemcardOut(PsGame &game) {
 }
 
 //*******************************
-// LaunchService::backupRaConfig
+// LaunchService::restoreLegacyRaBackup
 //*******************************
-void LaunchService::backupRaConfig() {
-    DirEntry::copy(raCoreOptionsFile(), raCoreOptionsFile() + ".bak");
-    DirEntry::copy(raConfigFile(), raConfigFile() + ".bak");
-}
-
-//*******************************
-// LaunchService::restoreRaConfig
-//*******************************
-void LaunchService::restoreRaConfig() {
-    if (DirEntry::exists(raCoreOptionsFile() + ".bak")) {
-        DirEntry::copy(raCoreOptionsFile() + ".bak", raCoreOptionsFile());
-        DirEntry::removeFile(raCoreOptionsFile() + ".bak");
-    }
-    if (DirEntry::exists(raConfigFile() + ".bak")) {
-        DirEntry::copy(raConfigFile() + ".bak", raConfigFile());
-        DirEntry::removeFile(raConfigFile() + ".bak");
+void LaunchService::restoreLegacyRaBackup() {
+    for (const string &file : {raCoreOptionsFile(), raConfigFile()}) {
+        if (DirEntry::exists(file + ".bak")) {
+            PLOG_INFO << "putting back " << file << " from the .bak an older launcher left";
+            DirEntry::copy(file + ".bak", file);
+            DirEntry::removeFile(file + ".bak");
+        }
     }
 }
 
 //*******************************
-// LaunchService::transferRaConfig
+// LaunchService::prepareRaAppend / restoreAppended
 //*******************************
-void LaunchService::transferRaConfig(PsGame &game) {
-    const string coreOptions = raCoreOptionsFile();
-    const string raConfig = raConfigFile();
+void LaunchService::prepareRaAppend(PsGame *game) {
+    ConfigFileEditor::CfgLines raConfig, coreOptions;
+    auto set = [](ConfigFileEditor::CfgLines &lines, const string &key, const string &value) {
+        lines.emplace_back(key, key + " = \"" + value + "\"");
+    };
+    set(raConfig, "config_save_on_exit", config_.inifile.values["rapersist"] == "false" ? "false" : "true");
+    if (game != nullptr && config_.inifile.values["raconfig"] == "true")
+        raSettingsFor(*game, raConfig, coreOptions);
+
+    DirEntry::createDirs(Env::getPathToRuntimeDir());
+    if (!coreOptions.empty()) {
+        // RetroArch's own core options, the game's on top, in RAM for this run
+        string text;
+        DirEntry::readFile(raCoreOptionsFile(), text); // none yet: the game's alone
+        DirEntry::writeFileIfChanged(raRuntimeCoreOptionsFile(), text);
+        ConfigFileEditor().replaceProperties(raRuntimeCoreOptionsFile(), coreOptions);
+        set(raConfig, "core_options_path", raRuntimeCoreOptionsFile());
+    }
+
+    string append;
+    for (const auto &line : raConfig)
+        append += line.second + "\n";
+    DirEntry::writeFileIfChanged(raAppendFile(), append);
+
+    // what retroarch.cfg says of each of them now, for restoreAppended()
+    string before;
+    DirEntry::readFile(raConfigFile(), before);
+    raAppended_ = raConfig;
+    raOriginal_.clear();
+    for (const auto &line : raConfig) {
+        string value;
+        raOriginal_.emplace_back(line.first, ConfigFileEditor::valueIn(before, line.first, &value)
+                                                 ? line.first + " = \"" + value + "\""
+                                                 : string());
+    }
+}
+
+void LaunchService::restoreAppended() {
+    string after;
+    if (raAppended_.empty() || !DirEntry::readFile(raConfigFile(), after))
+        return;
+    ConfigFileEditor::CfgLines restore;
+    for (size_t i = 0; i < raAppended_.size(); i++) {
+        string ours, now;
+        ConfigFileEditor::valueIn(raAppended_[i].second, raAppended_[i].first, &ours);
+        // RetroArch saved our value into its file: the file's own value back (none: the line goes). A value
+        // the player set in RetroArch meanwhile is theirs and stays.
+        if (ConfigFileEditor::valueIn(after, raAppended_[i].first, &now) && now == ours)
+            restore.push_back(raOriginal_[i]);
+    }
+    // writes nothing when RetroArch did not save - every line is then as it was
+    if (!restore.empty())
+        ConfigFileEditor().replaceProperties(raConfigFile(), restore);
+    raAppended_.clear();
+}
+
+//*******************************
+// LaunchService::raSettingsFor
+//*******************************
+void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raConfig,
+                                  ConfigFileEditor::CfgLines &coreOptions) {
+    auto set = [](ConfigFileEditor::CfgLines &lines, const string &key, const string &value) {
+        lines.emplace_back(key, key + " = \"" + value + "\"");
+    };
 
     if (!game.foreign) {
         // the game's values as the emulator would see them: its own config over pcsx.cfg
         auto value = [&game](const char *key) { return PcsxConfig::value(game, key); };
-        ConfigFileEditor processor;
 
         int highres = atoi(value("gpu_neon.enhancement_enable").c_str());
         int speedhack = atoi(value("gpu_neon.enhancement_no_main").c_str());
@@ -643,85 +742,37 @@ void LaunchService::transferRaConfig(PsGame &game) {
         bool bootLogo = slowBoot.empty() || atoi(slowBoot.c_str()) != 0;
 
         // the core options
-        if (highres != 0)
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_neon_enhancement_enable",
-                                    "pcsx_rearmed_neon_enhancement_enable = \"enabled\" ");
-        else
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_neon_enhancement_enable",
-                                    "pcsx_rearmed_neon_enhancement_enable = \"disabled\" ");
+        set(coreOptions, "pcsx_rearmed_neon_enhancement_enable", highres != 0 ? "enabled" : "disabled");
+        set(coreOptions, "pcsx_rearmed_dithering", dither != 0 ? "enabled" : "disabled");
+        set(coreOptions, "pcsx_rearmed_neon_enhancement_no_main", speedhack != 0 ? "enabled" : "disabled");
+        set(coreOptions, "pcsx_rearmed_psxclock", to_string(clock));
+        set(coreOptions, "pcsx_rearmed_show_bios_bootlogo", bootLogo ? "enabled" : "disabled");
+        set(coreOptions, "pcsx_rearmed_nocdaudio", "enabled");
+        static const char *const interpolations[] = {"off", "simple", "gaussian", "cubic"};
+        if (interpolation >= 0 && interpolation <= 3)
+            set(coreOptions, "pcsx_rearmed_spu_interpolation", interpolations[interpolation]);
+        set(coreOptions, "pcsx_rearmed_frameskip", to_string(frameskip));
 
-        if (dither != 0)
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_dithering", "pcsx_rearmed_dithering = \"enabled\" ");
-        else
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_dithering", "pcsx_rearmed_dithering = \"disabled\" ");
-
-        if (speedhack != 0)
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_neon_enhancement_no_main",
-                                    "pcsx_rearmed_neon_enhancement_no_main = \"enabled\" ");
-        else
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_neon_enhancement_no_main",
-                                    "pcsx_rearmed_neon_enhancement_no_main = \"disabled\" ");
-
-        processor.replaceInFile(coreOptions, "pcsx_rearmed_psxclock",
-                                "pcsx_rearmed_psxclock = \"" + to_string(clock) + "\" ");
-        processor.replaceInFile(coreOptions, "pcsx_rearmed_show_bios_bootlogo",
-                                string("pcsx_rearmed_show_bios_bootlogo = \"") + (bootLogo ? "enabled" : "disabled") +
-                                    "\" ");
-        processor.replaceInFile(coreOptions, "pcsx_rearmed_nocdaudio", "pcsx_rearmed_nocdaudio  = \"enabled\" ");
-
-        if (interpolation == 0) {
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_spu_interpolation",
-                                    "pcsx_rearmed_spu_interpolation = \"off\" ");
-        }
-        if (interpolation == 1) {
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_spu_interpolation",
-                                    "pcsx_rearmed_spu_interpolation = \"simple\" ");
-        }
-        if (interpolation == 2) {
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_spu_interpolation",
-                                    "pcsx_rearmed_spu_interpolation = \"gaussian\" ");
-        }
-        if (interpolation == 3) {
-            processor.replaceInFile(coreOptions, "pcsx_rearmed_spu_interpolation",
-                                    "pcsx_rearmed_spu_interpolation = \"cubic\" ");
-        }
-
-        processor.replaceInFile(coreOptions, "pcsx_rearmed_frameskip",
-                                "pcsx_rearmed_frameskip  = \"" + to_string(frameskip) + "\" ");
         if (scanlines == 1) {
             float opacity = scanline_level / 100.0f;
-            processor.replaceInFile(raConfig, "input_overlay", "input_overlay  = \":/overlay/scanlines.cfg\" ");
-            processor.replaceInFile(raConfig, "input_overlay_enable", "input_overlay_enable  = \"true\" ");
-            processor.replaceInFile(raConfig, "input_overlay_opacity",
-                                    "input_overlay_opacity  = \"" + to_string(opacity) + "\" ");
+            set(raConfig, "input_overlay", ":/overlay/scanlines.cfg");
+            set(raConfig, "input_overlay_enable", "true");
+            set(raConfig, "input_overlay_opacity", to_string(opacity));
         }
     }
 
-    // retroarch.cfg
-    ConfigFileEditor processor;
-    string aspect = config_.inifile.values["aspect"]; // true - 1280x720 - false 960x720
-    if (aspect == "true") {
-        // widescreen
-        processor.replaceInFile(raConfig, "custom_viewport_width", "custom_viewport_width  = \"1280\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_height", "custom_viewport_height  = \"720\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_x", "custom_viewport_x  = \"0\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_y", "custom_viewport_y  = \"0\" ");
-        processor.replaceInFile(raConfig, "aspect_ratio_index", "aspect_ratio_index  = \"23\" ");
-    } else {
-        // 4:3
-        processor.replaceInFile(raConfig, "custom_viewport_width", "custom_viewport_width  = \"960\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_height", "custom_viewport_height  = \"720\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_x", "custom_viewport_x  = \"160\" ");
-        processor.replaceInFile(raConfig, "custom_viewport_y", "custom_viewport_y  = \"0\" ");
-        processor.replaceInFile(raConfig, "aspect_ratio_index", "aspect_ratio_index  = \"0\" ");
-    }
+    // retroarch.cfg: 1280x720 for widescreen (config.ini aspect=true), 960x720 centred for 4:3
+    bool wide = config_.inifile.values["aspect"] == "true";
+    set(raConfig, "custom_viewport_width", wide ? "1280" : "960");
+    set(raConfig, "custom_viewport_height", "720");
+    set(raConfig, "custom_viewport_x", wide ? "0" : "160");
+    set(raConfig, "custom_viewport_y", "0");
+    set(raConfig, "aspect_ratio_index", wide ? "23" : "0");
 
     // a PS1 game's own filter (its pcsx.cfg): RetroArch smooths or it does not - Sharp is Off here, as in the
     // classic pcsx-ab. A foreign game has no pcsx.cfg and keeps RetroArch's own video_smooth.
-    if (!game.foreign) {
-        processor.replaceInFile(raConfig, "video_smooth",
-                                string("video_smooth  = \"") + (filterModeFor(game) == 1 ? "true" : "false") + "\" ");
-    }
+    if (!game.foreign)
+        set(raConfig, "video_smooth", filterModeFor(game) == 1 ? "true" : "false");
 }
 
 //*******************************

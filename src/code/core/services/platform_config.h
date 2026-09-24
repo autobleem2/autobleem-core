@@ -52,6 +52,10 @@ struct PlatformConfig {
     // app_platform_keys: platform keys this machine also accepts for an App's or extension's binary, after
     // the built-in ones (Env::appPlatformKeys) - for an odd machine; it can add keys, never remove one
     std::vector<std::string> appPlatformKeys;
+    // runtime_dir: RAM for the run's logs and hand-over files, ';'-separated absolute candidates - the first
+    // that exists wins, else the last (made when first written); none = usb:/System/Runtime.
+    // $AB_RUNTIME_DIR, when a parent (the rc scripts, the session) set it, wins over all of them.
+    std::vector<std::string> runtimeDirs;
 
     // the file for this build's platform, next to the other resources: <resourcesDir>/platform/<name>.ini
     static std::string pathFor(const std::string &resourcesDir, const std::string &platformName);

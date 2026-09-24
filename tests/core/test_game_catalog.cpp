@@ -5,6 +5,7 @@
 
 #include "../support/game_library_fixture.h"
 #include "../support/string_maker.h"
+#include "../support/tree_snapshot.h"
 
 #include "core/services/config.h"
 #include "core/services/environment.h"
@@ -251,4 +252,25 @@ TEST_CASE("flushing covers removes every png under Games, at any depth") {
 TEST_CASE("flushing covers with nothing to flush is zero, not an error") {
     Catalog lib;
     CHECK(lib.catalog->flushAllCovers() == 0);
+}
+
+TEST_CASE("replaying the game already at the top writes nothing; a move writes only the ranks it shifts") {
+    Catalog lib;
+    lib.addUsbGame(1, "Tekken 3");
+    lib.addUsbGame(2, "Crash Bandicoot");
+    lib.addUsbGame(3, "Ridge Racer");
+    lib.addSubDirRow(0, "Games", 0, 3);
+    for (int id : {1, 2, 3})
+        lib.putGameInSubDirRow(0, id);
+    lib.play("Tekken 3");
+    lib.play("Crash Bandicoot");
+    lib.play("Ridge Racer");
+
+    test_support::TreeSnapshot before(lib.tmp.path());
+    lib.play("Ridge Racer"); // already 1
+    CHECK(before.changesTo(test_support::TreeSnapshot(lib.tmp.path())) == vector<string>{});
+
+    lib.play("Crash Bandicoot"); // 2 -> 1, Ridge Racer 1 -> 2, Tekken 3 stays 3
+    CHECK(lib.historyOrder() == vector<string>{"Crash Bandicoot", "Ridge Racer", "Tekken 3"});
+    CHECK(lib.historyRanks() == vector<int>{1, 2, 3});
 }

@@ -5,6 +5,7 @@
 #include "ableem/engine/strings.h"
 #include "ableem/engine/log.h"
 
+#include <sstream>
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -120,20 +121,20 @@ bool GameLibrary::writeEmulationStationGamelist() {
         return true;
 
     // this file was used during 0.9.0 testing. it must be removed or ES will use it by mistake.
-    DirEntry::removeFile(Environment::getPathToGamesDir() + sep + "gamelist.xml");
+    const string oldList = Environment::getPathToGamesDir() + sep + "gamelist.xml";
+    if (DirEntry::exists(oldList))
+        DirEntry::removeFile(oldList);
 
     string path =
         Environment::getPathToRetroarchDir() + sep + "retroboot/emulationstation/.emulationstation/gamelists/psx";
-    DirEntry::createDir(path);
+    if (!DirEntry::isDirectory(path))
+        DirEntry::createDirs(path);
     string filePath = path + sep + "gamelist.xml";
-    DirEntry::removeFile(filePath);
 
     GameRecords games = usbGames().loadUsbGames();
 
-    ofstream xml;
-    xml.open(filePath.c_str(), ios::binary);
-    if (!DirEntry::checkWritable(xml, filePath))
-        return false;
+    // built in memory and compared with the file: every scan comes here, most of them change nothing
+    ostringstream xml;
 
     xml << "<?xml version=\"1.0\"?>" << endl;
     xml << "<gameList>" << endl;
@@ -161,8 +162,7 @@ bool GameLibrary::writeEmulationStationGamelist() {
     }
     xml << "</gameList>" << endl;
 
-    xml.close();
-    return true;
+    return DirEntry::writeFileIfChanged(filePath, xml.str()) != DirEntry::WriteResult::Failed;
 }
 
 } // namespace ableem

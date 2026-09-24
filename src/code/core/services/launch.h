@@ -3,6 +3,8 @@
 //
 #pragma once
 
+#include <utility>
+#include <ableem/engine/config_file_editor.h>
 #include "../model/ps_game.h"
 #include "../model/session.h"
 #include "app_manifest.h"
@@ -41,12 +43,13 @@ public:
         : config_(config), session_(session), library_(library), memcards_(memcards), resumePoints_(resumePoints),
           runner_(runner) {}
 
-    // where writeSelectionScript() writes: <rc>/autobleem_cfg.sh, next to the selection.sh (console) or
-    // autobleem-session.sh (Pi) that sources it. Was config.ini's Cfg= key, an absolute console path the
-    // Pi installer had to rewrite per install; the rc dir already comes from the root (2026-09-18)
+    // where writeSelectionScript() writes: <runtime>/autobleem_cfg.sh - RAM, what selection.sh (console) or
+    // autobleem-session.sh (a Pi, the PC stick) sources after the launcher has left (was <rc>/, on the
+    // stick, until the quiet-stick plan; before that config.ini's Cfg= key)
     static std::string selectionScriptFile();
-    // rc/autobleem_cfg.sh: AB_SELECTION/AB_THEME/AB_PCSX, so the shell launch scripts see the menu
-    // choice and the theme/emulator settings after the GUI exits or before a game starts.
+    // AB_SELECTION/AB_THEME/AB_PCSX for the script that runs after the launcher: written when the launcher
+    // leaves (RetroArch, the update, the power off). No file, or any other selection, is a crash to the
+    // scripts - which is why nothing is written around a game any more.
     void writeSelectionScript();
 
     // The launch itself, start to finish: the emulator is chosen from the game and the mode, the game's
@@ -110,7 +113,8 @@ private:
     static std::string raBaseNameFor(const PsGame &game);
 
     // --- PCSX ---
-    void launchPcsx(PsGame &game, int resumePoint);
+    // env: what the emulator is handed on top (AB_EXIT_DIR, AB_MEMCARD_DIR, AB_LOAD_STATE)
+    void launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::Env &env);
     // (a config saved in the emulator is the game's own pcsx.custom.cfg, which the emulators write and
     // read themselves - PcsxConfig; the autobleem.cfg this used to copy back after the run is gone)
 
@@ -119,15 +123,41 @@ private:
     // the game's card1.mcd goes to RetroArch's saves dir as <base>.srm for the run and comes back after
     void raMemcardIn(PsGame &game);
     void raMemcardOut(PsGame &game);
-    // with config.ini raconfig=true, the game's pcsx.cfg settings are written into RetroArch's own config
-    // for the run, from a backup that is put back afterwards
-    void backupRaConfig();
-    void restoreRaConfig();
-    void transferRaConfig(PsGame &game);
-    static std::string raSavesDir();
-    static std::string raConfigFile();      // retroarch.cfg
-    static std::string raCoreOptionsFile(); // config/retroarch-core-options.cfg
+    // What RetroArch is started with on top of its own retroarch.cfg - --appendconfig <runtime>/ra-append.cfg,
+    // RAM (docs/quiet-stick-plan.md): config.ini's rapersist as config_save_on_exit (Options -> "Persist
+    // RetroArch config") and, for a game with config.ini raconfig=true, the game's pcsx.cfg settings - the
+    // core options in a copy of RetroArch's in RAM, named by core_options_path. retroarch.cfg itself is not
+    // written. A RetroArch that saves its config (on exit, or "Save Current Configuration") writes the
+    // appended values into it too, so afterwards every one of them that is still what we appended is put
+    // back to what the file had before (restoreAppended) - what the player changed in RetroArch stays.
+    // game == nullptr: RetroArch's own menu, config_save_on_exit alone.
+    void prepareRaAppend(PsGame *game);
+    void restoreAppended();
+    // the game's pcsx.cfg settings as retroarch.cfg lines and core-option lines
+    void raSettingsFor(PsGame &game, ableem::ConfigFileEditor::CfgLines &raConfig,
+                       ableem::ConfigFileEditor::CfgLines &coreOptions);
+    // a retroarch.cfg.bak / core-options .bak a launcher before the quiet-stick plan left behind (it
+    // backed both up for every run and was killed before it put them back): put back, once
+    static void restoreLegacyRaBackup();
+    ableem::ConfigFileEditor::CfgLines raAppended_;               // what the last prepareRaAppend appended
+    std::vector<std::pair<std::string, std::string>> raOriginal_; // and what retroarch.cfg had ("" line: none)
 
+public:
+    // The PS1 emulator a launch would run, and what it takes from us through the environment: the words of
+    // the abfeatures file next to its binary (exitdir, memcarddir, loadstate - pcsx-abnxt's
+    // frontend/ab/ab_config.h). An emulator without the file takes none of them and runs as it always did.
+    std::string pcsxDirForLaunch() const;
+    std::vector<std::string> pcsxFeatures() const;
+    // <runtime>/exit: where an emulator with "exitdir" leaves the run's resume point (RAM)
+    static std::string pcsxExitDir();
+
+    static std::string raSavesDir();
+    static std::string raConfigFile();             // retroarch.cfg
+    static std::string raCoreOptionsFile();        // config/retroarch-core-options.cfg
+    static std::string raAppendFile();             // <runtime>/ra-append.cfg
+    static std::string raRuntimeCoreOptionsFile(); // <runtime>/ra-core-options.cfg
+
+private:
     // --- Apps ---
     void launchApp(PsGame &game);
 

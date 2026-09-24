@@ -49,20 +49,30 @@ void GameCatalogService::recordGamePlayed(const PsGamePtr &game) {
 
     sort(begin(ranked), end(ranked), [](const PsGamePtr &l, const PsGamePtr &r) { return l->history < r->history; });
 
+    // only the rows whose rank moves are written: the game at 5 played again moves 1..4 down and itself
+    // up - five rows, not the whole history - and the game already at 1 played again writes nothing
+    PsGames changed;
     int rank = 2;
     for (auto &other : ranked) {
-        other->history = rank <= HistoryLimit ? rank++ : 0; // 0 drops it out of the history
+        int newRank = rank <= HistoryLimit ? rank++ : 0; // 0 drops it out of the history
+        if (other->history != newRank) {
+            other->history = newRank;
+            changed.push_back(other);
+        }
     }
+    if (game->history != 1) {
+        game->history = 1;
+        changed.push_back(game);
+    }
+    if (changed.empty())
+        return;
 
-    game->history = 1;
-    ranked.emplace_back(game);
-
-    // One transaction rather than up to HistoryLimit+1 separate commits: every launch rewrites the whole
-    // ranking, and on the console each loose UPDATE is its own disk sync. Both databases are wrapped
-    // because the ranking spans USB and internal games; an empty transaction costs nothing.
+    // One transaction rather than a commit per row: on the console each loose UPDATE is its own disk sync.
+    // Both databases are wrapped because the ranking spans USB and internal games; an empty transaction
+    // writes nothing.
     library_.usbGames().beginTransaction();
     library_.internalGames().beginTransaction();
-    for (auto &each : ranked) {
+    for (auto &each : changed) {
         library_.updateHistory(*each);
     }
     library_.internalGames().commit();

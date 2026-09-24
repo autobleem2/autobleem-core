@@ -4,6 +4,7 @@
 #include "platform_config.h"
 #include "environment.h"
 #include "../main.h"
+#include <cstdlib>
 #include <iostream>
 #include <map>
 #include <ableem/engine/log.h>
@@ -94,6 +95,7 @@ PlatformConfig PlatformConfig::load(const string &iniPath) {
     cfg.pcsxDir = value("pcsx_dir");
     cfg.pcsxNxtDir = value("pcsxnxt_dir");
     cfg.appPlatformKeys = splitList(value("app_platform_keys"));
+    cfg.runtimeDirs = splitList(value("runtime_dir"));
     return cfg;
 }
 
@@ -119,4 +121,18 @@ void PlatformConfig::apply() const {
     Env::setPcsxNxtDir(pcsxNxtDir.empty() ? "" : under(Env::getWorkingPath(), pcsxNxtDir));
     Env::setExtraAppPlatformKeys(appPlatformKeys);
     Env::setStoreDownloadCommand(storeDownloadCommand);
+
+    const char *fromParent = getenv("AB_RUNTIME_DIR");
+    if (fromParent != nullptr && *fromParent != 0) {
+        Env::setRuntimeDir(fromParent); // the scripts that started us chose, and log there themselves
+    } else if (!runtimeDirs.empty()) {
+        string chosen = runtimeDirs.back();
+        for (const string &dir : runtimeDirs) {
+            if (DirEntry::isDirectory(dir)) {
+                chosen = dir;
+                break;
+            }
+        }
+        Env::setRuntimeDir(chosen);
+    }
 }

@@ -17,7 +17,8 @@ add_library(doctest_main STATIC ${AB_CORE_TESTS_DIR}/doctest_main.cpp)
 target_link_libraries(doctest_main ableem_engine)
 target_include_directories(doctest_main PUBLIC ${AB_CORE_TESTS_DIR}/third_party)
 
-add_library(ab_test_support STATIC ${AB_CORE_TESTS_DIR}/support/temp_dir.cpp ${AB_CORE_TESTS_DIR}/support/fake_game.cpp)
+add_library(ab_test_support STATIC ${AB_CORE_TESTS_DIR}/support/temp_dir.cpp ${AB_CORE_TESTS_DIR}/support/fake_game.cpp
+        ${AB_CORE_TESTS_DIR}/support/tree_snapshot.cpp)
 target_include_directories(ab_test_support PUBLIC ${AB_CORE_TESTS_DIR}
         # support/tar_builder.h gzips with the engine's own miniz (a private header of ableem_engine)
         ${AB_CORE_ROOT}/lib_ableem/third_party/miniz)

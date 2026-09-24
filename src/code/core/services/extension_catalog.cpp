@@ -14,15 +14,23 @@ using namespace std;
 //*******************************
 // ExtensionCatalog::ExtensionCatalog
 //*******************************
-ExtensionCatalog::ExtensionCatalog(string extensionsDir, string stateDir, vector<string> keys, string pluginExtension)
-    : extensionsDir_(std::move(extensionsDir)), stateDir_(std::move(stateDir)), keys_(std::move(keys)),
-      pluginExtension_(std::move(pluginExtension)) {}
+ExtensionCatalog::ExtensionCatalog(string extensionsDir, string stateDir, vector<string> keys, string pluginExtension,
+                                   string runtimeDir)
+    : extensionsDir_(std::move(extensionsDir)), stateDir_(std::move(stateDir)), runtimeDir_(std::move(runtimeDir)),
+      keys_(std::move(keys)), pluginExtension_(std::move(pluginExtension)) {
+    if (runtimeDir_.empty())
+        runtimeDir_ = stateDir_;
+}
 
 string ExtensionCatalog::disabledFile() const {
     return stateDir_ + sep + "disabled.txt";
 }
 
 string ExtensionCatalog::activeFile() const {
+    return runtimeDir_ + sep + "extensions.active";
+}
+
+string ExtensionCatalog::persistedActiveFile() const {
     return stateDir_ + sep + ".active";
 }
 
@@ -75,8 +83,8 @@ const vector<ExtensionInfo> &ExtensionCatalog::scan() {
             e.icon = folder + sep + icon;
         e.network = parseNetwork(e.manifest.value("network"));
         e.background = AppManifest::parseFlag(e.manifest.value("background"), false);
-        e.disabled = find_if(disabled.begin(), disabled.end(), [&](const string &n) { return n == dir.name; }) !=
-                     disabled.end();
+        e.disabled =
+            find_if(disabled.begin(), disabled.end(), [&](const string &n) { return n == dir.name; }) != disabled.end();
         auto problem = problems.find(dir.name);
         if (problem != problems.end())
             e.loadProblem = problem->second;
@@ -140,7 +148,7 @@ void ExtensionCatalog::setDisabled(const string &name, bool disabled) {
 // ExtensionCatalog::markActive / clearActive / takeCrashed
 //*******************************
 void ExtensionCatalog::markActive(const string &name) {
-    DirEntry::createDirs(stateDir_);
+    DirEntry::createDirs(runtimeDir_);
     ofstream out(activeFile(), ios::binary | ios::trunc);
     out << name << "\n";
 }
@@ -151,15 +159,20 @@ void ExtensionCatalog::clearActive() {
 }
 
 string ExtensionCatalog::takeCrashed() {
-    if (!DirEntry::exists(activeFile()))
+    // RAM first (a launcher restarted in the same boot - the Linux session), then the stick (a crash the
+    // console rebooted after: rc/ab_log.sh copied the marker there; or an older launcher's marker)
+    string file = activeFile();
+    if (!DirEntry::exists(file))
+        file = persistedActiveFile();
+    if (!DirEntry::exists(file))
         return "";
     string name;
     {
-        ifstream in(activeFile());
+        ifstream in(file);
         Strings::getlineRemoveCR(in, name);
     }
     name = Strings::trim(name);
-    clearActive();
+    DirEntry::removeFile(file);
     if (name.empty())
         return "";
     PLOG_WARNING << "[" << name << "] was running when AutoBleem stopped last time - disabling it";

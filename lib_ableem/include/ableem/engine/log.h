@@ -57,9 +57,10 @@ inline void initConsoleOnly(plog::Severity maxSeverity = ABLEEM_LOG_LEVEL) {
     plog::init(maxSeverity, &consoleAppender);
 }
 
-// once, after initConsoleOnly(): the rolling file as well. logFile's directory must exist.
-inline void addFile(const std::string &logFile) {
-    static plog::RollingFileAppender<Formatter> fileAppender(logFile.c_str(), 1024 * 1024, 3);
+// once, after initConsoleOnly(): the rolling file as well - maxFiles of maxSize each (autobleem.log,
+// autobleem.1.log, ...). logFile's directory must exist.
+inline void addFile(const std::string &logFile, size_t maxSize = 1024 * 1024, int maxFiles = 3) {
+    static plog::RollingFileAppender<Formatter> fileAppender(logFile.c_str(), maxSize, maxFiles);
     if (plog::get() != nullptr)
         plog::get()->addAppender(&fileAppender);
 }
@@ -73,6 +74,11 @@ inline void init(const std::string &logFile, plog::Severity maxSeverity = ABLEEM
 inline void setLevel(plog::Severity maxSeverity) {
     if (plog::get() != nullptr)
         plog::get()->setMaxSeverity(maxSeverity);
+}
+
+// whether a record at `severity` would be logged - for work done only to produce a log (a diagnostic dump)
+inline bool enabled(plog::Severity severity) {
+    return plog::get() != nullptr && plog::get()->checkSeverity(severity);
 }
 
 } // namespace Log

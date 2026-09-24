@@ -27,6 +27,8 @@ string retroarchCoreFile; // empty: pcsx_rearmed under the retroarch dir
 string retroarchRomsDir;  // empty: usb:/RetroArch/roms
 string retroarchBiosDir;  // empty: usb:/RetroArch/bios
 string retroarchCoreExtension = ".so";
+string runtimeDir; // empty: usb:/System/Runtime
+bool keepLogsOnStick = false;
 } // namespace
 
 //*******************************
@@ -54,6 +56,12 @@ void Environment::setKernelConfigDir(const string &path) {
 
 void Environment::setStateDir(const string &path) {
     stateDir = path;
+}
+void Environment::setRuntimeDir(const string &path) {
+    runtimeDir = path;
+}
+void Environment::setKeepLogs(bool keep) {
+    keepLogsOnStick = keep;
 }
 void Environment::setWorkingPath(const string &path) {
     workingPath = path;
@@ -120,7 +128,16 @@ string Environment::getPathToSystemDir() {
     return usbRoot + sep + "System";
 }
 string Environment::getPathToLogsDir() {
+    return keepLogsOnStick ? getPathToPersistentLogsDir() : getPathToRuntimeDir() + sep + "logs";
+}
+string Environment::getPathToPersistentLogsDir() {
     return getPathToSystemDir() + sep + "Logs";
+}
+string Environment::getPathToRuntimeDir() {
+    return runtimeDir.empty() ? getPathToSystemDir() + sep + "Runtime" : runtimeDir;
+}
+bool Environment::keepLogs() {
+    return keepLogsOnStick;
 }
 string Environment::getPathToRetroarchDir() {
     return retroarchDir.empty() ? usbRoot + sep + "RetroArch" + sep + "bin" : retroarchDir;

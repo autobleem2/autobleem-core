@@ -49,6 +49,19 @@ struct GamePath {
 using GamePaths = std::vector<GamePath>;
 
 //******************
+// FailedGame
+//******************
+// a folder the scan found but did not add, and why - UsbGame::verify()'s reasons, in English (the screen
+// translates them). Kept in regional.db's FAILED_GAMES for the Game Manager, which lists them.
+struct FailedGame {
+    std::string path;                 // the folder, as the scan saw it (no trailing separator)
+    std::vector<std::string> reasons; // "Cue file not found", ...
+    bool operator==(const FailedGame &o) const { return path == o.path && reasons == o.reasons; }
+};
+
+using FailedGames = std::vector<FailedGame>;
+
+//******************
 // GameDatabase
 //******************
 class GameDatabase {
@@ -92,13 +105,18 @@ public:
     // tell an existing game from a new one and notice one whose folder is gone; the matching id for one
     // path (both O(n) full-table reads - fine for the few-hundred-row regional.db this deals with).
     GamePaths loadGamePaths();
+    // the scan's refused folders, sorted by path; replaceFailedGames writes them only when they differ from
+    // what the table holds (a rescan that changed nothing writes nothing)
+    FailedGames loadFailedGames();
+    bool replaceFailedGames(FailedGames games);
     bool findGameIdByPath(const std::string &path, int *id);
     int maxGameId(); // 0 if the table is empty; a new game's id is this + 1
     // updates everything about an existing game except GAME_ID/PATH/HISTORY/LAST_PLAYED - a rescanned game
     // keeps its id and play history even when its metadata changed
     bool updateGame(int id, std::string title, std::string publisher, int players, int year, std::string sspath,
                     std::string memcard);
-    bool replaceDiscs(int id, const std::vector<std::string> &discNames); // deletes then re-inserts, in one transaction
+    // deletes then re-inserts, in one transaction - unless the rows already name exactly these discs
+    bool replaceDiscs(int id, const std::vector<std::string> &discNames);
     // a game whose folder moved elsewhere under Games/ (the scan matched the vanished row to the new folder
     // by folder name and disc names) keeps its row: only PATH changes, so id/history/last_played stay
     bool updateGamePath(int id, const std::string &path);

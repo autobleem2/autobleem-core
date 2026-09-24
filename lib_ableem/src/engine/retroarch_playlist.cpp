@@ -2,6 +2,7 @@
 #include "ableem/engine/filesystem.h"
 #include "ableem/engine/strings.h"
 
+#include <sstream>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -172,14 +173,14 @@ bool RetroArchPlaylist::save(const string &path, const RetroArchPlaylistEntries 
     }
     j["items"] = items;
 
-    PLOG_DEBUG << "Writing playlist " << path << " (" << entries.size() << " entries)";
-    ofstream o(path);
-    if (!DirEntry::checkWritable(o, path))
-        return false;
-    o << setw(2) << j << endl;
-    o.flush();
-    o.close();
-    return true;
+    // through the compare: an unchanged playlist (AutoBleem.lpl after a rescan) leaves the file alone
+    ostringstream o;
+    o << setw(2) << j << "\n";
+    DirEntry::WriteResult written = DirEntry::writeFileIfChanged(path, o.str());
+    if (written == DirEntry::WriteResult::Written) {
+        PLOG_DEBUG << "Wrote playlist " << path << " (" << entries.size() << " entries)";
+    }
+    return written != DirEntry::WriteResult::Failed;
 }
 
 } // namespace ableem

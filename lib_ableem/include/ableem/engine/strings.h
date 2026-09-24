@@ -82,7 +82,7 @@ static inline bool lessCaseInsensitive(const std::string &left, const std::strin
 //******************
 class Strings {
 public:
-    // "|" -> "||", "," -> "|@" so a name can be stored in a comma separated list (Game.ini "Discs=", autobleem.list)
+    // "|" -> "||", "," -> "|@" so a name can be stored in a comma separated list (Game.ini "Discs=")
     static std::string escapeCommas(std::string input);
     static std::string unescapeCommas(std::string input);
     static void replaceAll(std::string &str, const std::string &from, const std::string &to);

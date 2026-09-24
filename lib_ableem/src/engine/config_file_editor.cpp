@@ -31,67 +31,97 @@ bool lineSetsProperty(const string &lcaseline, const string &lcasepattern) {
 } // namespace
 
 //*******************************
-// ConfigFileEditor::replaceProperty
+// ConfigFileEditor::replaceProperties
 //*******************************
 // A key the file does not have is appended (since 2026-09-20): a pcsx.cfg copied from an older default
-// has no line for an option added later (SlowBoot), and the editor's change must still land.
-void ConfigFileEditor::replaceProperty(string fullCfgFilePath, string property, string newline) {
-    if (!DirEntry::exists(fullCfgFilePath)) {
-        PLOG_INFO << "  cfg file doesn't exist";
+// has no line for an option added later (SlowBoot), and the editor's change must still land. The file is
+// written once for the whole batch, and not at all when every line already says what it should
+// (DirEntry::writeFileIfChanged) - a launch or an editor key that changed nothing leaves it alone.
+void ConfigFileEditor::replaceProperties(const string &fullCfgFilePath, const CfgLines &properties) {
+    string text;
+    if (!DirEntry::readFile(fullCfgFilePath, text)) {
+        PLOG_DEBUG << "  cfg file doesn't exist: " << fullCfgFilePath;
         return;
     }
-    // do not store if file not updated (one less iocall on filesystem)
-    bool fileUpdated = false;
 
-    fstream file(fullCfgFilePath, ios::in);
     vector<string> lines;
-    lines.clear();
-
-    if (file.is_open()) {
-
-        string line;
-        vector<string> lines;
-
-        while (getline(file, line)) {
-
-            // a CRLF file read in text mode strips the \r on Windows but not on Linux, so drop it here:
-            // the file is rewritten as pure LF below, and no line may carry a stray \r into the emulator
-            if (!line.empty() && line.back() == '\r')
-                line.pop_back();
-
-            string::size_type pos = 0;
-            string lcaseline = line;
-            string lcasepattern = property;
-            lcase(lcaseline);
-            lcase(lcasepattern);
-
-            if (lineSetsProperty(lcaseline, lcasepattern)) {
-                fileUpdated = true;
-                PLOG_INFO << "  new line: '" << newline << "'";
-                lines.push_back(newline);
-            } else {
-                lines.push_back(line);
-            }
-        }
-        file.close();
-        if (!fileUpdated) {
-            PLOG_INFO << "  appending: '" << newline << "'";
-            lines.push_back(newline);
-            fileUpdated = true;
-        }
-        if (fileUpdated) {
-            // binary + a plain "\n": a text-mode stream turns every newline into CRLF on Windows, and a cfg
-            // the emulator reads must stay LF - pcsx-ab/pcsx-abnxt reject a CRLF pcsx.cfg (fread != ftell in
-            // text mode, and a trailing '\r' spoils "Bios = SET_BY_PCSX"). CLAUDE.md: cfg files stay LF.
-            file.open(fullCfgFilePath, ios::out | ios::trunc | ios::binary);
-
-            for (const auto &i : lines) {
-                file << i << "\n";
-            }
-            file.flush();
-            file.close();
-        }
+    string::size_type start = 0;
+    while (start < text.size()) {
+        string::size_type end = text.find('\n', start);
+        if (end == string::npos)
+            end = text.size();
+        string line = text.substr(start, end - start);
+        // a CRLF file: the file is rewritten as pure LF, and no line may carry a stray \r into the emulator
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        lines.push_back(line);
+        start = end + 1;
     }
+
+    vector<bool> found(properties.size(), false);
+    vector<string> kept;
+    for (auto &line : lines) {
+        string lcaseline = line;
+        lcase(lcaseline);
+        bool removed = false;
+        for (size_t i = 0; i < properties.size(); i++) {
+            string lcasepattern = properties[i].first;
+            lcase(lcasepattern);
+            if (lineSetsProperty(lcaseline, lcasepattern)) {
+                line = properties[i].second;
+                removed = line.empty();
+                found[i] = true;
+                break;
+            }
+        }
+        if (!removed)
+            kept.push_back(line);
+    }
+    lines.swap(kept);
+    for (size_t i = 0; i < properties.size(); i++) {
+        if (!found[i] && !properties[i].second.empty())
+            lines.push_back(properties[i].second);
+    }
+
+    // a plain "\n": pcsx-ab/pcsx-abnxt reject a CRLF pcsx.cfg (fread != ftell in text mode, and a trailing
+    // '\r' spoils "Bios = SET_BY_PCSX"). CLAUDE.md: cfg files stay LF.
+    string out;
+    for (const auto &line : lines)
+        out += line + "\n";
+    if (DirEntry::writeFileIfChanged(fullCfgFilePath, out) == DirEntry::WriteResult::Written) {
+        PLOG_INFO << "Wrote " << fullCfgFilePath << " (" << properties.size() << " setting(s))";
+    }
+}
+
+//*******************************
+// ConfigFileEditor::valueIn
+//*******************************
+bool ConfigFileEditor::valueIn(const string &text, const string &property, string *value) {
+    string lcasepattern = property;
+    lcase(lcasepattern);
+    string::size_type start = 0;
+    while (start < text.size()) {
+        string::size_type end = text.find('\n', start);
+        if (end == string::npos)
+            end = text.size();
+        string line = text.substr(start, end - start);
+        start = end + 1;
+        string lcaseline = line;
+        lcase(lcaseline);
+        if (!lineSetsProperty(lcaseline, lcasepattern))
+            continue;
+        string::size_type eq = line.find('=');
+        string v = eq == string::npos ? "" : line.substr(eq + 1);
+        trim(v);
+        if (!v.empty() && v.back() == '\r')
+            v.pop_back();
+        trim(v);
+        if (v.size() >= 2 && v.front() == '"' && v.back() == '"')
+            v = v.substr(1, v.size() - 2);
+        *value = v;
+        return true;
+    }
+    return false;
 }
 
 //*******************************
@@ -116,13 +146,13 @@ string ConfigFileEditor::getValueFromCfgFile(string fullCfgFilePath, string prop
                     value.pop_back(); // remove the trailing /r
                 }
                 trim(value); // remove leading and trailing spaces
-                PLOG_INFO << "  return: '" << value << "'";
+                PLOG_DEBUG << "  return: '" << value << "'";
                 return value;
             }
         }
         file.close();
     }
-    PLOG_INFO << "  return: ''";
+    PLOG_DEBUG << "  return: ''";
     return "";
 }
 
@@ -135,8 +165,8 @@ string ConfigFileEditor::getValueFromCfgFile(string fullCfgFilePath, string prop
 string ConfigFileEditor::getValue(string gamePath, string property) {
     string fullCfgFilePath = gamePath + sep + PCSX_CFG;
     if (!DirEntry::exists(fullCfgFilePath)) {
-        PLOG_INFO << "  cfg file doesn't exist";
-        PLOG_INFO << "  return: ''";
+        PLOG_DEBUG << "  cfg file doesn't exist";
+        PLOG_DEBUG << "  return: ''";
         return "";
     }
 
@@ -149,7 +179,7 @@ string ConfigFileEditor::getValue(string gamePath, string property) {
 //*******************************
 void ConfigFileEditor::replaceInternal(string gamePathInSaveStates, string property, string newline) {
     string realCfgPath = gamePathInSaveStates + sep + PCSX_CFG;
-    replaceProperty(realCfgPath, property, newline);
+    replaceProperties(realCfgPath, {{property, newline}});
 }
 
 //*******************************
@@ -159,10 +189,10 @@ void ConfigFileEditor::replaceInternal(string gamePathInSaveStates, string prope
 //*******************************
 void ConfigFileEditor::replaceUsb(string entry, string gamePath, string property, string newline) {
     string realCfgPath = gamePath + sep + entry + sep + PCSX_CFG;
-    replaceProperty(realCfgPath, property, newline); // replace in the game dir pcsx.cfg
+    replaceProperties(realCfgPath, {{property, newline}}); // in the game dir pcsx.cfg
 
     realCfgPath = Environment::getPathToSaveStatesDir() + sep + entry + sep + PCSX_CFG;
-    replaceProperty(realCfgPath, property, newline); // replace in the !SaveStates/game/pcsx.cfg
+    replaceProperties(realCfgPath, {{property, newline}}); // in the !SaveStates/game/pcsx.cfg
 }
 
 //*******************************
@@ -182,8 +212,7 @@ void ConfigFileEditor::replace(string entry, string gamePath, string property, s
 // ConfigFileEditor::replaceInFile
 //*******************************
 void ConfigFileEditor::replaceInFile(std::string fullCfgFilePath, std::string property, std::string newline) {
-    PLOG_INFO << "cfg replaceInFile, '" << fullCfgFilePath << "', '" << property << "'";
-    replaceProperty(fullCfgFilePath, property, newline);
+    replaceProperties(fullCfgFilePath, {{property, newline}});
 }
 
 } // namespace ableem

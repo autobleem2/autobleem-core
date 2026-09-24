@@ -87,7 +87,7 @@ void GameSubDir::removeGamesInSecondListThatMatchAGameInFirstList(UsbGames &pare
                                                                   std::ofstream &dupFile) {
     for (auto &parentGame : parentGames) {
         auto it = remove_if(begin(childGames), end(childGames), [&parentGame, &dupFile](UsbGamePtr &childGame) {
-            PLOG_INFO << "compare " << parentGame->title << " with " << childGame->title;
+            PLOG_DEBUG << "compare " << parentGame->title << " with " << childGame->title;
             if (sameGame(parentGame, childGame)) {
                 dupFile << "removed duplicate child game: " << childGame->fullPath << endl;
                 dupFile << endl;
@@ -150,11 +150,11 @@ void GameSubDir::makeGamesToDisplayWhileRemovingChildDuplicates(ofstream &dupFil
 //*******************************
 void GameSubDir::print(bool plusGames) {
     string indent(displayIndentLevel * 2, ' ');
-    PLOG_INFO << displayRowIndex << ": " << indent << fullPath << ", " << subDirName << " (" << gamesInThisDir.size()
+    PLOG_DEBUG << displayRowIndex << ": " << indent << fullPath << ", " << subDirName << " (" << gamesInThisDir.size()
               << " games)";
     if (plusGames) {
         for (auto &game : gamesInThisDir)
-            PLOG_INFO << indent << " " << game->gameDirName;
+            PLOG_DEBUG << indent << " " << game->gameDirName;
     }
     for (auto &child : childrenDirs)
         child->print(plusGames);
@@ -194,14 +194,17 @@ void GamesHierarchy::getHierarchy(const std::string &path) {
     }
     printRowGameInfo(false);
 
-    string opath = Environment::getPathToStateDir() + sep + "gameHierarchy_beforeScan.txt";
-    ofstream outfile;
-    outfile.open(opath);
-    DirEntry::checkWritable(outfile, opath); // diagnostics only, keep going
-    dumpRowGameInfo(outfile, true);
-    outfile << endl << endl;
-    dumpRowDisplayGameInfo(outfile, true);
-    outfile.close();
+    // a developer's dump, into the logs and only at debug level
+    if (Log::enabled(plog::debug)) {
+        string opath = Environment::getPathToLogsDir() + sep + "gameHierarchy_beforeScan.txt";
+        ofstream outfile;
+        outfile.open(opath);
+        DirEntry::checkWritable(outfile, opath); // diagnostics only, keep going
+        dumpRowGameInfo(outfile, true);
+        outfile << endl << endl;
+        dumpRowDisplayGameInfo(outfile, true);
+        outfile.close();
+    }
 }
 
 //*******************************
@@ -209,8 +212,11 @@ void GamesHierarchy::getHierarchy(const std::string &path) {
 // run this after Scanner has filled in the serial so we can correctly match duplicate games
 //*******************************
 void GamesHierarchy::makeGamesToDisplayWhileRemovingChildDuplicates() {
-    string dupFilePath = Environment::getPathToStateDir() + sep + "duplicateGames.txt";
-    dupFile.open(dupFilePath.c_str(), ios::binary);
+    // debug level only, into the logs; unopened, the stream swallows what the walk writes to it
+    if (Log::enabled(plog::debug)) {
+        string dupFilePath = Environment::getPathToLogsDir() + sep + "duplicateGames.txt";
+        dupFile.open(dupFilePath.c_str(), ios::binary);
+    }
 
     if (gameSubDirRows.size() > 0)
         gameSubDirRows[0]->makeGamesToDisplayWhileRemovingChildDuplicates(dupFile); // recursive

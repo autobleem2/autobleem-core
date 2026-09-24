@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include "ableem/engine/log.h"
 #include <ableem/engine/log.h>
 
@@ -74,16 +75,11 @@ void IniFile::mergeFrom(const string &_path) {
 // IniFile::save
 //*******************************
 void IniFile::save(const string &_path) {
-    PLOG_INFO << "Writing ini file: " << _path;
-    // written next to the target and renamed over it: a save that is cut short (a power cut, a reboot with
-    // the partition still dirty) then leaves the old file, not an empty one that reads as "no settings"
-    const string tmp = _path + ".tmp";
-    ofstream os;
-    // binary + a plain "\n": a text-mode stream writes CRLF on Windows; ini/cfg files stay LF (CLAUDE.md),
-    // and Game.ini's values feed pcsx.cfg / are read by the emulator, which must see no trailing '\r'
-    os.open(tmp, ios::out | ios::trunc | ios::binary);
-    if (!DirEntry::checkWritable(os, tmp))
-        return;
+    // a plain "\n": ini/cfg files stay LF (CLAUDE.md), and Game.ini's values feed pcsx.cfg / are read by the
+    // emulator, which must see no trailing '\r'. Written only when the text differs from what the file
+    // holds, through .tmp + rename (DirEntry::writeFileIfChanged): a start, a scan or an Options close that
+    // changed nothing leaves the file - and the stick - alone.
+    ostringstream os;
     os << "[" << section << "]"
        << "\n";
     for (auto &item : values) {
@@ -96,10 +92,8 @@ void IniFile::save(const string &_path) {
 
         os << k << "=" << v << "\n";
     }
-    os.flush();
-    os.close();
-    if (!DirEntry::replaceFile(tmp, _path)) {
-        PLOG_ERROR << "Could not replace " << _path << " with the new " << tmp;
+    if (DirEntry::writeFileIfChanged(_path, os.str()) == DirEntry::WriteResult::Written) {
+        PLOG_INFO << "Wrote ini file: " << _path;
     }
 }
 

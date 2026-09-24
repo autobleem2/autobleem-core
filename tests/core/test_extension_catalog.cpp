@@ -145,3 +145,27 @@ TEST_CASE("ExtensionCatalog: no Extensions folder is an empty list") {
     ExtensionCatalog catalog = catalogIn(tmp);
     CHECK(catalog.scan().empty());
 }
+
+TEST_CASE("ExtensionCatalog: the crash guard lives in RAM; a crash's copy on the stick is read too") {
+    TempDir tmp("extensions");
+    extension(tmp, "store", "[extension]\nPlugin=bin/{key}/store\n", {"psc"});
+    extension(tmp, "hello", "[extension]\nPlugin=bin/{key}/hello\n", {"psc"});
+    auto inRam = [&tmp] {
+        return ExtensionCatalog(tmp.at("Extensions"), tmp.at("System/Extensions"), {"psc"}, ".so", tmp.at("run"));
+    };
+    ExtensionCatalog catalog = inRam();
+    catalog.scan();
+
+    catalog.markActive("store");
+    CHECK(DirEntry::exists(tmp.at("run/extensions.active")));
+    CHECK_FALSE(DirEntry::exists(tmp.at("System/Extensions/.active"))); // the stick is not written around a call
+    catalog.clearActive();
+
+    // a crash the console rebooted after: rc/ab_log.sh copied the marker to the stick
+    tmp.writeFile("System/Extensions/.active", "hello\n");
+    ExtensionCatalog next = inRam();
+    next.scan();
+    CHECK(next.takeCrashed() == "hello");
+    CHECK(next.find("hello")->disabled);
+    CHECK_FALSE(DirEntry::exists(tmp.at("System/Extensions/.active")));
+}

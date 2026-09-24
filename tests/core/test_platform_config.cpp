@@ -206,3 +206,44 @@ TEST_CASE("store_download_command: read, %r resolved, the update's command when 
     old.apply();
     CHECK(Env::storeDownloadCommand() == "curl -sfL -o \"%o\" \"%u\"");
 }
+
+namespace {
+void setRuntimeEnv(const char *value) {
+#ifdef _WIN32
+    _putenv_s("AB_RUNTIME_DIR", value);
+#else
+    if (*value)
+        setenv("AB_RUNTIME_DIR", value, 1);
+    else
+        unsetenv("AB_RUNTIME_DIR");
+#endif
+}
+} // namespace
+
+TEST_CASE("runtime_dir: the first existing candidate, else the last; $AB_RUNTIME_DIR over both; none = the stick") {
+    TempDir tmp("platform_runtime");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    setRuntimeEnv("");
+
+    PlatformConfig none;
+    none.apply();
+    CHECK(Environment::getPathToRuntimeDir() == tmp.path() + "/System/Runtime");
+    CHECK(Environment::getPathToLogsDir() == tmp.path() + "/System/Runtime/logs");
+    Environment::setKeepLogs(true);
+    CHECK(Environment::getPathToLogsDir() == tmp.path() + "/System/Logs");
+    Environment::setKeepLogs(false);
+
+    PlatformConfig appliance; // not "linux": a predefined macro on Linux
+    appliance.runtimeDirs = PlatformConfig::splitList(tmp.at("run") + ";" + tmp.at("tmp"));
+    appliance.apply();
+    CHECK(Environment::getPathToRuntimeDir() == tmp.at("tmp")); // no /run/autobleem: the last one
+    tmp.makeSubDir("run");
+    appliance.apply();
+    CHECK(Environment::getPathToRuntimeDir() == tmp.at("run"));
+
+    setRuntimeEnv(tmp.at("parent").c_str());
+    appliance.apply();
+    CHECK(Environment::getPathToRuntimeDir() == tmp.at("parent"));
+    setRuntimeEnv("");
+}

@@ -1,6 +1,6 @@
 // lib_ableem - engine: walks the games hierarchy, repairs what it can (comma names, missing/broken cue files,
 // ECM compressed bins, missing lic/cover/pcsx.cfg/Game.ini), reads each game's serial and metadata and
-// finally writes regional.db + autobleem.list. Progress goes to a listener the application supplies; the
+// finally writes regional.db. Progress goes to a listener the application supplies; the
 // library never draws, sleeps or translates.
 #pragma once
 
@@ -57,6 +57,8 @@ public:
     GameScanner &operator=(GameScanner const &) = delete;
 
     UsbGames gamesToAddToDB; // filled by scanGamesDirectory: every game that verified
+    FailedGames failedGames; // and every one that did not, with verify()'s reasons (was
+                             // gamesThatFailedVerifyCheck.txt - the Game Manager lists them now)
     bool noGamesFoundDuringScan = false;
 
     // metadata supplies title/publisher/year/cover art for games whose Game.ini is missing or incomplete
@@ -67,8 +69,6 @@ public:
     // than renumber it - see GameDatabase::findGameIdByPath/insertGame), so idByPath supplies them.
     static void writeSubDirRows(GamesHierarchy &gamesHierarchy, GameDatabase &db,
                                 const std::map<std::string, int> &idByPath);
-    // autobleem.list in the working path (id,path,sspath one game per line, read by the rc shell scripts)
-    static void writeAutobleemList(const UsbGames &games, const std::map<std::string, int> &idByPath);
 
     void repairBrokenCueFiles(const std::string &path);
     void decompressEcmFiles(const std::string &path); // every .ecm in the dir becomes a .bin

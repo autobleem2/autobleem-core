@@ -30,10 +30,10 @@ struct ExtensionInfo {
     std::string version;     // Version=
     std::string icon;        // Icon=, absolute; "" when there is none or the file is missing
     ExtensionNetwork network = ExtensionNetwork::None;
-    bool background = false;  // Background=true: loaded at start-up, polled every frame
-    AppManifest manifest;     // Plugin= resolved for this machine's platform keys
-    bool disabled = false;    // System/Extensions/disabled.txt names it
-    std::string loadProblem;  // set by the runtime when loading failed or the ABI did not match
+    bool background = false; // Background=true: loaded at start-up, polled every frame
+    AppManifest manifest;    // Plugin= resolved for this machine's platform keys
+    bool disabled = false;   // System/Extensions/disabled.txt names it
+    std::string loadProblem; // set by the runtime when loading failed or the ABI did not match
 
     // there is a library for this machine
     bool builtForThisSystem() const { return manifest.runnable(); }
@@ -45,9 +45,10 @@ struct ExtensionInfo {
 class ExtensionCatalog {
 public:
     // extensionsDir: Extensions/; stateDir: System/Extensions/; keys: Env::appPlatformKeys();
-    // pluginExtension: ".so" / ".dll" (AppManifest::pluginExtension())
+    // pluginExtension: ".so" / ".dll" (AppManifest::pluginExtension()); runtimeDir: where the crash guard's
+    // marker lives while the launcher runs - RAM (Env::getPathToRuntimeDir()); "" = stateDir
     ExtensionCatalog(std::string extensionsDir, std::string stateDir, std::vector<std::string> keys,
-                     std::string pluginExtension);
+                     std::string pluginExtension, std::string runtimeDir = "");
 
     // reads every Extensions/*/extension.ini again (sorted by title); what the runtime learnt about a
     // plugin it already loaded (loadProblem) is kept for that name
@@ -62,19 +63,22 @@ public:
 
     // the crash guard: markActive() before the launcher calls into a plugin, clearActive() after; a marker
     // still there at the next start means that extension took the launcher down - takeCrashed() names it,
-    // disables it and removes the marker ("" when there was none)
+    // disables it and removes the marker ("" when there was none). The marker is in RAM (<runtime>/
+    // extensions.active - it is written around every call, docs/quiet-stick-plan.md); a crash that ends in
+    // a reboot has rc/ab_log.sh copy it to System/Extensions/.active first, which takeCrashed() reads too
     void markActive(const std::string &name);
     void clearActive();
     std::string takeCrashed();
 
     static ExtensionNetwork parseNetwork(const std::string &value);
     std::string disabledFile() const;
-    std::string activeFile() const;
+    std::string activeFile() const;          // <runtime>/extensions.active
+    std::string persistedActiveFile() const; // System/Extensions/.active - a crash's copy, or an older launcher's
 
 private:
     std::vector<std::string> readDisabled() const;
 
-    std::string extensionsDir_, stateDir_;
+    std::string extensionsDir_, stateDir_, runtimeDir_;
     std::vector<std::string> keys_;
     std::string pluginExtension_;
     std::vector<ExtensionInfo> extensions_;

@@ -60,16 +60,9 @@ GamesFingerprint GamesFingerprint::takeAllFiles(const string &dir) {
 // GamesFingerprint::save
 //*******************************
 bool GamesFingerprint::save(const string &path) const {
-    ofstream os;
-    os.open(path, ios::binary);
-    if (!DirEntry::checkWritable(os, path))
-        return false;
-    for (const auto &entry : entries_) {
-        os << entry.first << "\t" << entry.second << "\n";
-    }
-    os.flush();
-    os.close();
-    return true;
+    // after every scan - so only when it changed (DirEntry::writeFileIfChanged): a rescan of the same tree
+    // leaves the file alone
+    return DirEntry::writeFileIfChanged(path, text()) != DirEntry::WriteResult::Failed;
 }
 
 //*******************************

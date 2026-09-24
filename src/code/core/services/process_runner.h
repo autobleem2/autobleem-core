@@ -18,7 +18,8 @@ struct LaunchPlan {
     std::vector<std::string> args;
     std::string cwd; // "" = the launcher's own
     // set in the program's environment on top of the launcher's (an App's AB_APP_* and its ini's Env=)
-    std::vector<std::pair<std::string, std::string>> env;
+    using Env = std::vector<std::pair<std::string, std::string>>;
+    Env env;
 
     // the command as one line, for the log
     std::string toString() const;

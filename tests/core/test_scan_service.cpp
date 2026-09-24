@@ -73,7 +73,8 @@ TEST_CASE("a first scan adds every verified game and saves the fingerprint") {
 
     CHECK(fx.library.usbGames().countGames() == 2);
     CHECK(ableem::DirEntry::exists(fx.tmp.at("games.fingerprint")));
-    CHECK(ableem::DirEntry::exists(fx.tmp.at("autobleem.list")));
+    CHECK_FALSE(ableem::DirEntry::exists(fx.tmp.at("autobleem.list"))); // nothing reads it since the SonyUI links
+    CHECK_FALSE(ableem::DirEntry::exists(fx.tmp.at("gamesThatFailedVerifyCheck.txt"))); // every game verified
 }
 
 TEST_CASE("rescanning an unchanged game updates its row in place - same id, no duplicate") {
@@ -552,4 +553,27 @@ TEST_CASE("the online pass fetches the box art of a ROM without one, once, and t
     ScanUpdate third = fx.runAndPoll();
     CHECK(third.boxArtFetched == 0);
     CHECK(commands.size() == before); // the cover is there: no probe, no fetch
+}
+
+TEST_CASE("a folder the scan refuses is kept in regional.db with its reasons, for the Game Manager") {
+    ScanServiceFixture fx;
+    test_support::makeFakeGame(fx.gamesDir(), "Crash Bandicoot", "SLUS_012.34");
+    // a second track that is not there fails verify() (see "a game that fails verify() is dropped")
+    test_support::makeFakeGame(fx.gamesDir(), "Broken", "SLUS_012.35");
+    fx.tmp.writeFile("Games/Broken/Broken.cue", "FILE \"Broken.bin\" BINARY\n  TRACK 01 MODE2/2352\n"
+                                                "    INDEX 01 00:00:00\nFILE \"Broken (Track 2).bin\" BINARY\n"
+                                                "  TRACK 02 AUDIO\n    INDEX 00 00:02:00\n    INDEX 01 00:04:00\n");
+
+    ScanUpdate update = fx.runAndPoll();
+    CHECK(update.finishedFailedCount == 1);
+    ableem::FailedGames failed = fx.library.usbGames().loadFailedGames();
+    REQUIRE(failed.size() == 1);
+    CHECK(failed[0].path == fx.tmp.at("Games/Broken"));
+    CHECK_FALSE(failed[0].reasons.empty());
+    CHECK_FALSE(ableem::DirEntry::exists(fx.tmp.at("gamesThatFailedVerifyCheck.txt"))); // no report file any more
+
+    // fixed: gone from the list
+    ableem::DirEntry::removeDirAndContents(fx.tmp.at("Games/Broken"));
+    fx.runAndPoll();
+    CHECK(fx.library.usbGames().loadFailedGames().empty());
 }

@@ -80,7 +80,8 @@ bool DirEntry::isPBPFile(std::string path) {
 // one - what RetroArch opens for a multi-disc game. basename is the first disc's name however the
 // scanner spells it (a cue's base, or a PBP's / CHD's whole file name), so any image extension is
 // stripped first; earlier versions kept the *last four* characters of a PBP name instead of dropping
-// them, and knew nothing of CHD. Stale .m3u files go first, so a rename does not leave two behind.
+// them, and knew nothing of CHD. Stale .m3u files are deleted, so a rename does not leave two behind;
+// the right one is rewritten only when its text changed - every scan comes through here.
 void DirEntry::generateM3UForDirectory(std::string path, std::string basename) {
     string ext = getFileExtension(basename);
     if (Strings::compareCaseInsensitive(ext, "pbp") || Strings::compareCaseInsensitive(ext, "chd") ||
@@ -100,18 +101,15 @@ void DirEntry::generateM3UForDirectory(std::string path, std::string basename) {
         return;
 
     sort(files.begin(), files.end());
+    const string m3uFile = basename + ".m3u";
     for (const DirEntry &entry : filesInPath) {
-        if (Strings::compareCaseInsensitive(DirEntry::getFileExtension(entry.name), "m3u"))
+        if (Strings::compareCaseInsensitive(DirEntry::getFileExtension(entry.name), "m3u") && entry.name != m3uFile)
             removeFile(fixPath(path) + sep + entry.name);
     }
-    string m3uName = DirEntry::fixPath(path) + sep + basename + ".m3u";
-    ofstream os(m3uName);
-    if (!checkWritable(os, m3uName))
-        return;
-    for (const string &file : files) {
-        os << file << endl;
-    }
-    os.close();
+    string text;
+    for (const string &file : files)
+        text += file + "\n";
+    writeFileIfChanged(DirEntry::fixPath(path) + sep + m3uFile, text);
 }
 
 //*******************************
@@ -470,6 +468,47 @@ bool DirEntry::replaceFile(const std::string &pathFrom, const std::string &pathT
 bool DirEntry::copyFile(const std::string &pathFrom, const std::string &pathTo) {
     // copy() answers true on success (2026-09-20: this used to compare it with 0 - and had no caller)
     return DirEntry::copy(pathFrom, pathTo);
+}
+
+//*******************************
+// DirEntry::readFile
+//*******************************
+bool DirEntry::readFile(const std::string &path, std::string &contents) {
+    ifstream is(path, ios::binary);
+    if (!is.is_open())
+        return false;
+    contents.clear();
+    char buf[16384];
+    while (is) {
+        is.read(buf, sizeof(buf));
+        contents.append(buf, static_cast<size_t>(is.gcount()));
+    }
+    return true;
+}
+
+//*******************************
+// DirEntry::writeFileIfChanged
+//*******************************
+DirEntry::WriteResult DirEntry::writeFileIfChanged(const std::string &path, const std::string &contents) {
+    // the size first: a file that grew or shrank is not read at all
+    if (fileSize(path) == static_cast<long long>(contents.size())) {
+        string existing;
+        if (readFile(path, existing) && existing == contents)
+            return WriteResult::Unchanged;
+    }
+    const string tmp = path + ".tmp";
+    ofstream os(tmp, ios::out | ios::trunc | ios::binary);
+    if (!checkWritable(os, tmp))
+        return WriteResult::Failed;
+    os << contents;
+    os.close();
+    if (os.fail() || !replaceFile(tmp, path)) {
+        PLOG_ERROR << "Could not write " << path;
+        removeFile(tmp);
+        return WriteResult::Failed;
+    }
+    PLOG_DEBUG << "Wrote " << path;
+    return WriteResult::Written;
 }
 
 //*******************************

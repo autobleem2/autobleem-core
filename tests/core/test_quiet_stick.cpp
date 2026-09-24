@@ -1,0 +1,187 @@
+//
+// The quiet stick (docs/quiet-stick-plan.md in the launcher repo): whatever runs on every start, every scan
+// or every launch writes nothing to the data root unless the user's state changed. Each test does the
+// thing twice and asserts the second pass left every file under the root exactly as it was - same size,
+// same modification time - so a rewrite with identical bytes counts as a write, which is the point.
+//
+#include "doctest/doctest.h"
+
+#include "../support/env_fixture.h"
+#include "../support/fake_game.h"
+#include "../support/game_library_fixture.h"
+#include "../support/string_maker.h"
+#include "../support/temp_dir.h"
+#include "../support/tree_snapshot.h"
+
+#include "core/services/config.h"
+#include "core/services/environment.h"
+#include "core/services/scan_service.h"
+
+#include <ableem/engine/config_file_editor.h>
+#include <ableem/engine/ini_file.h>
+
+#include <string>
+#include <vector>
+
+using std::string;
+using std::vector;
+using test_support::TreeSnapshot;
+
+// A test marked should_fail() documents a write the plan has not removed yet. doctest reports such a test
+// as a failure the moment it passes, so the step that fixes it has to take the decorator off.
+
+TEST_CASE("a second start leaves config.ini alone") {
+    TempDir tmp("quiet_config");
+    EnvFixture env;
+    env.setWorkingPath(tmp.path());
+
+    Config{}; // the first start fills in the defaults and writes them - a real change
+    TreeSnapshot before(tmp.path());
+    Config{};
+    CHECK(before.changesTo(TreeSnapshot(tmp.path())) == vector<string>{});
+}
+
+TEST_CASE("saving an unchanged ini file leaves it alone") {
+    TempDir tmp("quiet_ini");
+    tmp.writeFile("Game.ini", "[Game]\nTitle=Crash Bandicoot\nFavorite=0\n");
+
+    ableem::IniFile ini;
+    ini.load(tmp.at("Game.ini"));
+    ini.save(tmp.at("Game.ini")); // normalises the layout once
+    TreeSnapshot before(tmp.path());
+    ini.save(tmp.at("Game.ini"));
+    CHECK(before.changesTo(TreeSnapshot(tmp.path())) == vector<string>{});
+}
+
+TEST_CASE("setting cfg lines to the values they already have leaves the file alone") {
+    TempDir tmp("quiet_cfg");
+    tmp.writeFile("retroarch.cfg", "video_smooth = \"false\"\naspect_ratio_index = \"22\"\n");
+
+    TreeSnapshot before(tmp.path());
+    ableem::ConfigFileEditor editor;
+    editor.replaceInFile(tmp.at("retroarch.cfg"), "video_smooth", "video_smooth = \"false\"");
+    editor.replaceProperties(tmp.at("retroarch.cfg"), {{"aspect_ratio_index", "aspect_ratio_index = \"22\""},
+                                                       {"video_smooth", "video_smooth = \"false\""}});
+    CHECK(before.changesTo(TreeSnapshot(tmp.path())) == vector<string>{});
+}
+
+TEST_CASE("a rescan with nothing changed writes nothing") {
+    GameLibraryFixture fx;
+    fx.env.setWorkingPath(fx.tmp.path()); // the state dir: config, fingerprints, the scan's own files
+    fx.env.setRetroarchDir(fx.tmp.makeSubDir("RetroArch/bin"));
+    fx.tmp.makeSubDir("RetroArch/bin/playlists"); // AutoBleem.lpl is exported here
+    fx.tmp.makeSubDir("RetroArch/bin/retroboot"); // and EmulationStation's gamelist.xml written for RetroBoot
+    ScanService svc(fx.library);
+    test_support::makeFakeGame(fx.tmp.at("Games"), "Crash Bandicoot", "SLUS_012.34");
+    test_support::makeFakeGame(fx.tmp.at("Games"), "Spyro", "SLUS_012.35");
+    // a second disc in Spyro's folder: the scan writes its .m3u
+    test_support::makeFakeGame(fx.tmp.at("src"), "Spyro 2", "SLUS_012.35");
+    ableem::DirEntry::renameFile(fx.tmp.at("src/Spyro 2/Spyro 2.cue"), fx.tmp.at("Games/Spyro/Spyro 2.cue"));
+    ableem::DirEntry::renameFile(fx.tmp.at("src/Spyro 2/Spyro 2.bin"), fx.tmp.at("Games/Spyro/Spyro 2.bin"));
+    // and a game the scan refuses: its folder and the Game Manager's list are left alone too
+    test_support::makeFakeGame(fx.tmp.at("Games"), "Broken", "SLUS_012.36");
+    fx.tmp.writeFile("Games/Broken/Broken.cue", "FILE \"Broken.bin\" BINARY\n  TRACK 01 MODE2/2352\n"
+                                                "    INDEX 01 00:00:00\nFILE \"Broken (Track 2).bin\" BINARY\n"
+                                                "  TRACK 02 AUDIO\n    INDEX 00 00:02:00\n    INDEX 01 00:04:00\n");
+
+    svc.runScan();
+    REQUIRE(svc.poll().addedGames.size() == 2);
+    REQUIRE(fx.library.usbGames().loadFailedGames().size() == 1);
+    REQUIRE(ableem::DirEntry::exists(fx.tmp.at("Games/Spyro/Spyro 2.m3u"))); // named after the first disc
+    REQUIRE(ableem::DirEntry::exists(fx.tmp.at("RetroArch/bin/playlists/AutoBleem.lpl")));
+    REQUIRE(ableem::DirEntry::exists(
+        fx.tmp.at("RetroArch/bin/retroboot/emulationstation/.emulationstation/gamelists/psx/gamelist.xml")));
+
+    TreeSnapshot before(fx.tmp.path());
+    svc.runScan();
+    svc.poll();
+    CHECK(before.changesTo(TreeSnapshot(fx.tmp.path())) == vector<string>{});
+}
+
+TEST_CASE("replaceProperties: a batch is one write, a missing key is appended, CRLF becomes LF") {
+    TempDir tmp("quiet_cfg_batch");
+    tmp.writeFile("pcsx.cfg", "Bios = SET_BY_PCSX\r\nFrameskip3 = 0\r\nScanlines = 0\r\n");
+
+    ableem::ConfigFileEditor().replaceProperties(tmp.at("pcsx.cfg"),
+                                                 {{"frameskip3", "Frameskip3 = 1"}, {"SlowBoot", "SlowBoot = 0"}});
+    CHECK(tmp.readFile("pcsx.cfg") == "Bios = SET_BY_PCSX\nFrameskip3 = 1\nScanlines = 0\nSlowBoot = 0\n");
+
+    // a file that is not there is not created
+    ableem::ConfigFileEditor().replaceProperties(tmp.at("missing.cfg"), {{"a", "a = 1"}});
+    CHECK_FALSE(ableem::DirEntry::exists(tmp.at("missing.cfg")));
+}
+
+TEST_CASE("the logs go to the runtime dir unless kept: the marker, config.ini or $AB_KEEP_LOGS") {
+    TempDir tmp("quiet_logs");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    env.setWorkingPath(tmp.makeSubDir("Autobleem/bin/autobleem"));
+    ableem::Environment::setRuntimeDir(tmp.at("run"));
+
+    CHECK_FALSE(Env::keepLogsRequested());
+    Env::setKeepLogs(false);
+    Env::exportLogDirs();
+    CHECK(ableem::DirEntry::isDirectory(tmp.at("run/logs")));
+    CHECK(tmp.readFile("run/log_dir") == tmp.at("run/logs") + "\n");
+    CHECK(string(getenv("AB_LOG_DIR")) == tmp.at("run/logs"));
+    CHECK(string(getenv("AB_RUNTIME_DIR")) == tmp.at("run"));
+    CHECK_FALSE(ableem::DirEntry::exists(tmp.at("System/Logs"))); // nothing on the stick
+
+    tmp.writeFile("System/Logs/keep", "");
+    CHECK(Env::keepLogsRequested()); // a tester's marker
+    ableem::DirEntry::removeFile(tmp.at("System/Logs/keep"));
+
+    tmp.writeFile("Autobleem/bin/autobleem/config.ini", "[General]\nKeeplogs=true\n");
+    CHECK(Env::keepLogsRequested()); // the Options row - and the marker is made for the scripts
+    CHECK(ableem::DirEntry::exists(tmp.at("System/Logs/keep")));
+    Env::setKeepLogs(true);
+    CHECK(Env::getPathToLogsDir() == tmp.at("System/Logs"));
+}
+
+TEST_CASE("a crash folder the rc scripts saved is announced once, the newest first") {
+    TempDir tmp("quiet_crash");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    CHECK(Env::takeNewCrashLogs() == "");
+
+    tmp.writeFile("System/Logs/crash-9/.new", "");
+    tmp.writeFile("System/Logs/crash-10/.new", "");
+    tmp.writeFile("System/Logs/crash-8/reason.txt", "announced before");
+    CHECK(Env::takeNewCrashLogs() == "crash-10");
+    CHECK(Env::takeNewCrashLogs() == "");                           // said once
+    CHECK(ableem::DirEntry::exists(tmp.at("System/Logs/crash-9"))); // the logs stay
+}
+
+TEST_CASE("the Options row makes and removes the keep marker; Config shows a tester's marker as on") {
+    TempDir tmp("quiet_keep_row");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    env.setWorkingPath(tmp.path());
+
+    CHECK(Config().inifile.values["keeplogs"] == "false");
+    Env::setKeepLogsMarker(true);
+    CHECK(ableem::DirEntry::exists(tmp.at("System/Logs/keep")));
+    CHECK(Config().inifile.values["keeplogs"] == "true");
+    Env::setKeepLogsMarker(false);
+    CHECK_FALSE(ableem::DirEntry::exists(tmp.at("System/Logs/keep")));
+}
+
+TEST_CASE("Save logs copies this run's logs from RAM to System/Logs/saved-<n>, the last three kept") {
+    TempDir tmp("quiet_save_logs");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    ableem::Environment::setRuntimeDir(tmp.at("run"));
+    tmp.writeFile("run/logs/autobleem.log", "a line");
+    tmp.writeFile("run/logs/AB_out.txt", "out");
+
+    CHECK(Env::copyLogsToStick() == "saved-1");
+    CHECK(tmp.readFile("System/Logs/saved-1/autobleem.log") == "a line");
+    for (int i = 2; i <= 4; i++)
+        Env::copyLogsToStick();
+    CHECK_FALSE(ableem::DirEntry::exists(tmp.at("System/Logs/saved-1")));
+    CHECK(ableem::DirEntry::exists(tmp.at("System/Logs/saved-2")));
+    CHECK(ableem::DirEntry::exists(tmp.at("System/Logs/saved-4")));
+
+    Env::setKeepLogs(true); // on the stick already: nothing to copy
+    CHECK(Env::copyLogsToStick() == "");
+}

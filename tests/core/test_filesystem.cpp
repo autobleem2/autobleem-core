@@ -92,3 +92,24 @@ TEST_CASE("generateM3UForDirectory writes nothing for a single disc and replaces
     CHECK_FALSE(DirEntry::exists(tmp.at("Renamed/Old Name.m3u")));
     CHECK(lines(tmp, "Renamed/New (Disc 1).m3u") == "New (Disc 1).cue\nNew (Disc 2).cue\n");
 }
+
+TEST_CASE("writeFileIfChanged writes a new or different file and leaves an identical one alone") {
+    TempDir tmp("fs_write_if_changed");
+    const string path = tmp.at("config.ini");
+
+    CHECK(DirEntry::writeFileIfChanged(path, "[General]\nTheme=ab2\n") == DirEntry::WriteResult::Written);
+    CHECK(tmp.readFile("config.ini") == "[General]\nTheme=ab2\n");
+    CHECK_FALSE(DirEntry::exists(path + ".tmp"));
+
+    CHECK(DirEntry::writeFileIfChanged(path, "[General]\nTheme=ab2\n") == DirEntry::WriteResult::Unchanged);
+
+    // the same size, other bytes: compared, not only measured
+    CHECK(DirEntry::writeFileIfChanged(path, "[General]\nTheme=ab3\n") == DirEntry::WriteResult::Written);
+    CHECK(tmp.readFile("config.ini") == "[General]\nTheme=ab3\n");
+
+    CHECK(DirEntry::writeFileIfChanged(path, "") == DirEntry::WriteResult::Written);
+    CHECK(DirEntry::fileSize(path) == 0);
+    CHECK(DirEntry::writeFileIfChanged(path, "") == DirEntry::WriteResult::Unchanged);
+
+    CHECK(DirEntry::writeFileIfChanged(tmp.at("no/such/dir/x.ini"), "x") == DirEntry::WriteResult::Failed);
+}

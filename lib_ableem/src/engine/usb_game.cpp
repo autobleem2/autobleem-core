@@ -92,7 +92,7 @@ bool UsbGame::verify(std::vector<std::string> *failureReasons) {
             result = false;
         }
         if (!discs[i].cueFound) {
-            PLOG_INFO << i << discs[i].diskName << discs[i].cueFound;
+            PLOG_DEBUG << i << discs[i].diskName << discs[i].cueFound;
             if (failureReasons)
                 failureReasons->emplace_back("Cue file not found");
             result = false;
@@ -136,37 +136,37 @@ bool UsbGame::verify(std::vector<std::string> *failureReasons) {
 // UsbGame::print
 //*******************************
 bool UsbGame::print() {
-    PLOG_INFO << "-------------------";
-    PLOG_INFO << "Printing game data:";
-    PLOG_INFO << "-----------------";
-    PLOG_INFO << "AUTOMATION: " << automationUsed;
-    PLOG_INFO << "Game folder id: " << folder_id;
-    PLOG_INFO << "Game: " << title;
-    PLOG_INFO << "Players: " << players;
-    PLOG_INFO << "Publisher: " << publisher;
-    PLOG_INFO << "Year: " << year;
-    PLOG_INFO << "Serial: " << serial;
-    PLOG_INFO << "Region: " << region;
-    PLOG_INFO << "GameData found: " << gameDataFound;
-    PLOG_INFO << "Game.ini found: " << gameIniFound;
-    PLOG_INFO << "Game.ini valid: " << gameIniValid;
-    PLOG_INFO << "PNG found:" << coverImageFound;
-    PLOG_INFO << "pcsx.cfg found: " << pcsxCfgFound;
-    PLOG_INFO << "TotalDiscs: " << discs.size();
-    PLOG_INFO << "Favorite: " << favorite;
-    PLOG_INFO << "Play Using RA: " << play_using_ra;
-    PLOG_INFO << "Last Played: " << last_played;
+    PLOG_DEBUG << "-------------------";
+    PLOG_DEBUG << "Printing game data:";
+    PLOG_DEBUG << "-----------------";
+    PLOG_DEBUG << "AUTOMATION: " << automationUsed;
+    PLOG_DEBUG << "Game folder id: " << folder_id;
+    PLOG_DEBUG << "Game: " << title;
+    PLOG_DEBUG << "Players: " << players;
+    PLOG_DEBUG << "Publisher: " << publisher;
+    PLOG_DEBUG << "Year: " << year;
+    PLOG_DEBUG << "Serial: " << serial;
+    PLOG_DEBUG << "Region: " << region;
+    PLOG_DEBUG << "GameData found: " << gameDataFound;
+    PLOG_DEBUG << "Game.ini found: " << gameIniFound;
+    PLOG_DEBUG << "Game.ini valid: " << gameIniValid;
+    PLOG_DEBUG << "PNG found:" << coverImageFound;
+    PLOG_DEBUG << "pcsx.cfg found: " << pcsxCfgFound;
+    PLOG_DEBUG << "TotalDiscs: " << discs.size();
+    PLOG_DEBUG << "Favorite: " << favorite;
+    PLOG_DEBUG << "Play Using RA: " << play_using_ra;
+    PLOG_DEBUG << "Last Played: " << last_played;
 
     for (int i = 0; i < discs.size(); i++) {
-        PLOG_INFO << "  Disc:" << i + 1 << "  " << discs[i].diskName;
-        PLOG_INFO << "  CUE found: " << discs[i].cueFound;
-        PLOG_INFO << "  BIN correct: " << discs[i].binVerified;
+        PLOG_DEBUG << "  Disc:" << i + 1 << "  " << discs[i].diskName;
+        PLOG_DEBUG << "  CUE found: " << discs[i].cueFound;
+        PLOG_DEBUG << "  BIN correct: " << discs[i].binVerified;
     }
 
     vector<string> failureReasons;
     bool result = verify(&failureReasons);
     if (result) {
-        PLOG_INFO << "-------Game Verify OK-------";
+        PLOG_DEBUG << "-------Game Verify OK-------";
     } else {
         PLOG_WARNING << "------Game Verify FAIL------";
         for (const auto &reason : failureReasons)
@@ -411,6 +411,9 @@ void UsbGame::applyIniValues() {
 // UsbGame::saveGameIni
 //*******************************
 void UsbGame::saveGameIni(const string &path) {
+    // what parseIni reads an empty one back as - the game, the file and regional.db agree from the first scan
+    if (publisher.empty())
+        publisher = "Other";
     IniFile ini;
     ini.section = "Game";
     ini.values["title"] = title;
