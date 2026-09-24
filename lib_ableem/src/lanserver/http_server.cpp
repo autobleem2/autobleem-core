@@ -185,7 +185,14 @@ bool HttpServer::listen(int port, string &error) {
         return false;
     }
     int yes = 1;
+#ifdef _WIN32
+    // Windows' SO_REUSEADDR would let a second server bind the port while this one holds it (and share its
+    // clients at random); exclusive use is what refuses a second LAN Share or abstored
+    setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char *>(&yes), sizeof(yes));
+#else
+    // a restart binds at once, not after the old connections' TIME_WAIT
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&yes), sizeof(yes));
+#endif
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_ANY);
