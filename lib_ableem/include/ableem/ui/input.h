@@ -54,7 +54,28 @@ enum class Key {
     Delete,
     Sleep, // the console's power button (SDL_SCANCODE_SLEEP) - only seen with setPowerKeyAsKey(true)
     Reset, // the console's reset button (SDL_SCANCODE_AUDIOPLAY)
-    Open   // the console's open (eject) button (SDL_SCANCODE_EJECT)
+    Open,  // the console's open (eject) button (SDL_SCANCODE_EJECT)
+    Insert,
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12
+};
+
+//******************
+// KeyMod
+//******************
+// The modifier keys held with a key (Event::mods), as bits
+struct KeyMod {
+    enum : unsigned { Shift = 1, Ctrl = 2, Alt = 4, Gui = 8 };
 };
 
 //******************
@@ -79,6 +100,11 @@ struct Event {
     Button button = Button::None; // valid for ButtonDown/Up, DpadDown/Up
     Key key = Key::Other;         // valid for KeyDown/Up
     std::string text;             // valid for TextInput (a UTF-8 chunk of typed text)
+    unsigned mods = 0;            // KeyDown/Up: the KeyMod bits held with the key
+    // KeyDown/Up: the character the key is labelled with, unshifted ('c' for C, '[' for [), whatever
+    // `key` says; 0 for a key that has none (the arrows, F1, ...). How Ctrl+C is told apart: with Ctrl held
+    // no TextInput comes
+    int code = 0;
 };
 
 //******************
@@ -145,6 +171,11 @@ public:
     // comes through as a KeyDown of Key::Sleep instead (a screen that uses it as "cancel", like a pad
     // mapping wizard, turns it on for its own duration)
     void setPowerKeyAsKey(bool enabled);
+
+    // a program that wants the whole keyboard (a terminal): Esc arrives as a KeyDown of Key::Escape like any
+    // other key, and only the console's power button still powers off. Off by default. It does not turn
+    // the keyboard-as-pad of a dev host off - setKeyboardAsPad(false) does
+    void setRawKeyboard(bool enabled);
 
     void loadMappings(const std::vector<std::string> &gameControllerDbPaths);
     // the gamecontrollerdb.txt probePads() loaded, "" when none of the paths existed

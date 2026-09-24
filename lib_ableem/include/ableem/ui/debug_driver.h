@@ -9,7 +9,8 @@
 //                            up down left right (the d-pad)
 //   down <button> / up <button>    a held button (down l2, press r2, up l2 = the L2+R2 system menu)
 //   key <name>               KeyDown + KeyUp: escape return up down left right pageup pagedown home end tab
-//                            backspace delete
+//                            backspace delete insert f1..f12, or one character (its Event::code); any of
+//                            them after ctrl+ alt+ shift+ gui+ (key ctrl+c, key shift+tab)
 //   text <utf8>              typed text (a TextInput event)
 //   wait <ms>                sleep
 //   shot <file.bmp|.png>     the last presented frame written to the file; waits up to 400 ms for a frame

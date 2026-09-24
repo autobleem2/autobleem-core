@@ -27,7 +27,7 @@ class AppBase;
 //
 // A macro and a string literal on purpose: an inline function here would, on Linux, bind to the launcher's
 // own copy when the plugin is loaded, and the plugin would report the launcher's stamp as its own.
-#define AB_SDK_ABI 1
+#define AB_SDK_ABI 2 // 2: ableem::Event gained mods and code (2026-09-24)
 
 #define AB_SDK_STR2(x) #x
 #define AB_SDK_STR(x) AB_SDK_STR2(x)
@@ -56,7 +56,7 @@ class AppBase;
 #else
 #define AB_SDK_TARGET "dev"
 #endif
-#define AB_SDK_STAMP                                                                                                  \
+#define AB_SDK_STAMP                                                                                                   \
     "sdk=" AB_SDK_STR(AB_SDK_ABI) ";cxx=" AB_SDK_CXX ";cxx11abi=" AB_SDK_STRING_ABI ";target=" AB_SDK_TARGET
 
 //******************
@@ -68,7 +68,7 @@ class ExtensionHost {
 public:
     virtual ~ExtensionHost() = default;
 
-    virtual AppBase &app() = 0;                     // config, theme, language, audio; the Gui is Gui::getInstance()
+    virtual AppBase &app() = 0;                      // config, theme, language, audio; the Gui is Gui::getInstance()
     virtual const std::string &name() const = 0;     // the folder's name, Extensions/<name>/
     virtual const std::string &folder() const = 0;   // Extensions/<name>/
     virtual const std::string &stateDir() const = 0; // System/Extensions/<name>/ - its own files go here
@@ -118,13 +118,15 @@ public:
 // The two C functions the launcher looks up. The extension's logging goes through plog instance 1, chained
 // into the launcher's (instance 0) - chaining instance 0 into itself recursed on Linux, where a plugin's
 // instance 0 *is* the launcher's.
-#define AB_EXTENSION(ExtensionClass)                                                                               \
-    static_assert(PLOG_DEFAULT_INSTANCE_ID != 0, "build an extension with ab_add_extension() - it logs through "   \
-                                                 "plog instance 1 (PLOG_DEFAULT_INSTANCE_ID=1)");                   \
-    AB_EXTENSION_EXPORT const char *ab_extension_abi() { return AB_SDK_STAMP; }                                     \
-    AB_EXTENSION_EXPORT Extension *ab_extension_create(ExtensionHost &host) {                                      \
-        plog::init<PLOG_DEFAULT_INSTANCE_ID>(host.logSeverity(), host.logAppender());                              \
-        return new ExtensionClass(host);                                                                           \
+#define AB_EXTENSION(ExtensionClass)                                                                                   \
+    static_assert(PLOG_DEFAULT_INSTANCE_ID != 0, "build an extension with ab_add_extension() - it logs through "       \
+                                                 "plog instance 1 (PLOG_DEFAULT_INSTANCE_ID=1)");                      \
+    AB_EXTENSION_EXPORT const char *ab_extension_abi() {                                                               \
+        return AB_SDK_STAMP;                                                                                           \
+    }                                                                                                                  \
+    AB_EXTENSION_EXPORT Extension *ab_extension_create(ExtensionHost &host) {                                          \
+        plog::init<PLOG_DEFAULT_INSTANCE_ID>(host.logSeverity(), host.logAppender());                                  \
+        return new ExtensionClass(host);                                                                               \
     }
 
 // what the launcher looks the two up as
