@@ -99,14 +99,41 @@ bool keyFor(const string &name, Key &key) {
     } keys[] = {{"escape", Key::Escape},       {"return", Key::Return}, {"enter", Key::Return}, {"up", Key::Up},
                 {"down", Key::Down},           {"left", Key::Left},     {"right", Key::Right},  {"pageup", Key::PageUp},
                 {"pagedown", Key::PageDown},   {"home", Key::Home},     {"end", Key::End},      {"tab", Key::Tab},
-                {"backspace", Key::Backspace}, {"delete", Key::Delete}};
+                {"backspace", Key::Backspace}, {"delete", Key::Delete}, {"insert", Key::Insert}};
     for (const auto &k : keys) {
         if (name == k.name) {
             key = k.key;
             return true;
         }
     }
+    if (name.size() >= 2 && name.size() <= 3 && name[0] == 'f') {
+        int n = atoi(name.c_str() + 1);
+        if (n >= 1 && n <= 12) {
+            key = static_cast<Key>(static_cast<int>(Key::F1) + n - 1);
+            return true;
+        }
+    }
     return false;
+}
+
+// "ctrl+alt+c" -> the modifiers and what is left ("c"); "ctrl+" alone is not a key
+void splitModifiers(string &name, unsigned &mods) {
+    mods = 0;
+    static const struct {
+        const char *prefix;
+        unsigned mod;
+    } prefixes[] = {{"ctrl+", KeyMod::Ctrl}, {"alt+", KeyMod::Alt}, {"shift+", KeyMod::Shift}, {"gui+", KeyMod::Gui}};
+    for (bool found = true; found;) {
+        found = false;
+        for (const auto &p : prefixes) {
+            size_t n = strlen(p.prefix);
+            if (name.size() > n && name.compare(0, n, p.prefix) == 0) {
+                mods |= p.mod;
+                name.erase(0, n);
+                found = true;
+            }
+        }
+    }
 }
 
 void sleepMs(int ms) {
@@ -215,12 +242,19 @@ private:
         if (cmd == "key") {
             string name;
             in >> name;
-            Key key;
-            if (!keyFor(name, key))
+            unsigned mods;
+            splitModifiers(name, mods);
+            Key key = Key::Other;
+            int code = 0;
+            if (name.size() == 1 && name[0] > 32 && name[0] < 127)
+                code = tolower(static_cast<unsigned char>(name[0])); // a character key: "ctrl+c"
+            else if (!keyFor(name, key))
                 return "err unknown key " + name;
             Event e;
             e.type = Event::Type::KeyDown;
             e.key = key;
+            e.mods = mods;
+            e.code = code;
             gui_.input().inject(e);
             e.type = Event::Type::KeyUp;
             gui_.input().inject(e);

@@ -159,9 +159,33 @@ Key toKey(SDL_Scancode scancode, SDL_Keycode sym) {
         return Key::Backspace;
     case SDLK_DELETE:
         return Key::Delete;
+    case SDLK_KP_ENTER:
+        return Key::Return;
+    case SDLK_INSERT:
+        return Key::Insert;
     default:
+        if (sym >= SDLK_F1 && sym <= SDLK_F12)
+            return static_cast<Key>(static_cast<int>(Key::F1) + (sym - SDLK_F1));
         return Key::Other;
     }
+}
+
+unsigned toMods(Uint16 mod) {
+    unsigned mods = 0;
+    if (mod & KMOD_SHIFT)
+        mods |= KeyMod::Shift;
+    if (mod & KMOD_CTRL)
+        mods |= KeyMod::Ctrl;
+    if (mod & KMOD_ALT)
+        mods |= KeyMod::Alt;
+    if (mod & KMOD_GUI)
+        mods |= KeyMod::Gui;
+    return mods;
+}
+
+// the character a key is labelled with: SDL's keycode for every key that types one is that character
+int toCode(SDL_Keycode sym) {
+    return (sym >= 32 && sym < 127) ? static_cast<int>(sym) : 0;
 }
 
 bool fileExists(const std::string &path) {
@@ -184,6 +208,7 @@ struct Input::Impl {
     Platform &platform;
     bool keyboardAsPad;
     bool powerKeyAsKey = false;
+    bool rawKeyboard = false;   // setRawKeyboard(): Esc is a key, not the power button
     bool quitRequested = false; // requestQuit(): poll() returns Quit on every other call from then on
     bool quitArmed = false;     // ... and false in between, so a "while (poll(e))" drain loop ends
     bool dpadState[4] = {false, false, false, false};
@@ -312,7 +337,8 @@ bool Input::poll(Event &out) {
         return true;
     }
 
-    if (e.type == SDL_KEYDOWN && (e.key.keysym.scancode == SDL_SCANCODE_SLEEP || e.key.keysym.sym == SDLK_ESCAPE)) {
+    if (e.type == SDL_KEYDOWN &&
+        (e.key.keysym.scancode == SDL_SCANCODE_SLEEP || (e.key.keysym.sym == SDLK_ESCAPE && !impl->rawKeyboard))) {
         if (impl->powerKeyAsKey) {
             out.type = Event::Type::KeyDown;
             out.key = Key::Sleep;
@@ -331,10 +357,14 @@ bool Input::poll(Event &out) {
     case SDL_KEYDOWN:
         out.type = Event::Type::KeyDown;
         out.key = toKey(e.key.keysym.scancode, e.key.keysym.sym);
+        out.mods = toMods(e.key.keysym.mod);
+        out.code = toCode(e.key.keysym.sym);
         return true;
     case SDL_KEYUP:
         out.type = Event::Type::KeyUp;
         out.key = toKey(e.key.keysym.scancode, e.key.keysym.sym);
+        out.mods = toMods(e.key.keysym.mod);
+        out.code = toCode(e.key.keysym.sym);
         return true;
     case SDL_TEXTINPUT:
         out.type = Event::Type::TextInput;
@@ -427,6 +457,10 @@ void Input::setKeyboardAsPad(bool enabled) {
 
 void Input::setPowerKeyAsKey(bool enabled) {
     impl->powerKeyAsKey = enabled;
+}
+
+void Input::setRawKeyboard(bool enabled) {
+    impl->rawKeyboard = enabled;
 }
 
 void Input::loadMappings(const std::vector<std::string> &gameControllerDbPaths) {
