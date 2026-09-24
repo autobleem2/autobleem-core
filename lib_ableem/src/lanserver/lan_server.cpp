@@ -323,6 +323,22 @@ HttpServer::Response LanServer::upload(const HttpServer::Request &request) {
     if (request.method != "PUT")
         return HttpServer::Response::text(405, "GET, PUT, POST ?commit or DELETE\n");
 
+    // one writer a file: a stopped upload's request may still be writing what it had when the next one comes
+    // - that one is told "not yet" (409 with the size so far) and tries again
+    {
+        lock_guard<mutex> lock(writingMutex_);
+        if (writing_.count(target))
+            return HttpServer::Response::text(409, to_string(current) + "\n");
+        writing_.insert(target);
+    }
+    struct Done {
+        LanServer &s;
+        const string &t;
+        ~Done() {
+            lock_guard<mutex> lock(s.writingMutex_);
+            s.writing_.erase(t);
+        }
+    } done{*this, target};
     const long long offset = atoll(param(request.query, "offset").c_str());
     if (offset != 0 && offset != current)
         return HttpServer::Response::text(409, to_string(current) + "\n"); // what is there: go on from it

@@ -8,10 +8,12 @@
 #include <ableem/engine/log.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <json.h>
+#include <thread>
 #include <vector>
 
 #ifdef _WIN32
@@ -247,19 +249,29 @@ bool LanClient::upload(const string &gameFolder, const string &localFile, const 
         return false;
     }
     uint64_t offset = strtoull(have.body.c_str(), nullptr, 10);
-    if (offset > total)
-        offset = 0; // a different file of that name was staged: start it again
-    if (offset == total && total > 0) {
-        if (progress)
-            progress(total, total);
-        return true;
+    // 409: the server has another size than asked for - or an earlier request of ours (a stopped upload) is still
+    // writing the file; it says the size so far, and this goes on from that once the file is free
+    for (int attempt = 0;; attempt++) {
+        if (offset > total)
+            offset = 0; // a different file of that name was staged: start it again
+        if (offset == total && total > 0) {
+            if (progress)
+                progress(total, total);
+            return true;
+        }
+        const Reply r =
+            request("PUT", target + query(library, "offset=" + to_string(offset)), "", localFile, offset,
+                    total - offset, [&](uint64_t sent) { return !progress || progress(offset + sent, total); });
+        if (r.status == 200)
+            return true;
+        if (r.status == 409 && attempt < 20) {
+            offset = strtoull(r.body.c_str(), nullptr, 10);
+            this_thread::sleep_for(chrono::milliseconds(250));
+            continue;
+        }
+        error = r.status == 0 ? r.error : plain(r.body);
+        return false;
     }
-    const Reply r = request("PUT", target + query(library, "offset=" + to_string(offset)), "", localFile, offset,
-                            total - offset, [&](uint64_t sent) { return !progress || progress(offset + sent, total); });
-    if (r.status == 200)
-        return true;
-    error = r.status == 0 ? r.error : plain(r.body);
-    return false;
 }
 
 bool LanClient::commit(const string &gameFolder, const string &library, string &finalName, string &error) {

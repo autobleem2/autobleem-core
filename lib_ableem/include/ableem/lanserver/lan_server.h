@@ -25,6 +25,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -83,6 +84,8 @@ private:
     std::thread serving_, watcher_, hasher_;
     mutable std::mutex activityMutex_;
     std::deque<Activity> activity_;
+    std::mutex writingMutex_;
+    std::set<std::string> writing_; // staged files an upload is writing right now: one writer a file
 };
 
 } // namespace ableem
