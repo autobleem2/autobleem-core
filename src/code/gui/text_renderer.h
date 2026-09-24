@@ -187,6 +187,8 @@ public:
     // a heading row between the rows: PanelStyle's faint band, to the panel's right edge or `rightEdge`
     // (a screen with a pane on the right passes where its rows stop, as for renderSelectionBox)
     void renderLabelBox(int line, int yoffset, int rightEdge = 0);
+    // a row that cannot be changed, over the row once it is drawn: PanelStyle::disabled, same extent
+    void renderDisabledBox(int line, int yoffset, int rightEdge = 0);
 
     void renderTextChar(const std::string &text, int line, int yoffset, int posx);
 

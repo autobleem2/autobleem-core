@@ -88,6 +88,15 @@ void PanelStyle::label(ableem::Renderer &renderer, const Rect &rect) const {
 }
 
 //*******************************
+// PanelStyle::disabled
+//*******************************
+void PanelStyle::disabled(ableem::Renderer &renderer, const Rect &rect) const {
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    renderer.setDrawColor(Color(0, 0, 0, 150));
+    renderer.fillRect(rect);
+}
+
+//*******************************
 // PanelStyle::scrollMarker
 //*******************************
 void PanelStyle::scrollMarker(ableem::Renderer &renderer, int cx, int cy, int direction) const {

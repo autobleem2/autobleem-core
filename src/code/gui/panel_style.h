@@ -49,6 +49,9 @@ public:
     int header(Gui &gui, const ableem::Rect &panel, const std::string &title) const;
     // the selected row: the band and the bar, `rect` being the row's full extent
     void selection(ableem::Renderer &renderer, const ableem::Rect &rect) const;
+    // a row that cannot be changed (a locked setting): drawn over the row once it is drawn, the sheet's
+    // black laid over it again so label, value and switch all fall back behind the rows around it
+    void disabled(ableem::Renderer &renderer, const ableem::Rect &rect) const;
     // a heading row (a label between the rows): a faint band in the secondary colour
     void label(ableem::Renderer &renderer, const ableem::Rect &rect) const;
     // a small triangle at (cx, cy) pointing up (direction -1) or down (1): more rows that way

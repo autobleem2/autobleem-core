@@ -475,6 +475,21 @@ void TextRenderer::renderLabelBox(int line, int yoffset, int rightEdge) {
 }
 
 //*******************************
+// TextRenderer::renderDisabledBox
+//*******************************
+void TextRenderer::renderDisabledBox(int line, int yoffset, int rightEdge) {
+    int fontHeight = themeFont_.lineHeight();
+    Rect opscreen = getOpscreenRectOfTheme();
+    Rect rect;
+    rect.x = opscreen.x + 1;
+    rect.y = yoffset + fontHeight * (line);
+    rect.w = (rightEdge > 0 ? rightEdge + 12 : opscreen.x + opscreen.w - 1) - rect.x;
+    rect.h = fontHeight;
+
+    PanelStyle::fromTheme(theme_.launcher()).disabled(renderer_, rect);
+}
+
+//*******************************
 // TextRenderer::renderTextChar
 //*******************************
 void TextRenderer::renderTextChar(const string &text, int line, int yoffset, int x) {
