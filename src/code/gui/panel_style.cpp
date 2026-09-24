@@ -100,9 +100,11 @@ void PanelStyle::disabled(ableem::Renderer &renderer, const Rect &rect) const {
 // PanelStyle::scrollMarker
 //*******************************
 void PanelStyle::scrollMarker(ableem::Renderer &renderer, int cx, int cy, int direction) const {
+    // the point at cy, the rows widening away from it: an up marker grows downwards (it drew upside down
+    // until 2026-09-24 - the point sat at the far end)
     renderer.setDrawColor(text);
     for (int i = 0; i < 5; i++)
-        renderer.fillRect(Rect(cx - i, cy + direction * i, 2 * i + 1, 1));
+        renderer.fillRect(Rect(cx - i, cy - direction * i, 2 * i + 1, 1));
 }
 
 //*******************************
