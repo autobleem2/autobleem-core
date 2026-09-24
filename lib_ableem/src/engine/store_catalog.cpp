@@ -39,6 +39,29 @@ string lower(string s) {
     return s;
 }
 
+// a header's fields as the column names the parser knows: ours, and the other well-known list layout's
+// (NoPayStation's: Title ID, Region, Name, PKG direct link, ..., File Size, SHA256) under their own names -
+// there "Name" is the title, which it only is when the header has no "title" (in ours it is the file name)
+vector<string> headerColumns(const vector<string> &fields) {
+    bool hasTitle = false;
+    for (const string &f : fields)
+        hasTitle = hasTitle || lower(f) == "title";
+    vector<string> columns;
+    for (const string &f : fields) {
+        string c = lower(f);
+        if (c == "pkg direct link" || c == "link" || c == "download url")
+            c = "url";
+        else if (c == "file size")
+            c = "size";
+        else if (c == "title id")
+            c = "serial";
+        else if (c == "name" && !hasTitle)
+            c = "title";
+        columns.push_back(c);
+    }
+    return columns;
+}
+
 bool readAll(const string &path, string &text) {
     ifstream in(path, ios::binary);
     if (!in)
@@ -144,7 +167,7 @@ StoreSourceTsv StoreSourceTsv::parse(const string &text, const string &fallbackN
     StoreSourceTsv out;
     out.name = fallbackName;
     vector<string> columns; // empty = no header: title, url, size
-    map<string, size_t> byKey; // kind + "\t" + title -> index in items
+    map<string, vector<size_t>> byKey; // kind + "\t" + title -> the items of that title
     istringstream in(text);
     string line;
     int number = 0;
@@ -173,14 +196,11 @@ StoreSourceTsv StoreSourceTsv::parse(const string &text, const string &fallbackN
                 start = tab + 1;
             }
         }
-        // the header: the first line with a "url" field, before any data
+        // the header: the first line with a "url" field (under any of its names), before any data
         if (columns.empty() && out.items.empty()) {
-            bool header = false;
-            for (const string &f : fields)
-                header = header || lower(f) == "url";
-            if (header) {
-                for (const string &f : fields)
-                    columns.push_back(lower(f));
+            vector<string> named = headerColumns(fields);
+            if (find(named.begin(), named.end(), "url") != named.end()) {
+                columns = named;
                 continue;
             }
         }
@@ -223,19 +243,26 @@ StoreSourceTsv StoreSourceTsv::parse(const string &text, const string &fallbackN
         file.sha256 = lower(field("sha256"));
         file.disc = atoi(field("disc").c_str());
 
-        const string key = kind + "\t" + title;
-        auto found = byKey.find(key);
-        if (found == byKey.end()) {
+        // one item per kind and title - and per serial: a list with one line per regional release of the same
+        // title (a Title ID each) makes one item each, while a line with no serial joins as another disc
+        const string serial = field("serial");
+        size_t index = out.items.size();
+        for (size_t candidate : byKey[kind + "\t" + title]) {
+            const string &known = out.items[candidate].serial;
+            if (serial.empty() || known.empty() || known == serial) {
+                index = candidate;
+                break;
+            }
+        }
+        if (index == out.items.size()) {
             StoreItem item;
-            item.id = kind + "/" + title;
             item.kind = kind;
             item.title = title;
             item.source = out.name;
-            byKey[key] = out.items.size();
+            byKey[kind + "\t" + title].push_back(index);
             out.items.push_back(item);
-            found = byKey.find(key);
         }
-        StoreItem &item = out.items[found->second];
+        StoreItem &item = out.items[index];
         item.files.push_back(file);
         auto fill = [&](string &target, const char *column) {
             if (target.empty())
@@ -248,8 +275,18 @@ StoreSourceTsv StoreSourceTsv::parse(const string &text, const string &fallbackN
         fill(item.author, "author");
         fill(item.licence, "licence");
     }
+    // ids: <kind>/<title>, with /<serial> where two items share a title, and #n past that
+    map<string, int> uses;
+    for (const StoreItem &item : out.items)
+        uses[item.kind + "/" + item.title]++;
+    map<string, int> seen;
     for (StoreItem &item : out.items) {
         item.source = out.name;
+        item.id = item.kind + "/" + item.title;
+        if (uses[item.id] > 1 && !item.serial.empty())
+            item.id += "/" + item.serial;
+        if (++seen[item.id] > 1)
+            item.id += "#" + to_string(seen[item.id]);
         stable_sort(item.files.begin(), item.files.end(),
                     [](const StoreFile &a, const StoreFile &b) { return a.disc < b.disc; });
     }
