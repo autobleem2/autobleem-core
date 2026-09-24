@@ -915,9 +915,10 @@ bool GameDatabase::executeStatement(const char *sql, const string &outMsg, const
 //*******************************
 // GameDatabase::open
 //*******************************
-bool GameDatabase::open(const string &fileName) {
+bool GameDatabase::open(const string &fileName, bool readOnly) {
     close(); // in case open is called twice
-    int rc = sqlite3_open(fileName.c_str(), &db);
+    int rc = readOnly ? sqlite3_open_v2(fileName.c_str(), &db, SQLITE_OPEN_READONLY, nullptr)
+                      : sqlite3_open(fileName.c_str(), &db);
     if (rc != SQLITE_OK) {
         PLOG_ERROR << "Failed: db:: connect, " << fileName;
         PLOG_WARNING << "Cannot open database: " << (db ? sqlite3_errmsg(db) : "out of memory");
