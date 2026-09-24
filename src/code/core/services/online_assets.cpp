@@ -139,7 +139,9 @@ const vector<string> &OnlineAssets::serverIndex(const string &dbName) {
     vector<string> &names = indexCache_[dbName];
     const string url =
         DirEntry::removeSeparatorFromEndOfPath(config_.thumbnailsBaseUrl) + "/" + urlEncode(dbName) + "/Named_Boxarts/";
-    const string tmp = Env::getPathToStateDir() + sep + ".online-index.html";
+    // a download read once and dropped: RAM, not the stick (docs/quiet-stick-plan.md)
+    DirEntry::createDirs(Env::getPathToRuntimeDir());
+    const string tmp = Env::getPathToRuntimeDir() + sep + ".online-index.html";
     if (fetch(url, tmp)) {
         ifstream in(tmp, ios::binary);
         const string html((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
@@ -230,7 +232,9 @@ bool OnlineAssets::probe(bool again) {
         return online_;
     const bool first = !probed_;
     probed_ = true;
-    const string probeFile = Env::getPathToStateDir() + sep + ".online-probe";
+    // every scan cycle probes: the answer goes to RAM, not the stick (docs/quiet-stick-plan.md)
+    DirEntry::createDirs(Env::getPathToRuntimeDir());
+    const string probeFile = Env::getPathToRuntimeDir() + sep + ".online-probe";
     online_ = fetch(config_.thumbnailsBaseUrl + "/", probeFile);
     DirEntry::removeFile(probeFile);
     // the first answer is news; a re-probe after a server miss is routine unless the answer changed

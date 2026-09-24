@@ -71,7 +71,9 @@ public:
     GameDatabase(const GameDatabase &) = delete;
     GameDatabase &operator=(const GameDatabase &) = delete;
 
-    bool open(const std::string &fileName); // creates the file when missing
+    // creates the file when missing; readOnly: the file must exist and is never written - the covers dbs,
+    // which the scan only reads (opened read-write, even a read counts as a write-open to the stick)
+    bool open(const std::string &fileName, bool readOnly = false);
     void close();
     bool createSchema();               // CREATE TABLE IF NOT EXISTS for every table regional.db needs
     void addFavoriteColumnIfMissing(); // internal.db only: the stock schema lacks these four columns

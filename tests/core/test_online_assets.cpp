@@ -90,6 +90,7 @@ TEST_CASE("probe: one request, its answer remembered; a fetch writes the file wh
     TempDir tmp("online");
     EnvFixture env;
     env.setWorkingPath(tmp.path());
+    ableem::Environment::setRuntimeDir(tmp.at("run"));
     FakeServer server;
     server.files["http://thumbs/"] = "<html>";
     server.files["http://thumbs/a.png"] = "png bytes";
@@ -98,8 +99,9 @@ TEST_CASE("probe: one request, its answer remembered; a fetch writes the file wh
     CHECK(online.probe());
     CHECK(online.probe());
     CHECK(server.commands.size() == 1); // the second answer came from memory
-    CHECK(server.commands[0] == "fetch http://thumbs/ " + tmp.at(".online-probe.part"));
-    CHECK_FALSE(DirEntry::exists(tmp.at(".online-probe")));
+    // the probe's download goes to the runtime dir (RAM), never the stick
+    CHECK(server.commands[0] == "fetch http://thumbs/ " + tmp.at("run/.online-probe.part"));
+    CHECK_FALSE(DirEntry::exists(tmp.at("run/.online-probe")));
 
     CHECK(online.fetch("http://thumbs/a.png", tmp.at("deep/er/a.png")));
     CHECK(tmp.readFile("deep/er/a.png") == "png bytes");
