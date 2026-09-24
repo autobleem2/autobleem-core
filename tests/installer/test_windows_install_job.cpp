@@ -207,6 +207,9 @@ TEST_CASE("a fresh install: the data tree, the shipped themes and the three cove
               string("sqlite covers") + r + ".db");
     CHECK_FALSE(fx.has("System/Install"));
     CHECK(fx.out.said("Installed."));
+    // the scanner processors' folder, with its README
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/README.txt").find("scanner processors") !=
+          string::npos);
 }
 
 TEST_CASE("an update keeps the user's settings and themes, removes the scan fingerprints") {
@@ -217,6 +220,7 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     fx.tmp.writeFile("Documents/AutoBleem/Themes/ab2/theme.json", "{edited}");
     fx.tmp.writeFile("Documents/AutoBleem/Games/Tekken 3/Tekken 3.cue", "cue");
     fx.tmp.writeFile("Documents/AutoBleem/System/Databases/coversU.db", "sqlite coversU.db");
+    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/README.txt", "my notes");
     fx.options.update = true;
     fx.options.coversJapan = fx.options.coversPal = false;
 
@@ -225,6 +229,7 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     CHECK(before.hasCovers[1]);
     string error;
     REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/README.txt") == "my notes"); // never rewritten
     {
         // the settings kept, the PS1 emulator every install lands on set (capitalised: the launcher's writer)
         const string cfg = fx.tmp.readFile("Documents/AutoBleem/System/config.ini");

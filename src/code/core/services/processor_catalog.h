@@ -75,6 +75,12 @@ public:
 
     static ProcessorInfo load(const std::string &folder, const std::vector<std::string> &keys);
 
+    // what the installers do for a data tree: the folder made, and a README.txt in it saying what goes there -
+    // written only when it is not there (the user may have edited it, and the quiet stick writes nothing it
+    // does not have to). False when the folder could not be made.
+    static bool ensureFolder(const std::string &processorsDir);
+    static const char *folderReadme(); // the README.txt's text
+
 private:
     std::string dir_;
     std::vector<std::string> keys_;

@@ -350,6 +350,8 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     CHECK(fx.has("Themes/mine/theme.json"));
     CHECK(fx.has("Apps/doom/run.sh"));
     CHECK(fx.has("Autobleem/bin/db/coversJ.db"));
+    // the scanner processors' folder is made, with its README
+    CHECK(fx.tmp.readFile("stick/System/Processors/README.txt").find("scanner processors") != string::npos);
     CHECK_FALSE(fx.has("Themes/ab2/stale.png"));
     CHECK_FALSE(fx.has("Autobleem/bin/autobleem/old-file.txt"));
     CHECK_FALSE(fx.has("Autobleem/rc/stale.sh"));

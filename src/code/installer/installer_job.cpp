@@ -1,6 +1,7 @@
 #include "installer/installer_job.h"
 #include "installer/install_job_base.h"
 #include "installer/legacy_layout.h"
+#include "core/services/processor_catalog.h"
 
 #include <ableem/engine/filesystem.h>
 #include <ableem/engine/log.h>
@@ -221,6 +222,8 @@ private:
         for (const char *dir : {"Games", "Games/!SaveStates", "Games/!MemCards", "System", "System/Databases",
                                 "System/Logs", "Apps", "Themes"})
             DirEntry::createDirs(at(dir));
+        // the scanner processors' folder, with a README saying what goes there (docs/scanner-processors-plan.md)
+        ProcessorCatalog::ensureFolder(at("System/Processors"));
         if (opt.retroarch || info.hasRetroArch)
             romFolders();
         say("  done");
