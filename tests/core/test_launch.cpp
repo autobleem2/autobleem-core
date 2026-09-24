@@ -5,6 +5,7 @@
 
 #include "../support/fake_process_runner.h"
 #include "../support/game_library_fixture.h"
+#include "../support/tree_snapshot.h"
 #include "../support/string_maker.h"
 
 #include "core/services/launch.h"
@@ -395,13 +396,21 @@ TEST_CASE("with raconfig on, the game's pcsx.cfg settings are RetroArch's for th
     lib.tmp.writeFile("RetroArch/bin/config/retroarch-core-options.cfg", coreOptionsBefore);
     lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", raConfigBefore);
 
-    string coreOptionsInPlay, raConfigInPlay;
+    // RetroArch gets them through --appendconfig and a core-options copy, both in RAM (the runtime dir):
+    // its own files on the stick are not touched for the run
+    string coreOptionsInPlay, raConfigInPlay, stickCoreOptions, stickRaConfig;
     lib.runner.whileRunning = [&] {
-        coreOptionsInPlay = lib.tmp.readFile("RetroArch/bin/config/retroarch-core-options.cfg");
-        raConfigInPlay = lib.tmp.readFile("RetroArch/bin/retroarch.cfg");
+        coreOptionsInPlay = lib.tmp.readFile("System/Runtime/ra-core-options.cfg");
+        raConfigInPlay = lib.tmp.readFile("System/Runtime/ra-append.cfg");
+        stickCoreOptions = lib.tmp.readFile("RetroArch/bin/config/retroarch-core-options.cfg");
+        stickRaConfig = lib.tmp.readFile("RetroArch/bin/retroarch.cfg");
     };
 
     lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK(stickCoreOptions == coreOptionsBefore);
+    CHECK(stickRaConfig == raConfigBefore);
+    CHECK(contains(raConfigInPlay, "config_save_on_exit = \"true\"")); // rapersist's default
+    CHECK(contains(raConfigInPlay, "core_options_path = \"" + lib.tmp.at("System/Runtime/ra-core-options.cfg") + "\""));
 
     // the core options, from the game's pcsx.cfg
     CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_neon_enhancement_enable = \"enabled\""));
@@ -436,17 +445,52 @@ TEST_CASE("a foreign game with raconfig on still gets the viewport, but no core 
     lib.tmp.writeFile("RetroArch/bin/config/retroarch-core-options.cfg", "pcsx_rearmed_psxclock = \"50\"\n");
     lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "custom_viewport_width = \"0\"\nvideo_smooth = \"true\"\n");
 
-    string coreOptionsInPlay, raConfigInPlay;
-    lib.runner.whileRunning = [&] {
-        coreOptionsInPlay = lib.tmp.readFile("RetroArch/bin/config/retroarch-core-options.cfg");
-        raConfigInPlay = lib.tmp.readFile("RetroArch/bin/retroarch.cfg");
-    };
+    string raConfigInPlay;
+    lib.runner.whileRunning = [&] { raConfigInPlay = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
 
     lib.service->launch(game, EmuMode::RetroArch, -1);
 
-    CHECK(coreOptionsInPlay == "pcsx_rearmed_psxclock = \"50\"\n");
+    CHECK_FALSE(contains(raConfigInPlay, "core_options_path")); // no core options of the game's
     CHECK(contains(raConfigInPlay, "custom_viewport_width = \"960\""));
-    CHECK(contains(raConfigInPlay, "video_smooth = \"true\"")); // RetroArch's own - no pcsx.cfg to read
+    CHECK_FALSE(contains(raConfigInPlay, "video_smooth")); // RetroArch's own - no pcsx.cfg to read
+}
+
+TEST_CASE("RetroArch saving its config keeps what the player changed and puts back what the launcher appended") {
+    Launching lib;
+    lib.configure("Raconfig=true\nAspect=true\n");
+    PsGamePtr game = lib.foreignGame(false);
+    const string before = "custom_viewport_width = \"960\"\n"
+                          "aspect_ratio_index = \"0\"\n"
+                          "menu_driver = \"xmb\"\n";
+    lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", before);
+
+    // config_save_on_exit: RetroArch writes every setting it holds - ours from the append file included
+    lib.runner.whileRunning = [&] {
+        lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "custom_viewport_width = \"1280\"\n"
+                                                         "aspect_ratio_index = \"22\"\n" // the player's change
+                                                         "menu_driver = \"ozone\"\n"     // and another
+                                                         "custom_viewport_height = \"720\"\n"
+                                                         "custom_viewport_x = \"0\"\n"
+                                                         "custom_viewport_y = \"0\"\n"
+                                                         "config_save_on_exit = \"true\"\n");
+    };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+
+    CHECK(lib.tmp.readFile("RetroArch/bin/retroarch.cfg") == "custom_viewport_width = \"960\"\n"
+                                                             "aspect_ratio_index = \"22\"\n"
+                                                             "menu_driver = \"ozone\"\n");
+}
+
+TEST_CASE("rapersist=false: RetroArch is told not to save its config at exit; nothing of its own is written") {
+    Launching lib;
+    lib.configure("Rapersist=false\nRaconfig=false\n");
+    PsGamePtr game = lib.foreignGame(false);
+    lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "menu_driver = \"xmb\"\n");
+
+    test_support::TreeSnapshot before(lib.tmp.at("RetroArch"));
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK(lib.tmp.readFile("System/Runtime/ra-append.cfg") == "config_save_on_exit = \"false\"\n");
+    CHECK(before.changesTo(test_support::TreeSnapshot(lib.tmp.at("RetroArch"))) == vector<string>{});
 }
 
 // --- Apps ---
@@ -650,8 +694,8 @@ TEST_CASE("direct mode: the PS1 emulator itself - pcsx-ab in launch.sh's run dir
         lib.service->launch(game, EmuMode::Pcsx, -1);
         const FakeProcessRunner::Call &call = lib.runner.only();
         CHECK(call.exe == lib.tmp.at("RetroArch/bin/retroarch.exe"));
-        CHECK(call.args[3] == lib.tmp.at("RetroArch/bin/cores/pcsx_rearmed_libretro.dll"));
-        CHECK(call.args[5] == lib.tmp.at("Games/Tekken 3/Tekken 3.cue"));
+        CHECK(call.args[5] == lib.tmp.at("RetroArch/bin/cores/pcsx_rearmed_libretro.dll"));
+        CHECK(call.args[7] == lib.tmp.at("Games/Tekken 3/Tekken 3.cue"));
     }
     SUBCASE("resuming a slot adds -load") {
         lib.configure("Emulator=pcsx-abnxt\n");
@@ -684,7 +728,8 @@ TEST_CASE("direct mode: RetroArch itself with its config, the core and full scre
         const FakeProcessRunner::Call &call = lib.runner.only();
         CHECK(call.exe == lib.tmp.at("RetroArch/bin/retroarch.exe"));
         CHECK(call.cwd == lib.tmp.at("RetroArch/bin"));
-        CHECK(call.args == vector<string>{"--config", lib.tmp.at("RetroArch/bin/retroarch.cfg"), "-L",
+        CHECK(call.args == vector<string>{"--config", lib.tmp.at("RetroArch/bin/retroarch.cfg"), "--appendconfig",
+                                          lib.tmp.at("System/Runtime/ra-append.cfg"), "-L",
                                           lib.tmp.at("RetroArch/bin/cores/pcsx_rearmed_libretro.dll"), "--fullscreen",
                                           lib.tmp.at("Games/Tekken 3/Tekken 3.cue")});
     }
@@ -693,8 +738,8 @@ TEST_CASE("direct mode: RetroArch itself with its config, the core and full scre
         rom->core_path = lib.tmp.at("RetroArch/bin/cores/snes9x_libretro.dll");
         lib.service->launch(rom, EmuMode::Pcsx, -1);
         const FakeProcessRunner::Call &call = lib.runner.only();
-        CHECK(call.args[3] == lib.tmp.at("RetroArch/bin/cores/snes9x_libretro.dll"));
-        CHECK(call.args[5] == "/media/RetroArch/roms/snes/rom.sfc");
+        CHECK(call.args[5] == lib.tmp.at("RetroArch/bin/cores/snes9x_libretro.dll"));
+        CHECK(call.args[7] == "/media/RetroArch/roms/snes/rom.sfc");
     }
     SUBCASE("no RetroArch binary installed: the plan names nothing to run") {
         Env::setRetroArchBinaries({lib.tmp.at("RetroArch/bin/missing.exe")});

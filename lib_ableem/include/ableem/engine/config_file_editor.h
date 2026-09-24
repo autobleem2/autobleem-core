@@ -39,8 +39,11 @@ public:
     // one arbitrary cfg file (RetroArch's retroarch.cfg, a core override, ...)
     void replaceInFile(std::string fullCfgFilePath, std::string property, std::string newline);
     // several settings in one file: one read, and one write only if a line changed; a property the file has
-    // no line for is appended; a missing file is left missing
+    // no line for is appended; an empty new line removes the property's line; a missing file is left missing
     void replaceProperties(const std::string &fullCfgFilePath, const CfgLines &properties);
+    // the value a cfg text gives `property` ('key = "value"' -> value, quotes and blanks trimmed); false when
+    // no line sets it
+    static bool valueIn(const std::string &text, const std::string &property, std::string *value);
 };
 
 } // namespace ableem

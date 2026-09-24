@@ -3,6 +3,8 @@
 //
 #pragma once
 
+#include <utility>
+#include <ableem/engine/config_file_editor.h>
 #include "../model/ps_game.h"
 #include "../model/session.h"
 #include "app_manifest.h"
@@ -120,15 +122,33 @@ private:
     // the game's card1.mcd goes to RetroArch's saves dir as <base>.srm for the run and comes back after
     void raMemcardIn(PsGame &game);
     void raMemcardOut(PsGame &game);
-    // with config.ini raconfig=true, the game's pcsx.cfg settings are written into RetroArch's own config
-    // for the run, from a backup that is put back afterwards
-    void backupRaConfig();
-    void restoreRaConfig();
-    void transferRaConfig(PsGame &game);
-    static std::string raSavesDir();
-    static std::string raConfigFile();      // retroarch.cfg
-    static std::string raCoreOptionsFile(); // config/retroarch-core-options.cfg
+    // What RetroArch is started with on top of its own retroarch.cfg - --appendconfig <runtime>/ra-append.cfg,
+    // RAM (docs/quiet-stick-plan.md): config.ini's rapersist as config_save_on_exit (Options -> "Persist
+    // RetroArch config") and, for a game with config.ini raconfig=true, the game's pcsx.cfg settings - the
+    // core options in a copy of RetroArch's in RAM, named by core_options_path. retroarch.cfg itself is not
+    // written. A RetroArch that saves its config (on exit, or "Save Current Configuration") writes the
+    // appended values into it too, so afterwards every one of them that is still what we appended is put
+    // back to what the file had before (restoreAppended) - what the player changed in RetroArch stays.
+    // game == nullptr: RetroArch's own menu, config_save_on_exit alone.
+    void prepareRaAppend(PsGame *game);
+    void restoreAppended();
+    // the game's pcsx.cfg settings as retroarch.cfg lines and core-option lines
+    void raSettingsFor(PsGame &game, ableem::ConfigFileEditor::CfgLines &raConfig,
+                       ableem::ConfigFileEditor::CfgLines &coreOptions);
+    // a retroarch.cfg.bak / core-options .bak a launcher before the quiet-stick plan left behind (it
+    // backed both up for every run and was killed before it put them back): put back, once
+    static void restoreLegacyRaBackup();
+    ableem::ConfigFileEditor::CfgLines raAppended_;               // what the last prepareRaAppend appended
+    std::vector<std::pair<std::string, std::string>> raOriginal_; // and what retroarch.cfg had ("" line: none)
 
+public:
+    static std::string raSavesDir();
+    static std::string raConfigFile();             // retroarch.cfg
+    static std::string raCoreOptionsFile();        // config/retroarch-core-options.cfg
+    static std::string raAppendFile();             // <runtime>/ra-append.cfg
+    static std::string raRuntimeCoreOptionsFile(); // <runtime>/ra-core-options.cfg
+
+private:
     // --- Apps ---
     void launchApp(PsGame &game);
 

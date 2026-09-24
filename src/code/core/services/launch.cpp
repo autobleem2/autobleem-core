@@ -186,7 +186,7 @@ LaunchPlan LaunchService::planRetroArch(const string &file, const string &core) 
     plan.exe = retroArchExecutable();
     plan.cwd = Env::getPathToRetroarchDir();
     const string corePath = (core == RaNeonCore || core == RaPeopsCore) ? Env::getPathToRetroarchCoreFile() : core;
-    plan.args = {"--config", raConfigFile(), "-L", corePath, "--fullscreen", file};
+    plan.args = {"--config", raConfigFile(), "--appendconfig", raAppendFile(), "-L", corePath, "--fullscreen", file};
     return plan;
 }
 
@@ -197,7 +197,7 @@ LaunchPlan LaunchService::planRetroArchMenu() {
     LaunchPlan plan;
     plan.exe = retroArchExecutable();
     plan.cwd = Env::getPathToRetroarchDir();
-    plan.args = {"--config", raConfigFile(), "--fullscreen"};
+    plan.args = {"--config", raConfigFile(), "--appendconfig", raAppendFile(), "--fullscreen"};
     return plan;
 }
 
@@ -207,7 +207,10 @@ void LaunchService::launchRetroArchMenu() {
         PLOG_WARNING << "no RetroArch binary to run";
         return;
     }
+    restoreLegacyRaBackup();
+    prepareRaAppend(nullptr);
     runner_.run(plan);
+    restoreAppended();
 }
 
 //*******************************
@@ -285,6 +288,14 @@ string LaunchService::raCoreOptionsFile() {
     return Env::getPathToRetroarchDir() + sep + "config" + sep + "retroarch-core-options.cfg";
 }
 
+string LaunchService::raAppendFile() {
+    return Env::getPathToRuntimeDir() + sep + "ra-append.cfg";
+}
+
+string LaunchService::raRuntimeCoreOptionsFile() {
+    return Env::getPathToRuntimeDir() + sep + "ra-core-options.cfg";
+}
+
 //*******************************
 // LaunchService::selectionScriptFile
 //*******************************
@@ -306,6 +317,9 @@ void LaunchService::writeSelectionScript() {
     text += "AB_THEME=" + config_.inifile.values["theme"] + "\n";
     text += "AB_PCSX=" + config_.inifile.values["pcsx"] + "\n";
     DirEntry::writeFileIfChanged(selectionScriptFile(), text);
+    // RetroArch's own menu, started by the scripts once we have left: it gets config_save_on_exit too
+    if (session_.menuOption == MENU_OPTION_RETRO)
+        prepareRaAppend(nullptr);
 }
 
 //*******************************
@@ -522,19 +536,11 @@ void LaunchService::launchRetroArch(PsGame &game) {
         RACore = game.core_path;
     }
 
-    // core config here - to be optional
-    if (config_.inifile.values["raconfig"] == "true") {
-        backupRaConfig();
-        transferRaConfig(game);
-    }
-
+    restoreLegacyRaBackup();
+    prepareRaAppend(&game);
     runner_.run(planRetroArch(gameFile, RACore));
     usleep(3 * 1000);
-
-    // core config here - to be optional
-    if (config_.inifile.values["raconfig"] == "true") {
-        restoreRaConfig();
-    }
+    restoreAppended();
 }
 
 //*******************************
@@ -581,33 +587,82 @@ void LaunchService::raMemcardOut(PsGame &game) {
 }
 
 //*******************************
-// LaunchService::backupRaConfig
+// LaunchService::restoreLegacyRaBackup
 //*******************************
-void LaunchService::backupRaConfig() {
-    DirEntry::copy(raCoreOptionsFile(), raCoreOptionsFile() + ".bak");
-    DirEntry::copy(raConfigFile(), raConfigFile() + ".bak");
-}
-
-//*******************************
-// LaunchService::restoreRaConfig
-//*******************************
-void LaunchService::restoreRaConfig() {
-    if (DirEntry::exists(raCoreOptionsFile() + ".bak")) {
-        DirEntry::copy(raCoreOptionsFile() + ".bak", raCoreOptionsFile());
-        DirEntry::removeFile(raCoreOptionsFile() + ".bak");
-    }
-    if (DirEntry::exists(raConfigFile() + ".bak")) {
-        DirEntry::copy(raConfigFile() + ".bak", raConfigFile());
-        DirEntry::removeFile(raConfigFile() + ".bak");
+void LaunchService::restoreLegacyRaBackup() {
+    for (const string &file : {raCoreOptionsFile(), raConfigFile()}) {
+        if (DirEntry::exists(file + ".bak")) {
+            PLOG_INFO << "putting back " << file << " from the .bak an older launcher left";
+            DirEntry::copy(file + ".bak", file);
+            DirEntry::removeFile(file + ".bak");
+        }
     }
 }
 
 //*******************************
-// LaunchService::transferRaConfig
+// LaunchService::prepareRaAppend / restoreAppended
 //*******************************
-void LaunchService::transferRaConfig(PsGame &game) {
-    ConfigFileEditor::CfgLines coreOptions;
-    ConfigFileEditor::CfgLines raConfig;
+void LaunchService::prepareRaAppend(PsGame *game) {
+    ConfigFileEditor::CfgLines raConfig, coreOptions;
+    auto set = [](ConfigFileEditor::CfgLines &lines, const string &key, const string &value) {
+        lines.emplace_back(key, key + " = \"" + value + "\"");
+    };
+    set(raConfig, "config_save_on_exit", config_.inifile.values["rapersist"] == "false" ? "false" : "true");
+    if (game != nullptr && config_.inifile.values["raconfig"] == "true")
+        raSettingsFor(*game, raConfig, coreOptions);
+
+    DirEntry::createDirs(Env::getPathToRuntimeDir());
+    if (!coreOptions.empty()) {
+        // RetroArch's own core options, the game's on top, in RAM for this run
+        string text;
+        DirEntry::readFile(raCoreOptionsFile(), text); // none yet: the game's alone
+        DirEntry::writeFileIfChanged(raRuntimeCoreOptionsFile(), text);
+        ConfigFileEditor().replaceProperties(raRuntimeCoreOptionsFile(), coreOptions);
+        set(raConfig, "core_options_path", raRuntimeCoreOptionsFile());
+    }
+
+    string append;
+    for (const auto &line : raConfig)
+        append += line.second + "\n";
+    DirEntry::writeFileIfChanged(raAppendFile(), append);
+
+    // what retroarch.cfg says of each of them now, for restoreAppended()
+    string before;
+    DirEntry::readFile(raConfigFile(), before);
+    raAppended_ = raConfig;
+    raOriginal_.clear();
+    for (const auto &line : raConfig) {
+        string value;
+        raOriginal_.emplace_back(line.first, ConfigFileEditor::valueIn(before, line.first, &value)
+                                                 ? line.first + " = \"" + value + "\""
+                                                 : string());
+    }
+}
+
+void LaunchService::restoreAppended() {
+    string after;
+    if (raAppended_.empty() || !DirEntry::readFile(raConfigFile(), after))
+        return;
+    ConfigFileEditor::CfgLines restore;
+    for (size_t i = 0; i < raAppended_.size(); i++) {
+        string ours, now;
+        ConfigFileEditor::valueIn(raAppended_[i].second, raAppended_[i].first, &ours);
+        // RetroArch saved our value into its file: the file's own value back (none: the line goes). A value
+        // the player set in RetroArch meanwhile is theirs and stays.
+        if (ConfigFileEditor::valueIn(after, raAppended_[i].first, &now) && now == ours)
+            restore.push_back(raOriginal_[i]);
+    }
+    // writes nothing when RetroArch did not save - every line is then as it was
+    if (!restore.empty())
+        ConfigFileEditor().replaceProperties(raConfigFile(), restore);
+    raAppended_.clear();
+}
+
+//*******************************
+// LaunchService::raSettingsFor
+//*******************************
+void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raConfig,
+                                  ConfigFileEditor::CfgLines &coreOptions) {
     auto set = [](ConfigFileEditor::CfgLines &lines, const string &key, const string &value) {
         lines.emplace_back(key, key + " = \"" + value + "\"");
     };
@@ -660,12 +715,6 @@ void LaunchService::transferRaConfig(PsGame &game) {
     // classic pcsx-ab. A foreign game has no pcsx.cfg and keeps RetroArch's own video_smooth.
     if (!game.foreign)
         set(raConfig, "video_smooth", filterModeFor(game) == 1 ? "true" : "false");
-
-    // one read and at most one write per file (they were rewritten whole for every key)
-    ConfigFileEditor processor;
-    if (!coreOptions.empty())
-        processor.replaceProperties(raCoreOptionsFile(), coreOptions);
-    processor.replaceProperties(raConfigFile(), raConfig);
 }
 
 //*******************************

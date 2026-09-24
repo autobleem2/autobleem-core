@@ -59,21 +59,27 @@ void ConfigFileEditor::replaceProperties(const string &fullCfgFilePath, const Cf
     }
 
     vector<bool> found(properties.size(), false);
+    vector<string> kept;
     for (auto &line : lines) {
         string lcaseline = line;
         lcase(lcaseline);
+        bool removed = false;
         for (size_t i = 0; i < properties.size(); i++) {
             string lcasepattern = properties[i].first;
             lcase(lcasepattern);
             if (lineSetsProperty(lcaseline, lcasepattern)) {
                 line = properties[i].second;
+                removed = line.empty();
                 found[i] = true;
                 break;
             }
         }
+        if (!removed)
+            kept.push_back(line);
     }
+    lines.swap(kept);
     for (size_t i = 0; i < properties.size(); i++) {
-        if (!found[i])
+        if (!found[i] && !properties[i].second.empty())
             lines.push_back(properties[i].second);
     }
 
@@ -85,6 +91,37 @@ void ConfigFileEditor::replaceProperties(const string &fullCfgFilePath, const Cf
     if (DirEntry::writeFileIfChanged(fullCfgFilePath, out) == DirEntry::WriteResult::Written) {
         PLOG_INFO << "Wrote " << fullCfgFilePath << " (" << properties.size() << " setting(s))";
     }
+}
+
+//*******************************
+// ConfigFileEditor::valueIn
+//*******************************
+bool ConfigFileEditor::valueIn(const string &text, const string &property, string *value) {
+    string lcasepattern = property;
+    lcase(lcasepattern);
+    string::size_type start = 0;
+    while (start < text.size()) {
+        string::size_type end = text.find('\n', start);
+        if (end == string::npos)
+            end = text.size();
+        string line = text.substr(start, end - start);
+        start = end + 1;
+        string lcaseline = line;
+        lcase(lcaseline);
+        if (!lineSetsProperty(lcaseline, lcasepattern))
+            continue;
+        string::size_type eq = line.find('=');
+        string v = eq == string::npos ? "" : line.substr(eq + 1);
+        trim(v);
+        if (!v.empty() && v.back() == '\r')
+            v.pop_back();
+        trim(v);
+        if (v.size() >= 2 && v.front() == '"' && v.back() == '"')
+            v = v.substr(1, v.size() - 2);
+        *value = v;
+        return true;
+    }
+    return false;
 }
 
 //*******************************

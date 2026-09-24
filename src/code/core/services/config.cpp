@@ -60,6 +60,12 @@ Config::Config() {
     if (inifile.values["raconfig"] == "") {
         inifile.values["raconfig"] = "true";
     }
+    // Options -> "Persist RetroArch config": RetroArch's config_save_on_exit, handed to it on every start
+    // (LaunchService::prepareRaAppend) - on, RetroArch keeps what the player changes in it, as it always
+    // did; off, it writes nothing at exit and "Save Current Configuration" is the way to keep a change
+    if (inifile.values["rapersist"] != "false") {
+        inifile.values["rapersist"] = "true";
+    }
     // the scan may fetch missing box art (and the databases) from libretro's servers, where the platform
     // has a download_command and the server answers; Options -> "Fetch box art online"
     if (inifile.values["online"] == "") {
