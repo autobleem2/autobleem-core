@@ -98,6 +98,12 @@ string Environment::getPathToAutobleemDir() {
 string Environment::getPathToAppsDir() {
     return usbRoot + sep + "Apps";
 }
+string Environment::getPathToExtensionsDir() {
+    return usbRoot + sep + "Extensions";
+}
+string Environment::getPathToExtensionsStateDir() {
+    return getPathToSystemDir() + sep + "Extensions";
+}
 string Environment::getPathToRCDir() {
     return getPathToAutobleemDir() + sep + "rc";
 }

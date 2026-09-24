@@ -70,6 +70,8 @@ add_library(ab_core STATIC
         src/code/core/model/session.h
         src/code/core/model/timing.h
         src/code/core/services/app_manifest.cpp
+        src/code/core/services/extension_catalog.cpp
+        src/code/core/services/plugin_loader.cpp
         src/code/core/services/config.cpp
         src/code/core/services/environment.cpp
         src/code/core/services/environment_setup.cpp
@@ -93,7 +95,7 @@ add_library(ab_core STATIC
         src/code/core/services/theme.cpp
         src/code/core/services/theme_converter.cpp
         src/code/core/services/theme_installer.cpp)
-target_link_libraries(ab_core ableem_engine)
+target_link_libraries(ab_core ableem_engine ${CMAKE_DL_LIBS}) # dlopen: PluginLoader
 target_include_directories(ab_core PUBLIC src/code ${CMAKE_BINARY_DIR}/generated)
 if (AB_ONLINE_UPDATE)
     target_sources(ab_core PRIVATE src/code/core/services/update_service.cpp)
@@ -137,6 +139,8 @@ if (AB_CORE_UI)
 add_library(ab_classic STATIC
         src/code/app_base.cpp
         src/code/gui/app_audio.cpp
+        src/code/gui/extension_host_base.cpp
+        src/code/gui/extension_runtime.cpp
         src/code/gui/gui.cpp
         src/code/gui/gui_font.cpp
         src/code/gui/screens/gui_about.cpp
