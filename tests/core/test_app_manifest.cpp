@@ -187,6 +187,20 @@ TEST_CASE("AppManifest: no ini") {
     CHECK(m.problem.find("app.ini") != string::npos);
 }
 
+TEST_CASE("AppManifest: VirtualPad= says whether the App runs with our pad mapper; absent means yes") {
+    TempDir tmp("manifest");
+    makeApp(tmp, "[app]\nExec=bin/{key}/game\n", {"bin/psc/game"});
+    CHECK(AppManifest::load(tmp.path(), "app.ini", {"psc"}, appOptions()).usesVirtualPad());
+    for (const char *off : {"false", "No", "0", " off "}) {
+        tmp.writeFile("app.ini", string("[app]\nExec=bin/{key}/game\nVirtualPad=") + off + "\n");
+        CHECK_FALSE(AppManifest::load(tmp.path(), "app.ini", {"psc"}, appOptions()).usesVirtualPad());
+    }
+    tmp.writeFile("app.ini", "[app]\nExec=bin/{key}/game\nVirtualPad=yes\n");
+    CHECK(AppManifest::load(tmp.path(), "app.ini", {"psc"}, appOptions()).usesVirtualPad());
+    CHECK(AppManifest::parseFlag("maybe", true));
+    CHECK_FALSE(AppManifest::parseFlag("", false));
+}
+
 TEST_CASE("AppManifest::parseEnv") {
     auto env = AppManifest::parseEnv("A=1; B = two ;=nameless;C;D=x=y;;");
     REQUIRE(env.size() == 4);

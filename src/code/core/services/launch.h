@@ -91,7 +91,7 @@ public:
     // the generic script a multi-platform App without a run.sh of its own is started through (rc/app_run.sh)
     static std::string appRunScript();
     // what a multi-platform App is started with: AB_ROOT, AB_APP_DIR/EXEC/ARGS/LIB/KEY, AB_PLATFORM,
-    // AB_PLATFORM_KEYS (space separated), then the ini's Env=
+    // AB_PLATFORM_KEYS (space separated), AB_APP_VIRTUAL_PAD (1/0, the ini's VirtualPad=), then the ini's Env=
     static std::vector<std::pair<std::string, std::string>> appEnvironment(const AppManifest &manifest);
     // RetroArch with nothing loaded - its own menu, full screen (what the system menu's RetroArch item
     // means in direct mode; the console and the Pi leave the launcher and their rc/retroarch.sh does it)
