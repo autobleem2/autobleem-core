@@ -89,6 +89,13 @@ Config::Config() {
         inifile.values["surprisehighscore"] = "0";
     }
 
+    // "Keep logs on the stick" (Options): off unless asked for - the logs live in RAM (docs/quiet-stick-plan.md).
+    // A tester's System/Logs/keep marker is the same switch, so it shows as on
+    if (DirEntry::exists(Env::keepLogsMarkerFile()))
+        inifile.values["keeplogs"] = "true";
+    else if (inifile.values["keeplogs"] != "true")
+        inifile.values["keeplogs"] = "false";
+
     inifile.values["pcsx"] = "bleemsync";
 
     // once, and only when a key was dropped or a default filled in: save() leaves an unchanged file alone

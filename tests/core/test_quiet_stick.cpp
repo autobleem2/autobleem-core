@@ -131,3 +131,51 @@ TEST_CASE("the logs go to the runtime dir unless kept: the marker, config.ini or
     Env::setKeepLogs(true);
     CHECK(Env::getPathToLogsDir() == tmp.at("System/Logs"));
 }
+
+TEST_CASE("a crash folder the rc scripts saved is announced once, the newest first") {
+    TempDir tmp("quiet_crash");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    CHECK(Env::takeNewCrashLogs() == "");
+
+    tmp.writeFile("System/Logs/crash-9/.new", "");
+    tmp.writeFile("System/Logs/crash-10/.new", "");
+    tmp.writeFile("System/Logs/crash-8/reason.txt", "announced before");
+    CHECK(Env::takeNewCrashLogs() == "crash-10");
+    CHECK(Env::takeNewCrashLogs() == "");                           // said once
+    CHECK(ableem::DirEntry::exists(tmp.at("System/Logs/crash-9"))); // the logs stay
+}
+
+TEST_CASE("the Options row makes and removes the keep marker; Config shows a tester's marker as on") {
+    TempDir tmp("quiet_keep_row");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    env.setWorkingPath(tmp.path());
+
+    CHECK(Config().inifile.values["keeplogs"] == "false");
+    Env::setKeepLogsMarker(true);
+    CHECK(ableem::DirEntry::exists(tmp.at("System/Logs/keep")));
+    CHECK(Config().inifile.values["keeplogs"] == "true");
+    Env::setKeepLogsMarker(false);
+    CHECK_FALSE(ableem::DirEntry::exists(tmp.at("System/Logs/keep")));
+}
+
+TEST_CASE("Save logs copies this run's logs from RAM to System/Logs/saved-<n>, the last three kept") {
+    TempDir tmp("quiet_save_logs");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    ableem::Environment::setRuntimeDir(tmp.at("run"));
+    tmp.writeFile("run/logs/autobleem.log", "a line");
+    tmp.writeFile("run/logs/AB_out.txt", "out");
+
+    CHECK(Env::copyLogsToStick() == "saved-1");
+    CHECK(tmp.readFile("System/Logs/saved-1/autobleem.log") == "a line");
+    for (int i = 2; i <= 4; i++)
+        Env::copyLogsToStick();
+    CHECK_FALSE(ableem::DirEntry::exists(tmp.at("System/Logs/saved-1")));
+    CHECK(ableem::DirEntry::exists(tmp.at("System/Logs/saved-2")));
+    CHECK(ableem::DirEntry::exists(tmp.at("System/Logs/saved-4")));
+
+    Env::setKeepLogs(true); // on the stick already: nothing to copy
+    CHECK(Env::copyLogsToStick() == "");
+}

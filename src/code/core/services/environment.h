@@ -145,6 +145,17 @@ struct Environment : ableem::Environment {
     // $AB_KEEP_LOGS=1. config.ini on and no marker makes the marker, so the scripts agree from the next boot.
     static std::string keepLogsMarkerFile();
     static bool keepLogsRequested();
+    // the Options row: makes or removes the marker (config.ini's keeplogs is the row's own value). Takes
+    // effect at the next start - the logs of this one are where they are.
+    static void setKeepLogsMarker(bool keep);
+    // the crash folder the rc scripts saved since the launcher last looked (System/Logs/crash-<n> with a
+    // .new marker - rc/ab_log.sh's ab_persist_logs): its name, the newest when there are several, "" when
+    // none. Every .new marker is removed, so each crash is announced once.
+    static std::string takeNewCrashLogs();
+    // Hardware Information's "Save logs": this run's logs from RAM to System/Logs/saved-<n>/ (the last three
+    // kept) - a tester's way to hand over a session that did not crash. Returns the folder's name; "" when
+    // the logs are on the stick already (keepLogs()) or nothing could be copied.
+    static std::string copyLogsToStick();
     // after setKeepLogs(): makes the logs dir, puts it and the runtime dir into AB_LOG_DIR / AB_RUNTIME_DIR
     // for every program started from here, and writes <runtime>/log_dir for the scripts that are not
     // (rc/selection.sh runs after the launcher has left)

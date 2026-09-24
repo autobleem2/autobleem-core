@@ -21,8 +21,13 @@ public:
 protected:
     std::string title() override { return _("Hardware Information"); }
     std::vector<InfoSection> collect() override;
+    // Square: this run's logs from RAM to System/Logs/saved-<n> (docs/quiet-stick-plan.md)
+    std::string extraHints() override;
+    bool onButton(ableem::Button button) override;
 
 private:
     SystemInfoService systemInfo;
+    std::string savedLogs;         // the folder the last "Save logs" made, shown in the Logs section
     InfoSection displayAndInput(); // the section only the screen can fill in
+    InfoSection logs();
 };

@@ -2,6 +2,7 @@
 #include "../main.h"
 #include "core/version.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #ifdef _WIN32
@@ -208,6 +209,59 @@ bool Env::keepLogsRequested() {
     DirEntry::createDirs(getPathToPersistentLogsDir());
     ofstream(keepLogsMarkerFile(), ios::binary) << "config.ini keeplogs=true (Options -> Keep logs on the stick)\n";
     return true;
+}
+
+void Env::setKeepLogsMarker(bool keep) {
+    if (!keep) {
+        DirEntry::removeFile(keepLogsMarkerFile());
+        return;
+    }
+    if (DirEntry::exists(keepLogsMarkerFile()))
+        return;
+    DirEntry::createDirs(getPathToPersistentLogsDir());
+    ofstream(keepLogsMarkerFile(), ios::binary) << "Options -> Keep logs on the stick\n";
+}
+
+string Env::takeNewCrashLogs() {
+    string newest;
+    int newestNumber = 0;
+    for (const DirEntry &entry : DirEntry::diru_DirsOnly(getPathToPersistentLogsDir())) {
+        if (entry.name.compare(0, 6, "crash-") != 0)
+            continue;
+        const string marker = getPathToPersistentLogsDir() + sep + entry.name + sep + ".new";
+        if (!DirEntry::exists(marker))
+            continue;
+        DirEntry::removeFile(marker);
+        int number = atoi(entry.name.c_str() + 6);
+        if (number >= newestNumber) {
+            newestNumber = number;
+            newest = entry.name;
+        }
+    }
+    return newest;
+}
+
+string Env::copyLogsToStick() {
+    if (keepLogs())
+        return "";
+    const string keep = getPathToPersistentLogsDir();
+    int newest = 0;
+    for (const DirEntry &entry : DirEntry::diru_DirsOnly(keep))
+        if (entry.name.compare(0, 6, "saved-") == 0)
+            newest = std::max(newest, atoi(entry.name.c_str() + 6));
+    const string name = "saved-" + to_string(newest + 1);
+    const string dir = keep + sep + name;
+    if (!DirEntry::createDirs(dir))
+        return "";
+    int copied = 0;
+    for (const DirEntry &entry : DirEntry::diru_FilesOnly(getPathToLogsDir()))
+        if (DirEntry::copy(getPathToLogsDir() + sep + entry.name, dir + sep + entry.name))
+            ++copied;
+    for (const DirEntry &entry : DirEntry::diru_DirsOnly(keep)) {
+        if (entry.name.compare(0, 6, "saved-") == 0 && atoi(entry.name.c_str() + 6) <= newest - 2)
+            DirEntry::removeDirAndContents(keep + sep + entry.name);
+    }
+    return copied > 0 ? name : "";
 }
 
 namespace {

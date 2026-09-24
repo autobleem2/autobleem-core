@@ -15,7 +15,34 @@ using namespace std;
 vector<InfoSection> GuiHardwareInfo::collect() {
     vector<InfoSection> sections = systemInfo.collect();
     sections.push_back(displayAndInput());
+    sections.push_back(logs());
     return sections;
+}
+
+//*******************************
+// GuiHardwareInfo::logs / extraHints / onButton
+//*******************************
+// where this run's logs are - RAM unless "Keep logs on the stick" is on - and, after Square, where they were
+// copied to (docs/quiet-stick-plan.md)
+InfoSection GuiHardwareInfo::logs() {
+    InfoSection section{_("Logs"), {}};
+    section.rows.push_back({_("Folder"), Env::getPathToLogsDir()});
+    if (!savedLogs.empty())
+        section.rows.push_back({_("Saved to"), "System/Logs/" + savedLogs});
+    return section;
+}
+
+string GuiHardwareInfo::extraHints() {
+    return Env::keepLogs() ? "" : "|@S| " + _("Save logs");
+}
+
+bool GuiHardwareInfo::onButton(ableem::Button button) {
+    if (button != ableem::Button::Square || Env::keepLogs())
+        return false;
+    savedLogs = Env::copyLogsToStick();
+    app.audio().cursor.play();
+    refresh();
+    return true;
 }
 
 //*******************************
