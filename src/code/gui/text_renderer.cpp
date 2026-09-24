@@ -166,24 +166,21 @@ void TextRenderer::AllTextOrEmojiTokenInfo::getTokenInfo(ableem::Font _font, con
             continue;
         TextOrEmojiTokenInfo tokenInfo;
         tokenInfo.tokenString = tokenString;
-        if (tokenString[0] == '@') { // if emoji marker
-            auto it = text.emojis_.find(tokenString.c_str() + 1);
-            if (it != text.emojis_.end()) {
-                tokenInfo.emoji = it->second; // save the texture
-                Size s = it->second.size();
-                tokenInfo.rect.x = 0;
-                tokenInfo.rect.y = 0;
-                tokenInfo.rect.w = s.w;
-                tokenInfo.rect.h = s.h;
-                // update overall size
-                totalSize.w += s.w;
-                if (s.h > totalSize.h)
-                    totalSize.h = s.h;
-                // add the token info
-                tokenInfos.emplace_back(tokenInfo);
-            } else {
-                PLOG_WARNING << "emoji not found for " << tokenString;
-            }
+        // an emoji marker when it names one - "@" and "@home" in a title, a URL or an address are text
+        auto it = tokenString[0] == '@' ? text.emojis_.find(tokenString.c_str() + 1) : text.emojis_.end();
+        if (it != text.emojis_.end()) {
+            tokenInfo.emoji = it->second; // save the texture
+            Size s = it->second.size();
+            tokenInfo.rect.x = 0;
+            tokenInfo.rect.y = 0;
+            tokenInfo.rect.w = s.w;
+            tokenInfo.rect.h = s.h;
+            // update overall size
+            totalSize.w += s.w;
+            if (s.h > totalSize.h)
+                totalSize.h = s.h;
+            // add the token info
+            tokenInfos.emplace_back(tokenInfo);
         } else {
             tokenInfo.rect = text.getFontTextRect(font, tokenString);
             // update overall size

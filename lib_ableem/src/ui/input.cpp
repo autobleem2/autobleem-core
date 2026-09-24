@@ -455,12 +455,20 @@ void Input::setKeyboardAsPad(bool enabled) {
     impl->keyboardAsPad = enabled;
 }
 
+bool Input::keyboardAsPad() const {
+    return impl->keyboardAsPad;
+}
+
 void Input::setPowerKeyAsKey(bool enabled) {
     impl->powerKeyAsKey = enabled;
 }
 
 void Input::setRawKeyboard(bool enabled) {
     impl->rawKeyboard = enabled;
+}
+
+bool Input::rawKeyboard() const {
+    return impl->rawKeyboard;
 }
 
 void Input::loadMappings(const std::vector<std::string> &gameControllerDbPaths) {
