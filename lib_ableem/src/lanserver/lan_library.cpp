@@ -20,6 +20,18 @@
 #include <set>
 #include <sstream>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <sys/statvfs.h>
+#endif
+
 using namespace std;
 using ableem::DirEntries;
 using ableem::DirEntry;
@@ -507,6 +519,19 @@ string LanLibrary::tsv(const LanSnapshot &snapshot, const map<string, string> &c
         }
     }
     return out.str();
+}
+
+//*******************************
+// LanLibrary::freeSpace
+//*******************************
+uint64_t LanLibrary::freeSpace(const string &dir) {
+#ifdef _WIN32
+    ULARGE_INTEGER available;
+    return GetDiskFreeSpaceExA(dir.c_str(), &available, nullptr, nullptr) ? available.QuadPart : 0;
+#else
+    struct statvfs st;
+    return statvfs(dir.c_str(), &st) == 0 ? static_cast<uint64_t>(st.f_bavail) * st.f_frsize : 0;
+#endif
 }
 
 } // namespace ableem

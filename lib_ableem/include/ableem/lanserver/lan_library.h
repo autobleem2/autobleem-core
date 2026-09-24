@@ -108,10 +108,12 @@ public:
     static std::string urlPath(const std::string &path);
 
     const Config &config() const { return config_; }
-
-private:
     // the folders served, each with the prefix its games' paths carry ("" for gamesDir or a lone root)
     std::vector<Root> effectiveRoots() const;
+    // the free bytes on the disk a folder is on; 0 when it cannot be told
+    static uint64_t freeSpace(const std::string &dir);
+
+private:
     void walk(const std::string &dir, const std::string &rel, LanSnapshot &out, bool root);
     void readGame(const std::string &dir, const std::string &rel, LanSnapshot &out);
     void loadChecksums();
