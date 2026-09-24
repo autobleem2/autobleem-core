@@ -473,6 +473,47 @@ bool DirEntry::copyFile(const std::string &pathFrom, const std::string &pathTo) 
 }
 
 //*******************************
+// DirEntry::readFile
+//*******************************
+bool DirEntry::readFile(const std::string &path, std::string &contents) {
+    ifstream is(path, ios::binary);
+    if (!is.is_open())
+        return false;
+    contents.clear();
+    char buf[16384];
+    while (is) {
+        is.read(buf, sizeof(buf));
+        contents.append(buf, static_cast<size_t>(is.gcount()));
+    }
+    return true;
+}
+
+//*******************************
+// DirEntry::writeFileIfChanged
+//*******************************
+DirEntry::WriteResult DirEntry::writeFileIfChanged(const std::string &path, const std::string &contents) {
+    // the size first: a file that grew or shrank is not read at all
+    if (fileSize(path) == static_cast<long long>(contents.size())) {
+        string existing;
+        if (readFile(path, existing) && existing == contents)
+            return WriteResult::Unchanged;
+    }
+    const string tmp = path + ".tmp";
+    ofstream os(tmp, ios::out | ios::trunc | ios::binary);
+    if (!checkWritable(os, tmp))
+        return WriteResult::Failed;
+    os << contents;
+    os.close();
+    if (os.fail() || !replaceFile(tmp, path)) {
+        PLOG_ERROR << "Could not write " << path;
+        removeFile(tmp);
+        return WriteResult::Failed;
+    }
+    PLOG_DEBUG << "Wrote " << path;
+    return WriteResult::Written;
+}
+
+//*******************************
 // DirEntry::checkWritable
 //*******************************
 bool DirEntry::checkWritable(const ofstream &os, const string &path) {

@@ -27,22 +27,17 @@ Config::Config() {
     inifile.values.erase("version"); // the build says what version it is (core/version.h) since 2026-09-18
     inifile.values.erase("cfg");     // the selection script is <rc>/autobleem_cfg.sh (LaunchService), not a key
     inifile.values.erase("mip"); // the filter is per game since 2026-09-24 (pcsx.cfg plat_target.hwfilter, the editor)
-    save();
 
-    bool aDefaultWasSet{false};
     if (inifile.values["language"] == "") {
         inifile.values["language"] = "English";
-        aDefaultWasSet = true;
     }
     // the shipped config.ini says ab2 too; this is for a config.ini that is missing or came back empty (an
     // unclean unmount on the first Pi boot did that) - the launcher should still come up in its own theme
     if (inifile.values["theme"] == "") {
         inifile.values["theme"] = "ab2";
-        aDefaultWasSet = true;
     }
     if (inifile.values["aspect"] == "") {
         inifile.values["aspect"] = "false";
-        aDefaultWasSet = true;
     }
     // which PS1 emulator a game starts in (Options -> "PS1 Emulator"): pcsx-abnxt, the next one
     // (Autobleem/bin/emunxt) - the default on every build since 2026-09-21 - or pcsx-ab, the one AutoBleem
@@ -51,30 +46,24 @@ Config::Config() {
     // (different save-state versions), the game then starts fresh.
     if (inifile.values["emulator"] != "pcsx-ab" && inifile.values["emulator"] != "pcsx-abnxt") {
         inifile.values["emulator"] = "pcsx-abnxt";
-        aDefaultWasSet = true;
     }
     if (inifile.values["jewel"] == "") {
         inifile.values["jewel"] = "default";
-        aDefaultWasSet = true;
     }
     if (inifile.values["music"] == "") {
         inifile.values["music"] = "--";
-        aDefaultWasSet = true;
     }
     if (inifile.values["showingtimeout"] == "") {
         inifile.values["showingtimeout"] = DefaultShowingTimeoutText;
-        aDefaultWasSet = true;
     }
 
     if (inifile.values["raconfig"] == "") {
         inifile.values["raconfig"] = "true";
-        aDefaultWasSet = true;
     }
     // the scan may fetch missing box art (and the databases) from libretro's servers, where the platform
     // has a download_command and the server answers; Options -> "Fetch box art online"
     if (inifile.values["online"] == "") {
         inifile.values["online"] = "true";
-        aDefaultWasSet = true;
     }
     // the launcher's online update check (UpdateService, Options -> "Updates"): off | release | testing |
     // nightly - the download site's three channels. The default follows the build: a development build (git
@@ -83,32 +72,27 @@ Config::Config() {
     std::string &updates = inifile.values["updates"];
     if (updates == "stable" || updates == "latest") {
         updates = updates == "stable" ? "release" : "testing";
-        aDefaultWasSet = true;
     }
     if (updates == "") {
         updates = Version::isBetweenTags() ? "nightly" : Version::isPreRelease() ? "testing" : "release";
-        aDefaultWasSet = true;
     }
     // the classic screens' font: the theme's, unless "themefont" is off and "font" names a .ttf/.otf from
     // retroarch/fonts, resources/fonts or the theme's own folder (Options -> Font; "--" is the theme's)
     if (inifile.values["themefont"] == "") {
         inifile.values["themefont"] = "true";
-        aDefaultWasSet = true;
     }
     if (inifile.values["font"] == "") {
         inifile.values["font"] = "--";
-        aDefaultWasSet = true;
     }
 
     if (inifile.values["surprisehighscore"] == "") {
         inifile.values["surprisehighscore"] = "0";
-        aDefaultWasSet = true;
     }
 
     inifile.values["pcsx"] = "bleemsync";
 
-    if (aDefaultWasSet)
-        save();
+    // once, and only when a key was dropped or a default filled in: save() leaves an unchanged file alone
+    save();
 }
 
 //*******************************

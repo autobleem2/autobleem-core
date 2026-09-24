@@ -89,6 +89,15 @@ public:
     static bool replaceFile(const std::string &pathFrom, const std::string &pathTo);
     static bool copyFile(const std::string &pathFrom, const std::string &pathTo);
 
+    // The one way a file that is rewritten over and over (config.ini, Game.ini, a cfg, a playlist, a
+    // fingerprint) is written: when `path` already holds exactly `contents` nothing is touched - no write,
+    // no new modification time, nothing for the flash to do (docs/quiet-stick-plan.md) - else it is
+    // written to path.tmp and replaced over path, so a cut-short write leaves the old file.
+    enum class WriteResult { Unchanged, Written, Failed };
+    static WriteResult writeFileIfChanged(const std::string &path, const std::string &contents);
+    // the file's whole contents; false when it cannot be opened
+    static bool readFile(const std::string &path, std::string &contents);
+
     static std::string removeDotFromExtension(const std::string &ext);
     static std::string addDotToExtension(const std::string &ext);
     static bool matchExtension(std::string path, std::string ext); // case insensitive

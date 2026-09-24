@@ -29,7 +29,7 @@ using test_support::TreeSnapshot;
 // A test marked should_fail() documents a write the plan has not removed yet. doctest reports such a test
 // as a failure the moment it passes, so the step that fixes it has to take the decorator off.
 
-TEST_CASE("a second start leaves config.ini alone" * doctest::should_fail()) { // until plan step 2.2
+TEST_CASE("a second start leaves config.ini alone") {
     TempDir tmp("quiet_config");
     EnvFixture env;
     env.setWorkingPath(tmp.path());
@@ -40,7 +40,7 @@ TEST_CASE("a second start leaves config.ini alone" * doctest::should_fail()) { /
     CHECK(before.changesTo(TreeSnapshot(tmp.path())) == vector<string>{});
 }
 
-TEST_CASE("saving an unchanged ini file leaves it alone" * doctest::should_fail()) { // until plan step 2.2
+TEST_CASE("saving an unchanged ini file leaves it alone") {
     TempDir tmp("quiet_ini");
     tmp.writeFile("Game.ini", "[Game]\nTitle=Crash Bandicoot\nFavorite=0\n");
 
