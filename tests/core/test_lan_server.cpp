@@ -8,6 +8,7 @@
 #include <ableem/lanserver/http_server.h>
 #include <ableem/lanserver/index_page.h>
 #include <ableem/lanserver/lan_library.h>
+#include <ableem/lanserver/lan_server.h>
 
 #include <ableem/engine/filesystem.h>
 #include <ableem/engine/sha256.h>
@@ -355,4 +356,67 @@ TEST_CASE("LanLibrary with one root serves it like gamesDir, without a prefix") 
     REQUIRE(library.snapshot()->games.size() == 1);
     CHECK(library.snapshot()->games.front().id == "Tekken 3");
     CHECK(library.servablePath("Tekken 3/t3.chd") == tmp.at("A") + "/Tekken 3/t3.chd");
+}
+
+namespace {
+
+// one request to 127.0.0.1:port, the whole reply
+string httpGet(int port, const string &path) {
+    const int s = static_cast<int>(socket(AF_INET, SOCK_STREAM, 0));
+    sockaddr_in to{};
+    to.sin_family = AF_INET;
+    to.sin_port = htons(static_cast<uint16_t>(port));
+    inet_pton(AF_INET, "127.0.0.1", &to.sin_addr);
+    string reply;
+    if (connect(s, reinterpret_cast<sockaddr *>(&to), sizeof(to)) == 0) {
+        const string request = "GET " + path + " HTTP/1.1\r\nHost: 10.9.8.7:" + to_string(port) + "\r\n\r\n";
+        send(s, request.data(), static_cast<int>(request.size()), 0);
+        char buffer[4096];
+        int got;
+        while ((got = static_cast<int>(recv(s, buffer, sizeof(buffer), 0))) > 0)
+            reply.append(buffer, static_cast<size_t>(got));
+    }
+    TEST_CLOSE(s);
+    return reply;
+}
+
+} // namespace
+
+TEST_CASE("LanServer serves the library: the list, a file, the status page, what was asked for; stops and starts") {
+    Games g;
+    LanServer::Config c;
+    c.library = g.config();
+    c.port = 20000 + static_cast<int>((chrono::steady_clock::now().time_since_epoch().count() / 7) % 20000);
+    c.name = "Living room";
+    c.version = "9.9";
+    LanServer server(c);
+    string error;
+    REQUIRE_MESSAGE(server.start(error), error);
+    CHECK(server.running());
+
+    const string list = httpGet(c.port, "/store.tsv");
+    CHECK(list.find("# name: Living room") != string::npos);
+    CHECK(list.find("http://10.9.8.7:" + to_string(c.port) + "/files/Cue%20Game/game.cue") != string::npos);
+    CHECK(httpGet(c.port, "/files/Cue%20Game/game.bin").find("binary data") != string::npos);
+    const string page = httpGet(c.port, "/");
+    CHECK(page.find("Living room") != string::npos);
+    CHECK(page.find("9.9") != string::npos);
+    CHECK(httpGet(c.port, "/nothing").compare(0, 12, "HTTP/1.1 404") == 0);
+
+    const auto activity = server.activity();
+    REQUIRE(activity.size() == 2);
+    CHECK(activity[0].what == "read the list");
+    CHECK(activity[1].what == "fetches Cue Game/game.bin");
+    CHECK(activity[1].peer.find("127.0.0.1") != string::npos);
+
+    // a second server on the same port is refused, and says why
+    LanServer other(c);
+    CHECK_FALSE(other.start(error));
+    CHECK_FALSE(other.running());
+
+    server.stop();
+    CHECK_FALSE(server.running());
+    CHECK(httpGet(c.port, "/store.tsv").empty()); // nobody listens any more
+    REQUIRE_MESSAGE(server.start(error), error);  // and it starts again on the same port
+    CHECK(httpGet(c.port, "/store.tsv").find("# name: Living room") != string::npos);
 }
