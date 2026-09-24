@@ -64,15 +64,26 @@ TEST_CASE("setting cfg lines to the values they already have leaves the file alo
     CHECK(before.changesTo(TreeSnapshot(tmp.path())) == vector<string>{});
 }
 
-TEST_CASE("a rescan with nothing changed writes nothing" * doctest::should_fail()) { // until plan steps 2.4-2.5
+TEST_CASE("a rescan with nothing changed writes nothing") {
     GameLibraryFixture fx;
     fx.env.setWorkingPath(fx.tmp.path()); // the state dir: config, fingerprints, the scan's own files
+    fx.env.setRetroarchDir(fx.tmp.makeSubDir("RetroArch/bin"));
+    fx.tmp.makeSubDir("RetroArch/bin/playlists"); // AutoBleem.lpl is exported here
+    fx.tmp.makeSubDir("RetroArch/bin/retroboot"); // and EmulationStation's gamelist.xml written for RetroBoot
     ScanService svc(fx.library);
     test_support::makeFakeGame(fx.tmp.at("Games"), "Crash Bandicoot", "SLUS_012.34");
     test_support::makeFakeGame(fx.tmp.at("Games"), "Spyro", "SLUS_012.35");
+    // a second disc in Spyro's folder: the scan writes its .m3u
+    test_support::makeFakeGame(fx.tmp.at("src"), "Spyro 2", "SLUS_012.35");
+    ableem::DirEntry::renameFile(fx.tmp.at("src/Spyro 2/Spyro 2.cue"), fx.tmp.at("Games/Spyro/Spyro 2.cue"));
+    ableem::DirEntry::renameFile(fx.tmp.at("src/Spyro 2/Spyro 2.bin"), fx.tmp.at("Games/Spyro/Spyro 2.bin"));
 
     svc.runScan();
     REQUIRE(svc.poll().addedGames.size() == 2);
+    REQUIRE(ableem::DirEntry::exists(fx.tmp.at("Games/Spyro/Spyro 2.m3u"))); // named after the first disc
+    REQUIRE(ableem::DirEntry::exists(fx.tmp.at("RetroArch/bin/playlists/AutoBleem.lpl")));
+    REQUIRE(ableem::DirEntry::exists(
+        fx.tmp.at("RetroArch/bin/retroboot/emulationstation/.emulationstation/gamelists/psx/gamelist.xml")));
 
     TreeSnapshot before(fx.tmp.path());
     svc.runScan();

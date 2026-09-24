@@ -80,7 +80,8 @@ bool DirEntry::isPBPFile(std::string path) {
 // one - what RetroArch opens for a multi-disc game. basename is the first disc's name however the
 // scanner spells it (a cue's base, or a PBP's / CHD's whole file name), so any image extension is
 // stripped first; earlier versions kept the *last four* characters of a PBP name instead of dropping
-// them, and knew nothing of CHD. Stale .m3u files go first, so a rename does not leave two behind.
+// them, and knew nothing of CHD. Stale .m3u files are deleted, so a rename does not leave two behind;
+// the right one is rewritten only when its text changed - every scan comes through here.
 void DirEntry::generateM3UForDirectory(std::string path, std::string basename) {
     string ext = getFileExtension(basename);
     if (Strings::compareCaseInsensitive(ext, "pbp") || Strings::compareCaseInsensitive(ext, "chd") ||
@@ -100,18 +101,15 @@ void DirEntry::generateM3UForDirectory(std::string path, std::string basename) {
         return;
 
     sort(files.begin(), files.end());
+    const string m3uFile = basename + ".m3u";
     for (const DirEntry &entry : filesInPath) {
-        if (Strings::compareCaseInsensitive(DirEntry::getFileExtension(entry.name), "m3u"))
+        if (Strings::compareCaseInsensitive(DirEntry::getFileExtension(entry.name), "m3u") && entry.name != m3uFile)
             removeFile(fixPath(path) + sep + entry.name);
     }
-    string m3uName = DirEntry::fixPath(path) + sep + basename + ".m3u";
-    ofstream os(m3uName);
-    if (!checkWritable(os, m3uName))
-        return;
-    for (const string &file : files) {
-        os << file << endl;
-    }
-    os.close();
+    string text;
+    for (const string &file : files)
+        text += file + "\n";
+    writeFileIfChanged(DirEntry::fixPath(path) + sep + m3uFile, text);
 }
 
 //*******************************

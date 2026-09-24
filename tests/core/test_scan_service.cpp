@@ -73,7 +73,8 @@ TEST_CASE("a first scan adds every verified game and saves the fingerprint") {
 
     CHECK(fx.library.usbGames().countGames() == 2);
     CHECK(ableem::DirEntry::exists(fx.tmp.at("games.fingerprint")));
-    CHECK(ableem::DirEntry::exists(fx.tmp.at("autobleem.list")));
+    CHECK_FALSE(ableem::DirEntry::exists(fx.tmp.at("autobleem.list"))); // nothing reads it since the SonyUI links
+    CHECK_FALSE(ableem::DirEntry::exists(fx.tmp.at("gamesThatFailedVerifyCheck.txt"))); // every game verified
 }
 
 TEST_CASE("rescanning an unchanged game updates its row in place - same id, no duplicate") {

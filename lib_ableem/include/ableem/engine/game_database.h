@@ -98,7 +98,8 @@ public:
     // keeps its id and play history even when its metadata changed
     bool updateGame(int id, std::string title, std::string publisher, int players, int year, std::string sspath,
                     std::string memcard);
-    bool replaceDiscs(int id, const std::vector<std::string> &discNames); // deletes then re-inserts, in one transaction
+    // deletes then re-inserts, in one transaction - unless the rows already name exactly these discs
+    bool replaceDiscs(int id, const std::vector<std::string> &discNames);
     // a game whose folder moved elsewhere under Games/ (the scan matched the vanished row to the new folder
     // by folder name and disc names) keeps its row: only PATH changes, so id/history/last_played stay
     bool updateGamePath(int id, const std::string &path);

@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <map>
 #include <fstream>
+#include <sstream>
 #include <iostream>
 #include "ableem/engine/log.h"
 
@@ -59,10 +60,17 @@ void GameScanner::decompressEcmFiles(const string &path) {
 void GameScanner::writeSubDirRows(GamesHierarchy &gamesHierarchy, GameDatabase &db, const map<string, int> &idByPath) {
     gamesHierarchy.printRowDisplayGameInfo(false);
 
-    db.beginTransaction();
-    db.clearSubDirTables();
+    // what the tables should hold, compared with what they do: a rescan that changed no folder and no
+    // game leaves them - and regional.db - alone
+    SubDirRowInfos rows;
+    SubDirRowGames rowGames;
     for (auto &row : gamesHierarchy.gameSubDirRows) {
-        db.insertSubDirRow(row->displayRowIndex, row->subDirName, row->displayIndentLevel, row->gamesToDisplay.size());
+        SubDirRowInfo info;
+        info.subDirRowIndex = row->displayRowIndex;
+        info.rowName = row->subDirName;
+        info.indentLevel = row->displayIndentLevel;
+        info.numGames = static_cast<int>(row->gamesToDisplay.size());
+        rows.push_back(info);
 
         for (auto &game : row->gamesToDisplay) {
             auto it = idByPath.find(game->fullPath);
@@ -70,32 +78,38 @@ void GameScanner::writeSubDirRows(GamesHierarchy &gamesHierarchy, GameDatabase &
                 PLOG_WARNING << "writeSubDirRows: no database id for " << game->fullPath << ", skipping";
                 continue;
             }
-            db.insertSubDirRowGame(row->displayRowIndex, it->second);
+            rowGames.push_back({static_cast<int>(row->displayRowIndex), it->second});
         }
     }
-    db.commit();
-}
+    // the order the tables are read back in (by row index; a row's games as they were inserted)
+    std::stable_sort(rows.begin(), rows.end(), [](const SubDirRowInfo &x, const SubDirRowInfo &y) {
+        return x.subDirRowIndex < y.subDirRowIndex;
+    });
+    std::stable_sort(rowGames.begin(), rowGames.end(),
+                     [](const SubDirRowGame &x, const SubDirRowGame &y) { return x.rowIndex < y.rowIndex; });
 
-//*******************************
-// GameScanner::writeAutobleemList
-//*******************************
-void GameScanner::writeAutobleemList(const UsbGames &games, const map<string, int> &idByPath) {
-    string path = Environment::getPathToStateDir() + sep + "autobleem.list";
-    ofstream outfile;
-    outfile.open(path);
-    if (!DirEntry::checkWritable(outfile, path))
-        return; // the db is still updated; the list is only read by the shell scripts
-
-    for (const UsbGamePtr &game : games) {
-        auto it = idByPath.find(game->fullPath);
-        if (it == idByPath.end())
-            continue;
-        string gamePath = DirEntry::removeSeparatorFromEndOfPath(game->fullPath);
-        string ssPath = DirEntry::removeSeparatorFromEndOfPath(game->saveStatePath);
-        outfile << it->second << "," << Strings::escapeCommas(gamePath) << "," << Strings::escapeCommas(ssPath) << '\n';
+    SubDirRowInfos storedRows;
+    SubDirRowGames storedGames;
+    if (db.loadSubDirRows(&storedRows) && db.loadSubDirRowGames(&storedGames) &&
+        std::equal(rows.begin(), rows.end(), storedRows.begin(), storedRows.end(),
+                   [](const SubDirRowInfo &x, const SubDirRowInfo &y) {
+                       return x.subDirRowIndex == y.subDirRowIndex && x.rowName == y.rowName &&
+                              x.indentLevel == y.indentLevel && x.numGames == y.numGames;
+                   }) &&
+        std::equal(rowGames.begin(), rowGames.end(), storedGames.begin(), storedGames.end(),
+                   [](const SubDirRowGame &x, const SubDirRowGame &y) {
+                       return x.rowIndex == y.rowIndex && x.gameId == y.gameId;
+                   })) {
+        return;
     }
-    outfile.flush();
-    outfile.close();
+
+    db.beginTransaction();
+    db.clearSubDirTables();
+    for (const auto &row : rows)
+        db.insertSubDirRow(row.subDirRowIndex, row.rowName, row.indentLevel, row.numGames);
+    for (const auto &game : rowGames)
+        db.insertSubDirRowGame(game.rowIndex, game.gameId);
+    db.commit();
 }
 
 static const char cue1[] = "FILE \"{binName}\" BINARY\n"
@@ -342,10 +356,10 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
 
     UsbGames allGames = gamesHierarchy.getAllGames();
 
+    // the games that did not verify and why - written only when there are any, and only when that list
+    // changed (a rescan of the same stick leaves the file alone); no file when every game verified
     string badGameFilePath = Environment::getPathToStateDir() + sep + "gamesThatFailedVerifyCheck.txt";
-    ofstream badGameFile;
-    badGameFile.open(badGameFilePath.c_str(), ios::binary);
-    DirEntry::checkWritable(badGameFile, badGameFilePath); // diagnostics only, keep going
+    ostringstream badGameFile;
 
     int totalGames = static_cast<int>(allGames.size());
     int gameIndex = 0;
@@ -543,21 +557,27 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
         }
     } // end for each game dir
 
-    badGameFile.close();
+    if (badGameFile.str().empty())
+        DirEntry::removeFile(badGameFilePath); // nothing failed (a missing file is fine)
+    else
+        DirEntry::writeFileIfChanged(badGameFilePath, badGameFile.str());
 
     UsbGame::sortByTitle(gamesToAddToDB);
     gamesHierarchy.makeGamesToDisplayWhileRemovingChildDuplicates();
 
     gamesHierarchy.printRowDisplayGameInfo(false);
 
-    string path = Environment::getPathToStateDir() + sep + "gameHierarchy_afterScanAndRemovingDuplicates.txt";
-    ofstream outfile;
-    outfile.open(path);
-    DirEntry::checkWritable(outfile, path); // diagnostics only, keep going
-    gamesHierarchy.dumpRowGameInfo(outfile, true);
-    outfile << endl << endl;
-    gamesHierarchy.dumpRowDisplayGameInfo(outfile, true);
-    outfile.close();
+    // a developer's dump of the hierarchy, into the logs and only at debug level: nobody else reads it
+    if (Log::enabled(plog::debug)) {
+        string path = Environment::getPathToLogsDir() + sep + "gameHierarchy_afterScanAndRemovingDuplicates.txt";
+        ofstream outfile;
+        outfile.open(path);
+        DirEntry::checkWritable(outfile, path); // diagnostics only, keep going
+        gamesHierarchy.dumpRowGameInfo(outfile, true);
+        outfile << endl << endl;
+        gamesHierarchy.dumpRowDisplayGameInfo(outfile, true);
+        outfile.close();
+    }
 
     noGamesFoundDuringScan = (gamesToAddToDB.size() == 0);
 }

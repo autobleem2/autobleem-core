@@ -75,9 +75,13 @@ static const char SELECT_GAME_ID_BY_PATH[] = "SELECT GAME_ID FROM GAME WHERE PAT
 // used by: maxGameId
 static const char SELECT_MAX_GAME_ID[] = "SELECT COALESCE(MAX(GAME_ID), 0) FROM GAME";
 
-// used by: updateGame. GAME_ID/PATH/HISTORY/LAST_PLAYED are deliberately not touched - see the header comment
-static const char UPDATE_GAME[] = "UPDATE GAME SET GAME_TITLE_STRING=?, PUBLISHER_NAME=?, PLAYERS=?, \
-                                   RELEASE_YEAR=?, SSPATH=?, MEMCARD=? WHERE GAME_ID=?";
+// used by: updateGame. GAME_ID/PATH/HISTORY/LAST_PLAYED are deliberately not touched - see the header comment.
+// A row that already holds these values is not matched, so a rescan of an unchanged game writes no page of
+// the file (?1..?6 are the new values, ?7 the id).
+static const char UPDATE_GAME[] = "UPDATE GAME SET GAME_TITLE_STRING=?1, PUBLISHER_NAME=?2, PLAYERS=?3, \
+                                   RELEASE_YEAR=?4, SSPATH=?5, MEMCARD=?6 WHERE GAME_ID=?7 AND NOT \
+                                   (GAME_TITLE_STRING IS ?1 AND PUBLISHER_NAME IS ?2 AND PLAYERS IS ?3 AND \
+                                   RELEASE_YEAR IS ?4 AND SSPATH IS ?5 AND MEMCARD IS ?6)";
 
 // used by: updateGamePath - a game folder moved elsewhere under Games/ keeps its row (id, history, last_played)
 static const char UPDATE_GAME_PATH[] = "UPDATE GAME SET PATH=? WHERE GAME_ID=?";
@@ -605,7 +609,7 @@ bool GameDatabase::loadSubDirRowGames(SubDirRowGames *gameRowGames) {
         gameRowGame.rowIndex = stmt.colInt(0);
         gameRowGame.gameId = stmt.colInt(1);
 
-        PLOG_INFO << "GameRowGame: " << gameRowGame.rowIndex << ", " << gameRowGame.gameId;
+        PLOG_DEBUG << "GameRowGame: " << gameRowGame.rowIndex << ", " << gameRowGame.gameId;
 
         gameRowGames->emplace_back(gameRowGame);
     }
@@ -669,6 +673,8 @@ vector<string> GameDatabase::loadDiscNames(int id) {
 // GameDatabase::replaceDiscs
 //*******************************
 bool GameDatabase::replaceDiscs(int id, const vector<string> &discNames) {
+    if (loadDiscNames(id) == discNames)
+        return true; // what a rescan of an unchanged game finds - nothing to write
     if (!beginTransaction())
         return false;
 

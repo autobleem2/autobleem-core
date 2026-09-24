@@ -50,9 +50,11 @@ public:
     std::string region;
     int players = 0;
     std::vector<Disc> discs;
-    std::string favorite;
-    std::string play_using_ra;
-    std::string lightgun; // "1"/"0", Game.ini Lightgun - kept across scans like favorite
+    // the values a Game.ini without these keys is read back with (parseIni), so the first scan writes what
+    // every later scan reads and writes again - not "" once and "0" ever after
+    std::string favorite = "0";
+    std::string play_using_ra = "false";
+    std::string lightgun = "0"; // "1"/"0", Game.ini Lightgun - kept across scans like favorite
     time_t last_played = 0;
     std::string recordName; // the rdb's name (GameMetadata::recordName), kept in Game.ini as thumbnail_record_name
     std::string coverPath;  // the thumbnails tree's cover for this game, "" if none - Game.ini cached_cover_path

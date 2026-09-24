@@ -75,6 +75,11 @@ inline void setLevel(plog::Severity maxSeverity) {
         plog::get()->setMaxSeverity(maxSeverity);
 }
 
+// whether a record at `severity` would be logged - for work done only to produce a log (a diagnostic dump)
+inline bool enabled(plog::Severity severity) {
+    return plog::get() != nullptr && plog::get()->checkSeverity(severity);
+}
+
 } // namespace Log
 
 } // namespace ableem

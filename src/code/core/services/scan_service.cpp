@@ -544,14 +544,13 @@ ScanUpdate ScanService::poll() {
             // rebuilt from what is left
             deleteUnclaimedVanished(update);
 
-            // writeSubDirRows/writeAutobleemList look games up by UsbGame::fullPath (no trailing
-            // separator) - strip the one loadGamePaths() rows always carry so the keys match
+            // writeSubDirRows looks games up by UsbGame::fullPath (no trailing separator) - strip the
+            // one loadGamePaths() rows always carry so the keys match
             map<string, int> idByPath;
             for (const GamePath &row : library_.usbGames().loadGamePaths())
                 idByPath[DirEntry::removeSeparatorFromEndOfPath(row.path)] = row.gameId;
 
             GameScanner::writeSubDirRows(event.hierarchy, library_.usbGames(), idByPath);
-            GameScanner::writeAutobleemList(event.gamesToAddToDB, idByPath);
             library_.writeEmulationStationGamelist();
             library_.exportToRetroArchPlaylist();
             event.fingerprint.save(fingerprintFilePath());

@@ -104,7 +104,7 @@ public:
 
     // drains every event the worker has queued since the last call, applying each regional.db write on the
     // way (findGameIdByPath/insertGame/updateGame/replaceDiscs, deleting a game whose folder is gone, the
-    // sub-dir rows and autobleem.list once the scan finishes) - call this once a frame, before render().
+    // sub-dir rows once the scan finishes) - call this once a frame, before render().
     ScanUpdate poll();
 
     // The watcher's debounce core, and the one full scan cycle it runs when due. Both are ordinary methods,

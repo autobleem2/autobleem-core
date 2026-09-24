@@ -411,6 +411,9 @@ void UsbGame::applyIniValues() {
 // UsbGame::saveGameIni
 //*******************************
 void UsbGame::saveGameIni(const string &path) {
+    // what parseIni reads an empty one back as - the game, the file and regional.db agree from the first scan
+    if (publisher.empty())
+        publisher = "Other";
     IniFile ini;
     ini.section = "Game";
     ini.values["title"] = title;
