@@ -21,7 +21,7 @@ CoverDatabase::CoverDatabase(const string &coversDir) {
         auto filename = coversDir + sep + "covers" + regionStr[i] + ".db";
         if (DirEntry::exists(filename)) {
             covers[i] = std::make_unique<GameDatabase>();
-            if (!covers[i]->open(filename)) {
+            if (!covers[i]->open(filename, true)) { // only ever read
                 PLOG_WARNING << "failed to open database " << filename;
                 covers[i].reset();
             }
