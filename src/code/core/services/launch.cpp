@@ -263,7 +263,8 @@ vector<pair<string, string>> LaunchService::appEnvironment(const AppManifest &m)
                                      {"AB_APP_LIB", m.libDir},
                                      {"AB_APP_KEY", m.key},
                                      {"AB_PLATFORM", Env::buildTargetKey()},
-                                     {"AB_PLATFORM_KEYS", keys}};
+                                     {"AB_PLATFORM_KEYS", keys},
+                                     {"AB_APP_VIRTUAL_PAD", m.usesVirtualPad() ? "1" : "0"}};
     for (const auto &kv : m.env)
         env.push_back(kv);
     return env;

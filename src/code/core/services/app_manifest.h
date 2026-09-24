@@ -39,6 +39,10 @@ struct AppManifest {
     std::string problem;        // why there is no program, for the log and the UI
 
     bool runnable() const { return !program.empty(); }
+    // VirtualPad= (true/false, yes/no, 1/0): whether the App runs with our virtual pad mapper (abpadd +
+    // libabpad.so, docs/virtual-gamepad-plan.md). Absent = true: every App before the key existed did
+    static bool parseFlag(const std::string &value, bool fallback);
+    bool usesVirtualPad() const { return parseFlag(value("virtualpad"), true); }
     // the ini's value for a key ("" when absent) - title, author, version, ...
     std::string value(const std::string &key) const;
 

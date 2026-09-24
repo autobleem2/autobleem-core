@@ -507,6 +507,7 @@ TEST_CASE("a multi-platform App runs through rc/app_run.sh with what its ini nam
     CHECK(envValue(call, "AB_PLATFORM_KEYS").find(key) == 0);
     CHECK(envValue(call, "AB_ROOT") == Env::getPathToUSBRoot());
     CHECK(envValue(call, "SDL_AUDIODRIVER") == "alsa");
+    CHECK(envValue(call, "AB_APP_VIRTUAL_PAD") == "1"); // no VirtualPad= in its ini: the mapper is on
 }
 
 TEST_CASE("a multi-platform App with a run.sh of its own runs that, with the same environment") {
@@ -725,7 +726,9 @@ TEST_CASE("direct mode: a multi-platform App is its program itself, with its Arg
 }
 
 TEST_CASE("LaunchPlan::toString is the command on one line, the directory when there is one") {
-    LaunchPlan plan{"C:/emu/pcsx-ab.exe", {"-cdfile", "Tekken 3.cue"}, "C:/emu"};
+    LaunchPlan plan{"C:/emu/pcsx-ab.exe", {"-cdfile", "Tekken 3.cue"}, "C:/emu", {}};
     CHECK(plan.toString() == "'C:/emu/pcsx-ab.exe' '-cdfile' 'Tekken 3.cue' (in C:/emu)");
-    CHECK(LaunchPlan{"/bin/sh", {}, ""}.toString() == "'/bin/sh'");
+    CHECK(LaunchPlan{"/bin/sh", {}, "", {}}.toString() == "'/bin/sh'");
+    // an App's environment follows, one NAME=value each
+    CHECK(LaunchPlan{"/bin/sh", {}, "", {{"AB_APP_KEY", "psc"}}}.toString() == "'/bin/sh' AB_APP_KEY=psc");
 }

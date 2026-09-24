@@ -59,6 +59,18 @@ string AppManifest::value(const string &name) const {
 }
 
 //*******************************
+// AppManifest::parseFlag
+//*******************************
+bool AppManifest::parseFlag(const string &value, bool fallback) {
+    string v = ableem::toLowerCopy(Strings::trim(value));
+    if (v == "true" || v == "yes" || v == "1" || v == "on")
+        return true;
+    if (v == "false" || v == "no" || v == "0" || v == "off")
+        return false;
+    return fallback;
+}
+
+//*******************************
 // AppManifest::programExtensions / pluginExtension
 //*******************************
 vector<string> AppManifest::programExtensions() {
