@@ -7,12 +7,15 @@
 //   /cover/...  a game's cover
 //   /rescan     scan now
 //   /status.json  what the status page says, for a program: the games, the problems, the folders' free space
+//   /upload/...   a game put into a folder, a file at a time (resumable) and then committed - only when
+//                 Config::uploads is set, and then only with its token (see LanServer::upload)
 // A watcher scans again when the folders' fingerprint changes (checked every 10 s, or at once on /rescan) and
 // a hasher works out the checksums behind everything else. start() scans once, listens and starts the three
 // threads; stop() (or the destructor) ends them.
 //
 #pragma once
 
+#include <ableem/lanserver/http_server.h>
 #include <ableem/lanserver/lan_library.h>
 
 #include <atomic>
@@ -25,8 +28,6 @@
 #include <vector>
 
 namespace ableem {
-
-class HttpServer;
 
 class LanServer {
 public:
@@ -66,6 +67,7 @@ public:
     std::string statusJson() const;         // what /status.json answers
 
 private:
+    HttpServer::Response upload(const HttpServer::Request &request);
     void remember(const std::string &peer, const std::string &what);
 
     Config config_;

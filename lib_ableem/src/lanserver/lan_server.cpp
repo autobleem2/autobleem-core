@@ -5,10 +5,13 @@
 #include <ableem/lanserver/index_page.h>
 #include <ableem/lanserver/lan_server.h>
 
+#include <ableem/engine/filesystem.h>
 #include <ableem/engine/log.h>
 
 #include <chrono>
+#include <fstream>
 #include <json.h>
+#include <vector>
 
 using namespace std;
 
@@ -17,6 +20,44 @@ namespace ableem {
 namespace {
 
 const size_t ActivityKept = 100;
+const char *const Staging = ".uploading"; // <root>/.uploading/<game folder>/ - a dot folder, never scanned
+
+// a query's value by its key ("offset=10&library=A%20B"), percent-decoded; "" when absent
+string param(const string &query, const string &key) {
+    for (size_t at = 0;;) {
+        const size_t amp = query.find('&', at);
+        const string pair = query.substr(at, amp == string::npos ? string::npos : amp - at);
+        const size_t eq = pair.find('=');
+        if (pair.substr(0, eq) == key)
+            return eq == string::npos ? "" : HttpServer::decodePercent(pair.substr(eq + 1));
+        if (amp == string::npos)
+            return "";
+        at = amp + 1;
+    }
+}
+
+bool has(const string &query, const string &key) {
+    for (size_t at = 0;;) {
+        const size_t amp = query.find('&', at);
+        const string pair = query.substr(at, amp == string::npos ? string::npos : amp - at);
+        if (pair.substr(0, pair.find('=')) == key)
+            return true;
+        if (amp == string::npos)
+            return false;
+        at = amp + 1;
+    }
+}
+
+// a name a game folder or a file of it may have on any disk the games live on, FAT included: no separator,
+// no "." or "..", nothing Windows refuses, no dot first (the staging and state folders are dot folders)
+bool safeName(const string &name) {
+    if (name.empty() || name.size() > 200 || name[0] == '.' || name.back() == ' ' || name.back() == '.')
+        return false;
+    for (unsigned char c : name)
+        if (c < 32 || string("<>:\"/\\|?*").find(static_cast<char>(c)) != string::npos)
+            return false;
+    return true;
+}
 
 // sleeps in short steps, so a stop is noticed at once
 void pause(const atomic<bool> &stopping, int tenths, const atomic<bool> *orEarlier = nullptr) {
@@ -46,6 +87,9 @@ bool LanServer::start(string &error) {
         const string baseUrl =
             "http://" + (host != request.headers.end() ? host->second : "localhost:" + to_string(config_.port));
         const string &path = request.path;
+        // only an upload writes; everything else is read
+        if (request.method != "GET" && request.method != "HEAD" && path.compare(0, 8, "/upload/") != 0)
+            return HttpServer::Response::text(405, "GET and HEAD only here\n");
         if (path == "/" || path == "/index.html") {
             IndexPageFacts facts;
             facts.name = config_.name;
@@ -58,6 +102,7 @@ bool LanServer::start(string &error) {
             }
             facts.version = config_.version;
             facts.hashing = hashing();
+            facts.uploads = config_.uploads;
             HttpServer::Response r;
             r.contentType = "text/html; charset=utf-8";
             r.body = indexPage(*library_.snapshot(), library_.checksums(), facts);
@@ -93,6 +138,8 @@ bool LanServer::start(string &error) {
             r.file = file;
             return r;
         }
+        if (path.compare(0, 8, "/upload/") == 0)
+            return upload(request);
         if (path.compare(0, 7, "/cover/") == 0) {
             HttpServer::Response r;
             if (!library_.cover(path.substr(7), r.body, r.contentType))
@@ -161,6 +208,92 @@ void LanServer::remember(const string &peer, const string &what) {
     activity_.push_back({time(nullptr), peer, what});
     while (activity_.size() > ActivityKept)
         activity_.pop_front();
+}
+
+//*******************************
+// LanServer::upload
+//*******************************
+// GET    /upload/<game folder>/<file>                how much of it is staged ("0" for nothing)
+// PUT    /upload/<game folder>/<file>?offset=N       appends the body; N must be what is staged already
+// POST   /upload/<game folder>?commit                 the staged folder into the games, a rescan asked for
+// DELETE /upload/<game folder>                        the staged folder dropped
+// Each with the token in X-AB-Token; ?library=<name> picks a folder when there are several.
+HttpServer::Response LanServer::upload(const HttpServer::Request &request) {
+    if (!config_.uploads)
+        return HttpServer::Response::text(403, "uploads are off on this server (abstored --allow-uploads)\n");
+    auto token = request.headers.find("x-ab-token");
+    if (config_.uploadToken.empty() || token == request.headers.end() || token->second != config_.uploadToken)
+        return HttpServer::Response::text(403, "wrong upload token\n");
+
+    const string rest = request.path.substr(8);
+    const size_t slash = rest.find('/');
+    const string folder = rest.substr(0, slash);
+    const string file = slash == string::npos ? "" : rest.substr(slash + 1);
+    if (!safeName(folder) || (slash != string::npos && !safeName(file)))
+        return HttpServer::Response::text(400, "not a name a game or its file may have\n");
+
+    const vector<LanLibrary::Root> roots = library_.effectiveRoots();
+    const string wanted = param(request.query, "library");
+    const LanLibrary::Root *root = nullptr;
+    for (const LanLibrary::Root &r : roots)
+        if (r.name == wanted || (wanted.empty() && roots.size() == 1))
+            root = &r;
+    if (root == nullptr)
+        return HttpServer::Response::text(400, "which library? (library=<name>)\n");
+    const string staged = root->dir + sep + Staging + sep + folder;
+
+    if (request.method == "DELETE" && file.empty()) {
+        DirEntry::removeDirAndContents(staged);
+        return HttpServer::Response::text(200, "dropped\n");
+    }
+    if (request.method == "POST" && file.empty() && has(request.query, "commit")) {
+        if (!DirEntry::isDirectory(staged) || DirEntry::diru(staged).empty())
+            return HttpServer::Response::text(404, "nothing staged for " + folder + "\n");
+        string name = folder, dest = root->dir + sep + folder;
+        for (int n = 2; DirEntry::exists(dest); n++) {
+            name = folder + " (" + to_string(n) + ")";
+            dest = root->dir + sep + name;
+        }
+        if (!DirEntry::renameFile(staged, dest))
+            return HttpServer::Response::text(500, "cannot move the game into place\n");
+        rescan_ = true;
+        PLOG_INFO << request.peer << " uploaded " << name;
+        remember(request.peer, "uploaded " + name);
+        return HttpServer::Response::text(200, name + "\n");
+    }
+    if (file.empty())
+        return HttpServer::Response::text(400, "a file, or ?commit\n");
+
+    const string target = staged + sep + file;
+    const long long found = DirEntry::exists(target) ? DirEntry::fileSize(target) : 0;
+    const long long current = found < 0 ? 0 : found;
+    if (request.method == "GET" || request.method == "HEAD")
+        return HttpServer::Response::text(200, to_string(current) + "\n");
+    if (request.method != "PUT")
+        return HttpServer::Response::text(405, "GET, PUT, POST ?commit or DELETE\n");
+
+    const long long offset = atoll(param(request.query, "offset").c_str());
+    if (offset != current)
+        return HttpServer::Response::text(409, to_string(current) + "\n"); // what is there: go on from it
+    if (request.contentLength > LanLibrary::freeSpace(root->dir))
+        return HttpServer::Response::text(507, "not enough space for " + file + "\n");
+    DirEntry::createDirs(staged);
+    ofstream out(target, ios::binary | (offset == 0 ? ios::trunc : ios::app));
+    if (!out)
+        return HttpServer::Response::text(500, "cannot write " + file + "\n");
+    vector<char> buffer(1 << 20);
+    uint64_t written = 0;
+    while (written < request.contentLength) {
+        const long long got = request.readBody(buffer.data(), buffer.size());
+        if (got <= 0)
+            break; // the client went: what came is kept, the next PUT goes on from it
+        out.write(buffer.data(), static_cast<streamsize>(got));
+        if (!out)
+            return HttpServer::Response::text(500, "cannot write " + file + "\n");
+        written += static_cast<uint64_t>(got);
+    }
+    out.close();
+    return HttpServer::Response::text(200, to_string(offset + static_cast<long long>(written)) + "\n");
 }
 
 //*******************************

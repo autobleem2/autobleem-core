@@ -6,6 +6,7 @@
 #include <ableem/engine/log.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -92,12 +93,22 @@ string HttpServer::reason(int status) {
         return "Bad Request";
     case 404:
         return "Not Found";
+    case 403:
+        return "Forbidden";
     case 405:
         return "Method Not Allowed";
+    case 409:
+        return "Conflict";
+    case 411:
+        return "Length Required";
     case 416:
         return "Range Not Satisfiable";
+    case 500:
+        return "Internal Server Error";
     case 503:
         return "Service Unavailable";
+    case 507:
+        return "Insufficient Storage";
     default:
         return "Error";
     }
@@ -250,6 +261,11 @@ void HttpServer::handle(intptr_t socket, const string &peer) {
             return;
         head.append(buffer, static_cast<size_t>(got));
     }
+    // what came after the blank line is the body's beginning, not more headers
+    const size_t end = head.find("\r\n\r\n");
+    string early = end == string::npos ? string() : head.substr(end + 4);
+    if (end != string::npos)
+        head.resize(end + 2);
     Request request;
     request.peer = peer;
     istringstream lines(head);
@@ -269,14 +285,40 @@ void HttpServer::handle(intptr_t socket, const string &peer) {
             request.headers[lower(trim(line.substr(0, colon)))] = trim(line.substr(colon + 1));
     }
 
+    // the body, handed out as the handler reads it: what came with the head first, then the socket
+    auto length = request.headers.find("content-length");
+    request.contentLength = length == request.headers.end() ? 0 : strtoull(length->second.c_str(), nullptr, 10);
+    uint64_t bodyLeft = request.contentLength;
+    request.readBody = [&early, &bodyLeft, socket](char *data, size_t size) -> long long {
+        if (bodyLeft == 0)
+            return 0;
+        size = static_cast<size_t>(min<uint64_t>(size, bodyLeft));
+        size_t got = 0;
+        if (!early.empty()) {
+            got = min(size, early.size());
+            memcpy(data, early.data(), got);
+            early.erase(0, got);
+        } else {
+            const int n = static_cast<int>(recv(static_cast<int>(socket), data, static_cast<int>(size), 0));
+            if (n <= 0)
+                return -1;
+            got = static_cast<size_t>(n);
+        }
+        bodyLeft -= got;
+        return static_cast<long long>(got);
+    };
+
     Response response;
-    if (request.method != "GET" && request.method != "HEAD")
-        response = Response::text(405, "GET and HEAD only\n");
+    const bool sends = request.method == "PUT" || request.method == "POST";
+    if (request.method != "GET" && request.method != "HEAD" && request.method != "DELETE" && !sends)
+        response = Response::text(405, "GET, HEAD, PUT, POST and DELETE only\n");
+    else if (request.method == "PUT" && length == request.headers.end())
+        response = Response::text(411, "a PUT says its Content-Length\n");
     else if (request.path.empty() || request.path[0] != '/')
         response = Response::text(400, "bad request\n");
     else
         response = handler_(request);
-    const bool body = request.method == "GET";
+    const bool body = request.method != "HEAD";
 
     ostringstream out;
     if (!response.file.empty()) {

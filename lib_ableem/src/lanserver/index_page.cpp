@@ -94,7 +94,8 @@ string indexPage(const LanSnapshot &snapshot, const map<string, string> &checksu
       << "<meta http-equiv=\"refresh\" content=\"30\"><title>" << htmlEscape(facts.name) << "</title><style>" << Style
       << "</style></head><body><main>";
     h << "<h1>" << htmlEscape(facts.name) << "</h1><p class=\"muted\">AutoBleem Store LAN server "
-      << htmlEscape(facts.version) << " &middot; " << htmlEscape(facts.gamesDir) << "</p>";
+      << htmlEscape(facts.version) << " &middot; " << htmlEscape(facts.gamesDir)
+      << (facts.uploads ? " &middot; uploads on (with the token)" : " &middot; read only") << "</p>";
 
     h << "<div class=\"card\"><p>In the AutoBleem Store: <b>Sources</b> &rarr; <b>Add a source URL</b>, and "
       << "enter</p><p><code>" << htmlEscape(facts.baseUrl) << "/store.tsv</code></p><p class=\"muted\">"

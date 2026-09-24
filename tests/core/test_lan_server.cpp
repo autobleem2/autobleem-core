@@ -282,7 +282,7 @@ TEST_CASE("abstored over a socket: the list, a file resumed with a Range, a file
     CHECK(part.substr(part.size() - 4) == "data");
 
     CHECK(ask("GET /files/loose.chd HTTP/1.1\r\nHost: h\r\n\r\n").compare(0, 12, "HTTP/1.1 404") == 0);
-    CHECK(ask("POST /store.tsv HTTP/1.1\r\nHost: h\r\n\r\n").compare(0, 12, "HTTP/1.1 405") == 0);
+    CHECK(ask("PATCH /store.tsv HTTP/1.1\r\nHost: h\r\n\r\n").compare(0, 12, "HTTP/1.1 405") == 0);
     stop = true;
     serving.join();
 }
@@ -430,4 +430,96 @@ TEST_CASE("LanServer serves the library: the list, a file, the status page, what
     CHECK(httpGet(c.port, "/store.tsv").empty()); // nobody listens any more
     REQUIRE_MESSAGE(server.start(error), error);  // and it starts again on the same port
     CHECK(httpGet(c.port, "/store.tsv").find("# name: Living room") != string::npos);
+}
+
+namespace {
+
+// any request, a body with it; the whole reply
+string httpSend(int port, const string &method, const string &path, const string &body = "", const string &token = "") {
+    const int s = static_cast<int>(socket(AF_INET, SOCK_STREAM, 0));
+    sockaddr_in to{};
+    to.sin_family = AF_INET;
+    to.sin_port = htons(static_cast<uint16_t>(port));
+    inet_pton(AF_INET, "127.0.0.1", &to.sin_addr);
+    string reply;
+    if (connect(s, reinterpret_cast<sockaddr *>(&to), sizeof(to)) == 0) {
+        string request = method + " " + path + " HTTP/1.1\r\nHost: h\r\nContent-Length: " + to_string(body.size()) +
+                         "\r\n" + (token.empty() ? "" : "X-AB-Token: " + token + "\r\n") + "\r\n" + body;
+        send(s, request.data(), static_cast<int>(request.size()), 0);
+        char buffer[4096];
+        int got;
+        while ((got = static_cast<int>(recv(s, buffer, sizeof(buffer), 0))) > 0)
+            reply.append(buffer, static_cast<size_t>(got));
+    }
+    TEST_CLOSE(s);
+    return reply;
+}
+
+bool status(const string &reply, int code) {
+    return reply.compare(0, 12, "HTTP/1.1 " + to_string(code)) == 0;
+}
+
+string body(const string &reply) {
+    const size_t at = reply.find("\r\n\r\n");
+    return at == string::npos ? "" : reply.substr(at + 4);
+}
+
+} // namespace
+
+TEST_CASE(
+    "LanServer uploads: off by default; with the token a game arrives a file at a time, resumable, then committed") {
+    Games g;
+    LanServer::Config c;
+    c.library = g.config();
+    c.port = 20000 + static_cast<int>((chrono::steady_clock::now().time_since_epoch().count() / 11) % 20000);
+    {
+        LanServer off(c);
+        string error;
+        REQUIRE_MESSAGE(off.start(error), error);
+        const string reply = httpSend(c.port, "PUT", "/upload/New/new.cue", "x", "t");
+        CHECK(status(reply, 403));
+        CHECK(body(reply).find("uploads are off") != string::npos);
+    }
+    c.uploads = true;
+    c.uploadToken = "secret";
+    LanServer server(c);
+    string error;
+    REQUIRE_MESSAGE(server.start(error), error);
+
+    CHECK(status(httpSend(c.port, "POST", "/store.tsv", "x", "secret"), 405)); // only an upload writes
+    CHECK(status(httpSend(c.port, "PUT", "/upload/New/new.cue", "x", "wrong"), 403));
+    CHECK(status(httpSend(c.port, "PUT", "/upload/New/new.cue", "x"), 403));
+    CHECK(status(httpSend(c.port, "PUT", "/upload/../escape.cue", "x", "secret"), 400));
+    CHECK(status(httpSend(c.port, "PUT", "/upload/New/..%2F..%2Fx", "x", "secret"), 400));
+    CHECK(status(httpSend(c.port, "PUT", "/upload/New/a%3Ab", "x", "secret"), 400)); // "a:b"
+
+    // a file in two parts, the second going on from the first
+    const string cue = "FILE \"new.bin\" BINARY\n  TRACK 01 MODE2/2352\n";
+    CHECK(status(httpSend(c.port, "PUT", "/upload/Two%20Discs/new.cue?offset=0", cue, "secret"), 200));
+    CHECK(status(httpSend(c.port, "PUT", "/upload/Two%20Discs/new.bin?offset=0", "binary ", "secret"), 200));
+    const string stale = httpSend(c.port, "PUT", "/upload/Two%20Discs/new.bin?offset=0", "again", "secret");
+    CHECK(status(stale, 409)); // not where the staged file ends: it says where that is
+    CHECK(body(stale) == "7\n");
+    CHECK(body(httpSend(c.port, "GET", "/upload/Two%20Discs/new.bin", "", "secret")) == "7\n");
+    CHECK(body(httpSend(c.port, "PUT", "/upload/Two%20Discs/new.bin?offset=7", "data", "secret")) == "11\n");
+    // staged in a dot folder: not a game yet
+    server.library().scan();
+    CHECK(server.library().snapshot()->games.size() == 3);
+
+    // committed under a free name ("Two Discs" is taken), then scanned
+    const string committed = httpSend(c.port, "POST", "/upload/Two%20Discs?commit", "", "secret");
+    CHECK(status(committed, 200));
+    CHECK(body(committed) == "Two Discs (2)\n");
+    CHECK(g.tmp.readFile("Games/Two Discs (2)/new.bin") == "binary data");
+    CHECK_FALSE(ableem::DirEntry::exists(g.tmp.at("Games/.uploading/Two Discs")));
+    server.library().scan();
+    CHECK(server.library().snapshot()->games.size() == 4);
+    CHECK(server.activity().back().what == "uploaded Two Discs (2)");
+
+    // nothing staged: nothing to commit; a staged folder can be dropped
+    CHECK(status(httpSend(c.port, "POST", "/upload/Nothing?commit", "", "secret"), 404));
+    CHECK(status(httpSend(c.port, "PUT", "/upload/Gone/x.cue?offset=0", "x", "secret"), 200));
+    CHECK(status(httpSend(c.port, "DELETE", "/upload/Gone", "", "secret"), 200));
+    CHECK_FALSE(ableem::DirEntry::exists(g.tmp.at("Games/.uploading/Gone")));
+    CHECK(httpSend(c.port, "POST", "/upload/Gone?commit", "", "secret").compare(0, 12, "HTTP/1.1 404") == 0);
 }
