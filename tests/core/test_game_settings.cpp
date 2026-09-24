@@ -321,6 +321,24 @@ TEST_CASE("the smoothing is soft_filter, none when the cfg has no line, clamped 
     CHECK(std::string(GameSettingsService::SmoothingNames[4]) == "HQ3x");
 }
 
+TEST_CASE("the filter is plat_target.hwfilter - Off/Linear/Sharp, off when the cfg has no line, clamped") {
+    Editing lib;
+    lib.writeAllUsbCfgs(); // no hwfilter line
+    GameSettings s = lib.service->open(lib.usbGame());
+    CHECK(s.pcsx.filter == 0);
+
+    lib.service->setFilter(s, 2); // Sharp
+    CHECK(s.pcsx.filter == 2);
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "plat_target.hwfilter = 2"));
+    CHECK(contains(lib.tmp.readFile("Games/!SaveStates/Driver 2/pcsx.cfg"), "plat_target.hwfilter = 2"));
+
+    lib.service->setFilter(s, 3); // past Sharp stays Sharp, below Off stays Off
+    CHECK(s.pcsx.filter == 2);
+    lib.service->setFilter(s, -1);
+    CHECK(s.pcsx.filter == 0);
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "plat_target.hwfilter = 0"));
+}
+
 TEST_CASE("Sony's hacks are the sonyhacks flag, off when the cfg has no line") {
     Editing lib;
     lib.writeAllUsbCfgs();

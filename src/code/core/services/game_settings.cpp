@@ -100,6 +100,7 @@ void GameSettingsService::refreshPcsx(GameSettings &s) const {
     p.bootLogo = slowBoot.empty() ? 1 : atoi(slowBoot.c_str()); // pcsx-ab's own default is 1
     p.smoothing = clampTo(strtol(processor.getValue(path, "soft_filter").c_str(), nullptr, 16), 0, 4); // no line = none
     p.sonyHacks = atoi(processor.getValue(path, "sonyhacks").c_str()) != 0;                            // no line = off
+    p.filter = clampTo(atoi(processor.getValue(path, "plat_target.hwfilter").c_str()), 0, 2);          // no line = off
 }
 
 //*******************************
@@ -272,6 +273,13 @@ void GameSettingsService::setSmoothing(GameSettings &s, int mode) {
 //*******************************
 void GameSettingsService::setSonyHacks(GameSettings &s, bool on) {
     replaceCfgLine(s, "sonyhacks", to_string(on ? 1 : 0));
+}
+
+//*******************************
+// GameSettingsService::setFilter
+//*******************************
+void GameSettingsService::setFilter(GameSettings &s, int mode) {
+    replaceCfgLine(s, "plat_target.hwfilter", to_string(clampTo(mode, 0, 2)));
 }
 
 //*******************************

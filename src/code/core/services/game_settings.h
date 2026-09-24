@@ -28,6 +28,7 @@ struct PcsxSettings {
     int bootLogo = 1;  // pcsx.cfg SlowBoot: the BIOS boot logo shown before the game; no line = shown
     int smoothing = 0; // pcsx.cfg soft_filter, pcsx-abnxt's Smoothing: 0 none, 1 scale2x, 2 eagle2x, 3 hq2x, 4 hq3x
     int sonyHacks = 0; // pcsx.cfg sonyhacks, pcsx-abnxt only: Sony's per-title overrides for the disc's serial
+    int filter = 0;    // pcsx.cfg plat_target.hwfilter, pcsx-abnxt's own numbering: 0 Off, 1 Linear, 2 Sharp
     std::string gpu;
 };
 
@@ -105,6 +106,10 @@ public:
     // sonyhacks: pcsx-abnxt applies Sony's per-title configuration overrides (the ones the console's
     // emulator had, by the disc's serial) over the cfg; a lever for a game that misbehaves, off by default
     void setSonyHacks(GameSettings &s, bool on);
+    // plat_target.hwfilter: how the picture is scaled to the screen - the key pcsx-abnxt saves from its own
+    // menu, so a change made in the emulator shows here and the next launch keeps it. LaunchService passes
+    // it as -filter; the classic pcsx-ab has no Sharp and gets Off for it (LaunchService::pcsxAbFilter).
+    void setFilter(GameSettings &s, int mode); // 0 Off, 1 Linear, 2 Sharp; clamped
     void setGpuPlugin(GameSettings &s, const std::string &plugin); // USB only: "builtin_gpu" or "gpu_peops.so"
 
     static const char *const BuiltinGpu;

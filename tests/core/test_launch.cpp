@@ -98,7 +98,6 @@ struct Launching : GameLibraryFixture {
 
 TEST_CASE("writeSelectionScript records the menu choice and the settings the rc scripts read") {
     Launching lib;
-    lib.configure("Mip=true\n");
     lib.session.menuOption = MENU_OPTION_START;
 
     lib.service->writeSelectionScript();
@@ -109,7 +108,6 @@ TEST_CASE("writeSelectionScript records the menu choice and the settings the rc 
     CHECK(contains(script, "AB_SELECTION=5"));
     CHECK(contains(script, "AB_THEME=aergb"));
     CHECK(contains(script, "AB_PCSX=bleemsync"));
-    CHECK(contains(script, "AB_MIP=true"));
 }
 
 // --- PCSX ---
@@ -140,16 +138,31 @@ TEST_CASE("PCSX is started through rc/launch.sh with the nine arguments the scri
     CHECK(contains(lib.tmp.readFile("Autobleem/rc/autobleem_cfg.sh"), "AB_SELECTION=")); // written before the run
 }
 
-TEST_CASE("the aspect and filter arguments come from config.ini") {
+TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg as Off/Linear/Sharp 0/1/2") {
     Launching lib;
-    lib.configure("Aspect=true\nMip=true\n");
+    lib.configure("Aspect=true\n");
     PsGamePtr game = lib.usbGame();
 
+    // launch.sh gets pcsx-abnxt's numbering as is and converts it for the classic pcsx-ab itself
+    for (const char *mode : {"0", "1", "2"}) {
+        lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", string("plat_target.hwfilter = ") + mode + "\n");
+        lib.runner.calls.clear();
+        lib.service->launch(game, EmuMode::Pcsx, -1);
+        const vector<string> &args = lib.runner.only().args;
+        CHECK(args[6] == "1");
+        CHECK(args[7] == mode);
+    }
+    // no line, or a value out of range: Off
+    lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "plat_target.hwfilter = 7\n");
+    lib.runner.calls.clear();
     lib.service->launch(game, EmuMode::Pcsx, -1);
+    CHECK(lib.runner.only().args[7] == "0");
+}
 
-    const vector<string> &args = lib.runner.only().args;
-    CHECK(args[6] == "1");
-    CHECK(args[7] == "1");
+TEST_CASE("the classic pcsx-ab's -filter is the other way round and has no Sharp") {
+    CHECK(LaunchService::pcsxAbFilter(0) == "1"); // Off -> nearest
+    CHECK(LaunchService::pcsxAbFilter(1) == "0"); // Linear -> bilinear
+    CHECK(LaunchService::pcsxAbFilter(2) == "1"); // Sharp -> nearest
 }
 
 TEST_CASE("the emulator argument is config.ini's choice between pcsx-ab and pcsx-abnxt") {
@@ -332,9 +345,10 @@ TEST_CASE("the game's card1.mcd is RetroArch's .srm for the run, and what RetroA
 
 TEST_CASE("with raconfig on, the game's pcsx.cfg settings are RetroArch's for the run and are put back after") {
     Launching lib;
-    lib.configure("Raconfig=true\nAspect=true\nMip=false\n");
+    lib.configure("Raconfig=true\nAspect=true\n");
     PsGamePtr game = lib.usbGame();
     lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg",
+                      "plat_target.hwfilter = 1\n" // Linear
                       "gpu_neon.enhancement_enable = 1\n"
                       "gpu_neon.enhancement_no_main = 0\n"
                       "psx_clock = 39\n" // 0x39 = 57
@@ -389,7 +403,7 @@ TEST_CASE("with raconfig on, the game's pcsx.cfg settings are RetroArch's for th
     CHECK(contains(raConfigInPlay, "custom_viewport_width  = \"1280\""));
     CHECK(contains(raConfigInPlay, "custom_viewport_x  = \"0\""));
     CHECK(contains(raConfigInPlay, "aspect_ratio_index  = \"23\""));
-    CHECK(contains(raConfigInPlay, "video_smooth  = \"true\"")); // mip=false means smooth on; it always has
+    CHECK(contains(raConfigInPlay, "video_smooth  = \"true\"")); // the game's filter: Linear smooths
 
     // and afterwards both are exactly what they were
     CHECK(lib.tmp.readFile("RetroArch/bin/config/retroarch-core-options.cfg") == coreOptionsBefore);
@@ -397,9 +411,9 @@ TEST_CASE("with raconfig on, the game's pcsx.cfg settings are RetroArch's for th
     CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("RetroArch/bin/retroarch.cfg.bak")));
 }
 
-TEST_CASE("a foreign game with raconfig on still gets the viewport and filter, but no core options") {
+TEST_CASE("a foreign game with raconfig on still gets the viewport, but no core options and no filter") {
     Launching lib;
-    lib.configure("Raconfig=true\nAspect=false\nMip=true\n");
+    lib.configure("Raconfig=true\nAspect=false\n");
     PsGamePtr game = lib.foreignGame(false);
     lib.tmp.writeFile("RetroArch/bin/config/retroarch-core-options.cfg", "pcsx_rearmed_psxclock = \"50\"\n");
     lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "custom_viewport_width = \"0\"\nvideo_smooth = \"true\"\n");
@@ -414,7 +428,7 @@ TEST_CASE("a foreign game with raconfig on still gets the viewport and filter, b
 
     CHECK(coreOptionsInPlay == "pcsx_rearmed_psxclock = \"50\"\n");
     CHECK(contains(raConfigInPlay, "custom_viewport_width  = \"960\""));
-    CHECK(contains(raConfigInPlay, "video_smooth  = \"false\""));
+    CHECK(contains(raConfigInPlay, "video_smooth = \"true\"")); // RetroArch's own - no pcsx.cfg to read
 }
 
 // --- Apps ---
@@ -480,7 +494,7 @@ struct DirectLaunching : Launching {
 
 TEST_CASE("direct mode: the PS1 emulator itself - pcsx-ab in launch.sh's run directory, pcsx-abnxt by its options") {
     DirectLaunching lib;
-    lib.configure("Aspect=true\nMip=false\nEmulator=pcsx-ab\n");
+    lib.configure("Aspect=true\nEmulator=pcsx-ab\n");
     PsGamePtr game = lib.usbGame();
 
     SUBCASE("a fresh start with pcsx-ab (Options' choice): the run directory laid out with directory links") {
@@ -498,7 +512,7 @@ TEST_CASE("direct mode: the PS1 emulator itself - pcsx-ab in launch.sh's run dir
         const FakeProcessRunner::Call &call = lib.runner.only();
         CHECK(DirectLaunching::stem(call.exe) == lib.tmp.at("program/emu/pcsx-ab"));
         CHECK(call.cwd == lib.tmp.at("System/runpcsx"));
-        CHECK(call.args == vector<string>{"-filter", "0", "-ratio", "1", "-lang", "2", "-region", "4", "-enter", "1",
+        CHECK(call.args == vector<string>{"-filter", "1", "-ratio", "1", "-lang", "2", "-region", "4", "-enter", "1",
                                           "-cdfile", lib.tmp.at("Games/Tekken 3/Tekken 3.cue")});
         CHECK(linksSeen == "linked");
         // the links go after the run, the save states stay
@@ -506,7 +520,7 @@ TEST_CASE("direct mode: the PS1 emulator itself - pcsx-ab in launch.sh's run dir
         CHECK(ableem::DirEntry::exists(lib.tmp.at("Games/Tekken 3/sstates/pcsx.cfg")));
     }
     SUBCASE("pcsx-abnxt (the default), run from its folder with -dotdir/-biosdir/-fullscreen") {
-        lib.configure("Aspect=true\nMip=false\nEmulator=pcsx-abnxt\n");
+        lib.configure("Aspect=true\nEmulator=pcsx-abnxt\n");
         lib.service->launch(game, EmuMode::Pcsx, -1);
         const FakeProcessRunner::Call &call = lib.runner.only();
         CHECK(DirectLaunching::stem(call.exe) == lib.tmp.at("program/emunxt/pcsx-ab"));
@@ -516,6 +530,21 @@ TEST_CASE("direct mode: the PS1 emulator itself - pcsx-ab in launch.sh's run dir
                                           "-region", "4", "-enter", "1", "-language", "English", "-fullscreen",
                                           "-cdfile", lib.tmp.at("Games/Tekken 3/Tekken 3.cue")});
         CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("System/runpcsx")));
+    }
+    SUBCASE("the game's filter: pcsx-abnxt gets it as is, pcsx-ab in its own numbering, Sharp as Off") {
+        const char *const expectAb[] = {"1", "0", "1"};
+        for (int mode = 0; mode <= 2; mode++) {
+            lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "plat_target.hwfilter = " + std::to_string(mode) + "\n");
+            for (const char *emu : {"pcsx-abnxt", "pcsx-ab"}) {
+                lib.configure(string("Emulator=") + emu + "\n");
+                lib.runner.calls.clear();
+                lib.service->launch(game, EmuMode::Pcsx, -1);
+                const vector<string> &args = lib.runner.only().args;
+                auto it = std::find(args.begin(), args.end(), "-filter");
+                REQUIRE(it + 1 < args.end());
+                CHECK(*(it + 1) == (string(emu) == "pcsx-abnxt" ? std::to_string(mode) : string(expectAb[mode])));
+            }
+        }
     }
     SUBCASE("a chosen emulator whose folder has no binary falls back to the other, as launch.sh does") {
         lib.configure("Emulator=pcsx-abnxt\n");

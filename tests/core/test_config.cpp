@@ -124,18 +124,19 @@ TEST_CASE("Config drops the keys older AutoBleem versions wrote") {
                   "Quickmenu=1\n"
                   "Delay=3\n"
                   "Adv=1\n"
+                  "Mip=true\n"
                   "UI=classic\n"); // the classic UI is gone - see Session::MenuOption / GuiLauncher
 
     Config config;
 
-    for (const char *gone : {"stheme", "autoregion", "quick", "quickmenu", "delay", "adv", "ui"}) {
+    for (const char *gone : {"stheme", "autoregion", "quick", "quickmenu", "delay", "adv", "ui", "mip"}) {
         CHECK(config.inifile.values.count(gone) == 0);
     }
     CHECK(config.inifile.values["theme"] == "aergb");
 
     // they are gone from the file on disk too, not just from the live map
     ableem::IniFile onDisk = reloadFromDisk(tmp);
-    for (const char *gone : {"stheme", "autoregion", "quick", "quickmenu", "delay", "adv", "ui"}) {
+    for (const char *gone : {"stheme", "autoregion", "quick", "quickmenu", "delay", "adv", "ui", "mip"}) {
         CHECK(onDisk.values.count(gone) == 0);
     }
 }

@@ -44,7 +44,7 @@ public:
     // autobleem-session.sh (Pi) that sources it. Was config.ini's Cfg= key, an absolute console path the
     // Pi installer had to rewrite per install; the rc dir already comes from the root (2026-09-18)
     static std::string selectionScriptFile();
-    // rc/autobleem_cfg.sh: AB_SELECTION/AB_THEME/AB_PCSX/AB_MIP, so the shell launch scripts see the menu
+    // rc/autobleem_cfg.sh: AB_SELECTION/AB_THEME/AB_PCSX, so the shell launch scripts see the menu
     // choice and the theme/emulator settings after the GUI exits or before a game starts.
     void writeSelectionScript();
 
@@ -69,9 +69,18 @@ public:
     // bios and plugins as links next to the working directory): <System>/runpcsx, made with directory
     // links before the run and cleared after. pcsx-abnxt takes -dotdir/-biosdir instead and needs none.
     static std::string pcsxRunDir();
+    // the classic pcsx-ab's -filter for a filter mode (0 Off, 1 Linear, 2 Sharp): its numbering is the
+    // other way round - 0 is bilinear, 1 nearest - and it has no Sharp, so Sharp is Off
+    static std::string pcsxAbFilter(int mode);
+    // the game's filter mode from its pcsx.cfg (the game folder's; the save-state folder's for an internal
+    // game): 0 Off, 1 Linear, 2 Sharp, 0 when the cfg has no line
+    static int filterModeFor(const PsGame &game);
 
     // what a launch runs, for either mode. The pcsx plan: the save-state folder, the disc image, the
-    // language id, the resume slot (-1 = none) and config.ini's aspect/filter flags as "0"/"1".
+    // language id, the resume slot (-1 = none), config.ini's aspect flag as "0"/"1" and the game's filter
+    // (its pcsx.cfg plat_target.hwfilter) as "0"/"1"/"2" - Off/Linear/Sharp, pcsx-abnxt's -filter as is.
+    // launch.sh converts it for the classic pcsx-ab itself (it may fall back to that emulator); a direct
+    // launch of pcsx-ab gets pcsxAbFilter()'s value.
     // The RetroArch plan: the file and the core - "NEON"/"PEOPS" for one of our PS1 games (the platform's
     // PS1 core in direct mode), else a core path.
     LaunchPlan planPcsx(const PsGame &game, const std::string &discImage, const std::string &lang, int resumePoint,

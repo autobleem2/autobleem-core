@@ -116,7 +116,8 @@ LaunchPlan LaunchService::planPcsx(const PsGame &game, const string &discImage, 
         return planRetroArch(discImage, RaNeonCore);
     }
     const string emuDir = plan.exe.substr(0, plan.exe.find_last_of('/'));
-    if (!Env::pcsxNxtDir().empty() && emuDir == Env::pcsxNxtDir()) {
+    const bool nxt = !Env::pcsxNxtDir().empty() && emuDir == Env::pcsxNxtDir();
+    if (nxt) {
         // pcsx-abnxt: the profile and the BIOS named outright, full screen by its own option
         plan.cwd = emuDir;
         plan.args = {"-dotdir", game.ssFolder, "-biosdir", Env::getPathToPs1BiosDir()};
@@ -124,8 +125,9 @@ LaunchPlan LaunchService::planPcsx(const PsGame &game, const string &discImage, 
         // pcsx-ab: the run directory launch.sh builds, made with directory links by launchPcsx()
         plan.cwd = pcsxRunDir();
     }
+    const string filterArg = nxt ? filter : pcsxAbFilter(atoi(filter.c_str()));
     for (const char *a :
-         {"-filter", filter.c_str(), "-ratio", aspect.c_str(), "-lang", lang.c_str(), "-region", "4", "-enter", "1"}) {
+         {"-filter", filterArg.c_str(), "-ratio", aspect.c_str(), "-lang", lang.c_str(), "-region", "4", "-enter", "1"}) {
         plan.args.push_back(a);
     }
     if (plan.cwd == emuDir) {
@@ -150,6 +152,19 @@ LaunchPlan LaunchService::planPcsx(const PsGame &game, const string &discImage, 
 //*******************************
 string LaunchService::pcsxRunDir() {
     return Env::getPathToSystemDir() + sep + "runpcsx";
+}
+
+//*******************************
+// LaunchService::pcsxAbFilter / filterModeFor
+//*******************************
+string LaunchService::pcsxAbFilter(int mode) {
+    return mode == 1 ? "0" : "1";
+}
+
+int LaunchService::filterModeFor(const PsGame &game) {
+    ConfigFileEditor processor;
+    int mode = atoi(processor.getValue(game.internal ? game.ssFolder : game.folder, "plat_target.hwfilter").c_str());
+    return mode < 0 || mode > 2 ? 0 : mode;
 }
 
 //*******************************
@@ -241,7 +256,6 @@ void LaunchService::writeSelectionScript() {
     os << "AB_SELECTION=" << session_.menuOption << endl;
     os << "AB_THEME=" << config_.inifile.values["theme"] << endl;
     os << "AB_PCSX=" << config_.inifile.values["pcsx"] << endl;
-    os << "AB_MIP=" << config_.inifile.values["mip"] << endl;
 
     os.flush();
     os.close();
@@ -344,12 +358,8 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint) {
         aspect = "1";
     }
 
-    string filter = "0";
-    if (config_.inifile.values["mip"] == "true") {
-        filter = "1";
-    } else {
-        filter = "0";
-    }
+    // the game's own filter (the game editor's Filter row), as pcsx-abnxt numbers it
+    string filter = to_string(filterModeFor(game));
 
     trim(game.ssFolder);
     game.ssFolder = DirEntry::removeSeparatorFromEndOfPath(game.ssFolder);
@@ -664,7 +674,6 @@ void LaunchService::transferRaConfig(PsGame &game) {
     // retroarch.cfg
     ConfigFileEditor processor;
     string aspect = config_.inifile.values["aspect"]; // true - 1280x720 - false 960x720
-    string filter = config_.inifile.values["mip"];    // true - billiner
     if (aspect == "true") {
         // widescreen
         processor.replaceInFile(raConfig, "custom_viewport_width", "custom_viewport_width  = \"1280\" ");
@@ -681,10 +690,11 @@ void LaunchService::transferRaConfig(PsGame &game) {
         processor.replaceInFile(raConfig, "aspect_ratio_index", "aspect_ratio_index  = \"0\" ");
     }
 
-    if (filter != "true") {
-        processor.replaceInFile(raConfig, "video_smooth", "video_smooth  = \"true\" ");
-    } else {
-        processor.replaceInFile(raConfig, "video_smooth", "video_smooth  = \"false\" ");
+    // a PS1 game's own filter (its pcsx.cfg): RetroArch smooths or it does not - Sharp is Off here, as in the
+    // classic pcsx-ab. A foreign game has no pcsx.cfg and keeps RetroArch's own video_smooth.
+    if (!game.foreign) {
+        processor.replaceInFile(raConfig, "video_smooth",
+                                string("video_smooth  = \"") + (filterModeFor(game) == 1 ? "true" : "false") + "\" ");
     }
 }
 

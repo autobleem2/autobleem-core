@@ -26,6 +26,7 @@ Config::Config() {
     inifile.values.erase("ui");      // the classic UI is gone: the app always shows the EvolutionUI launcher now
     inifile.values.erase("version"); // the build says what version it is (core/version.h) since 2026-09-18
     inifile.values.erase("cfg");     // the selection script is <rc>/autobleem_cfg.sh (LaunchService), not a key
+    inifile.values.erase("mip"); // the filter is per game since 2026-09-24 (pcsx.cfg plat_target.hwfilter, the editor)
     save();
 
     bool aDefaultWasSet{false};
