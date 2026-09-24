@@ -45,6 +45,10 @@ struct GameRecord {
     std::string recordName; // the rdb's name for this game, what its thumbnail file is called
     std::string coverPath;
     std::string snapPath;
+
+    // Game.ini licence_protected: a PSN PS1 Classic still under its licence's DRM (PbpImage) - listed, never
+    // started
+    bool licenceProtected = false;
 };
 
 using GameRecords = std::vector<GameRecord>;
