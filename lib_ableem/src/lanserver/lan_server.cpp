@@ -87,7 +87,9 @@ bool LanServer::start(string &error) {
         const string baseUrl =
             "http://" + (host != request.headers.end() ? host->second : "localhost:" + to_string(config_.port));
         const string &path = request.path;
-        // only an upload writes; everything else is read
+        // only an upload or a removal writes; everything else is read
+        if (request.method == "DELETE" && path.compare(0, 7, "/games/") == 0)
+            return remove(request);
         if (request.method != "GET" && request.method != "HEAD" && path.compare(0, 8, "/upload/") != 0)
             return HttpServer::Response::text(405, "GET and HEAD only here\n");
         if (path == "/" || path == "/index.html") {
@@ -211,6 +213,56 @@ void LanServer::remember(const string &peer, const string &what) {
 }
 
 //*******************************
+// LanServer::allowed / remove
+//*******************************
+// what may write: uploads switched on, and the token given
+bool LanServer::allowed(const HttpServer::Request &request, HttpServer::Response &refusal) const {
+    if (!config_.uploads) {
+        refusal = HttpServer::Response::text(403, "uploads are off on this server (abstored --allow-uploads)\n");
+        return false;
+    }
+    auto token = request.headers.find("x-ab-token");
+    if (config_.uploadToken.empty() || token == request.headers.end() || token->second != config_.uploadToken) {
+        refusal = HttpServer::Response::text(403, "wrong upload token\n");
+        return false;
+    }
+    return true;
+}
+
+// DELETE /games/<game id>: a game the last scan listed, taken off the server - its folder moved into
+// <its root>/.removed/ (" (2)" when a removed game of that name is there already), never deleted; a dot folder,
+// so never scanned. Emptying .removed is for whoever has the server's disk.
+HttpServer::Response LanServer::remove(const HttpServer::Request &request) {
+    HttpServer::Response refusal;
+    if (!allowed(request, refusal))
+        return refusal;
+    const string id = request.path.substr(7);
+    bool listed = false;
+    for (const LanGame &g : library_.snapshot()->games)
+        listed = listed || g.id == id;
+    if (!listed)
+        return HttpServer::Response::text(404, "no game " + id + " on this server\n");
+    string rootDir;
+    for (const LanLibrary::Root &r : library_.effectiveRoots())
+        if (rootDir.empty() && (r.name.empty() || id.compare(0, r.name.size() + 1, r.name + "/") == 0))
+            rootDir = r.dir;
+    const string source = library_.absolutePath(id);
+    const size_t slash = id.find_last_of('/');
+    const string name = slash == string::npos ? id : id.substr(slash + 1);
+    const string removed = rootDir + sep + ".removed";
+    DirEntry::createDirs(removed);
+    string dest = removed + sep + name;
+    for (int n = 2; DirEntry::exists(dest); n++)
+        dest = removed + sep + name + " (" + to_string(n) + ")";
+    if (source.empty() || rootDir.empty() || !DirEntry::renameFile(source, dest))
+        return HttpServer::Response::text(500, "cannot move " + id + " out of the games\n");
+    rescan_ = true;
+    PLOG_INFO << request.peer << " removed " << id << " (kept in " << dest << ")";
+    remember(request.peer, "removed " + id);
+    return HttpServer::Response::text(200, "removed\n");
+}
+
+//*******************************
 // LanServer::upload
 //*******************************
 // GET    /upload/<game folder>/<file>                how much of it is staged ("0" for nothing)
@@ -220,11 +272,9 @@ void LanServer::remember(const string &peer, const string &what) {
 // DELETE /upload/<game folder>                        the staged folder dropped
 // Each with the token in X-AB-Token; ?library=<name> picks a folder when there are several.
 HttpServer::Response LanServer::upload(const HttpServer::Request &request) {
-    if (!config_.uploads)
-        return HttpServer::Response::text(403, "uploads are off on this server (abstored --allow-uploads)\n");
-    auto token = request.headers.find("x-ab-token");
-    if (config_.uploadToken.empty() || token == request.headers.end() || token->second != config_.uploadToken)
-        return HttpServer::Response::text(403, "wrong upload token\n");
+    HttpServer::Response refusal;
+    if (!allowed(request, refusal))
+        return refusal;
 
     const string rest = request.path.substr(8);
     const size_t slash = rest.find('/');

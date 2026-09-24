@@ -9,6 +9,8 @@
 //   /status.json  what the status page says, for a program: the games, the problems, the folders' free space
 //   /upload/...   a game put into a folder, a file at a time (resumable) and then committed - only when
 //                 Config::uploads is set, and then only with its token (see LanServer::upload)
+//   DELETE /games/<game id>  a game taken off the server, with the same token: its folder moved into
+//                 <folder>/.removed/, never deleted - putting it back is moving it back (see LanServer::remove)
 // A watcher scans again when the folders' fingerprint changes (checked every 10 s, or at once on /rescan) and
 // a hasher works out the checksums behind everything else. start() scans once, listens and starts the three
 // threads; stop() (or the destructor) ends them.
@@ -68,6 +70,8 @@ public:
 
 private:
     HttpServer::Response upload(const HttpServer::Request &request);
+    HttpServer::Response remove(const HttpServer::Request &request);
+    bool allowed(const HttpServer::Request &request, HttpServer::Response &refusal) const; // uploads on, token
     void remember(const std::string &peer, const std::string &what);
 
     Config config_;

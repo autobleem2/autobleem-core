@@ -126,6 +126,39 @@ Publisher::Result Publisher::publish(const vector<File> &files, const string &ga
 }
 
 //*******************************
+// Publisher::remove
+//*******************************
+bool Publisher::remove(const string &gameId, const Target &target, string &error) {
+    if (!target.shareDir.empty() && DirEntry::isDirectory(target.shareDir)) {
+        const string source = target.shareDir + sep + gameId;
+        if (!DirEntry::isDirectory(source)) {
+            error = gameId + " is not on the share";
+            return false;
+        }
+        const size_t slash = gameId.find_last_of('/');
+        const string name = slash == string::npos ? gameId : gameId.substr(slash + 1);
+        const string removed = target.shareDir + sep + ".removed";
+        DirEntry::createDirs(removed);
+        string dest = removed + sep + name;
+        for (int n = 2; DirEntry::exists(dest); n++)
+            dest = removed + sep + name + " (" + to_string(n) + ")";
+        if (!DirEntry::renameFile(source, dest)) {
+            error = "cannot move " + gameId + " on the share";
+            return false;
+        }
+        string ignored;
+        if (target.client != nullptr)
+            target.client->rescan(ignored);
+        return true;
+    }
+    if (target.client == nullptr || !target.client->valid()) {
+        error = "no server";
+        return false;
+    }
+    return target.client->remove(gameId, error);
+}
+
+//*******************************
 // Publisher::filesOf / serverHas / folderNameFor
 //*******************************
 vector<Publisher::File> Publisher::filesOf(const LanGame &game, const LanLibrary &library) {
