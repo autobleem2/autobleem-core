@@ -497,7 +497,7 @@ TEST_CASE(
     const string cue = "FILE \"new.bin\" BINARY\n  TRACK 01 MODE2/2352\n";
     CHECK(status(httpSend(c.port, "PUT", "/upload/Two%20Discs/new.cue?offset=0", cue, "secret"), 200));
     CHECK(status(httpSend(c.port, "PUT", "/upload/Two%20Discs/new.bin?offset=0", "binary ", "secret"), 200));
-    const string stale = httpSend(c.port, "PUT", "/upload/Two%20Discs/new.bin?offset=0", "again", "secret");
+    const string stale = httpSend(c.port, "PUT", "/upload/Two%20Discs/new.bin?offset=3", "again", "secret");
     CHECK(status(stale, 409)); // not where the staged file ends: it says where that is
     CHECK(body(stale) == "7\n");
     CHECK(body(httpSend(c.port, "GET", "/upload/Two%20Discs/new.bin", "", "secret")) == "7\n");
