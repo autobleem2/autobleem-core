@@ -115,7 +115,14 @@ TEST_CASE("Publisher uploads a game over HTTP; a stopped upload goes on from wha
     CHECK_FALSE(stopped.ok);
     CHECK(stopped.error == "stopped");
     CHECK_FALSE(DirEntry::exists(rig.tmp.at("Server/Cue Game")));
-    CHECK(DirEntry::fileSize(rig.tmp.at("Server/.uploading/Cue Game/game.bin")) > 0);
+    // the server may still be writing what came before the client went: give it a moment
+    long long staged = -1;
+    for (int i = 0; i < 50 && staged <= 0; i++) {
+        staged = DirEntry::fileSize(rig.tmp.at("Server/.uploading/Cue Game/game.bin"));
+        if (staged <= 0)
+            this_thread::sleep_for(chrono::milliseconds(100));
+    }
+    CHECK(staged > 0);
 
     // again: the files go on from there, the game is committed and served
     uint64_t total = 0;
@@ -191,4 +198,42 @@ TEST_CASE("Publisher's helpers: a folder name any disk takes; the server has it 
     CHECK_FALSE(Publisher::serverHas(s, "SLES-01234", "Tekken 3")); // both have serials, and they differ
     CHECK(Publisher::serverHas(s, "", "homebrew"));
     CHECK_FALSE(Publisher::serverHas(s, "", "Other"));
+}
+
+TEST_CASE("Publisher removes a game from the server - never deleted, kept in .removed - over HTTP or the share") {
+    Rig rig;
+    REQUIRE(rig.started);
+    rig.tmp.makeSubDir("Server/RPG/Nested");
+    rig.tmp.writeFile("Server/RPG/Nested/n.chd", "nested");
+    rig.server->library().scan();
+
+    // over HTTP: only with the token, only a game the server lists
+    LanClient stranger(rig.url());
+    Publisher::Target nobody;
+    nobody.client = &stranger;
+    string error;
+    CHECK_FALSE(Publisher::remove("Tekken 3", nobody, error));
+    CHECK(error == "wrong upload token");
+    LanClient client(rig.url(), "tok");
+    Publisher::Target target;
+    target.client = &client;
+    CHECK_FALSE(Publisher::remove("Not There", target, error));
+    CHECK(error.find("no game") != string::npos);
+    REQUIRE_MESSAGE(Publisher::remove("RPG/Nested", target, error), error);
+    CHECK(rig.tmp.readFile("Server/.removed/Nested/n.chd") == "nested");
+    CHECK_FALSE(DirEntry::exists(rig.tmp.at("Server/RPG/Nested")));
+    bool gone = false;
+    for (int i = 0; i < 50 && !gone; i++) {
+        this_thread::sleep_for(chrono::milliseconds(100));
+        gone = client.status().games.size() == 1;
+    }
+    CHECK(gone);
+
+    // through the share: the same, done by this side
+    Publisher::Target share;
+    share.client = &client;
+    share.shareDir = rig.tmp.at("Server");
+    REQUIRE_MESSAGE(Publisher::remove("Tekken 3", share, error), error);
+    CHECK(rig.tmp.readFile("Server/.removed/Tekken 3/t3.chd") == "tekken");
+    CHECK_FALSE(Publisher::remove("Tekken 3", share, error)); // gone already
 }
