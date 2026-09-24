@@ -379,23 +379,14 @@ string LaunchService::raBaseNameFor(const PsGame &game) {
 // LaunchService::copyCfgAsLf
 //*******************************
 // Copy a cfg file forcing LF line endings: the emulator reads its config in text mode and a CRLF file (or
-// a stray carriage return on a value) breaks it. Falls back to a plain copy if the file cannot be read.
+// a stray carriage return on a value) breaks it. Every launch comes here, so the copy is written only when
+// it differs from what dst already holds.
 void LaunchService::copyCfgAsLf(const string &src, const string &dst) {
-    ifstream in(src, ios::in | ios::binary);
-    if (!in.is_open()) {
-        DirEntry::copy(src, dst);
-        return;
-    }
-    string content((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
-    in.close();
+    string content;
+    if (!DirEntry::readFile(src, content))
+        return; // nothing to copy - the emulator falls back to its own defaults, as it did before
     content.erase(std::remove(content.begin(), content.end(), '\r'), content.end());
-    ofstream out(dst, ios::out | ios::trunc | ios::binary);
-    if (!out.is_open()) {
-        DirEntry::copy(src, dst);
-        return;
-    }
-    out << content;
-    out.close();
+    DirEntry::writeFileIfChanged(dst, content);
 }
 
 //*******************************
