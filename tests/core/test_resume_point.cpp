@@ -232,3 +232,32 @@ TEST_CASE("a foreign entry has no resume points at all") {
     CHECK(r.exists("screenshots/TEKKEN3.png"));
     r.service.removeSlot(*r.game, 0);
 }
+
+TEST_CASE("an emulator with an exit dir: the run's files are read there, and only what is kept reaches the folder") {
+    Resume r;
+    const string exitDir = r.tmp.at("run/exit");
+    r.service.setExitDir(exitDir);
+
+    // what pcsx-abnxt writes with $AB_EXIT_DIR: the same four files, under the exit dir
+    r.tmp.writeFile("run/exit/filename.txt", "/media/Games/Tekken 3/Tekken 3.cue\nTEKKEN3\n");
+    r.tmp.writeFile("run/exit/sstates/TEKKEN3.000", "the state");
+    r.tmp.writeFile("run/exit/screenshots/TEKKEN3.png", "the screenshot");
+    r.tmp.writeFile("run/exit/lastcdimg.txt", "/media/Games/Tekken 3/Tekken 3.cue\n");
+    CHECK(r.service.exitedCleanly(*r.game));
+
+    r.service.saveAfterLaunch(*r.game, 2);
+    r.service.storePictureForSlot(*r.game, 2);
+    CHECK(r.service.slotIsActive(*r.game, 2));
+    CHECK(r.tmp.readFile("Games/!SaveStates/Tekken 3/sstates/TEKKEN3.002.res") == "the state");
+    CHECK(r.tmp.readFile("Games/!SaveStates/Tekken 3/lastcdimg.2.txt") == "/media/Games/Tekken 3/Tekken 3.cue\n");
+    CHECK_FALSE(r.exists("filename.txt")); // nothing of the run's own left in the folder
+    CHECK_FALSE(r.exists("sstates/TEKKEN3.000"));
+    CHECK_FALSE(r.exists("lastcdimg.txt"));
+
+    // the next launch clears the exit dir (RAM) and, resuming in place, copies nothing
+    r.tmp.writeFile("run/exit/sstates/leftover.000", "a run nobody kept");
+    string load = r.service.prepareForLaunch(*r.game, 2, true);
+    CHECK(load == r.ss("sstates/TEKKEN3.002.res"));
+    CHECK_FALSE(r.exists("sstates/TEKKEN3.000"));
+    CHECK_FALSE(ableem::DirEntry::exists(exitDir));
+}

@@ -113,7 +113,8 @@ private:
     static std::string raBaseNameFor(const PsGame &game);
 
     // --- PCSX ---
-    void launchPcsx(PsGame &game, int resumePoint);
+    // env: what the emulator is handed on top (AB_EXIT_DIR, AB_MEMCARD_DIR, AB_LOAD_STATE)
+    void launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::Env &env);
     // (a config saved in the emulator is the game's own pcsx.custom.cfg, which the emulators write and
     // read themselves - PcsxConfig; the autobleem.cfg this used to copy back after the run is gone)
 
@@ -142,6 +143,14 @@ private:
     std::vector<std::pair<std::string, std::string>> raOriginal_; // and what retroarch.cfg had ("" line: none)
 
 public:
+    // The PS1 emulator a launch would run, and what it takes from us through the environment: the words of
+    // the abfeatures file next to its binary (exitdir, memcarddir, loadstate - pcsx-abnxt's
+    // frontend/ab/ab_config.h). An emulator without the file takes none of them and runs as it always did.
+    std::string pcsxDirForLaunch() const;
+    std::vector<std::string> pcsxFeatures() const;
+    // <runtime>/exit: where an emulator with "exitdir" leaves the run's resume point (RAM)
+    static std::string pcsxExitDir();
+
     static std::string raSavesDir();
     static std::string raConfigFile();             // retroarch.cfg
     static std::string raCoreOptionsFile();        // config/retroarch-core-options.cfg

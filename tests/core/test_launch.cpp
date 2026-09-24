@@ -778,3 +778,34 @@ TEST_CASE("LaunchPlan::toString is the command on one line, the directory when t
     // an App's environment follows, one NAME=value each
     CHECK(LaunchPlan{"/bin/sh", {}, "", {{"AB_APP_KEY", "psc"}}}.toString() == "'/bin/sh' AB_APP_KEY=psc");
 }
+
+TEST_CASE("an emulator that lists them in abfeatures gets the card set in place, an exit dir and the slot to load") {
+    Launching lib;
+    lib.configure("Emulator=pcsx-abnxt\n");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "# what it takes\nexitdir\nmemcarddir\nloadstate\n");
+    PsGamePtr game = lib.usbGame();
+    lib.memcards->createCard("Fighting");
+    lib.memcards->setCardForGame(*game, "Fighting");
+    // a kept slot 1 to resume from
+    lib.tmp.writeFile("Games/Tekken 3/sstates/filename.txt.res",
+                      lib.tmp.at("Games/Tekken 3/Tekken 3.cue") + "\nTEKKEN3\n");
+    lib.tmp.writeFile("Games/Tekken 3/sstates/sstates/TEKKEN3.001.res", "kept state");
+
+    test_support::TreeSnapshot before(lib.tmp.at("Games"));
+    lib.service->launch(game, EmuMode::Pcsx, 1);
+
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    auto env = [&call](const string &name) {
+        for (const auto &e : call.env)
+            if (e.first == name)
+                return e.second;
+        return string("-");
+    };
+    CHECK(env("AB_MEMCARD_DIR") == lib.tmp.at("Games/!MemCards/Fighting"));
+    CHECK(env("AB_EXIT_DIR") == lib.tmp.at("System/Runtime/exit"));
+    CHECK(env("AB_LOAD_STATE") == lib.tmp.at("Games/Tekken 3/sstates/sstates/TEKKEN3.001.res"));
+    // no card copied in or out, no state copied to slot 0: only the slot's disc note, and last_played's row
+    vector<string> changes = before.changesTo(test_support::TreeSnapshot(lib.tmp.at("Games")));
+    CHECK(changes == vector<string>{"+ Tekken 3/sstates/lastcdimg.1.txt"});
+}

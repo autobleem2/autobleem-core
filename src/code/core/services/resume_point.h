@@ -26,6 +26,11 @@
 //
 // A foreign (RetroArch or App) entry has none of this, so every call is a no-op for one.
 //
+// An emulator that takes $AB_EXIT_DIR (abfeatures: exitdir - docs/quiet-stick-plan.md) writes the run's
+// four files - filename.txt, lastcdimg.txt, sstates/<name>.000, screenshots/<name>.png - there instead, in
+// RAM: setExitDir() says where, and every "what the run just wrote" below looks there first. Only what the
+// player keeps is then copied to the stick.
+//
 // Owned by App (App::resumePoints()).
 class ResumePointService {
 public:
@@ -44,6 +49,16 @@ public:
 
     // Around a PCSX launch: clear out what the last run left, and set up the slot being resumed from
     // (slot -1 means "start from the beginning"). Then keep whatever the run wrote as that slot.
-    void prepareForLaunch(const PsGame &game, int slot);
+    // loadInPlace (abfeatures: loadstate): the slot's kept state is not copied to slot 0 - its path is
+    // returned, for $AB_LOAD_STATE; otherwise (and when there is none) "".
+    std::string prepareForLaunch(const PsGame &game, int slot, bool loadInPlace = false);
     void saveAfterLaunch(const PsGame &game, int slot);
+
+    // where the emulator leaves the run's files ($AB_EXIT_DIR); "" = the game's save-state folder
+    void setExitDir(const std::string &dir) { exitDir_ = dir; }
+
+private:
+    // the run's own file `relative` (under the exit dir or the save-state folder, whichever it is in)
+    std::string fresh(const PsGame &game, const std::string &relative) const;
+    std::string exitDir_;
 };

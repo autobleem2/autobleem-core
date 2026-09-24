@@ -69,6 +69,18 @@ void MemcardService::swapInForLaunch(PsGame &game) {
 //*******************************
 // MemcardService::swapOutAfterLaunch
 //*******************************
+std::string MemcardService::setDirForLaunch(PsGame &game) {
+    if (activeCardName(game) == SonyCard)
+        return "";
+    const string dir = Env::getPathToMemCardsDir() + sep + game.memcard;
+    if (game.memcard.empty() || !DirEntry::exists(dir + sep + "card1.mcd")) {
+        PLOG_WARNING << "Memory card set " << game.memcard << " is not there, falling back to SONY";
+        setCardForGame(game, SonyCard);
+        return "";
+    }
+    return dir;
+}
+
 void MemcardService::swapOutAfterLaunch(PsGame &game) {
     if (activeCardName(game) == SonyCard)
         return;

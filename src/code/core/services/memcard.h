@@ -39,6 +39,10 @@ public:
     // missing drops the game back to the stock card rather than letting it run on another game's saves.
     void swapInForLaunch(PsGame &game);
     void swapOutAfterLaunch(PsGame &game);
+    // For an emulator that plays a set where it is ($AB_MEMCARD_DIR, abfeatures: memcarddir) instead of the
+    // swap above: the set's folder (Games/!MemCards/<set>), "" for the stock card. A set that has gone
+    // missing drops the game back to the stock card, as swapInForLaunch does.
+    std::string setDirForLaunch(PsGame &game);
 
     // the sets themselves, for the memory-card screens
     std::vector<std::string> listCards() const;

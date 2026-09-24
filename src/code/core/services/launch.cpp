@@ -151,6 +151,39 @@ LaunchPlan LaunchService::planPcsx(const PsGame &game, const string &discImage, 
 }
 
 //*******************************
+// LaunchService::pcsxDirForLaunch / pcsxFeatures / pcsxExitDir
+//*******************************
+string LaunchService::pcsxDirForLaunch() const {
+    if (Env::directLaunch()) {
+        const string exe = pcsxExecutable();
+        return exe.empty() ? "" : exe.substr(0, exe.find_last_of('/'));
+    }
+    // what launch.sh picks: config.ini's emulator, Autobleem/bin/emu when emunxt has no binary
+    const string bin = Env::getPathToAutobleemDir() + sep + "bin" + sep;
+    const string nxt = bin + "emunxt";
+    if (config_.inifile.values.at("emulator") == "pcsx-abnxt" && DirEntry::exists(nxt + sep + "pcsx-ab"))
+        return nxt;
+    return bin + "emu";
+}
+
+vector<string> LaunchService::pcsxFeatures() const {
+    vector<string> features;
+    const string dir = pcsxDirForLaunch();
+    ifstream in(dir + sep + "abfeatures");
+    string line;
+    while (getline(in, line)) {
+        line = Strings::trim(line);
+        if (!line.empty() && line[0] != '#')
+            features.push_back(line);
+    }
+    return features;
+}
+
+string LaunchService::pcsxExitDir() {
+    return Env::getPathToRuntimeDir() + sep + "exit";
+}
+
+//*******************************
 // LaunchService::pcsxRunDir
 //*******************************
 string LaunchService::pcsxRunDir() {
@@ -337,14 +370,32 @@ LaunchService::Path LaunchService::pathFor(const PsGame &game, EmuMode mode) {
 //*******************************
 void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
     switch (pathFor(*game, mode)) {
-    case Path::Pcsx:
-        memcards_.swapInForLaunch(*game);
-        resumePoints_.prepareForLaunch(*game, resumePoint);
+    case Path::Pcsx: {
+        // what this emulator can take off the stick's hands (docs/quiet-stick-plan.md): the set played
+        // where it is, the resume point of the way out in RAM, a kept slot read where it is
+        const vector<string> features = pcsxFeatures();
+        auto has = [&features](const char *f) {
+            return std::find(features.begin(), features.end(), f) != features.end();
+        };
+        LaunchPlan::Env env;
+        string cardSet = has("memcarddir") ? memcards_.setDirForLaunch(*game) : "";
+        if (cardSet.empty())
+            memcards_.swapInForLaunch(*game); // copies the set in, and out again below
+        else
+            env.emplace_back("AB_MEMCARD_DIR", cardSet);
+        resumePoints_.setExitDir(has("exitdir") ? pcsxExitDir() : "");
+        if (has("exitdir"))
+            env.emplace_back("AB_EXIT_DIR", pcsxExitDir());
+        const string loadState = resumePoints_.prepareForLaunch(*game, resumePoint, has("loadstate"));
+        if (!loadState.empty())
+            env.emplace_back("AB_LOAD_STATE", loadState);
         PcsxConfig::migrateLegacy(*game); // what an older build left becomes the game's own config
-        launchPcsx(*game, resumePoint);
+        launchPcsx(*game, resumePoint, env);
         PcsxConfig::migrateLegacy(*game); // ...and what an older emulator left just now
-        memcards_.swapOutAfterLaunch(*game);
+        if (cardSet.empty())
+            memcards_.swapOutAfterLaunch(*game);
         break;
+    }
 
     case Path::RetroArch:
         if (!game->foreign) {
@@ -399,7 +450,7 @@ void LaunchService::copyCfgAsLf(const string &src, const string &dst) {
 //*******************************
 // LaunchService::launchPcsx
 //*******************************
-void LaunchService::launchPcsx(PsGame &game, int resumePoint) {
+void LaunchService::launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::Env &env) {
     PLOG_INFO << "calling LaunchService::launchPcsx()";
 
     library_.updateDatePlayed(game, time(nullptr));
@@ -419,11 +470,17 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint) {
     trim(game.ssFolder);
     game.ssFolder = DirEntry::removeSeparatorFromEndOfPath(game.ssFolder);
 
-    remove(lastCDpoint.c_str());
+    const bool exitDir = std::find_if(env.begin(), env.end(), [](const pair<string, string> &e) {
+                             return e.first == "AB_EXIT_DIR";
+                         }) != env.end();
+    if (!exitDir && DirEntry::exists(lastCDpoint))
+        remove(lastCDpoint.c_str()); // (an emulator with an exit dir writes its own there, not here)
 
     if (DirEntry::exists(lastCDpointX)) {
         // resuming: the state's own record of which disc was in the drive is what PCSX must be given
-        DirEntry::copy(lastCDpointX, lastCDpoint);
+        // (-cdfile below; the copy is for an emulator that reads it from its folder)
+        if (!exitDir)
+            DirEntry::copy(lastCDpointX, lastCDpoint);
         ifstream is(lastCDpointX.c_str());
         if (is.is_open()) {
             std::string line;
@@ -457,6 +514,7 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint) {
     }
 
     LaunchPlan plan = planPcsx(game, gameFile, langStr, resumePoint, aspect, filter);
+    plan.env.insert(plan.env.end(), env.begin(), env.end());
     // the old pcsx-ab started directly: its run directory as launch.sh lays it out - .pcsx the save-state
     // folder, bios the PS1 BIOS, plugins the emulator's - as directory links, cleared again after
     const bool runDir = plan.cwd == pcsxRunDir();

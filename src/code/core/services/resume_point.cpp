@@ -76,6 +76,15 @@ void removeFilesWithExtensionIn(const string &dir, const string &extension) {
 } // namespace
 
 //*******************************
+// ResumePointService::fresh
+//*******************************
+string ResumePointService::fresh(const PsGame &game, const string &relative) const {
+    if (!exitDir_.empty() && DirEntry::exists(exitDir_ + sep + relative))
+        return exitDir_ + sep + relative;
+    return game.ssFolder + sep + relative;
+}
+
+//*******************************
 // ResumePointService::slotIsActive
 //*******************************
 bool ResumePointService::slotIsActive(const PsGame &game, int slot) const {
@@ -131,14 +140,14 @@ void ResumePointService::storePictureForSlot(const PsGame &game, int slot) {
     if (!readStateNameForSlot(game, slot, &name))
         return;
 
-    string fresh = shotsDir(game) + sep + name + ".png";
-    if (!DirEntry::exists(fresh))
+    string picture = fresh(game, "screenshots/" + name + ".png");
+    if (!DirEntry::exists(picture))
         return;
 
     string kept = keptPictureFile(game, name, slot);
     DirEntry::removeFile(kept);
-    DirEntry::copy(fresh, kept);
-    DirEntry::removeFile(fresh);
+    DirEntry::copy(picture, kept);
+    DirEntry::removeFile(picture);
 }
 
 //*******************************
@@ -162,9 +171,9 @@ bool ResumePointService::exitedCleanly(const PsGame &game) const {
     if (game.foreign)
         return true; // nothing to write one, so nothing to be missing
 
-    bool clean = DirEntry::exists(filenameFile(game));
+    bool clean = DirEntry::exists(fresh(game, "filename.txt"));
     if (!clean) {
-        PLOG_WARNING << "'" << filenameFile(game) << "' not found, previous run did not exit cleanly";
+        PLOG_WARNING << "'" << fresh(game, "filename.txt") << "' not found, previous run did not exit cleanly";
     }
     return clean;
 }
@@ -172,47 +181,49 @@ bool ResumePointService::exitedCleanly(const PsGame &game) const {
 //*******************************
 // ResumePointService::prepareForLaunch
 //*******************************
-void ResumePointService::prepareForLaunch(const PsGame &game, int slot) {
-    // whatever a previous crash left behind: PCSX will not overwrite it
-    DirEntry::removeFile(filenameFile(game));
+string ResumePointService::prepareForLaunch(const PsGame &game, int slot, bool loadInPlace) {
+    // whatever a previous crash left behind: PCSX will not overwrite it (each only when it is there - a
+    // remove is a write too)
+    if (DirEntry::exists(filenameFile(game)))
+        DirEntry::removeFile(filenameFile(game));
     removeFilesWithExtensionIn(statesDir(game), "000");
     removeFilesWithExtensionIn(shotsDir(game), "png");
+    if (!exitDir_.empty())
+        DirEntry::removeDirAndContents(exitDir_); // RAM: the last run's, which nobody kept
 
     if (slot == -1)
-        return; // starting from the beginning
+        return ""; // starting from the beginning
 
     string path = keptFilenameFile(game);
     if (DirEntry::exists(slotFilenameFile(game, slot)))
         path = slotFilenameFile(game, slot);
     if (!DirEntry::exists(path))
-        return;
+        return "";
 
     ifstream is(path.c_str());
     if (!is.is_open())
-        return;
+        return "";
 
     // the first line is the disc image the slot was playing, the second the state's base name
     string line;
     std::getline(is, line);
     string lastImageInfo = line;
 
+    // the disc, where the game folder is now (it may have moved) - written only when that changed
     string lastCd = game.ssFolder + sep + "lastcdimg." + to_string(slot) + ".txt";
-    DirEntry::removeFile(lastCd);
-    ofstream os;
-    os.open(lastCd);
-    if (DirEntry::checkWritable(os, lastCd)) {
-        os << game.folder + sep + DirEntry::getFileNameFromPath(lastImageInfo) << endl;
-    }
-    os.close();
+    DirEntry::writeFileIfChanged(lastCd, game.folder + sep + DirEntry::getFileNameFromPath(lastImageInfo) + "\n");
 
     if (!std::getline(is, line))
-        return;
+        return "";
     string kept = keptStateFile(game, line, slot);
-    if (DirEntry::exists(kept)) {
-        string fresh = freshStateFile(game, line);
-        DirEntry::removeFile(fresh);
-        DirEntry::copy(kept, fresh);
-    }
+    if (!DirEntry::exists(kept))
+        return "";
+    if (loadInPlace)
+        return kept; // the emulator reads it where it is ($AB_LOAD_STATE)
+    string state = freshStateFile(game, line);
+    DirEntry::removeFile(state);
+    DirEntry::copy(kept, state);
+    return "";
 }
 
 //*******************************
@@ -220,28 +231,33 @@ void ResumePointService::prepareForLaunch(const PsGame &game, int slot) {
 //*******************************
 // Keeps what the run just wrote as this slot: the state file, the filename file, and the disc image note.
 void ResumePointService::saveAfterLaunch(const PsGame &game, int slot) {
-    if (!DirEntry::exists(filenameFile(game)))
+    const string filename = fresh(game, "filename.txt");
+    if (!DirEntry::exists(filename))
         return; // the run did not exit cleanly, so there is nothing to keep
 
     string name;
-    if (readStateName(filenameFile(game), &name)) {
+    if (readStateName(filename, &name)) {
         string kept = keptStateFile(game, name, slot);
-        string fresh = freshStateFile(game, name);
+        string state = fresh(game, "sstates/" + name + ".000");
         DirEntry::removeFile(kept);
-        DirEntry::copy(fresh, kept);
-        DirEntry::removeFile(fresh);
+        DirEntry::createDirs(statesDir(game));
+        DirEntry::copy(state, kept);
+        DirEntry::removeFile(state);
     }
 
-    DirEntry::removeFile(keptFilenameFile(game));
-    DirEntry::removeFile(slotFilenameFile(game, slot));
-    DirEntry::renameFile(filenameFile(game), keptFilenameFile(game));
-    DirEntry::copy(keptFilenameFile(game), slotFilenameFile(game, slot));
+    // a copy, not a rename: the run's file may be in RAM (the exit dir), another filesystem
+    string text;
+    DirEntry::readFile(filename, text);
+    DirEntry::writeFileIfChanged(keptFilenameFile(game), text);
+    DirEntry::writeFileIfChanged(slotFilenameFile(game, slot), text);
+    DirEntry::removeFile(filename);
 
-    string lastCd = game.ssFolder + sep + "lastcdimg.txt";
+    string lastCd = fresh(game, "lastcdimg.txt");
     string keptLastCd = game.ssFolder + sep + "lastcdimg." + to_string(slot) + ".txt";
     if (DirEntry::exists(lastCd)) {
-        DirEntry::removeFile(keptLastCd);
-        DirEntry::copy(lastCd, keptLastCd);
-        DirEntry::removeFile(lastCd);
+        DirEntry::readFile(lastCd, text);
+        DirEntry::writeFileIfChanged(keptLastCd, text);
+        if (lastCd.compare(0, game.ssFolder.size(), game.ssFolder) == 0 || exitDir_.empty())
+            DirEntry::removeFile(lastCd); // the save-state folder's one (the exit dir's goes with the dir)
     }
 }
