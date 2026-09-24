@@ -78,9 +78,15 @@ TEST_CASE("a rescan with nothing changed writes nothing") {
     test_support::makeFakeGame(fx.tmp.at("src"), "Spyro 2", "SLUS_012.35");
     ableem::DirEntry::renameFile(fx.tmp.at("src/Spyro 2/Spyro 2.cue"), fx.tmp.at("Games/Spyro/Spyro 2.cue"));
     ableem::DirEntry::renameFile(fx.tmp.at("src/Spyro 2/Spyro 2.bin"), fx.tmp.at("Games/Spyro/Spyro 2.bin"));
+    // and a game the scan refuses: its folder and the Game Manager's list are left alone too
+    test_support::makeFakeGame(fx.tmp.at("Games"), "Broken", "SLUS_012.36");
+    fx.tmp.writeFile("Games/Broken/Broken.cue", "FILE \"Broken.bin\" BINARY\n  TRACK 01 MODE2/2352\n"
+                                                "    INDEX 01 00:00:00\nFILE \"Broken (Track 2).bin\" BINARY\n"
+                                                "  TRACK 02 AUDIO\n    INDEX 00 00:02:00\n    INDEX 01 00:04:00\n");
 
     svc.runScan();
     REQUIRE(svc.poll().addedGames.size() == 2);
+    REQUIRE(fx.library.usbGames().loadFailedGames().size() == 1);
     REQUIRE(ableem::DirEntry::exists(fx.tmp.at("Games/Spyro/Spyro 2.m3u"))); // named after the first disc
     REQUIRE(ableem::DirEntry::exists(fx.tmp.at("RetroArch/bin/playlists/AutoBleem.lpl")));
     REQUIRE(ableem::DirEntry::exists(

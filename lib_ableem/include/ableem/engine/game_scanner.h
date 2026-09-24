@@ -57,6 +57,8 @@ public:
     GameScanner &operator=(GameScanner const &) = delete;
 
     UsbGames gamesToAddToDB; // filled by scanGamesDirectory: every game that verified
+    FailedGames failedGames; // and every one that did not, with verify()'s reasons (was
+                             // gamesThatFailedVerifyCheck.txt - the Game Manager lists them now)
     bool noGamesFoundDuringScan = false;
 
     // metadata supplies title/publisher/year/cover art for games whose Game.ini is missing or incomplete

@@ -49,6 +49,19 @@ struct GamePath {
 using GamePaths = std::vector<GamePath>;
 
 //******************
+// FailedGame
+//******************
+// a folder the scan found but did not add, and why - UsbGame::verify()'s reasons, in English (the screen
+// translates them). Kept in regional.db's FAILED_GAMES for the Game Manager, which lists them.
+struct FailedGame {
+    std::string path;                 // the folder, as the scan saw it (no trailing separator)
+    std::vector<std::string> reasons; // "Cue file not found", ...
+    bool operator==(const FailedGame &o) const { return path == o.path && reasons == o.reasons; }
+};
+
+using FailedGames = std::vector<FailedGame>;
+
+//******************
 // GameDatabase
 //******************
 class GameDatabase {
@@ -92,6 +105,10 @@ public:
     // tell an existing game from a new one and notice one whose folder is gone; the matching id for one
     // path (both O(n) full-table reads - fine for the few-hundred-row regional.db this deals with).
     GamePaths loadGamePaths();
+    // the scan's refused folders, sorted by path; replaceFailedGames writes them only when they differ from
+    // what the table holds (a rescan that changed nothing writes nothing)
+    FailedGames loadFailedGames();
+    bool replaceFailedGames(FailedGames games);
     bool findGameIdByPath(const std::string &path, int *id);
     int maxGameId(); // 0 if the table is empty; a new game's id is this + 1
     // updates everything about an existing game except GAME_ID/PATH/HISTORY/LAST_PLAYED - a rescanned game

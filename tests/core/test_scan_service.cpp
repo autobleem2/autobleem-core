@@ -554,3 +554,26 @@ TEST_CASE("the online pass fetches the box art of a ROM without one, once, and t
     CHECK(third.boxArtFetched == 0);
     CHECK(commands.size() == before); // the cover is there: no probe, no fetch
 }
+
+TEST_CASE("a folder the scan refuses is kept in regional.db with its reasons, for the Game Manager") {
+    ScanServiceFixture fx;
+    test_support::makeFakeGame(fx.gamesDir(), "Crash Bandicoot", "SLUS_012.34");
+    // a second track that is not there fails verify() (see "a game that fails verify() is dropped")
+    test_support::makeFakeGame(fx.gamesDir(), "Broken", "SLUS_012.35");
+    fx.tmp.writeFile("Games/Broken/Broken.cue", "FILE \"Broken.bin\" BINARY\n  TRACK 01 MODE2/2352\n"
+                                                "    INDEX 01 00:00:00\nFILE \"Broken (Track 2).bin\" BINARY\n"
+                                                "  TRACK 02 AUDIO\n    INDEX 00 00:02:00\n    INDEX 01 00:04:00\n");
+
+    ScanUpdate update = fx.runAndPoll();
+    CHECK(update.finishedFailedCount == 1);
+    ableem::FailedGames failed = fx.library.usbGames().loadFailedGames();
+    REQUIRE(failed.size() == 1);
+    CHECK(failed[0].path == fx.tmp.at("Games/Broken"));
+    CHECK_FALSE(failed[0].reasons.empty());
+    CHECK_FALSE(ableem::DirEntry::exists(fx.tmp.at("gamesThatFailedVerifyCheck.txt"))); // no report file any more
+
+    // fixed: gone from the list
+    ableem::DirEntry::removeDirAndContents(fx.tmp.at("Games/Broken"));
+    fx.runAndPoll();
+    CHECK(fx.library.usbGames().loadFailedGames().empty());
+}

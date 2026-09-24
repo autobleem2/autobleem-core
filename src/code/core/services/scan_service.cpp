@@ -380,6 +380,7 @@ void ScanService::runScan() {
     finished.fingerprint = fp;
     finished.romsFingerprint = romsFp;
     finished.failedCount = listener.failedCount;
+    finished.failedGames = scanner.failedGames;
     finished.romCount = romCount;
     pushEvent(std::move(finished));
 
@@ -551,6 +552,7 @@ ScanUpdate ScanService::poll() {
                 idByPath[DirEntry::removeSeparatorFromEndOfPath(row.path)] = row.gameId;
 
             GameScanner::writeSubDirRows(event.hierarchy, library_.usbGames(), idByPath);
+            library_.usbGames().replaceFailedGames(event.failedGames);
             library_.writeEmulationStationGamelist();
             library_.exportToRetroArchPlaylist();
             event.fingerprint.save(fingerprintFilePath());

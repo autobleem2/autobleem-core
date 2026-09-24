@@ -298,12 +298,9 @@ void GameScanner::repairBrokenCueFiles(const string &path) {
         bool cueOk = validCue[i];
         string cuePath = path + sep + allCues[i];
         if (!cueOk) {
-            remove(cuePath.c_str());
-
-            ofstream os;
-            os.open(cuePath);
-            if (!DirEntry::checkWritable(os, cuePath))
-                continue;
+            // regenerated in memory and written only when it differs: a cue this cannot heal (a track whose
+            // bin is not there) comes out the same at every scan, and must not be rewritten at every scan
+            string os;
             // let's create new one
             bool first = true;
             int track = 1;
@@ -328,10 +325,9 @@ void GameScanner::repairBrokenCueFiles(const string &path) {
                 }
                 track++;
                 first = false;
-                os << cueElement;
+                os += cueElement;
             }
-            os.flush();
-            os.close();
+            DirEntry::writeFileIfChanged(cuePath, os);
         }
         startPos += cueTracks[i];
     }
@@ -356,10 +352,12 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
 
     UsbGames allGames = gamesHierarchy.getAllGames();
 
-    // the games that did not verify and why - written only when there are any, and only when that list
-    // changed (a rescan of the same stick leaves the file alone); no file when every game verified
-    string badGameFilePath = Environment::getPathToStateDir() + sep + "gamesThatFailedVerifyCheck.txt";
-    ostringstream badGameFile;
+    // the games that do not verify, and why: failedGames, which the Game Manager lists (through regional.db).
+    // The report file older versions wrote is gone with it.
+    failedGames.clear();
+    const string oldReport = Environment::getPathToStateDir() + sep + "gamesThatFailedVerifyCheck.txt";
+    if (DirEntry::exists(oldReport))
+        DirEntry::removeFile(oldReport);
 
     int totalGames = static_cast<int>(allGames.size());
     int gameIndex = 0;
@@ -546,9 +544,7 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
                 report(ScanStage::GameFailedVerify, game->fullPath);
                 if (listener)
                     listener->onGameFailedVerify(game->fullPath);
-                badGameFile << "Game failed to verify: " << game->fullPath << endl;
-                for (const auto &reason : failureReasons)
-                    badGameFile << "Reason: " << reason << endl;
+                failedGames.push_back({DirEntry::removeSeparatorFromEndOfPath(game->fullPath), failureReasons});
 
                 // the game did not pass the verify step and was not added to the DB.
                 // remove the game everywhere in the gamesHierarchy
@@ -556,11 +552,6 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
             }
         }
     } // end for each game dir
-
-    if (badGameFile.str().empty())
-        DirEntry::removeFile(badGameFilePath); // nothing failed (a missing file is fine)
-    else
-        DirEntry::writeFileIfChanged(badGameFilePath, badGameFile.str());
 
     UsbGame::sortByTitle(gamesToAddToDB);
     gamesHierarchy.makeGamesToDisplayWhileRemovingChildDuplicates();

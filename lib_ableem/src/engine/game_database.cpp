@@ -6,6 +6,8 @@
 #include "ableem/engine/serial_scanner.h"
 #include "ableem/engine/strings.h"
 
+#include <algorithm>
+#include <sstream>
 #include <sqlite3ab.h>
 #include <iostream>
 #include <vector>
@@ -117,6 +119,14 @@ static const char CREATE_DISC_SQL[] = " CREATE TABLE IF NOT EXISTS DISC \
           UNIQUE ([GAME_ID], [DISC_NUMBER]) )";
 
 // used by: createSchema
+// used by: createSchema - the scan's refused folders (loadFailedGames/replaceFailedGames); REASONS is
+// UsbGame::verify()'s reasons joined with a newline
+static const char CREATE_FAILED_GAMES_SQL[] = " CREATE TABLE IF NOT EXISTS FAILED_GAMES \
+     ( PATH text NOT NULL, REASONS text )";
+static const char SELECT_FAILED_GAMES[] = "SELECT PATH, REASONS FROM FAILED_GAMES ORDER BY PATH";
+static const char DELETE_FAILED_GAMES[] = "DELETE FROM FAILED_GAMES";
+static const char INSERT_FAILED_GAME[] = "INSERT INTO FAILED_GAMES (PATH, REASONS) values (?,?)";
+
 static const char CREATE_SUBDIR_ROW_SQL[] = " CREATE TABLE IF NOT EXISTS SUBDIR_ROWS  \
      ( SUBDIR_ROW_INDEX integer NOT NULL UNIQUE, \
        SUBDIR_ROW_NAME text, \
@@ -692,6 +702,53 @@ bool GameDatabase::replaceDiscs(int id, const vector<string> &discNames) {
 }
 
 //*******************************
+// GameDatabase::loadFailedGames / replaceFailedGames
+//*******************************
+FailedGames GameDatabase::loadFailedGames() {
+    FailedGames result;
+    Stmt stmt(db, SELECT_FAILED_GAMES, "loadFailedGames");
+    if (!stmt.ok())
+        return result;
+    while (stmt.row()) {
+        FailedGame game;
+        game.path = stmt.colText(0);
+        istringstream reasons(stmt.colText(1));
+        string reason;
+        while (getline(reasons, reason))
+            if (!reason.empty())
+                game.reasons.push_back(reason);
+        result.push_back(game);
+    }
+    return result;
+}
+
+bool GameDatabase::replaceFailedGames(FailedGames games) {
+    sort(games.begin(), games.end(), [](const FailedGame &a, const FailedGame &b) { return a.path < b.path; });
+    if (loadFailedGames() == games)
+        return true;
+    if (!beginTransaction())
+        return false;
+    bool success = executeStatement(DELETE_FAILED_GAMES, "Clearing FAILED_GAMES", "Failed to clear FAILED_GAMES");
+    for (size_t i = 0; success && i < games.size(); i++) {
+        string reasons;
+        for (const string &reason : games[i].reasons)
+            reasons += reason + "\n";
+        Stmt stmt(db, INSERT_FAILED_GAME, "replaceFailedGames");
+        success = stmt.ok();
+        if (success) {
+            stmt.bind(1, games[i].path);
+            stmt.bind(2, reasons);
+            success = stmt.step() == SQLITE_DONE;
+        }
+    }
+    if (success)
+        commit();
+    else
+        rollback();
+    return success;
+}
+
+//*******************************
 // GameDatabase::loadGamePaths
 //*******************************
 GamePaths GameDatabase::loadGamePaths() {
@@ -933,6 +990,8 @@ bool GameDatabase::createSchema() {
     if (!executeCreateStatement(CREATE_SUBDIR_ROW_SQL, "SUBDIR_ROWS"))
         return false;
     if (!executeCreateStatement(CREATE_SUBDIR_GAMES_TO_DISPLAY_ON_ROW_SQL, "SUBDIR_GAMES_TO_DISPLAY_ON_ROW"))
+        return false;
+    if (!executeCreateStatement(CREATE_FAILED_GAMES_SQL, "FAILED_GAMES"))
         return false;
 
     return true;

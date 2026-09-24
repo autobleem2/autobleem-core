@@ -192,6 +192,7 @@ private:
         ableem::GamesFingerprint fingerprint;
         ableem::GamesFingerprint romsFingerprint;
         int failedCount = 0;
+        ableem::FailedGames failedGames; // Finished: what the Game Manager lists
         int romCount = 0;
     };
 
