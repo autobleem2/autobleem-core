@@ -5,6 +5,7 @@
 
 #include "../model/ps_game.h"
 #include "../model/session.h"
+#include "app_manifest.h"
 #include "config.h"
 #include "memcard.h"
 #include "process_runner.h"
@@ -87,6 +88,11 @@ public:
                         const std::string &aspect, const std::string &filter) const;
     static LaunchPlan planRetroArch(const std::string &file, const std::string &core);
     static LaunchPlan planApp(const PsGame &game);
+    // the generic script a multi-platform App without a run.sh of its own is started through (rc/app_run.sh)
+    static std::string appRunScript();
+    // what a multi-platform App is started with: AB_ROOT, AB_APP_DIR/EXEC/ARGS/LIB/KEY, AB_PLATFORM,
+    // AB_PLATFORM_KEYS (space separated), then the ini's Env=
+    static std::vector<std::pair<std::string, std::string>> appEnvironment(const AppManifest &manifest);
     // RetroArch with nothing loaded - its own menu, full screen (what the system menu's RetroArch item
     // means in direct mode; the console and the Pi leave the launcher and their rc/retroarch.sh does it)
     static LaunchPlan planRetroArchMenu();

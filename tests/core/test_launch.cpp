@@ -461,6 +461,79 @@ TEST_CASE("an App is its own startup script, run with no arguments and no memory
     CHECK(call.args.empty());
 }
 
+namespace {
+// a multi-platform App in the fixture's tree: Apps/Tyrian with a binary for this build's own key
+PsGamePtr multiPlatformApp(Launching &lib, const string &extraIni = "") {
+    const string key = Env::appPlatformKeys().front();
+    lib.tmp.makeSubDir("Apps/Tyrian/bin/" + key);
+    lib.tmp.writeFile("Apps/Tyrian/app.ini", "Title=OpenTyrian\n"
+                                             "Exec=bin/{key}/tyrian\n"
+                                             "Args=--data \"my data\" -f\n"
+                                             "Lib=lib/{key}\n"
+                                             "Env=SDL_AUDIODRIVER=alsa\n" +
+                                                 extraIni);
+    lib.tmp.writeFile("Apps/Tyrian/bin/" + key + "/tyrian", "x");
+    PsGamePtr game = lib.foreignGame(true);
+    game->base = lib.tmp.at("Apps/Tyrian");
+    game->startup = "bin/" + key + "/tyrian";
+    return game;
+}
+
+string envValue(const LaunchPlan &plan, const string &name) {
+    for (const auto &kv : plan.env)
+        if (kv.first == name)
+            return kv.second;
+    return "<unset>";
+}
+} // namespace
+
+TEST_CASE("a multi-platform App runs through rc/app_run.sh with what its ini names for this machine") {
+    Launching lib;
+    PsGamePtr game = multiPlatformApp(lib);
+    const string key = Env::appPlatformKeys().front();
+
+    lib.service->launch(game, EmuMode::Launcher, -1);
+
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    CHECK(call.exe == lib.rcScript("app_run.sh"));
+    CHECK(call.args.empty());
+    CHECK(call.cwd == lib.tmp.at("Apps/Tyrian"));
+    CHECK(envValue(call, "AB_APP_DIR") == lib.tmp.at("Apps/Tyrian"));
+    CHECK(envValue(call, "AB_APP_EXEC") == lib.tmp.at("Apps/Tyrian/bin/" + key + "/tyrian"));
+    CHECK(envValue(call, "AB_APP_ARGS") == "--data \"my data\" -f");
+    CHECK(envValue(call, "AB_APP_LIB") == lib.tmp.at("Apps/Tyrian/lib/" + key));
+    CHECK(envValue(call, "AB_APP_KEY") == key);
+    CHECK(envValue(call, "AB_PLATFORM") == string(Env::buildTargetKey()));
+    CHECK(envValue(call, "AB_PLATFORM_KEYS").find(key) == 0);
+    CHECK(envValue(call, "AB_ROOT") == Env::getPathToUSBRoot());
+    CHECK(envValue(call, "SDL_AUDIODRIVER") == "alsa");
+}
+
+TEST_CASE("a multi-platform App with a run.sh of its own runs that, with the same environment") {
+    Launching lib;
+    PsGamePtr game = multiPlatformApp(lib, "Startup=run.sh\n");
+    lib.tmp.writeFile("Apps/Tyrian/run.sh", "#!/bin/sh\n");
+
+    lib.service->launch(game, EmuMode::Launcher, -1);
+
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    CHECK(call.exe == lib.tmp.at("Apps/Tyrian/run.sh"));
+    CHECK(envValue(call, "AB_APP_EXEC") != "<unset>");
+}
+
+TEST_CASE("an App with no binary for this machine falls back to its Startup, as before") {
+    Launching lib;
+    lib.tmp.makeSubDir("Apps/Elsewhere/bin/nowhere");
+    lib.tmp.writeFile("Apps/Elsewhere/app.ini", "Exec=bin/{key}/game\n");
+    PsGamePtr game = lib.foreignGame(true);
+    game->base = lib.tmp.at("Apps/Elsewhere");
+    game->startup = "run.sh";
+
+    LaunchPlan plan = LaunchService::planApp(*game);
+    CHECK(plan.exe == lib.tmp.at("Apps/Elsewhere/run.sh"));
+    CHECK(plan.env.empty());
+}
+
 TEST_CASE("which launcher runs is decided by the game first and the mode second") {
     Launching lib;
     lib.configure("Raconfig=false\n");
@@ -634,6 +707,21 @@ TEST_CASE("direct mode: an App runs from its own folder") {
     const FakeProcessRunner::Call &call = lib.runner.only();
     CHECK(call.exe == "/media/Apps/SomeApp/run.sh");
     CHECK(call.cwd == "/media/Apps/SomeApp");
+}
+
+TEST_CASE("direct mode: a multi-platform App is its program itself, with its Args split and its Lib on PATH") {
+    DirectLaunching lib;
+    PsGamePtr game = multiPlatformApp(lib);
+    const string key = Env::appPlatformKeys().front();
+
+    lib.service->launch(game, EmuMode::Launcher, -1);
+
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    CHECK(call.exe == lib.tmp.at("Apps/Tyrian/bin/" + key + "/tyrian"));
+    CHECK(call.args == vector<string>{"--data", "my data", "-f"});
+    CHECK(call.cwd == lib.tmp.at("Apps/Tyrian"));
+    CHECK(envValue(call, "PATH").find(lib.tmp.at("Apps/Tyrian/lib/" + key)) == 0);
+    CHECK(envValue(call, "AB_APP_KEY") == key);
 }
 
 TEST_CASE("LaunchPlan::toString is the command on one line, the directory when there is one") {

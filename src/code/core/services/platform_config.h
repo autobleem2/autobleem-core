@@ -46,6 +46,9 @@ struct PlatformConfig {
     // "/media/autobleem" on a Pi). Not applied to Env: it is for a tool writing the target's files from
     // another machine (UpdateRoms), where Env's root is that machine's.
     std::string usbRoot;
+    // app_platform_keys: platform keys this machine also accepts for an App's or extension's binary, after
+    // the built-in ones (Env::appPlatformKeys) - for an odd machine; it can add keys, never remove one
+    std::vector<std::string> appPlatformKeys;
 
     // the file for this build's platform, next to the other resources: <resourcesDir>/platform/<name>.ini
     static std::string pathFor(const std::string &resourcesDir, const std::string &platformName);

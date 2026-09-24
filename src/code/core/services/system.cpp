@@ -380,7 +380,7 @@ string System::execUnixCommand(const char *cmd) {
 // fork + exec the program and wait for it to finish.
 // returns the exit status of the program, or -1 if it could not be started.
 int System::runAndWait(const string &exe, const vector<string> &args, const string &cwd,
-                       const function<void()> &whileWaiting) {
+                       const function<void()> &whileWaiting, const vector<pair<string, string>> &env) {
     string line = "CMD line to execute: '" + exe + "'";
     for (const string &arg : args) {
         line += " '" + arg + "'";
@@ -391,7 +391,25 @@ int System::runAndWait(const string &exe, const vector<string> &args, const stri
     PLOG_INFO << line;
 
 #ifdef _WIN32
-    return createProcessAndWait(commandLineFor(exe, args), wide(cwd), exe, true, whileWaiting);
+    // the child inherits the launcher's environment block: set the extra variables around the start and
+    // put back what was there, so nothing of one App's lingers into the next
+    vector<pair<wstring, pair<bool, wstring>>> saved;
+    for (const auto &kv : env) {
+        wstring name = wide(kv.first);
+        DWORD size = GetEnvironmentVariableW(name.c_str(), nullptr, 0);
+        wstring previous;
+        if (size > 0) {
+            previous.resize(size);
+            DWORD got = GetEnvironmentVariableW(name.c_str(), &previous[0], size);
+            previous.resize(got);
+        }
+        saved.push_back({name, {size > 0, previous}});
+        SetEnvironmentVariableW(name.c_str(), wide(kv.second).c_str());
+    }
+    int result = createProcessAndWait(commandLineFor(exe, args), wide(cwd), exe, true, whileWaiting);
+    for (const auto &s : saved)
+        SetEnvironmentVariableW(s.first.c_str(), s.second.first ? s.second.second.c_str() : nullptr);
+    return result;
 #else
     // argv[0] is the program itself, then the args, then a null terminator
     vector<const char *> argv;
@@ -411,6 +429,8 @@ int System::runAndWait(const string &exe, const vector<string> &args, const stri
         if (!cwd.empty() && chdir(cwd.c_str()) != 0) {
             _exit(126);
         }
+        for (const auto &kv : env)
+            setenv(kv.first.c_str(), kv.second.c_str(), 1);
         execvp(exe.c_str(), const_cast<char **>(argv.data()));
         _exit(127);
     }

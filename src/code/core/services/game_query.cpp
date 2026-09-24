@@ -3,6 +3,7 @@
 //
 
 #include "game_query.h"
+#include "app_manifest.h"
 #include "lightgun.h"
 #include "config.h"
 #include "../main.h"
@@ -128,7 +129,9 @@ PsGames GameQueryService::retroArchGames(const string &playlistName) {
 // GameQueryService::apps
 //*******************************
 // usb:/Apps/<name>/app.ini, one launchable app each. These are "foreign" games: no database row, no serial,
-// everything the UI shows comes out of the ini.
+// everything the UI shows comes out of the ini. An App with nothing this machine can run - no binary for
+// any of its platform keys, or a Startup script that is not there - is left out (docs/app-format-plan.md);
+// `startup` is what it runs, as the folder names it (bin/psc/tyrian, or the old run.sh).
 PsGames GameQueryService::apps() {
     PsGames games;
 
@@ -138,13 +141,12 @@ PsGames GameQueryService::apps() {
 
     PLOG_INFO << "Scanning apps in: " << appPath;
     for (auto &dir : DirEntry::diru_DirsOnly(appPath)) {
-        string appIni = appPath + sep + dir.name + sep + "app.ini";
-        PLOG_INFO << "AppIni: " << appIni;
-        if (!DirEntry::exists(appIni))
+        string folder = appPath + sep + dir.name;
+        if (!DirEntry::exists(folder + sep + "app.ini"))
             continue;
-
-        IniFile file;
-        file.load(appIni);
+        AppManifest manifest = AppManifest::load(folder, "app.ini", Env::appPlatformKeys());
+        if (!manifest.runnable())
+            continue; // AppManifest::load has logged why
 
         PsGamePtr game = std::make_shared<PsGame>();
         game->gameId = 0;
@@ -153,13 +155,13 @@ PsGames GameQueryService::apps() {
         game->memcard = "";
         game->cds = 0;
 
-        game->title = file.values["title"];
-        game->publisher = file.values["author"];
-        game->readme_path = appPath + sep + dir.name + sep + file.values["readme"];
-        game->startup = file.values["startup"];
-        game->image_path = appPath + sep + dir.name + sep + file.values["image"];
-        game->base = appPath + sep + dir.name;
-        game->kernel = file.values["kernel"] == "true";
+        game->title = manifest.value("title");
+        game->publisher = manifest.value("author");
+        game->readme_path = folder + sep + manifest.value("readme");
+        game->startup = manifest.programInFolder();
+        game->image_path = folder + sep + manifest.value("image");
+        game->base = folder;
+        game->kernel = manifest.value("kernel") == "true";
         game->app = true;
         game->foreign = true;
 
