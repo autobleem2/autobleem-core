@@ -25,6 +25,7 @@ bool directLaunch_ = false;
 string pcsxDir_;
 string pcsxNxtDir_;
 vector<string> extraAppPlatformKeys_;
+string storeDownloadCommand_;
 } // namespace
 
 //*******************************
@@ -184,6 +185,19 @@ void Env::exportProductVersion() {
 #else
     setenv("AB_VERSION", version.c_str(), 1);
 #endif
+}
+
+//*******************************
+// Env::setStoreDownloadCommand / storeDownloadCommand
+//*******************************
+void Env::setStoreDownloadCommand(const string &command) {
+    storeDownloadCommand_ = command;
+}
+
+string Env::storeDownloadCommand() {
+    string command = storeDownloadCommand_.empty() ? updateDownloadCommand() : storeDownloadCommand_;
+    Strings::replaceAll(command, "%r", getWorkingPath());
+    return command;
 }
 
 //*******************************

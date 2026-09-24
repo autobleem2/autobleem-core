@@ -188,3 +188,21 @@ TEST_CASE("every shipped platform ini loads, and each target's file is there" *
     CHECK(PlatformConfig::load(PlatformConfig::pathFor(AB_RESOURCES_DIR, "pcusb")).retroarchCatalog ==
           "pc/retroarch/latest.json");
 }
+
+TEST_CASE("store_download_command: read, %r resolved, the update's command when there is none") {
+    EnvFixture env;
+    TempDir tmp("platform");
+    env.setUsbRoot(tmp.path());
+    env.setWorkingPath("/stick/Autobleem/bin/autobleem");
+    tmp.makeSubDir("platform");
+    tmp.writeFile("platform/psc.ini", "update_download_command=\"%r/abfetch\" -o \"%o\" \"%u\"\n"
+                                      "store_download_command=\"%r/abfetch\" --continue -o \"%o\" \"%u\"\n");
+    PlatformConfig psc = PlatformConfig::load(PlatformConfig::pathFor(tmp.path(), "psc"));
+    psc.apply();
+    CHECK(Env::storeDownloadCommand() == "\"/stick/Autobleem/bin/autobleem/abfetch\" --continue -o \"%o\" \"%u\"");
+
+    tmp.writeFile("platform/old.ini", "update_download_command=curl -sfL -o \"%o\" \"%u\"\n");
+    PlatformConfig old = PlatformConfig::load(PlatformConfig::pathFor(tmp.path(), "old"));
+    old.apply();
+    CHECK(Env::storeDownloadCommand() == "curl -sfL -o \"%o\" \"%u\"");
+}

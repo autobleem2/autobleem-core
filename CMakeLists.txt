@@ -73,6 +73,8 @@ add_library(ab_core STATIC
         src/code/core/model/session.h
         src/code/core/model/timing.h
         src/code/core/services/app_manifest.cpp
+        src/code/core/services/content_installer.cpp
+        src/code/core/services/downloader.cpp
         src/code/core/services/extension_catalog.cpp
         src/code/core/services/plugin_loader.cpp
         src/code/core/services/config.cpp

@@ -95,7 +95,7 @@ ExtensionRuntime::Loaded *ExtensionRuntime::load(ExtensionInfo &extension, Refus
         return nullptr;
     }
 
-    unique_ptr<Loaded> loaded(new Loaded());
+    auto loaded = make_unique<Loaded>();
     loaded->name = extension.name;
     loaded->handle = handle;
     loaded->host = hostFactory_(extension);

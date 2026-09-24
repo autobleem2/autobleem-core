@@ -31,6 +31,9 @@ struct PlatformConfig {
     // where that repository lists this platform's RetroArch builds (relative to repo_url); "" = RetroArch
     // is not updated by the launcher on this platform (Windows: RetroArch has its own updater)
     std::string retroarchCatalog;
+    // store_download_command: what an extension fetches a file with - it must continue a partly downloaded
+    // file (abfetch --continue, curl -C -); "" = the update's command
+    std::string storeDownloadCommand;
     // how a game is started: "script" - through Autobleem/rc/launch.sh and launch_rb.sh (the console, the
     // appliances, a dev host); "direct" - the launcher runs the emulator itself (the Windows product)
     std::string launchMode = "script";

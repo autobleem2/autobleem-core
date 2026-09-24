@@ -1,3 +1,4 @@
+#include "downloader.h"
 #include "system.h"
 #include "update_service.h"
 
@@ -289,24 +290,21 @@ bool UpdateService::downloadFile(const UpdateFile &file, string &outName) {
         workerTotal_ = file.size;
         workerOutPath_ = part;
     }
-    // already there from an earlier attempt, and right: no download
-    if (DirEntry::fileSize(target) == static_cast<long long>(file.size) && Sha256::ofFile(target) == file.sha256)
-        return true;
-    DirEntry::removeFile(part);
-    const int status = runner_(commandFor(config_.downloadCommand, file.url, part));
-    if (status != 0 || DirEntry::fileSize(part) <= 0) {
-        PLOG_WARNING << "Update download failed (" << status << "): " << file.url;
-        DirEntry::removeFile(part);
+    // the .part, the size and sum checks and the rename are the Downloader's (shared with the Store); an
+    // update never resumes - a package is tens of MB, and the site's sum is always there to check
+    Downloader downloader(config_.downloadCommand, "", runner_);
+    DownloadRequest request;
+    request.url = file.url;
+    request.target = target;
+    request.size = file.size;
+    request.sha256 = file.sha256;
+    string error;
+    const Downloader::Result result = downloader.fetch(request, error);
+    if (result != Downloader::Result::Downloaded && result != Downloader::Result::AlreadyThere) {
+        PLOG_WARNING << "Update download " << outName << ": " << error;
         return false;
     }
-    const string sum = Sha256::ofFile(part);
-    if (sum != file.sha256) {
-        PLOG_WARNING << "Update download " << outName << " has sha256 " << sum << ", the site says " << file.sha256;
-        DirEntry::removeFile(part);
-        return false;
-    }
-    DirEntry::removeFile(target);
-    return DirEntry::renameFile(part, target);
+    return true;
 }
 
 //*******************************
