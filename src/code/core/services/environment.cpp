@@ -188,6 +188,47 @@ void Env::exportProductVersion() {
 }
 
 //*******************************
+// Env::keepLogsMarkerFile / keepLogsRequested / exportLogDirs
+//*******************************
+string Env::keepLogsMarkerFile() {
+    return getPathToPersistentLogsDir() + sep + "keep";
+}
+
+bool Env::keepLogsRequested() {
+    const char *fromEnv = getenv("AB_KEEP_LOGS");
+    if (fromEnv != nullptr && string(fromEnv) == "1")
+        return true;
+    if (DirEntry::exists(keepLogsMarkerFile()))
+        return true;
+    // config.ini is not loaded yet this early (the log file is opened before App exists): read the one key
+    IniFile config;
+    config.load(getPathToStateDir() + sep + "config.ini");
+    if (config.values["keeplogs"] != "true")
+        return false;
+    DirEntry::createDirs(getPathToPersistentLogsDir());
+    ofstream(keepLogsMarkerFile(), ios::binary) << "config.ini keeplogs=true (Options -> Keep logs on the stick)\n";
+    return true;
+}
+
+namespace {
+void exportVariable(const char *name, const string &value) {
+#ifdef _WIN32
+    _putenv_s(name, value.c_str());
+#else
+    setenv(name, value.c_str(), 1);
+#endif
+}
+} // namespace
+
+void Env::exportLogDirs() {
+    DirEntry::createDirs(getPathToLogsDir());
+    exportVariable("AB_RUNTIME_DIR", getPathToRuntimeDir());
+    exportVariable("AB_LOG_DIR", getPathToLogsDir());
+    DirEntry::createDirs(getPathToRuntimeDir());
+    DirEntry::writeFileIfChanged(getPathToRuntimeDir() + sep + "log_dir", getPathToLogsDir() + "\n");
+}
+
+//*******************************
 // Env::setStoreDownloadCommand / storeDownloadCommand
 //*******************************
 void Env::setStoreDownloadCommand(const string &command) {

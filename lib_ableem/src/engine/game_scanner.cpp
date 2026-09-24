@@ -367,9 +367,9 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
         gameIndex++;
         int i = 0;
         if (game) {
-            PLOG_INFO << i++ << ": " << game->gameDirName << ", " << game->fullPath;
+            PLOG_DEBUG << i++ << ": " << game->gameDirName << ", " << game->fullPath;
         } else {
-            PLOG_INFO << i++ << ": NULL";
+            PLOG_DEBUG << i++ << ": NULL";
         }
         repairBinCommaNames(game->fullPath);
 
@@ -417,9 +417,9 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
                 }
             }
 
-            PLOG_WARNING << "before calling recoverMissingFiles() automationUsed = " << game->automationUsed;
+            PLOG_DEBUG << "before calling recoverMissingFiles() automationUsed = " << game->automationUsed;
             game->recoverMissingFiles(metadata);
-            PLOG_WARNING << "after calling recoverMissingFiles() automationUsed = " << game->automationUsed;
+            PLOG_DEBUG << "after calling recoverMissingFiles() automationUsed = " << game->automationUsed;
 
             if (game->gameIniFound)
                 game->loadGameIni(gameIniPath); // read it in now in case we need to create or update the serial/region

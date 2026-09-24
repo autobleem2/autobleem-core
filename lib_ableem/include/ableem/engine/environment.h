@@ -42,23 +42,34 @@ struct Environment {
     // the cores' file extension: ".so" (the default), ".dll" on Windows - what a core is called next to its
     // .info (CoreInfoTable), and what the default PS1 core file ends in
     static void setRetroarchCoreExtension(const std::string &ext);
+    // RAM for what one run writes and nobody keeps - the logs, the hand-over files (docs/quiet-stick-plan.md
+    // in the launcher repo): tmpfs on the console (/tmp/autobleem) and the Linux targets (/run/autobleem);
+    // "" (the default) is usb:/System/Runtime, for a machine with no tmpfs to offer (Windows, a dev host)
+    static void setRuntimeDir(const std::string &path);
+    // a tester's "Keep logs on the stick": the logs go to usb:/System/Logs, as they always did
+    static void setKeepLogs(bool keep);
 
     //*******************************
     // paths
     //*******************************
     static std::string getPathToUSBRoot();
-    static std::string getPathToAutobleemDir(); // usb:/Autobleem
-    static std::string getPathToAppsDir();      // usb:/Apps
-    static std::string getPathToExtensionsDir(); // usb:/Extensions - the launcher's plugins, one folder each
+    static std::string getPathToAutobleemDir();       // usb:/Autobleem
+    static std::string getPathToAppsDir();            // usb:/Apps
+    static std::string getPathToExtensionsDir();      // usb:/Extensions - the launcher's plugins, one folder each
     static std::string getPathToExtensionsStateDir(); // usb:/System/Extensions - theirs, and the crash guard's
-    static std::string getPathToRCDir();        // usb:/Autobleem/rc
+    static std::string getPathToRCDir();              // usb:/Autobleem/rc
     static std::string getPathToGamesDir();
     static std::string getPathToMemCardsDir();   // games:/!MemCards
     static std::string getPathToSaveStatesDir(); // games:/!SaveStates
     static std::string getPathToSystemDir();     // usb:/System
-    static std::string getPathToLogsDir();       // usb:/System/Logs - AB_out.txt, AB_err.txt, autobleem.log
-    static std::string getPathToPs1BiosDir();    // usb:/System/Bios - pcsx-ab's romw.bin/romJP.bin off the console
-    static std::string getPathToRetroarchDir();  // usb:/RetroArch/bin unless setRetroarchDir() said otherwise
+    // where this run's logs go - AB_out.txt, AB_err.txt, autobleem.log, the launch scripts', the emulators':
+    // <runtime>/logs, or usb:/System/Logs when keepLogs()
+    static std::string getPathToLogsDir();
+    static std::string getPathToPersistentLogsDir(); // usb:/System/Logs - what must outlive the run: crashes, updates
+    static std::string getPathToRuntimeDir();        // see setRuntimeDir
+    static bool keepLogs();
+    static std::string getPathToPs1BiosDir();   // usb:/System/Bios - pcsx-ab's romw.bin/romJP.bin off the console
+    static std::string getPathToRetroarchDir(); // usb:/RetroArch/bin unless setRetroarchDir() said otherwise
     static std::string getPathToRetroarchPlaylistsDir();
     static std::string getPathToRetroarchRdbDir();        // <retroarch>/database/rdb - libretro-database's .rdb files
     static std::string getPathToRetroarchThumbnailsDir(); // <retroarch>/thumbnails - the libretro-thumbnails packs

@@ -87,7 +87,7 @@ void GameSubDir::removeGamesInSecondListThatMatchAGameInFirstList(UsbGames &pare
                                                                   std::ofstream &dupFile) {
     for (auto &parentGame : parentGames) {
         auto it = remove_if(begin(childGames), end(childGames), [&parentGame, &dupFile](UsbGamePtr &childGame) {
-            PLOG_INFO << "compare " << parentGame->title << " with " << childGame->title;
+            PLOG_DEBUG << "compare " << parentGame->title << " with " << childGame->title;
             if (sameGame(parentGame, childGame)) {
                 dupFile << "removed duplicate child game: " << childGame->fullPath << endl;
                 dupFile << endl;
@@ -150,11 +150,11 @@ void GameSubDir::makeGamesToDisplayWhileRemovingChildDuplicates(ofstream &dupFil
 //*******************************
 void GameSubDir::print(bool plusGames) {
     string indent(displayIndentLevel * 2, ' ');
-    PLOG_INFO << displayRowIndex << ": " << indent << fullPath << ", " << subDirName << " (" << gamesInThisDir.size()
+    PLOG_DEBUG << displayRowIndex << ": " << indent << fullPath << ", " << subDirName << " (" << gamesInThisDir.size()
               << " games)";
     if (plusGames) {
         for (auto &game : gamesInThisDir)
-            PLOG_INFO << indent << " " << game->gameDirName;
+            PLOG_DEBUG << indent << " " << game->gameDirName;
     }
     for (auto &child : childrenDirs)
         child->print(plusGames);

@@ -56,7 +56,9 @@ private:
         std::string coreExtension, downloadCommand, repoUrl, updateDownloadCommand, retroArchCatalog, pcsxDir;
         std::string pcsxNxtDir;
         bool directLaunch = false;
-        std::string stateDir; // "" = the working path
+        std::string stateDir;   // "" = the working path
+        std::string runtimeDir; // "" = usb:/System/Runtime
+        bool keepLogs = false;
     };
 
     static Roots capture() {
@@ -82,7 +84,10 @@ private:
             ::Environment::retroArchBinaries(), E::getRetroarchCoreExtension(), ::Environment::downloadCommand(),
             ::Environment::repoUrl(), ::Environment::updateDownloadCommand(), ::Environment::retroArchCatalog(),
             ::Environment::pcsxDir(), ::Environment::pcsxNxtDir(), ::Environment::directLaunch(),
-            E::getPathToStateDir() == E::getWorkingPath() ? std::string() : E::getPathToStateDir()};
+            E::getPathToStateDir() == E::getWorkingPath() ? std::string() : E::getPathToStateDir(),
+            E::getPathToRuntimeDir() == E::getPathToSystemDir() + ableem::sep + "Runtime" ? std::string()
+                                                                                          : E::getPathToRuntimeDir(),
+            E::keepLogs()};
     }
 
     static void restore(const Roots &r) {
@@ -109,6 +114,8 @@ private:
         ::Environment::setPcsxNxtDir(r.pcsxNxtDir);
         ::Environment::setDirectLaunch(r.directLaunch);
         E::setStateDir(r.stateDir);
+        E::setRuntimeDir(r.runtimeDir);
+        E::setKeepLogs(r.keepLogs);
     }
 
     Roots saved_;

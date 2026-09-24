@@ -139,6 +139,16 @@ struct Environment : ableem::Environment {
     static std::string executableDir();
     // puts productVersion() into AB_VERSION, so every program started from here inherits it
     static void exportProductVersion();
+
+    // "Keep logs on the stick" (docs/quiet-stick-plan.md): a tester's System/Logs/keep marker - what the rc
+    // scripts see before the launcher runs - or config.ini's keeplogs=true (the Options row), or
+    // $AB_KEEP_LOGS=1. config.ini on and no marker makes the marker, so the scripts agree from the next boot.
+    static std::string keepLogsMarkerFile();
+    static bool keepLogsRequested();
+    // after setKeepLogs(): makes the logs dir, puts it and the runtime dir into AB_LOG_DIR / AB_RUNTIME_DIR
+    // for every program started from here, and writes <runtime>/log_dir for the scripts that are not
+    // (rc/selection.sh runs after the launcher has left)
+    static void exportLogDirs();
 };
 
 using Env = Environment;

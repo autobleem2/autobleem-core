@@ -827,7 +827,7 @@ bool GameDatabase::clearSubDirTables() {
 //*******************************
 bool GameDatabase::executeCreateStatement(const char *sql, const string &name) {
     char *errorReport = nullptr;
-    PLOG_INFO << "Creating " << name << " (if not exists)";
+    PLOG_DEBUG << "Creating " << name << " (if not exists)";
     int rc = sqlite3_exec(db, sql, nullptr, nullptr, &errorReport);
     if (rc != SQLITE_OK) {
         PLOG_ERROR << "Failed: db:: executeCreateStatement, " << sql << ", " << name;
@@ -844,7 +844,7 @@ bool GameDatabase::executeCreateStatement(const char *sql, const string &name) {
 //*******************************
 bool GameDatabase::executeStatement(const char *sql, const string &outMsg, const string &errorMsg) {
     char *errorReport = nullptr;
-    PLOG_INFO << outMsg;
+    PLOG_DEBUG << outMsg;
     int rc = sqlite3_exec(db, sql, nullptr, nullptr, &errorReport);
     if (rc != SQLITE_OK) {
         PLOG_ERROR << "Failed: db:: executeStatement, " << sql << ", " << outMsg << ", " << errorMsg;

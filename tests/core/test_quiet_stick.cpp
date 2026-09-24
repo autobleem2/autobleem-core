@@ -14,6 +14,7 @@
 #include "../support/tree_snapshot.h"
 
 #include "core/services/config.h"
+#include "core/services/environment.h"
 #include "core/services/scan_service.h"
 
 #include <ableem/engine/config_file_editor.h>
@@ -102,4 +103,31 @@ TEST_CASE("replaceProperties: a batch is one write, a missing key is appended, C
     // a file that is not there is not created
     ableem::ConfigFileEditor().replaceProperties(tmp.at("missing.cfg"), {{"a", "a = 1"}});
     CHECK_FALSE(ableem::DirEntry::exists(tmp.at("missing.cfg")));
+}
+
+TEST_CASE("the logs go to the runtime dir unless kept: the marker, config.ini or $AB_KEEP_LOGS") {
+    TempDir tmp("quiet_logs");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    env.setWorkingPath(tmp.makeSubDir("Autobleem/bin/autobleem"));
+    ableem::Environment::setRuntimeDir(tmp.at("run"));
+
+    CHECK_FALSE(Env::keepLogsRequested());
+    Env::setKeepLogs(false);
+    Env::exportLogDirs();
+    CHECK(ableem::DirEntry::isDirectory(tmp.at("run/logs")));
+    CHECK(tmp.readFile("run/log_dir") == tmp.at("run/logs") + "\n");
+    CHECK(string(getenv("AB_LOG_DIR")) == tmp.at("run/logs"));
+    CHECK(string(getenv("AB_RUNTIME_DIR")) == tmp.at("run"));
+    CHECK_FALSE(ableem::DirEntry::exists(tmp.at("System/Logs"))); // nothing on the stick
+
+    tmp.writeFile("System/Logs/keep", "");
+    CHECK(Env::keepLogsRequested()); // a tester's marker
+    ableem::DirEntry::removeFile(tmp.at("System/Logs/keep"));
+
+    tmp.writeFile("Autobleem/bin/autobleem/config.ini", "[General]\nKeeplogs=true\n");
+    CHECK(Env::keepLogsRequested()); // the Options row - and the marker is made for the scripts
+    CHECK(ableem::DirEntry::exists(tmp.at("System/Logs/keep")));
+    Env::setKeepLogs(true);
+    CHECK(Env::getPathToLogsDir() == tmp.at("System/Logs"));
 }
