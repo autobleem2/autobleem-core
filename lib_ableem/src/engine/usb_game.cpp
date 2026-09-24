@@ -433,6 +433,8 @@ void UsbGame::saveGameIni(const string &path) {
     ini.values["Thumbnail_record_name"] = recordName;
     ini.values["Cached_cover_path"] = coverPath;
     ini.values["Cached_snap_path"] = snapPath;
+    if (licenceProtected)
+        ini.values["Licence_protected"] = "1";
 
     stringstream ss;
     for (int i = 0; i < discs.size(); i++) {

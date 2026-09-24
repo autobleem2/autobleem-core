@@ -7,6 +7,7 @@
 #include "ableem/engine/filesystem.h"
 #include "ableem/engine/game_metadata.h"
 #include "ableem/engine/metadata_lookup.h"
+#include "ableem/engine/pbp_image.h"
 #include "ableem/engine/serial_scanner.h"
 #include "ableem/engine/strings.h"
 #include "ableem/engine/thumbnail_lookup.h"
@@ -490,6 +491,17 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
                     game->coverImageFound = false;
                 }
             }
+
+            // a PS1 Classic bought on PSN still carries its licence's DRM: listed, but the launcher will
+            // not start it (pcsx would read noise)
+            game->licenceProtected = false;
+            if (game->imageType == IMAGE_PBP)
+                for (const Disc &disc : game->discs)
+                    if (PbpImage::inspect(game->fullPath + sep + disc.diskName).licenceProtected) {
+                        PLOG_WARNING << game->fullPath << ": " << disc.diskName
+                                     << " is protected by a PSN licence - listed, but it cannot be started";
+                        game->licenceProtected = true;
+                    }
 
             game->saveGameIni(gameIniPath);
             game->loadGameIni(gameIniPath); // the updated iniValues are needed for applyIniValues

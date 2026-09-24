@@ -308,6 +308,7 @@ void readGameIni(GameRecord &game) {
         game.recordName = ini.values["thumbnail_record_name"];
         game.coverPath = ini.values["cached_cover_path"];
         game.snapPath = ini.values["cached_snap_path"];
+        game.licenceProtected = (ini.values["licence_protected"] == "1");
     }
 }
 

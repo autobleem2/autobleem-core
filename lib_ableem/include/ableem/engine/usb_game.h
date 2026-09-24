@@ -57,6 +57,9 @@ public:
     std::string recordName; // the rdb's name (GameMetadata::recordName), kept in Game.ini as thumbnail_record_name
     std::string coverPath;  // the thumbnails tree's cover for this game, "" if none - Game.ini cached_cover_path
     std::string snapPath;   // and its screenshot - cached_snap_path
+    // a PS1 Classic from PSN whose disc is under its licence's NP DRM (PbpImage) - no emulator here can
+    // start it; found afresh by every scan, kept in Game.ini as Licence_protected=1 for the launcher
+    bool licenceProtected = false;
 
     std::string memcard;
 

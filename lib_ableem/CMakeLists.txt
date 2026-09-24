@@ -56,6 +56,8 @@ add_library(ableem_engine ${ABLEEM_LIB_KIND}
         src/engine/game_library.cpp
         src/engine/md5.cpp
         src/engine/sha256.cpp
+        src/engine/param_sfo.cpp
+        src/engine/pbp_image.cpp
         src/engine/fat_dirty_flag.cpp
         src/engine/update_catalog.cpp
         src/engine/store_catalog.cpp
