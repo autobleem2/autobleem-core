@@ -106,6 +106,22 @@ if (ABLEEM_SHARED)
 endif()
 
 #*******************************
+# ableem_lanserver - SDL-free: what serves a folder of games to the AutoBleem Store on the home network
+# (LanLibrary, a small HttpServer, the status page). ext_store's abstored and pc-tools' LAN Share are its two
+# front ends.
+#*******************************
+add_library(ableem_lanserver STATIC
+        src/lanserver/lan_library.cpp
+        src/lanserver/http_server.cpp
+        src/lanserver/index_page.cpp
+        )
+target_include_directories(ableem_lanserver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(ableem_lanserver PUBLIC ableem_engine Threads::Threads)
+if (WIN32)
+    target_link_libraries(ableem_lanserver PUBLIC ws2_32)
+endif()
+
+#*******************************
 # ableem (ui)  - only when ABLEEM_BUILD_UI (skips SDL entirely for engine-only consumers)
 #*******************************
 if (ABLEEM_BUILD_UI)
