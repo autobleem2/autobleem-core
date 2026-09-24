@@ -23,6 +23,9 @@
 #include <string>
 #include <thread>
 #include <vector>
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 using std::string;
 using std::vector;
@@ -552,4 +555,196 @@ TEST_CASE("the online pass fetches the box art of a ROM without one, once, and t
     ScanUpdate third = fx.runAndPoll();
     CHECK(third.boxArtFetched == 0);
     CHECK(commands.size() == before); // the cover is there: no probe, no fetch
+}
+
+//*******************************
+// the scanner processors (docs/scanner-processors-plan.md in the launcher), with proc_helper as every one
+//*******************************
+namespace {
+
+// System/Processors/<name>/ with proc_helper as its program, an ini and the helper's scripts. Every
+// processor logs to one file (PROC_LOG, through the ini's Env=), in the order they ran.
+struct ProcessorsOnStick {
+    explicit ProcessorsOnStick(ScanServiceFixture &f) : fx(f) {}
+
+    void add(const string &name, const string &ini, const vector<std::pair<string, string>> &scripts = {}) {
+        string key = Env::appPlatformKeys().front();
+        string dir = "System/Processors/" + name;
+        fx.tmp.makeSubDir(dir + "/bin/" + key);
+        string program = fx.tmp.at(dir + "/bin/" + key + "/" + name);
+#ifdef _WIN32
+        program += ".exe";
+#endif
+        REQUIRE(ableem::DirEntry::copy(AB_PROC_HELPER, program));
+#ifndef _WIN32
+        chmod(program.c_str(), 0755);
+#endif
+        fx.tmp.writeFile(dir + "/processor.ini",
+                         "[Processor]\nExec=bin/{key}/" + name + "\nVersion=1.0\nEnv=PROC_LOG=" + log() + "\n" + ini);
+        for (const auto &s : scripts)
+            fx.tmp.writeFile(dir + "/" + s.first, s.second);
+    }
+
+    string log() const { return fx.tmp.at("proc.log"); }
+    // what ran, one "<name> <args>" per line, the paths shortened to what is under the fixture's root
+    vector<string> ran() const {
+        vector<string> lines;
+        std::ifstream in(log());
+        string line;
+        while (std::getline(in, line)) {
+            size_t p;
+            while ((p = line.find(fx.tmp.path())) != string::npos)
+                line.replace(p, fx.tmp.path().size(), "~");
+            lines.push_back(line);
+        }
+        return lines;
+    }
+    void clearLog() const { std::remove(log().c_str()); }
+
+    ScanServiceFixture &fx;
+};
+
+} // namespace
+
+TEST_CASE("processors: the preprocessor first, then each game's chain in the user's order, then the scan") {
+    ScanServiceFixture fx;
+    ProcessorsOnStick procs(fx);
+    // a real game waiting in a stash, for the fake "converter" to put in place
+    string stash = fx.tmp.makeSubDir("stash");
+    test_support::makeFakeGame(stash, "Crash", "SLUS_012.34");
+    fx.tmp.writeFile("Games/Crash.zip", "zip");
+
+    procs.add("unzip", "Name=Fake unzip\nKinds=games-folder\nMatch=*.zip\nOrder=10\n",
+              {{"games.txt", "#Starting - Fake unzip V1\n#Unpacking Crash.zip\n!mkdir {target}/Crash\n"
+                             "!move {target}/Crash.zip|{target}/Crash/Crash.rvz\n1/1\n50\n#DONE\n"}});
+    procs.add("rvz", "Name=Fake rvz\nKinds=ps1\nMatch=*.rvz\nOrder=20\n",
+              {{"ismine.txt", "!has .rvz\n"},
+               {"ps1.txt", "#Starting - Fake rvz\n!move " + stash +
+                               "/Crash/Crash.bin|{target}/Crash.bin.part\n"
+                               "!move {target}/Crash.bin.part|{target}/Crash.bin\n!move " +
+                               stash +
+                               "/Crash/Crash.cue|{target}/Crash.cue\n!remove {target}/Crash.rvz\n#WARN - kept nothing\n"
+                               "#DONE\n"}});
+    procs.add("checker", "Kinds=ps1\nModifies=false\nOrder=30\n"); // no Match: every game; the helper's default
+
+    ScanUpdate update = fx.runAndPoll();
+    CHECK(procs.ran() == vector<string>{"unzip --start --games ~/Games", "rvz --ismine --ps1 ~/Games/Crash",
+                                        "rvz --start --ps1 ~/Games/Crash", "checker --ismine --ps1 ~/Games/Crash",
+                                        "checker --start --ps1 ~/Games/Crash"});
+    // what the chain made is what the scan read
+    CHECK(update.finishedGameCount == 1);
+    CHECK(fx.library.usbGames().countGames() == 1);
+    CHECK_FALSE(ableem::DirEntry::exists(fx.tmp.at("Games/Crash.zip")));
+    // the bubble's last report, and the warning
+    CHECK(update.processorProgressed);
+    CHECK(update.processor.title == "Fake unzip V1");
+    CHECK(update.processor.stage == "Unpacking Crash.zip");
+    CHECK(update.processor.percent == 50);
+    CHECK(update.processor.total == 1);
+    REQUIRE(update.processorNotices.size() == 1);
+    CHECK(update.processorNotices[0].title == "Fake rvz");
+    CHECK(update.processorNotices[0].item == "Crash");
+    CHECK(update.processorNotices[0].message == "kept nothing");
+    CHECK_FALSE(update.processorNotices[0].failed);
+    // the sequence file was written with the new ones, by Order
+    CHECK(fx.tmp.readFile("System/Processors/sequence.ini").find("[ps1]\nunzip\nrvz\nchecker\n") != string::npos);
+    CHECK(fx.tmp.readFile("System/Logs/processors.log").find("=== exit 0, ok") != string::npos);
+
+    // nothing changed: the next scan starts nothing at all
+    procs.clearLog();
+    fx.runAndPoll();
+    CHECK(procs.ran().empty());
+}
+
+TEST_CASE("processors: the user's order decides, a switched-off one is skipped, a failure stops that game's chain") {
+    ScanServiceFixture fx;
+    ProcessorsOnStick procs(fx);
+    test_support::makeFakeGame(fx.gamesDir(), "Crash", "SLUS_012.34");
+    test_support::makeFakeGame(fx.gamesDir(), "Spyro", "SLUS_012.35");
+    procs.add("first", "Kinds=ps1\nOrder=1\n");
+    procs.add("breaks", "Kinds=ps1\nOrder=2\n",
+              {{"ismine.txt", "!has Crash.bin\n"}, {"ps1.txt", "#Starting - breaks\n#ERROR - bad dump\n!exit 1\n"}});
+    procs.add("last", "Kinds=ps1\nOrder=3\n");
+    procs.add("off", "Kinds=ps1\nOrder=4\n");
+    // the user put "last" first and switched "off" off
+    fx.tmp.writeFile("System/Processors/sequence.ini", "[ps1]\nlast\nfirst\nbreaks\n-off\n");
+
+    ScanUpdate update = fx.runAndPoll();
+    vector<string> ran = procs.ran();
+    vector<string> starts;
+    for (const string &line : ran) {
+        if (line.find("--start") != string::npos)
+            starts.push_back(line);
+    }
+    CHECK(starts == vector<string>{"last --start --ps1 ~/Games/Crash", "first --start --ps1 ~/Games/Crash",
+                                   "breaks --start --ps1 ~/Games/Crash", "last --start --ps1 ~/Games/Spyro",
+                                   "first --start --ps1 ~/Games/Spyro"});
+    REQUIRE(update.processorNotices.size() == 1);
+    CHECK(update.processorNotices[0].failed);
+    CHECK(update.processorNotices[0].message == "bad dump");
+    CHECK(update.processorNotices[0].item == "Crash");
+    CHECK(update.finishedGameCount == 2); // the games themselves are still scanned
+
+    // a failure is not retried while nothing changed
+    procs.clearLog();
+    fx.runAndPoll();
+    CHECK(procs.ran().empty());
+}
+
+TEST_CASE("processors: suspended for a launch, none that modifies starts; resumed, the next scan catches up") {
+    ScanServiceFixture fx;
+    ProcessorsOnStick procs(fx);
+    test_support::makeFakeGame(fx.gamesDir(), "Crash", "SLUS_012.34");
+    procs.add("writer", "Kinds=ps1\n");
+    procs.add("reader", "Kinds=ps1\nModifies=false\n");
+
+    fx.svc.setProcessorsSuspended(true);
+    ScanUpdate update = fx.runAndPoll();
+    CHECK(update.finishedGameCount == 1); // the scan went on without the writer
+    CHECK(procs.ran() == vector<string>{"reader --ismine --ps1 ~/Games/Crash", "reader --start --ps1 ~/Games/Crash"});
+
+    procs.clearLog();
+    fx.svc.setProcessorsSuspended(false);
+    fx.runAndPoll();
+    CHECK(procs.ran() == vector<string>{"writer --ismine --ps1 ~/Games/Crash", "writer --start --ps1 ~/Games/Crash"});
+}
+
+TEST_CASE("processors: a file only a processor wants is a change the watcher and the startup check see") {
+    ScanServiceFixture fx;
+    ProcessorsOnStick procs(fx);
+    test_support::makeFakeGame(fx.gamesDir(), "Crash", "SLUS_012.34");
+    procs.add("unzip", "Kinds=games-folder\nMatch=*.zip\n");
+    fx.runAndPoll();
+    CHECK(ScanService::fingerprintsMatchDisk());
+    CHECK_FALSE(fx.svc.checkForChanges());
+
+    fx.tmp.writeFile("Games/Spyro.zip", "zip");
+    CHECK_FALSE(ScanService::fingerprintsMatchDisk());
+    CHECK_FALSE(fx.svc.checkForChanges());
+    CHECK(fx.svc.checkForChanges()); // seen twice: a scan is due
+
+    // and a half-written *.part is not
+    fx.runAndPoll();
+    fx.tmp.writeFile("Games/Crash/Crash.bin.part", "half");
+    CHECK(ScanService::fingerprintsMatchDisk());
+}
+
+TEST_CASE("processors: a ROM chain gets --rom and --system, and what a step made is the next round's") {
+    ScanServiceFixture fx;
+    RetroArchOnStick ra(fx);
+    ProcessorsOnStick procs(fx);
+    ra.addRom("Sonic.zip");
+    procs.add("unzip", "Kinds=rom\nMatch=*.zip\nOrder=1\n",
+              {{"rom.txt", "#Starting - unzip\n!write {target}.nes.part|NES\n"
+                           "!move {target}.nes.part|{target}.nes\n!remove {target}\n#DONE\n"}});
+    procs.add("patch", "Kinds=rom\nMatch=*.nes\nSystems=Nintendo - Nintendo Entertainment System\nOrder=2\n");
+
+    fx.runAndPoll();
+    vector<string> ran = procs.ran();
+    REQUIRE(ran.size() == 4);
+    CHECK(ran[0].find("unzip --ismine --rom ") == 0);
+    CHECK(ran[0].find("Sonic.zip --system Nintendo - Nintendo Entertainment System") != string::npos);
+    CHECK(ran[1].find("unzip --start --rom ") == 0);
+    CHECK(ran[2].find("patch --ismine --rom ") == 0);
+    CHECK(ran[3].find("Sonic.zip.nes --system Nintendo - Nintendo Entertainment System") != string::npos);
 }

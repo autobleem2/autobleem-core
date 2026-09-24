@@ -72,7 +72,7 @@ ab_add_test(test_harness core/test_env_fixture.cpp)
 # proc_helper: a scanner processor the tests script (support/proc_helper.cpp); the suites that run one get
 # its path as AB_PROC_HELPER
 add_executable(proc_helper support/proc_helper.cpp)
-foreach(suite test_system)
+foreach(suite test_system test_scan_service)
     target_compile_definitions(${suite} PRIVATE AB_PROC_HELPER="$<TARGET_FILE:proc_helper>")
     add_dependencies(${suite} proc_helper)
 endforeach()

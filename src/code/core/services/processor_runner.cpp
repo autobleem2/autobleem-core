@@ -57,6 +57,10 @@ void ProcessorRunner::log(const string &text) {
         DirEntry::renameFile(options_.logFile, options_.logFile + ".1");
     }
     ofstream out(options_.logFile, ios::binary | ios::app);
+    if (!out.is_open()) {
+        DirEntry::createDirs(DirEntry::getDirNameFromPath(options_.logFile));
+        out.open(options_.logFile, ios::binary | ios::app);
+    }
     out << text;
 }
 

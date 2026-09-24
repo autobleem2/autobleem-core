@@ -46,6 +46,8 @@ public:
 
     // a file (name and size) or a folder (every file under it, as relative paths and sizes), hashed
     static std::string digest(const std::string &path);
+    // a folder's own files only, not its sub-folders' - a PS1 game folder, whose sub-folders are other games
+    static std::string digestOfOwnFiles(const std::string &dir);
     // the files under a folder the digest covers: "<relative path>" -> size
     static std::map<std::string, long long> files(const std::string &dir);
     // a file the digest (and the processors' Match) never looks at

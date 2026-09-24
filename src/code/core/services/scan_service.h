@@ -7,6 +7,12 @@
 
 #include "../model/ps_game.h"
 #include "online_assets.h"
+#include "processor_catalog.h"
+#include "processor_runner.h"
+#include "processor_sequences.h"
+#include "processor_state.h"
+
+#include <memory>
 
 #include <ableem/engine/retroarch_scanner.h>
 
@@ -23,6 +29,32 @@
 #include <vector>
 
 class RetroArchService;
+
+//******************
+// ProcessorActivity
+//******************
+// what a running scanner processor last said (docs/scanner-processors-plan.md in the launcher) - the bubble's
+// content while one works. Only a run that said something worth showing (a stage, a percent, a counter) is
+// reported; one that only says #Starting / #DONE never is.
+struct ProcessorActivity {
+    std::string title; // its #Starting text, else its Name=
+    std::string item;  // the game folder's or ROM file's name; "" for a whole-tree (folder) run
+    std::string stage; // the last #<stage>
+    int percent = -1;  // -1 = none in this stage
+    int done = 0;      // the n/m counter, 0/0 = none
+    int total = 0;
+};
+
+//******************
+// ProcessorNotice
+//******************
+// a processor's #WARN, or its failure - untranslated, the launcher words it
+struct ProcessorNotice {
+    std::string title;   // the processor's Name=
+    std::string item;    // as in ProcessorActivity
+    std::string message; // the warning, or why it failed
+    bool failed = false;
+};
 
 //******************
 // ScanUpdate
@@ -53,6 +85,12 @@ struct ScanUpdate {
 
     int boxArtFetched = 0; // covers the online pass brought in since the last poll (the launcher reloads them)
 
+    // a scanner processor reported progress since the last poll (the latest report), and what they warned
+    // about or failed at - the processors run first in every scan, before the stages above
+    bool processorProgressed = false;
+    ProcessorActivity processor;
+    std::vector<ProcessorNotice> processorNotices;
+
     bool finished = false; // a whole scan cycle completed during this poll
     int finishedGameCount = 0;
     int finishedFailedCount = 0;
@@ -82,6 +120,14 @@ struct ScanUpdate {
 // The worker runs at the OS's lowest scheduling priority (System::lowerCurrentThreadPriority(), the first
 // thing threadMain() does) so a scan - which nothing is waiting on - never takes CPU time away from a
 // running emulator or anything else on the system.
+//
+// Scanner processors (System/Processors/, docs/scanner-processors-plan.md in the launcher) are the first
+// thing every scan does, whoever asked for it: the folder processors of the PS1 sequence over Games/ and of
+// the ROMs sequence over roms/, then - after the loose files are moved and the discs merged - each game
+// folder and each ROM file through its sequence's item chain, before the tree is read. What already ran on
+// something unchanged is skipped (ProcessorState). setProcessorsSuspended(true) - a game or RetroArch in
+// front - stops a running processor that modifies files and starts no new one; the scan goes on without
+// them, and the next one (requested when they are resumed) finishes their work.
 //
 // Owned by App (App::scans()).
 class ScanService {
@@ -138,6 +184,23 @@ public:
     void setOnline(bool enabled, const OnlineAssets::Config &config,
                    OnlineAssets::CommandRunner runner = OnlineAssets::CommandRunner());
 
+    // the scanner processors: see the class comment. Suspended, a running processor that modifies files is
+    // stopped (its run is "interrupted", owed another) and none is started; resuming requests a scan when
+    // one was held back.
+    void setProcessorsSuspended(bool suspended);
+    bool processorsSuspended() const { return processorsSuspended_.load(); }
+    // AB_LANGUAGE for the processors, so they can word their messages (config.ini's language)
+    void setProcessorLanguage(const std::string &language);
+    // how a processor is started - System::runStreaming unless a test gives its own (not owned)
+    void setProcessorProcess(ProcessorProcess *process) { processorProcess_ = process; }
+
+    static std::string processorsDir();          // System/Processors
+    static std::string processorSequencesFile(); // System/Processors/sequence.ini
+    static std::string processorStateFilePath(); // <state>/processors.state
+    static std::string processorsLogFilePath();  // System/Logs/processors.log
+    // the Match patterns of every installed processor that can run here (what the games watcher also counts)
+    static std::vector<std::string> processorWatchPatterns();
+
 private:
     //******************
     // ScannedGame
@@ -170,6 +233,8 @@ private:
             GameFailedVerify,
             PlaylistsWritten,
             BoxArtFetched,
+            ProcessorProgress,
+            ProcessorNotice,
             Finished
         };
         Kind kind = Kind::Progress;
@@ -186,6 +251,9 @@ private:
 
         std::vector<std::string> playlists; // PlaylistsWritten: the "<system>.lpl" files that changed
         int boxArtFetched = 0;              // BoxArtFetched
+
+        ProcessorActivity processor; // ProcessorProgress
+        ::ProcessorNotice notice;    // ProcessorNotice
 
         ableem::GamesHierarchy hierarchy; // Finished
         ableem::UsbGames gamesToAddToDB;
@@ -223,6 +291,35 @@ private:
     int scanRetroArchRoms(Listener &listener, std::vector<std::string> &playlistsWritten);
     // the PS1 covers the scan did not find, from libretro's server - where the platform goes online at all
     void fetchMissingPs1BoxArt(Listener &listener, const std::vector<ableem::UsbGamePtr> &games);
+
+    //******************
+    // ProcessorSession
+    //******************
+    // one scan's processors: what is installed, the user's sequences, what already ran, and the runner
+    struct ProcessorSession {
+        ProcessorCatalog catalog;
+        ProcessorSequences sequences;
+        ProcessorState state;
+        std::unique_ptr<ProcessorRunner> runner;
+        bool any = false; // something can run here, in some sequence
+        ProcessorSession();
+    };
+    // reads the catalog, merges the sequences (saving them when they changed), loads the state
+    void openProcessors(ProcessorSession &session);
+    // a sequence's folder processors over a whole tree (Games/ or roms/)
+    void runFolderProcessors(ProcessorSession &session, ProcessorSequence sequence, const std::string &treeDir);
+    // a sequence's item chain over every game folder (PS1) or ROM file (ROMs) in the tree; true when a
+    // processor changed something (the caller goes round again, for what a step produced)
+    bool runItemChains(ProcessorSession &session, ProcessorSequence sequence, const std::string &treeDir);
+    // one processor on one target; false when the chain for that target should stop (it failed, or was
+    // stopped). changed: the target's digest after the run differs from before.
+    bool runProcessor(ProcessorSession &session, const ProcessorInfo &processor, ProcessorKind kind,
+                      const std::vector<std::string> &targetArgs, const std::string &target, const std::string &item,
+                      const std::string &digestBefore, const std::function<std::string()> &digestAfter, bool askIsMine,
+                      bool *changed);
+    bool processorShouldStop(const ProcessorInfo &processor);
+    std::vector<std::pair<std::string, std::string>> processorEnvironment();
+
     ableem::GameLibrary &library_;
     RetroArchService *retroArch_ = nullptr;
 
@@ -237,6 +334,17 @@ private:
     std::atomic<bool> scanRequested_{false};
     std::atomic<bool> watching_{true};
     std::atomic<bool> scanning_{false};
+
+    // the processors: see setProcessorsSuspended(); heldBack_ = a run was stopped or skipped while suspended
+    std::atomic<bool> processorsSuspended_{false};
+    std::atomic<bool> processorsHeldBack_{false};
+    std::mutex processorLanguageMutex_;
+    std::string processorLanguage_;
+    ProcessorProcess *processorProcess_ = nullptr;
+    StreamingProcess streamingProcess_;
+    // worker-only: the processors' Match patterns, what the games fingerprint also counts
+    std::vector<std::string> watchPatterns_;
+    ableem::GamesFingerprint takeGamesFingerprint() const;
 
     std::mutex queueMutex_;
     std::vector<WorkerEvent> queue_;

@@ -125,7 +125,15 @@ string ScanService::romScanStateFilePath() {
 //*******************************
 bool ScanService::fingerprintsMatchDisk() {
     GamesFingerprint stored;
-    if (!stored.load(fingerprintFilePath()) || stored != GamesFingerprint::take(Env::getPathToGamesDir()))
+    vector<string> patterns = processorWatchPatterns();
+    GamesFingerprint games = GamesFingerprint::take(Env::getPathToGamesDir(), [&patterns](const string &name) {
+        for (const string &p : patterns) {
+            if (ProcessorCatalog::globMatch(name, p))
+                return true;
+        }
+        return false;
+    });
+    if (!stored.load(fingerprintFilePath()) || stored != games)
         return false;
     if (!romScanEnabled())
         return true;
@@ -181,6 +189,7 @@ void ScanService::threadMain() {
     // take CPU time away from a running emulator (or anything else on the system)
     System::lowerCurrentThreadPriority();
 
+    watchPatterns_ = processorWatchPatterns();
     lastScannedFingerprint_.load(fingerprintFilePath()); // false (left empty) if nothing was ever scanned
     lastCheckFingerprint_ = lastScannedFingerprint_;
     lastScannedRomsFingerprint_.load(romsFingerprintFilePath());
@@ -211,7 +220,7 @@ void ScanService::threadMain() {
 // ScanService::checkForChanges
 //*******************************
 bool ScanService::checkForChanges() {
-    GamesFingerprint fresh = GamesFingerprint::take(Env::getPathToGamesDir());
+    GamesFingerprint fresh = takeGamesFingerprint();
     bool changedFromScanned = !(fresh == lastScannedFingerprint_);
     bool stableSinceLastCheck = (fresh == lastCheckFingerprint_);
     lastCheckFingerprint_ = fresh;
@@ -325,6 +334,16 @@ void ScanService::runScan() {
     string gamesDir = Env::getPathToGamesDir();
     Listener listener(this);
 
+    // the scanner processors' preprocessing is the first thing, whoever asked for the scan: the folder
+    // processors of both sequences, before anything of the scan itself reads or moves a file
+    ProcessorSession processors;
+    openProcessors(processors);
+    if (processors.any) {
+        runFolderProcessors(processors, ProcessorSequence::Ps1, gamesDir);
+        if (romScanEnabled())
+            runFolderProcessors(processors, ProcessorSequence::Roms, Env::getPathToRetroarchRomsDir());
+    }
+
     if (GameScanner::hasLooseGameFiles(gamesDir)) {
         GameScanner mover(&listener);
         mover.moveLooseGameFilesIntoSubDirs(gamesDir);
@@ -335,6 +354,19 @@ void ScanService::runScan() {
         // the watcher does not fire on the merge's own moves
         GameScanner merger(&listener);
         merger.mergeMultiDiscFolders(gamesDir);
+    }
+
+    // then every game folder and every ROM file through its sequence's item chain, before the tree is read -
+    // round again (a few times at most) for what a step produced: unzip's .rvz is the next step's input
+    if (processors.any) {
+        for (int round = 0; round < 3 && runItemChains(processors, ProcessorSequence::Ps1, gamesDir); ++round) {
+        }
+        if (romScanEnabled()) {
+            string romsDir = Env::getPathToRetroarchRomsDir();
+            for (int round = 0; round < 3 && runItemChains(processors, ProcessorSequence::Roms, romsDir); ++round) {
+            }
+        }
+        processors.state.save();
     }
 
     GamesHierarchy hierarchy;
@@ -352,7 +384,7 @@ void ScanService::runScan() {
     scanner.scanGamesDirectory(hierarchy, metadata);
     fetchMissingPs1BoxArt(listener, scanner.gamesToAddToDB);
 
-    GamesFingerprint fp = GamesFingerprint::take(gamesDir);
+    GamesFingerprint fp = takeGamesFingerprint();
     lastScannedFingerprint_ = fp;
     lastCheckFingerprint_ = fp;
 
@@ -539,6 +571,15 @@ ScanUpdate ScanService::poll() {
             update.boxArtFetched += event.boxArtFetched;
             break;
 
+        case WorkerEvent::Kind::ProcessorProgress:
+            update.processorProgressed = true;
+            update.processor = event.processor;
+            break;
+
+        case WorkerEvent::Kind::ProcessorNotice:
+            update.processorNotices.push_back(event.notice);
+            break;
+
         case WorkerEvent::Kind::Finished: {
             // the vanished rows no moved game claimed are really gone - before the sub-dir rows are
             // rebuilt from what is left
@@ -568,4 +609,324 @@ ScanUpdate ScanService::poll() {
     }
 
     return update;
+}
+
+//*******************************
+// ScanService: the scanner processors
+//*******************************
+// docs/scanner-processors-plan.md in the launcher. Everything below runs on the worker thread, inside
+// runScan(), except the setters and the static paths.
+
+string ScanService::processorsDir() {
+    return Env::getPathToSystemDir() + sep + "Processors";
+}
+
+string ScanService::processorSequencesFile() {
+    return processorsDir() + sep + "sequence.ini";
+}
+
+string ScanService::processorStateFilePath() {
+    return Env::getPathToStateDir() + sep + "processors.state";
+}
+
+string ScanService::processorsLogFilePath() {
+    return Env::getPathToLogsDir() + sep + "processors.log";
+}
+
+vector<string> ScanService::processorWatchPatterns() {
+    ProcessorCatalog catalog(processorsDir(), Env::appPlatformKeys());
+    catalog.scan();
+    return catalog.watchPatterns();
+}
+
+//*******************************
+// ScanService::takeGamesFingerprint
+//*******************************
+GamesFingerprint ScanService::takeGamesFingerprint() const {
+    if (watchPatterns_.empty())
+        return GamesFingerprint::take(Env::getPathToGamesDir());
+    return GamesFingerprint::take(Env::getPathToGamesDir(), [this](const string &name) {
+        for (const string &p : watchPatterns_) {
+            if (ProcessorCatalog::globMatch(name, p))
+                return true;
+        }
+        return false;
+    });
+}
+
+//*******************************
+// ScanService::setProcessorsSuspended
+//*******************************
+void ScanService::setProcessorsSuspended(bool suspended) {
+    processorsSuspended_.store(suspended);
+    // what was held back gets its turn: straight onto the request flag - a scan may still be running, and
+    // requestScan() would refuse it then; the worker picks the flag up after it
+    if (!suspended && processorsHeldBack_.exchange(false))
+        scanRequested_.store(true);
+}
+
+//*******************************
+// ScanService::setProcessorLanguage
+//*******************************
+void ScanService::setProcessorLanguage(const string &language) {
+    lock_guard<mutex> lock(processorLanguageMutex_);
+    processorLanguage_ = language;
+}
+
+//*******************************
+// ScanService::ProcessorSession
+//*******************************
+ScanService::ProcessorSession::ProcessorSession()
+    : catalog(processorsDir(), Env::appPlatformKeys()), sequences(processorSequencesFile()),
+      state(processorStateFilePath()) {}
+
+//*******************************
+// ScanService::processorEnvironment
+//*******************************
+vector<pair<string, string>> ScanService::processorEnvironment() {
+    string keys;
+    for (const string &k : Env::appPlatformKeys())
+        keys += (keys.empty() ? "" : " ") + k;
+    string language;
+    {
+        lock_guard<mutex> lock(processorLanguageMutex_);
+        language = processorLanguage_;
+    }
+    return {{"AB_ROOT", Env::getPathToUSBRoot()},
+            {"AB_GAMES_DIR", Env::getPathToGamesDir()},
+            {"AB_ROMS_DIR", Env::getPathToRetroarchRomsDir()},
+            {"AB_RDB_DIR", Env::getPathToRetroarchRdbDir()},
+            {"AB_PLATFORM", Env::buildTargetKey()},
+            {"AB_PLATFORM_KEYS", keys},
+            {"AB_LANGUAGE", language},
+            {"AB_VERSION", Env::productVersion()}};
+}
+
+//*******************************
+// ScanService::openProcessors
+//*******************************
+void ScanService::openProcessors(ProcessorSession &session) {
+    if (!DirEntry::isDirectory(processorsDir()))
+        return;
+    session.catalog.scan();
+    watchPatterns_ = session.catalog.watchPatterns();
+    if (session.sequences.load(session.catalog.processors()))
+        session.sequences.save();
+    session.state.load();
+    for (ProcessorSequence s : {ProcessorSequence::Ps1, ProcessorSequence::Roms}) {
+        if (!session.sequences.chain(s, session.catalog.processors()).empty())
+            session.any = true;
+    }
+    if (!session.any)
+        return;
+
+    ProcessorRunner::Options options;
+    options.logFile = processorsLogFilePath();
+    options.tmpBase = ProcessorRunner::defaultTmpBase();
+    options.env = processorEnvironment();
+    session.runner = make_unique<ProcessorRunner>(processorProcess_ ? *processorProcess_ : streamingProcess_, options);
+}
+
+//*******************************
+// ScanService::processorShouldStop
+//*******************************
+bool ScanService::processorShouldStop(const ProcessorInfo &processor) {
+    if (stopping_.load())
+        return true;
+    if (processor.modifies && processorsSuspended_.load()) {
+        processorsHeldBack_.store(true);
+        return true;
+    }
+    return false;
+}
+
+//*******************************
+// ScanService::runProcessor
+//*******************************
+bool ScanService::runProcessor(ProcessorSession &session, const ProcessorInfo &processor, ProcessorKind kind,
+                               const vector<string> &targetArgs, const string &target, const string &item,
+                               const string &digestBefore, const function<string()> &digestAfter, bool askIsMine,
+                               bool *changed) {
+    const string kindName = ProcessorCatalog::kindName(kind);
+    if (session.state.isSettled(processor.name, processor.version, kindName, target, digestBefore))
+        return true;
+    if (processorShouldStop(processor))
+        return false;
+    auto stop = [this, &processor]() { return processorShouldStop(processor); };
+
+    if (askIsMine && !session.runner->isMine(processor, targetArgs, stop)) {
+        // not its business - remembered, so it is not asked again until the target changes
+        session.state.record(processor.name, processor.version, kindName, target, digestBefore, ProcessorResult::Ok);
+        return true;
+    }
+
+    ProcessorRunner::Outcome outcome = session.runner->start(
+        processor, targetArgs, item,
+        [this, &processor, &item](const ableem::ProcessorOutput &out) {
+            if (!out.active())
+                return; // "#Starting" alone is not worth a bubble
+            WorkerEvent event;
+            event.kind = WorkerEvent::Kind::ProcessorProgress;
+            event.processor.title = out.title().empty() ? processor.title : out.title();
+            event.processor.item = item;
+            event.processor.stage = out.stage();
+            event.processor.percent = out.percent();
+            event.processor.done = out.done();
+            event.processor.total = out.total();
+            pushEvent(std::move(event));
+        },
+        stop);
+
+    for (const string &warning : outcome.warnings) {
+        WorkerEvent event;
+        event.kind = WorkerEvent::Kind::ProcessorNotice;
+        event.notice = {processor.title, item, warning, false};
+        pushEvent(std::move(event));
+    }
+    if (outcome.result == ProcessorResult::Failed) {
+        WorkerEvent event;
+        event.kind = WorkerEvent::Kind::ProcessorNotice;
+        event.notice = {processor.title, item, outcome.message, true};
+        pushEvent(std::move(event));
+    }
+
+    // the digest after the run: its own output is not a change the next scan has to answer
+    string after = digestAfter();
+    if (changed && after != digestBefore)
+        *changed = true;
+    session.state.record(processor.name, processor.version, kindName, target, after, outcome.result);
+    session.state.save(); // a power cut mid-scan must not make the next one redo what is done
+    return outcome.result == ProcessorResult::Ok;
+}
+
+//*******************************
+// ScanService::runFolderProcessors
+//*******************************
+void ScanService::runFolderProcessors(ProcessorSession &session, ProcessorSequence sequence, const string &treeDir) {
+    if (!DirEntry::isDirectory(treeDir))
+        return;
+    ProcessorKind kind = sequence == ProcessorSequence::Ps1 ? ProcessorKind::GamesFolder : ProcessorKind::RomsFolder;
+    const char *flag = sequence == ProcessorSequence::Ps1 ? "--games" : "--roms";
+    for (const ProcessorInfo *p : session.sequences.chain(sequence, session.catalog.processors())) {
+        if (stopping_.load())
+            return;
+        if (!p->has(kind))
+            continue;
+        map<string, long long> files = ProcessorState::files(treeDir);
+        // nothing it could want: not started at all
+        if (!p->match.empty()) {
+            bool any = false;
+            for (const auto &f : files) {
+                if (p->matchesFile(DirEntry::getFileNameFromPath(f.first))) {
+                    any = true;
+                    break;
+                }
+            }
+            if (!any)
+                continue;
+        }
+        runProcessor(
+            session, *p, kind, {flag, treeDir}, "", "", ProcessorState::digest(treeDir),
+            [&treeDir]() { return ProcessorState::digest(treeDir); }, false, nullptr);
+    }
+}
+
+namespace {
+
+// every folder under Games/ that has files of its own (a game folder, or a folder a processor may make one
+// of) - not the !SaveStates/!MemCards trees and nothing starting with '.'
+void gameFolders(const string &dir, const string &rel, vector<pair<string, string>> &out) {
+    bool hasFiles = false;
+    for (const DirEntry &entry : DirEntry::diru(dir)) {
+        if (entry.name.empty() || entry.name[0] == '.' || entry.name[0] == '!')
+            continue;
+        if (entry.isDir) {
+            gameFolders(dir + sep + entry.name, rel.empty() ? entry.name : rel + "/" + entry.name, out);
+        } else if (!ProcessorState::ignoredName(entry.name)) {
+            hasFiles = true;
+        }
+    }
+    if (hasFiles && !rel.empty())
+        out.emplace_back(dir, rel);
+}
+
+// every file under roms/<system>/, with its system (the top folder's name)
+struct RomFile {
+    string path, rel, system;
+};
+void romFiles(const string &dir, const string &rel, const string &system, vector<RomFile> &out) {
+    for (const DirEntry &entry : DirEntry::diru(dir)) {
+        if (ProcessorState::ignoredName(entry.name))
+            continue;
+        string childRel = rel.empty() ? entry.name : rel + "/" + entry.name;
+        if (entry.isDir)
+            romFiles(dir + sep + entry.name, childRel, system.empty() ? entry.name : system, out);
+        else if (!system.empty())
+            out.push_back({dir + sep + entry.name, childRel, system});
+    }
+}
+
+} // namespace
+
+//*******************************
+// ScanService::runItemChains
+//*******************************
+bool ScanService::runItemChains(ProcessorSession &session, ProcessorSequence sequence, const string &treeDir) {
+    if (!DirEntry::isDirectory(treeDir))
+        return false;
+    ProcessorKind kind = sequence == ProcessorSequence::Ps1 ? ProcessorKind::Ps1 : ProcessorKind::Rom;
+    vector<const ProcessorInfo *> chain;
+    for (const ProcessorInfo *p : session.sequences.chain(sequence, session.catalog.processors())) {
+        if (p->has(kind))
+            chain.push_back(p);
+    }
+    if (chain.empty())
+        return false;
+
+    bool changed = false;
+    if (sequence == ProcessorSequence::Ps1) {
+        vector<pair<string, string>> folders;
+        gameFolders(DirEntry::removeSeparatorFromEndOfPath(treeDir), "", folders);
+        for (const auto &folder : folders) {
+            const string &path = folder.first;
+            string item = DirEntry::getFileNameFromPath(path);
+            for (const ProcessorInfo *p : chain) {
+                if (stopping_.load())
+                    return false;
+                if (!DirEntry::isDirectory(path))
+                    break; // a step removed or renamed it: what it made is the next round's
+                bool candidate = p->match.empty();
+                for (const DirEntry &f : DirEntry::diru_FilesOnly(path)) {
+                    if (!candidate && !ProcessorState::ignoredName(f.name) && p->matchesFile(f.name))
+                        candidate = true;
+                }
+                if (!candidate)
+                    continue;
+                if (!runProcessor(
+                        session, *p, kind, {"--ps1", path}, folder.second, item, ProcessorState::digestOfOwnFiles(path),
+                        [&path]() { return ProcessorState::digestOfOwnFiles(path); }, true, &changed))
+                    break; // failed or stopped: the rest of this game's chain waits
+            }
+        }
+    } else {
+        vector<RomFile> roms;
+        romFiles(DirEntry::removeSeparatorFromEndOfPath(treeDir), "", "", roms);
+        for (const RomFile &rom : roms) {
+            string item = DirEntry::getFileNameFromPath(rom.path);
+            for (const ProcessorInfo *p : chain) {
+                if (stopping_.load())
+                    return false;
+                if (!DirEntry::exists(rom.path))
+                    break; // a step turned it into something else: the next round takes that
+                if (!p->matchesFile(item) || !p->wantsSystem(rom.system))
+                    continue;
+                if (!runProcessor(
+                        session, *p, kind, {"--rom", rom.path, "--system", rom.system}, rom.rel, item,
+                        ProcessorState::digest(rom.path), [&rom]() { return ProcessorState::digest(rom.path); }, true,
+                        &changed))
+                    break;
+            }
+        }
+    }
+    return changed;
 }

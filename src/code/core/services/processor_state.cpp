@@ -68,6 +68,21 @@ string ProcessorState::digest(const string &path) {
 }
 
 //*******************************
+// ProcessorState::digestOfOwnFiles
+//*******************************
+string ProcessorState::digestOfOwnFiles(const string &dir) {
+    string text;
+    map<string, long long> own;
+    for (const DirEntry &entry : DirEntry::diru_FilesOnly(dir)) {
+        if (!ignoredName(entry.name))
+            own[entry.name] = DirEntry::fileSize(dir + sep + entry.name);
+    }
+    for (const auto &f : own)
+        text += f.first + "\t" + to_string(f.second) + "\n";
+    return ableem::Md5::ofString(text);
+}
+
+//*******************************
 // ProcessorState::resultName
 //*******************************
 const char *ProcessorState::resultName(ProcessorResult result) {
