@@ -35,6 +35,8 @@ ab_add_test(test_filesystem core/test_filesystem.cpp)
 ab_add_test(test_game_library core/test_game_library.cpp)
 ab_add_test(test_game_query core/test_game_query.cpp)
 ab_add_test(test_games_fingerprint core/test_games_fingerprint.cpp)
+ab_add_test(test_processor_output core/test_processor_output.cpp)
+ab_add_test(test_processors core/test_processors.cpp)
 ab_add_test(test_game_set core/test_game_set.cpp)
 ab_add_test(test_game_settings core/test_game_settings.cpp)
 ab_add_test(test_lang core/test_lang.cpp)
@@ -65,6 +67,14 @@ ab_add_test(test_zip_writer core/test_zip_writer.cpp)
 ab_add_test(test_tar_archive core/test_tar_archive.cpp)
 ab_add_test(test_update_catalog_packs core/test_update_catalog_packs.cpp)
 ab_add_test(test_harness core/test_env_fixture.cpp)
+
+# proc_helper: a scanner processor the tests script (support/proc_helper.cpp); the suites that run one get
+# its path as AB_PROC_HELPER
+add_executable(proc_helper support/proc_helper.cpp)
+foreach(suite test_system)
+    target_compile_definitions(${suite} PRIVATE AB_PROC_HELPER="$<TARGET_FILE:proc_helper>")
+    add_dependencies(${suite} proc_helper)
+endforeach()
 
 # the tools' suites live with the tools: autobleem-console-tools (pscbios, abflashkit) and
 # autobleem-pc-tools (updateroms) run them on this harness; the installer job is here (ab_installer)

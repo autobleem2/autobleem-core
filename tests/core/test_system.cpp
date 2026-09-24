@@ -11,6 +11,8 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 using std::string;
 
@@ -80,4 +82,43 @@ TEST_CASE("runShellCommand with a cancel: runs to the end when not asked, stops 
     int asked = 0;
     CHECK(System::runShellCommand(slow, [&asked] { return ++asked > 3; }) == -2);
     CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(10));
+}
+
+TEST_CASE("runStreaming hands each line over as it comes, stdout and stderr apart, and returns the exit code") {
+    TempDir tmp("streaming");
+    tmp.writeFile("ps1.txt", "#Starting - helper\n!err a warning\n10\r\n!sleep 50\n100\n#DONE\n!exit 3\n");
+    std::vector<std::pair<string, bool>> lines;
+    int code = System::runStreaming(
+        AB_PROC_HELPER, {"--start", "--ps1", tmp.path()}, tmp.path(),
+        {{"AB_PROCESSOR_PROTOCOL", "1"}, {"AB_TMP", tmp.path()}},
+        [&lines](const string &line, bool fromStderr) { lines.push_back({line, fromStderr}); }, [] { return false; });
+    CHECK(code == 3);
+    std::vector<string> out;
+    string err;
+    for (const auto &l : lines) {
+        if (l.second)
+            err += l.first;
+        else
+            out.push_back(l.first);
+    }
+    CHECK(out == std::vector<string>{"#Starting - helper", "10", "100", "#DONE"});
+    CHECK(err == "a warning");
+    // the arguments and the environment reached it
+    CHECK(tmp.readFile("calls.txt").find("--start|--ps1|") == 0);
+    CHECK(tmp.readFile("calls.txt").find("protocol=1|tmp=yes") != string::npos);
+}
+
+TEST_CASE("runStreaming stops a child when asked, and says -1 for a program that is not there") {
+    TempDir tmp("streaming_stop");
+    tmp.writeFile("ps1.txt", "#Starting - helper\n#Working\n!sleep 30000\n#DONE\n");
+    auto start = std::chrono::steady_clock::now();
+    bool sawStage = false;
+    int code = System::runStreaming(
+        AB_PROC_HELPER, {"--start", "--ps1", tmp.path()}, tmp.path(), {},
+        [&sawStage](const string &line, bool) { sawStage = sawStage || line == "#Working"; },
+        [&sawStage] { return sawStage; });
+    CHECK(code == -2);
+    CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(10));
+
+    CHECK(System::runStreaming(tmp.at("no-such-program"), {}, "", {}, nullptr, nullptr) == -1);
 }
