@@ -165,8 +165,10 @@ private:
             say("  AutoBleem " + (info.installedVersion.empty() ? string("(unknown version)") : info.installedVersion) +
                 " is on the stick - updating to " + info.packageVersion);
             savedConfig = readText(at(ConfigIni));
+            // Apps/pscbios is where PSC-Bios was an App until 2026-09-24; it is an extension the package ships
+            // since (Extensions/pscbios) - an update removes both, and the package brings the extension
             for (const char *dir : {"Autobleem/bin/autobleem", "Autobleem/bin/emu", "Autobleem/bin/emunxt",
-                                    "Autobleem/rc", "Apps/pscbios", "Apps/abflashkit", "Docs"}) {
+                                    "Autobleem/rc", "Apps/pscbios", "Apps/abflashkit", "Extensions/pscbios", "Docs"}) {
                 if (DirEntry::isDirectory(at(dir)))
                     DirEntry::removeDirAndContents(at(dir));
             }
