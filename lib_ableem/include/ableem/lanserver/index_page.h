@@ -17,6 +17,7 @@ struct IndexPageFacts {
     std::string gamesDir;
     std::string version;
     bool hashing = false; // checksums still being worked out
+    bool uploads = false; // games may be uploaded (with the token)
 };
 
 std::string indexPage(const LanSnapshot &snapshot, const std::map<std::string, std::string> &checksums,

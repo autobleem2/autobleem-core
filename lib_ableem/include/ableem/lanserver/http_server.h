@@ -1,5 +1,6 @@
 //
-// HttpServer: the smallest HTTP/1.1 server abstored needs - GET and HEAD, one connection per request
+// HttpServer: the smallest HTTP/1.1 server abstored needs - GET and HEAD (and PUT, POST and DELETE with a body
+// streamed to the handler, for uploads), one connection per request
 // (Connection: close), a thread per connection, bytes from memory or a file with Range support (the Store
 // resumes a stopped download with Range). Plain HTTP: it is meant for a home LAN, not the internet.
 //
@@ -24,6 +25,9 @@ public:
         std::string query;                          // after '?', as sent
         std::map<std::string, std::string> headers; // names lower-cased
         std::string peer;                           // the client's address
+        uint64_t contentLength = 0;                 // of the body a PUT or POST sends
+        // reads up to `size` bytes of that body: how many (0 at its end), -1 when the client went
+        std::function<long long(char *data, size_t size)> readBody;
     };
     struct Response {
         int status = 200;
