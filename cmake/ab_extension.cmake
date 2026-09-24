@@ -1,4 +1,4 @@
-# ab_add_extension(<name> HOST <executable target> SOURCES <files...> [INI <extension.ini>] [ICON <png>]
+# ab_add_extension(<name> [HOST <executable target>] SOURCES <files...> [INI <extension.ini>] [ICON <png>]
 #                  [LANG <dir>])
 #
 # An AutoBleem extension (docs/extensions-plan.md in the launcher): a plugin the launcher loads into its own
@@ -6,6 +6,10 @@
 # their code - the symbols are the launcher's, bound when it is loaded; linking the SDK in would give the
 # plugin a second Gui, Env and Lang. On Windows it links the launcher's import library (the executable is
 # built with ENABLE_EXPORTS); on Linux it links nothing of ours and dlopen binds it.
+#
+# HOST is the launcher's executable when the extension is built with it (AB_EXTENSION_DIRS). It is needed on
+# Windows only, for the import library: on Linux a repository of its own - the console tools' PSC-Bios -
+# builds the plugin from the SDK's headers alone, in the same image and at the same AB_SDK_ABI as the launcher.
 #
 # Its logging goes through plog instance 1 (PLOG_DEFAULT_INSTANCE_ID=1), chained into the launcher's by
 # AB_EXTENSION - see gui/extension.h.
@@ -28,8 +32,8 @@ endfunction()
 
 function(ab_add_extension name)
     cmake_parse_arguments(EXT "" "HOST;INI;ICON;LANG" "SOURCES" ${ARGN})
-    if (NOT EXT_HOST)
-        message(FATAL_ERROR "ab_add_extension(${name}): HOST <the launcher's executable target> is required")
+    if (NOT EXT_HOST AND WIN32)
+        message(FATAL_ERROR "ab_add_extension(${name}): HOST <the launcher's executable target> is required on Windows")
     endif()
     ab_extension_platform_key(key)
     set(stage "${CMAKE_BINARY_DIR}/extensions/${name}")
@@ -54,7 +58,13 @@ function(ab_add_extension name)
             CXX_VISIBILITY_PRESET hidden
             C_VISIBILITY_PRESET hidden
             VISIBILITY_INLINES_HIDDEN ON)
-    add_dependencies(${name} ${EXT_HOST})
+    if (EXT_HOST)
+        add_dependencies(${name} ${EXT_HOST})
+    endif ()
+    # core/version.h is generated: without the launcher to wait for, wait for it directly
+    if (TARGET ab_version)
+        add_dependencies(${name} ab_version)
+    endif ()
     if (WIN32)
         target_link_libraries(${name} PRIVATE $<TARGET_LINKER_FILE:${EXT_HOST}>)
     endif ()

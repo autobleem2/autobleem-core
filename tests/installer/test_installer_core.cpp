@@ -87,7 +87,9 @@ string makePackage(TempDir &tmp, const string &version) {
     b.file("./Autobleem/rc/launch.sh", "#!/bin/sh\n", 0755);
     b.file("./Autobleem/lib/libs.tar.gz", "gz");
     b.file("./Autobleem/start.sh", "#!/bin/sh\n", 0755);
-    b.dir("./Apps").file("./Apps/pscbios/pscbios", "ELF", 0755).file("./Apps/pscbios/app.ini", "Title=BIOS\n");
+    b.dir("./Apps").file("./Apps/abflashkit/abflashkit", "ELF", 0755).file("./Apps/abflashkit/app.ini", "Title=Kit\n");
+    b.dir("./Extensions").file("./Extensions/pscbios/bin/psc/pscbios.so", "ELF", 0755);
+    b.file("./Extensions/pscbios/extension.ini", "[extension]\nName=PSC-Bios\n");
     b.dir("./Themes")
         .dir("./Themes/ab2")
         .file("./Themes/ab2/theme.json", "{}")
@@ -321,6 +323,8 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     fx.tmp.writeFile("stick/Autobleem/rc/stale.sh", "old");
     fx.tmp.writeFile("stick/Docs/old.txt", "old");
     fx.tmp.writeFile("stick/UpdateRoms/stale.dll", "old");
+    fx.tmp.writeFile("stick/Extensions/pscbios/bin/psc/old.so", "old");      // PSC-Bios, shipped: replaced
+    fx.tmp.writeFile("stick/Extensions/store/extension.ini", "[extension]"); // one the user put there stays
 
     Fixture next; // a newer package, the same stick
     next.options = fx.options;
@@ -351,6 +355,9 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     CHECK_FALSE(fx.has("Autobleem/rc/stale.sh"));
     CHECK_FALSE(fx.has("Docs/old.txt"));
     CHECK_FALSE(fx.has("UpdateRoms/stale.dll"));
+    CHECK_FALSE(fx.has("Extensions/pscbios/bin/psc/old.so"));
+    CHECK(fx.has("Extensions/store/extension.ini"));
+    CHECK(fx.has("Extensions/pscbios/bin/psc/pscbios.so"));
     CHECK(fx.has("UpdateRoms/UpdateRoms.exe"));
     CHECK(next.out.said("config.ini kept as it was"));
     CHECK(next.out.said("Updated."));
