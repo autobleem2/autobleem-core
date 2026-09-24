@@ -666,6 +666,10 @@ void LaunchService::prepareRaAppend(PsGame *game) {
         lines.emplace_back(key, key + " = \"" + value + "\"");
     };
     set(raConfig, "config_save_on_exit", config_.inifile.values["rapersist"] == "false" ? "false" : "true");
+    // RetroArch's per-game play-time logs (playlists/logs/<core>/<game>.lrtl), written at every exit - nothing
+    // of ours reads them (measured on the Pi 400: a write per RetroArch game)
+    set(raConfig, "content_runtime_log", "false");
+    set(raConfig, "content_runtime_log_aggregate", "false");
     if (game != nullptr && config_.inifile.values["raconfig"] == "true")
         raSettingsFor(*game, raConfig, coreOptions);
 

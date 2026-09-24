@@ -489,7 +489,9 @@ TEST_CASE("rapersist=false: RetroArch is told not to save its config at exit; no
 
     test_support::TreeSnapshot before(lib.tmp.at("RetroArch"));
     lib.service->launch(game, EmuMode::RetroArch, -1);
-    CHECK(lib.tmp.readFile("System/Runtime/ra-append.cfg") == "config_save_on_exit = \"false\"\n");
+    CHECK(lib.tmp.readFile("System/Runtime/ra-append.cfg") == "config_save_on_exit = \"false\"\n"
+                                                              "content_runtime_log = \"false\"\n"
+                                                              "content_runtime_log_aggregate = \"false\"\n");
     CHECK(before.changesTo(test_support::TreeSnapshot(lib.tmp.at("RetroArch"))) == vector<string>{});
 }
 
