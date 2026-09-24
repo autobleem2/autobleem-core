@@ -41,12 +41,13 @@ public:
         : config_(config), session_(session), library_(library), memcards_(memcards), resumePoints_(resumePoints),
           runner_(runner) {}
 
-    // where writeSelectionScript() writes: <rc>/autobleem_cfg.sh, next to the selection.sh (console) or
-    // autobleem-session.sh (Pi) that sources it. Was config.ini's Cfg= key, an absolute console path the
-    // Pi installer had to rewrite per install; the rc dir already comes from the root (2026-09-18)
+    // where writeSelectionScript() writes: <runtime>/autobleem_cfg.sh - RAM, what selection.sh (console) or
+    // autobleem-session.sh (a Pi, the PC stick) sources after the launcher has left (was <rc>/, on the
+    // stick, until the quiet-stick plan; before that config.ini's Cfg= key)
     static std::string selectionScriptFile();
-    // rc/autobleem_cfg.sh: AB_SELECTION/AB_THEME/AB_PCSX, so the shell launch scripts see the menu
-    // choice and the theme/emulator settings after the GUI exits or before a game starts.
+    // AB_SELECTION/AB_THEME/AB_PCSX for the script that runs after the launcher: written when the launcher
+    // leaves (RetroArch, the update, the power off). No file, or any other selection, is a crash to the
+    // scripts - which is why nothing is written around a game any more.
     void writeSelectionScript();
 
     // The launch itself, start to finish: the emulator is chosen from the game and the mode, the game's

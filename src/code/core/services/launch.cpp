@@ -289,7 +289,7 @@ string LaunchService::raCoreOptionsFile() {
 // LaunchService::selectionScriptFile
 //*******************************
 string LaunchService::selectionScriptFile() {
-    return Env::getPathToRCDir() + sep + "autobleem_cfg.sh";
+    return Env::getPathToRuntimeDir() + sep + "autobleem_cfg.sh";
 }
 
 //*******************************
@@ -299,18 +299,13 @@ void LaunchService::writeSelectionScript() {
     if (Env::directLaunch()) {
         return; // no rc script runs after the launcher on a desktop - and no rc directory to write into
     }
-    ofstream os;
-    string path = selectionScriptFile();
-    os.open(path);
-    if (!DirEntry::checkWritable(os, path))
-        return; // the rc scripts then keep the previous selection
-    os << "#!/bin/sh" << endl << endl;
-    os << "AB_SELECTION=" << session_.menuOption << endl;
-    os << "AB_THEME=" << config_.inifile.values["theme"] << endl;
-    os << "AB_PCSX=" << config_.inifile.values["pcsx"] << endl;
-
-    os.flush();
-    os.close();
+    // a hand-over to the script that runs after us, so RAM, not the stick (docs/quiet-stick-plan.md)
+    DirEntry::createDirs(Env::getPathToRuntimeDir());
+    string text = "#!/bin/sh\n\n";
+    text += "AB_SELECTION=" + to_string(session_.menuOption) + "\n";
+    text += "AB_THEME=" + config_.inifile.values["theme"] + "\n";
+    text += "AB_PCSX=" + config_.inifile.values["pcsx"] + "\n";
+    DirEntry::writeFileIfChanged(selectionScriptFile(), text);
 }
 
 //*******************************
@@ -327,8 +322,6 @@ LaunchService::Path LaunchService::pathFor(const PsGame &game, EmuMode mode) {
 // LaunchService::launch
 //*******************************
 void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
-    writeSelectionScript();
-
     switch (pathFor(*game, mode)) {
     case Path::Pcsx:
         memcards_.swapInForLaunch(*game);

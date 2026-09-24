@@ -102,8 +102,8 @@ TEST_CASE("writeSelectionScript records the menu choice and the settings the rc 
 
     lib.service->writeSelectionScript();
 
-    // written in text mode, so the line endings are the platform's; the lines are what is asserted
-    string script = lib.tmp.readFile("Autobleem/rc/autobleem_cfg.sh");
+    // in the runtime dir (RAM on the console): a hand-over, not something to keep on the stick
+    string script = lib.tmp.readFile("System/Runtime/autobleem_cfg.sh");
     CHECK(contains(script, "#!/bin/sh"));
     CHECK(contains(script, "AB_SELECTION=5"));
     CHECK(contains(script, "AB_THEME=aergb"));
@@ -135,7 +135,8 @@ TEST_CASE("PCSX is started through rc/launch.sh with the nine arguments the scri
     CHECK(game->ssFolder == lib.tmp.at("Games/Tekken 3/sstates"));               // normalised in place, as always
 
     CHECK(lib.usbGame()->last_played > 0); // the launch is the "last played" time
-    CHECK(contains(lib.tmp.readFile("Autobleem/rc/autobleem_cfg.sh"), "AB_SELECTION=")); // written before the run
+    // no selection around a game: one left over from it would hide a later crash from the rc scripts
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("System/Runtime/autobleem_cfg.sh")));
 }
 
 TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg as Off/Linear/Sharp 0/1/2") {
@@ -662,7 +663,7 @@ TEST_CASE("direct mode: the PS1 emulator itself - pcsx-ab in launch.sh's run dir
     }
     SUBCASE("no selection script is written: nothing would source it") {
         lib.service->launch(game, EmuMode::Pcsx, -1);
-        CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Autobleem/rc/autobleem_cfg.sh")));
+        CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("System/Runtime/autobleem_cfg.sh")));
     }
     SUBCASE("the game folder's pcsx.cfg is put next to the save states, as the scripts do") {
         lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "Gpu3 = gpu_peops.so\n");
