@@ -280,4 +280,12 @@ bool LanClient::drop(const string &gameFolder, const string &library, string &er
     return false;
 }
 
+bool LanClient::remove(const string &gameId, string &error) {
+    const Reply r = request("DELETE", "/games/" + LanLibrary::urlPath(gameId));
+    if (r.status == 200)
+        return true;
+    error = r.status == 0 ? r.error : plain(r.body);
+    return false;
+}
+
 } // namespace ableem

@@ -60,6 +60,8 @@ public:
     // the staged folder into the games; finalName: the folder it became ("Game (2)" when "Game" was taken)
     bool commit(const std::string &gameFolder, const std::string &library, std::string &finalName, std::string &error);
     bool drop(const std::string &gameFolder, const std::string &library, std::string &error);
+    // a game off the server (Game::id): moved into the server's .removed folder, not deleted
+    bool remove(const std::string &gameId, std::string &error);
 
     // what an HTTP exchange came to
     struct Reply {

@@ -41,6 +41,11 @@ public:
     static Result publish(const std::vector<File> &files, const std::string &gameFolder, const Target &target,
                           const std::function<bool(uint64_t done, uint64_t total)> &progress);
 
+    // a game off the server (LanClient::Game::id): through the share, its folder moved into
+    // <share>/.removed/ and a rescan asked for; else the server asked to do the same (with the token). Never
+    // deleted - putting it back is moving it back
+    static bool remove(const std::string &gameId, const Target &target, std::string &error);
+
     // what a game scanned here takes along: its discs, the files they name, the .sbi, its picture
     static std::vector<File> filesOf(const LanGame &game, const LanLibrary &library);
     // does the server have it already: by serial when both have one, else by title (any case)
