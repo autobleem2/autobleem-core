@@ -1,6 +1,6 @@
 //
-// ableem_lanserver (abstored's and LAN Share's server): the read-only scan of a games folder, the TSV it serves (read back with the
-// Store's own parser), the checksum cache, and an HTTP round trip with a Range.
+// ableem_lanserver (abstored's and LAN Share's server): the read-only scan of a games folder, the TSV it serves (read
+// back with the Store's own parser), the checksum cache, and an HTTP round trip with a Range.
 //
 #include "doctest/doctest.h"
 
