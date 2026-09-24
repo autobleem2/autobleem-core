@@ -310,7 +310,7 @@ InstallResult GameInstaller::install(const vector<string> &files, const string &
     }
 
     // the disc files, wherever they are in what arrived
-    static const set<string> discExtensions{"chd", "pbp", "cue", "bin", "img", "iso", "ecm", "sbi", "m3u"};
+    static const set<string> discExtensions{"chd", "pbp", "cue", "bin", "img", "iso", "ecm", "sbi", "m3u", "pkg"};
     vector<string> found;
     filesUnder(staged, "", found);
     vector<string> discs;
