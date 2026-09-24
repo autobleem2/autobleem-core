@@ -78,6 +78,7 @@ add_library(ab_core STATIC
         src/code/core/services/downloader.cpp
         src/code/core/services/extension_catalog.cpp
         src/code/core/services/processor_catalog.cpp
+        src/code/core/services/processor_runner.cpp
         src/code/core/services/processor_sequences.cpp
         src/code/core/services/processor_state.cpp
         src/code/core/services/plugin_loader.cpp
