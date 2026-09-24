@@ -93,7 +93,7 @@ bool ProcessorSequences::save() const {
     if (!DirEntry::checkWritable(out, file_))
         return false;
     out << "; the order the scan runs the processors in, per sequence; a leading '-' switches one off\n"
-           "; (Options -> Scanner processors edits this file)\n";
+           "; (the System menu's Scanner processors edits this file)\n";
     for (ProcessorSequence sequence : {ProcessorSequence::Ps1, ProcessorSequence::Roms}) {
         out << "\n[" << sectionName(sequence) << "]\n";
         for (const Entry &e : entries(sequence))

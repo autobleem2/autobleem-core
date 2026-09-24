@@ -126,7 +126,10 @@ ProcessorRunner::Outcome ProcessorRunner::start(const ProcessorInfo &processor, 
 
     System::OutputLine onLine = [&](const string &line, bool fromStderr) {
         lastLine = chrono::steady_clock::now();
-        logged += (fromStderr ? "! " : "") + line + "\n";
+        // a bare percent is progress, not news: the log keeps the rest
+        bool percent = !line.empty() && line.find_first_not_of("0123456789 ") == string::npos;
+        if (fromStderr || !percent)
+            logged += (fromStderr ? "! " : "") + line + "\n";
         if (logged.size() > 4096) { // written in batches, not a file open per percent
             log(logged);
             logged.clear();
