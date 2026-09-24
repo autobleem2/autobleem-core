@@ -16,6 +16,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <map>
 #include <string>
 #include <thread>
 
@@ -201,7 +202,9 @@ TEST_CASE("abstored works the checksums out once and keeps them outside the game
     CHECK(again.checksums().size() == 5); // read back, nothing hashed again
 
     // a stop is honoured between files
-    LanLibrary stopped(LanLibrary::Config{g.tmp.at("Games"), "", "", ""});
+    LanLibrary::Config noState;
+    noState.gamesDir = g.tmp.at("Games");
+    LanLibrary stopped(noState);
     stopped.scan();
     stopped.hashPending([] { return true; });
     CHECK(stopped.checksums().empty());
@@ -281,4 +284,75 @@ TEST_CASE("abstored over a socket: the list, a file resumed with a Range, a file
     CHECK(ask("POST /store.tsv HTTP/1.1\r\nHost: h\r\n\r\n").compare(0, 12, "HTTP/1.1 405") == 0);
     stop = true;
     serving.join();
+}
+
+TEST_CASE("LanLibrary serves several folders: each game's id and path start with its folder's name") {
+    TempDir tmp("lanroots");
+    tmp.makeSubDir("A/Tekken 3");
+    tmp.writeFile("A/Tekken 3/t3.chd", "from a");
+    tmp.makeSubDir("B/Tekken 3");
+    tmp.writeFile("B/Tekken 3/t3.chd", "from b, longer");
+    tmp.writeFile("B/loose.chd", "loose");
+    tmp.makeSubDir("state");
+
+    LanLibrary::Config c;
+    c.roots = {{"Living room", tmp.at("A")}, {"Attic", tmp.at("B")}, {"Gone", tmp.at("C")}};
+    c.stateDir = tmp.at("state");
+    LanLibrary library(c);
+    library.scan();
+    const auto snap = library.snapshot();
+
+    REQUIRE(snap->games.size() == 2);
+    map<string, const LanGame *> byId;
+    for (const LanGame &g : snap->games)
+        byId[g.id] = &g;
+    REQUIRE(byId.count("Living room/Tekken 3"));
+    REQUIRE(byId.count("Attic/Tekken 3"));
+    // one title in two folders: told apart by the id, as two folders of one library are
+    CHECK(byId["Attic/Tekken 3"]->title == "Tekken 3 (Attic/Tekken 3)");
+    const LanFile &fromB = byId["Attic/Tekken 3"]->files.front();
+    CHECK(fromB.relPath == "Attic/Tekken 3/t3.chd");
+    CHECK(fromB.name == "t3.chd");
+
+    // each path back to its own folder, and only what the scan listed
+    CHECK(library.servablePath("Attic/Tekken 3/t3.chd") == tmp.at("B") + "/Tekken 3/t3.chd");
+    CHECK(library.servablePath("Living room/Tekken 3/t3.chd") == tmp.at("A") + "/Tekken 3/t3.chd");
+    CHECK(library.servablePath("Tekken 3/t3.chd").empty());
+    CHECK(library.absolutePath("Nowhere/x.chd").empty());
+
+    // the problems carry their folder's name too
+    bool loose = false, gone = false;
+    for (const LanProblem &p : snap->problems) {
+        loose = loose || (p.path == "Attic" && p.what.find("loose") != string::npos);
+        gone = gone || (p.path == "Gone" && p.what.find("is not there") != string::npos);
+    }
+    CHECK(loose);
+    CHECK(gone);
+
+    // the TSV names each file under its folder
+    const string tsv = LanLibrary::tsv(*snap, {}, "http://h:1", "x");
+    CHECK(tsv.find("http://h:1/files/Attic/Tekken%203/t3.chd") != string::npos);
+    CHECK(tsv.find("http://h:1/files/Living%20room/Tekken%203/t3.chd") != string::npos);
+
+    // the checksums work from the prefixed paths
+    library.hashPending([] { return false; });
+    CHECK(library.checksums().count(LanLibrary::checksumKey(fromB)) == 1);
+
+    // a change in any folder shows in the fingerprint
+    const string before = library.fingerprint();
+    tmp.writeFile("B/Tekken 3/t3.sbi", "sbi");
+    CHECK(library.fingerprint() != before);
+}
+
+TEST_CASE("LanLibrary with one root serves it like gamesDir, without a prefix") {
+    TempDir tmp("lanroot1");
+    tmp.makeSubDir("A/Tekken 3");
+    tmp.writeFile("A/Tekken 3/t3.chd", "x");
+    LanLibrary::Config c;
+    c.roots = {{"Only", tmp.at("A")}};
+    LanLibrary library(c);
+    library.scan();
+    REQUIRE(library.snapshot()->games.size() == 1);
+    CHECK(library.snapshot()->games.front().id == "Tekken 3");
+    CHECK(library.servablePath("Tekken 3/t3.chd") == tmp.at("A") + "/Tekken 3/t3.chd");
 }

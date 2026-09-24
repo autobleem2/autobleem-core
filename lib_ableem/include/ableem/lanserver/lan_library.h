@@ -63,21 +63,33 @@ struct LanSnapshot {
 //******************
 class LanLibrary {
 public:
+    // one folder of games among several (LAN Share's libraries)
+    struct Root {
+        std::string name; // what its games' ids and paths start with: "Living room" -> "Living room/Tekken 3"
+        std::string dir;
+    };
     struct Config {
-        std::string gamesDir;
+        std::string gamesDir;  // one folder, its games' ids and paths as they are under it (abstored)
         std::string coversDir; // covers{U,P,J}.db; "" = none
         std::string rdbFile;   // "Sony - PlayStation.rdb"; "" = none
         std::string stateDir;  // the checksum cache (never inside the games folder); "" = kept in memory only
+        // several folders instead of gamesDir: each game's id and path start with its root's name. The names
+        // must be distinct, non-empty and have no '/'. One root is served like gamesDir, unprefixed. Last, so
+        // a Config spelt out positionally still means what it did.
+        std::vector<Root> roots;
     };
 
     explicit LanLibrary(Config config);
     ~LanLibrary();
 
-    // the folder read again; the snapshot is replaced when it is done
+    // the folders read again; the snapshot is replaced when it is done
     void scan();
     std::shared_ptr<const LanSnapshot> snapshot() const;
-    // names and sizes of everything under the games folder - a scan is due when it changes
+    // names and sizes of everything under the games folders - a scan is due when it changes
     std::string fingerprint() const;
+    // where a path the scan listed ("Tekken 3/t3.chd", "Living room/Tekken 3/t3.chd") is on disk; "" when no
+    // root holds it
+    std::string absolutePath(const std::string &relPath) const;
 
     // the SHA-256 of the files still without one, a file at a time (stop() is asked between files and every
     // few MB); the cache (<stateDir>/checksums.tsv) keeps them across runs, keyed by path and size
@@ -99,6 +111,8 @@ public:
     const Config &config() const { return config_; }
 
 private:
+    // the folders served, each with the prefix its games' paths carry ("" for gamesDir or a lone root)
+    std::vector<Root> effectiveRoots() const;
     void walk(const std::string &dir, const std::string &rel, LanSnapshot &out, bool root);
     void readGame(const std::string &dir, const std::string &rel, LanSnapshot &out);
     void loadChecksums();
