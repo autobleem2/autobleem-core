@@ -2,6 +2,7 @@
 // LaunchService: what App::launchGame and the three EmuInterceptors used to do between them.
 //
 #include "launch.h"
+#include "app_manifest.h"
 #include "environment.h"
 #include "../main.h"
 #include "system.h"
@@ -11,6 +12,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <fstream>
 #include <iostream>
@@ -211,13 +213,60 @@ void LaunchService::launchRetroArchMenu() {
 //*******************************
 // LaunchService::planApp
 //*******************************
+// A multi-platform App (docs/app-format-plan.md): its app.ini resolved for this machine by AppManifest.
+// Through a script (the console, the appliances): the App's own Startup= script when it has one, else the
+// generic rc/app_run.sh - either sources rc/app_env.sh and execs $AB_APP_EXEC, which is what the ini names
+// for this platform. Direct (Windows, no sh): the resolved program itself, with its Args=. Both get the
+// AB_APP_* variables and the ini's Env=. An App of the old kind (Startup= only) is run as it always was.
 LaunchPlan LaunchService::planApp(const PsGame &game) {
     LaunchPlan plan;
-    plan.exe = game.base + sep + game.startup;
-    if (Env::directLaunch()) {
-        plan.cwd = game.base;
+    AppManifest m = AppManifest::load(game.base, "app.ini", Env::appPlatformKeys());
+    if (!m.runnable() || m.legacyStartup) {
+        plan.exe = game.base + sep + game.startup;
+        if (Env::directLaunch()) {
+            plan.cwd = game.base;
+        }
+        return plan;
     }
+
+    plan.env = appEnvironment(m);
+    plan.cwd = game.base;
+    if (Env::directLaunch()) {
+        plan.exe = m.program;
+        plan.args = AppManifest::splitArgs(m.args);
+        if (!m.libDir.empty()) {
+            const char *path = getenv("PATH");
+            plan.env.emplace_back("PATH", m.libDir + (path != nullptr && *path ? string(";") + path : ""));
+        }
+        return plan;
+    }
+    string own = m.value("startup");
+    plan.exe = own.empty() ? appRunScript() : game.base + sep + own;
     return plan;
+}
+
+//*******************************
+// LaunchService::appRunScript / appEnvironment
+//*******************************
+string LaunchService::appRunScript() {
+    return Env::getPathToRCDir() + sep + "app_run.sh";
+}
+
+vector<pair<string, string>> LaunchService::appEnvironment(const AppManifest &m) {
+    string keys;
+    for (const string &k : Env::appPlatformKeys())
+        keys += (keys.empty() ? "" : " ") + k;
+    vector<pair<string, string>> env{{"AB_ROOT", Env::getPathToUSBRoot()},
+                                     {"AB_APP_DIR", m.folder},
+                                     {"AB_APP_EXEC", m.program},
+                                     {"AB_APP_ARGS", m.args},
+                                     {"AB_APP_LIB", m.libDir},
+                                     {"AB_APP_KEY", m.key},
+                                     {"AB_PLATFORM", Env::buildTargetKey()},
+                                     {"AB_PLATFORM_KEYS", keys}};
+    for (const auto &kv : m.env)
+        env.push_back(kv);
+    return env;
 }
 
 //*******************************

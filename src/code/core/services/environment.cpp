@@ -24,7 +24,89 @@ string retroArchCatalog_;
 bool directLaunch_ = false;
 string pcsxDir_;
 string pcsxNxtDir_;
+vector<string> extraAppPlatformKeys_;
 } // namespace
+
+//*******************************
+// Env::buildTargetKey / buildOs / buildArch
+//*******************************
+// The one place the CPU is tested: an App's binary is built for an architecture, which is exactly what is
+// being asked here - not a way to tell the targets apart (that stays AB_PLATFORM_*).
+const char *Env::buildTargetKey() {
+#if defined(AB_PLATFORM_PSC)
+    return "psc";
+#elif defined(AB_PLATFORM_RPI) && defined(__aarch64__)
+    return "rpi64";
+#elif defined(AB_PLATFORM_RPI)
+    return "rpi";
+#elif defined(AB_PLATFORM_PCUSB)
+    return "pcusb";
+#elif defined(AB_PLATFORM_WIN)
+    return "win";
+#else
+    return "dev";
+#endif
+}
+
+const char *Env::buildOs() {
+#ifdef _WIN32
+    return "windows";
+#else
+    return "linux";
+#endif
+}
+
+const char *Env::buildArch() {
+#if defined(__aarch64__)
+    return "arm64";
+#elif defined(__arm__)
+    return "armhf";
+#elif defined(__x86_64__) || defined(_M_X64)
+    return "x86_64";
+#elif defined(__i386__) || defined(_M_IX86)
+    return "i386";
+#else
+    return "unknown";
+#endif
+}
+
+//*******************************
+// Env::appPlatformKeysFor
+//*******************************
+vector<string> Env::appPlatformKeysFor(const string &targetKey, const string &os, const string &arch) {
+    // the console has no generic key: its glibc 2.24 and its Wayland-only SDL 2.0.14 load nothing built
+    // against a current distribution, so only a binary made for it will do
+    if (targetKey == "psc")
+        return {"psc"};
+    vector<string> keys{targetKey};
+    // a dev host on Windows runs what was built for the Windows product
+    if (targetKey == "dev" && os == "windows")
+        keys.emplace_back("win");
+    keys.push_back(os + "-" + arch);
+    return keys;
+}
+
+//*******************************
+// Env::appPlatformKeys
+//*******************************
+vector<string> Env::appPlatformKeys() {
+    vector<string> keys = appPlatformKeysFor(buildTargetKey(), buildOs(), buildArch());
+    for (const string &extra : extraAppPlatformKeys_) {
+        bool known = false;
+        for (const string &k : keys)
+            known = known || k == extra;
+        if (!known)
+            keys.push_back(extra);
+    }
+    return keys;
+}
+
+void Env::setExtraAppPlatformKeys(const vector<string> &keys) {
+    extraAppPlatformKeys_.clear();
+    for (const string &k : keys)
+        if (!Strings::trim(k).empty())
+            extraAppPlatformKeys_.push_back(ableem::toLowerCopy(Strings::trim(k)));
+}
 
 //*******************************
 // Env::platformName
@@ -102,6 +184,29 @@ void Env::exportProductVersion() {
 #else
     setenv("AB_VERSION", version.c_str(), 1);
 #endif
+}
+
+//*******************************
+// Env::platformKeysFile / writePlatformKeysFile
+//*******************************
+string Env::platformKeysFile() {
+    return getPathToSystemDir() + sep + "platform_keys";
+}
+
+void Env::writePlatformKeysFile() {
+    string line;
+    for (const string &k : appPlatformKeys())
+        line += (line.empty() ? "" : " ") + k;
+    // only when it changed: the console's stick is written as little as can be
+    {
+        ifstream in(platformKeysFile());
+        string existing;
+        if (in && getline(in, existing) && Strings::trim(existing) == line)
+            return;
+    }
+    DirEntry::createDirs(getPathToSystemDir());
+    ofstream out(platformKeysFile(), ios::binary | ios::trunc);
+    out << line << "\n";
 }
 
 //*******************************

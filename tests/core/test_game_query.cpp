@@ -322,6 +322,7 @@ TEST_CASE("the Apps set is built from each Apps/<name>/app.ini") {
                                            "Image=icon.png\n"
                                            "Readme=readme.txt\n"
                                            "Kernel=true\n");
+    lib.tmp.writeFile("Apps/Wifi/wifi.sh", "#!/bin/sh\n");
     lib.tmp.makeSubDir("Apps/NotAnApp"); // no app.ini, so it is skipped
 
     PsGames apps = query.apps();
@@ -334,6 +335,29 @@ TEST_CASE("the Apps set is built from each Apps/<name>/app.ini") {
     CHECK(apps[0]->app);
     CHECK(apps[0]->foreign); // no database row, so nothing may treat it as a PS1 game
     CHECK(apps[0]->base == lib.tmp.at("Apps/Wifi"));
+}
+
+TEST_CASE("a multi-platform App is listed with the binary this machine runs; one with none is left out") {
+    GameLibraryFixture lib;
+    ConfigIn cfg(lib.tmp, "Origames=false\n");
+    GameQueryService query(lib.library, *cfg);
+
+    const string key = Env::appPlatformKeys().front(); // this build's own key
+    lib.tmp.makeSubDir("Apps/Tyrian/bin/" + key);
+    lib.tmp.writeFile("Apps/Tyrian/app.ini", "Title=OpenTyrian\nExec=bin/{key}/tyrian\n");
+    lib.tmp.writeFile("Apps/Tyrian/bin/" + key + "/tyrian", "x");
+    // built only for a machine this is not
+    lib.tmp.makeSubDir("Apps/Elsewhere/bin/nowhere");
+    lib.tmp.writeFile("Apps/Elsewhere/app.ini", "Title=Elsewhere\nExec=bin/{key}/game\n");
+    lib.tmp.writeFile("Apps/Elsewhere/bin/nowhere/game", "x");
+    // an old App whose script is gone
+    lib.tmp.makeSubDir("Apps/Broken");
+    lib.tmp.writeFile("Apps/Broken/app.ini", "Title=Broken\nStartup=run.sh\n");
+
+    PsGames apps = query.apps();
+    REQUIRE(apps.size() == 1);
+    CHECK(apps[0]->title == "OpenTyrian");
+    CHECK(apps[0]->startup == "bin/" + key + "/tyrian");
 }
 
 TEST_CASE("no Apps directory at all is empty, not an error") {

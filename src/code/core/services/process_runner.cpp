@@ -15,6 +15,9 @@ std::string LaunchPlan::toString() const {
     if (!cwd.empty()) {
         line += " (in " + cwd + ")";
     }
+    for (const auto &kv : env) {
+        line += " " + kv.first + "=" + kv.second;
+    }
     return line;
 }
 
@@ -22,12 +25,12 @@ std::string LaunchPlan::toString() const {
 // ForkProcessRunner::run
 //*******************************
 void ForkProcessRunner::run(const LaunchPlan &plan) {
-    System::runAndWait(plan.exe, plan.args, plan.cwd);
+    System::runAndWait(plan.exe, plan.args, plan.cwd, {}, plan.env);
 }
 
 //*******************************
 // WinProcessRunner::run
 //*******************************
 void WinProcessRunner::run(const LaunchPlan &plan) {
-    System::runAndWait(plan.exe, plan.args, plan.cwd, whileWaiting_);
+    System::runAndWait(plan.exe, plan.args, plan.cwd, whileWaiting_, plan.env);
 }

@@ -66,6 +66,26 @@ struct Environment : ableem::Environment {
     // build macros decide a path.
     static const char *platformName();
 
+    // the platform keys an App's or an extension's binary may be built for, most specific first - what
+    // AppManifest resolves Exec.<key>= / Exec=bin/{key}/... against (docs/app-format-plan.md). The built-in
+    // list (appPlatformKeysFor(buildTargetKey(), buildOs(), buildArch())) followed by the platform ini's
+    // app_platform_keys, which may add keys but never remove one.
+    static std::vector<std::string> appPlatformKeys();
+    static void setExtraAppPlatformKeys(const std::vector<std::string> &keys);
+    // the table itself, for any target: "psc" -> {psc}; "dev" -> {dev, (win on Windows), <os>-<arch>};
+    // anything else -> {<target>, <os>-<arch>}
+    static std::vector<std::string> appPlatformKeysFor(const std::string &targetKey, const std::string &os,
+                                                       const std::string &arch);
+    // what this build is: "psc", "rpi", "rpi64", "pcusb", "win" or "dev" (the update's package keys, without
+    // their suffixes); the OS ("linux", "windows") and the CPU ("armhf", "arm64", "i386", "x86_64")
+    // System/platform_keys: appPlatformKeys() on one line, space separated - what rc/app_resolve.sh reads when
+    // an App's run.sh is started by hand, with no launcher to say. Written at start-up, only when it changed.
+    static std::string platformKeysFile();
+    static void writePlatformKeysFile();
+    static const char *buildTargetKey();
+    static const char *buildOs();
+    static const char *buildArch();
+
     // where the RetroArch executable may be (PlatformConfig's retroarch_binary, resolved), and whether one
     // of them is there - what "RetroArch" in the system menu and Square on a game check
     static void setRetroArchBinaries(const std::vector<std::string> &paths);

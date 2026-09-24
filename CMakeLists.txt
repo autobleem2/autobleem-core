@@ -69,6 +69,7 @@ add_library(ab_core STATIC
         src/code/core/model/ps_game.cpp
         src/code/core/model/session.h
         src/code/core/model/timing.h
+        src/code/core/services/app_manifest.cpp
         src/code/core/services/config.cpp
         src/code/core/services/environment.cpp
         src/code/core/services/environment_setup.cpp

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 //******************
@@ -22,9 +23,11 @@ public:
     // returns exit code, -1 if it could not run. This is the only fork/exec in the code base - everything
     // that starts a process goes through here (CreateProcess on Windows, where the child gets no console
     // window of its own). `whileWaiting`, when given, is called every 100 ms of the wait - the Windows
-    // product keeps its window's events pumped with it while an emulator runs in front of it.
+    // product keeps its window's events pumped with it while an emulator runs in front of it. `env` is set
+    // in the child's environment on top of the launcher's (an App's AB_APP_* and its ini's Env=).
     static int runAndWait(const std::string &exe, const std::vector<std::string> &args, const std::string &cwd = "",
-                          const std::function<void()> &whileWaiting = {});
+                          const std::function<void()> &whileWaiting = {},
+                          const std::vector<std::pair<std::string, std::string>> &env = {});
     // starts a program and does not wait: the Windows product's update, which the launcher hands the
     // installer and leaves. True when it started.
     static bool startDetached(const std::string &exe, const std::vector<std::string> &args);
