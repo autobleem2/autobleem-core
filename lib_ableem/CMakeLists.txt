@@ -116,7 +116,8 @@ add_library(ableem_lanserver STATIC
         src/lanserver/index_page.cpp
         src/lanserver/lan_server.cpp
         )
-target_include_directories(ableem_lanserver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(ableem_lanserver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann)
 target_link_libraries(ableem_lanserver PUBLIC ableem_engine Threads::Threads)
 if (WIN32)
     target_link_libraries(ableem_lanserver PUBLIC ws2_32)

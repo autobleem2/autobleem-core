@@ -403,6 +403,17 @@ TEST_CASE("LanServer serves the library: the list, a file, the status page, what
     CHECK(page.find("9.9") != string::npos);
     CHECK(httpGet(c.port, "/nothing").compare(0, 12, "HTTP/1.1 404") == 0);
 
+    // the same for a program: the games with their files, the problems, the folders, uploads off
+    const string status = httpGet(c.port, "/status.json");
+    CHECK(status.find("Content-Type: application/json") != string::npos);
+    CHECK(status.find("\"schema\": 1") != string::npos);
+    CHECK(status.find("\"name\": \"Living room\"") != string::npos);
+    CHECK(status.find("\"uploads\": false") != string::npos);
+    CHECK(status.find("\"id\": \"Two Discs\"") != string::npos);
+    CHECK(status.find("\"name\": \"Game (Disc 2).chd\"") != string::npos);
+    CHECK(status.find("\"path\": \"Broken/b.cue\"") != string::npos);
+    CHECK(status.find("\"free\":") != string::npos);
+
     const auto activity = server.activity();
     REQUIRE(activity.size() == 2);
     CHECK(activity[0].what == "read the list");

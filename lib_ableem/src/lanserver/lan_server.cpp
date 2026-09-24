@@ -8,6 +8,7 @@
 #include <ableem/engine/log.h>
 
 #include <chrono>
+#include <json.h>
 
 using namespace std;
 
@@ -68,6 +69,12 @@ bool LanServer::start(string &error) {
             r.body = LanLibrary::tsv(*library_.snapshot(), library_.checksums(), baseUrl, config_.name);
             PLOG_INFO << request.peer << " read the list";
             remember(request.peer, "read the list");
+            return r;
+        }
+        if (path == "/status.json") {
+            HttpServer::Response r;
+            r.contentType = "application/json; charset=utf-8";
+            r.body = statusJson();
             return r;
         }
         if (path == "/rescan") {
@@ -154,6 +161,49 @@ void LanServer::remember(const string &peer, const string &what) {
     activity_.push_back({time(nullptr), peer, what});
     while (activity_.size() > ActivityKept)
         activity_.pop_front();
+}
+
+//*******************************
+// LanServer::statusJson
+//*******************************
+// {"schema": 1, "name", "version", "hashing", "uploads", "scannedAt",
+//  "libraries": [{"name", "free"}], "games": [{"id", "title", "serial", "size", "discs", "files": [{"name",
+//  "size", "disc"}]}], "problems": [{"path", "what", "error"}]}
+string LanServer::statusJson() const {
+    using nlohmann::json;
+    const auto snap = library_.snapshot();
+    json j;
+    j["schema"] = 1;
+    j["name"] = config_.name;
+    j["version"] = config_.version;
+    j["hashing"] = hashing();
+    j["uploads"] = config_.uploads;
+    j["scannedAt"] = static_cast<long long>(snap->scannedAt);
+    json libraries = json::array();
+    for (const LanLibrary::Root &r : library_.effectiveRoots())
+        libraries.push_back({{"name", r.name}, {"free", LanLibrary::freeSpace(r.dir)}});
+    j["libraries"] = libraries;
+    json games = json::array();
+    for (const LanGame &g : snap->games) {
+        json files = json::array();
+        int discs = 0;
+        for (const LanFile &f : g.files) {
+            files.push_back({{"name", f.name}, {"size", f.size}, {"disc", f.disc}});
+            discs += f.disc > 0 ? 1 : 0;
+        }
+        games.push_back({{"id", g.id},
+                         {"title", g.title},
+                         {"serial", g.serial},
+                         {"size", g.size()},
+                         {"discs", discs},
+                         {"files", files}});
+    }
+    j["games"] = games;
+    json problems = json::array();
+    for (const LanProblem &p : snap->problems)
+        problems.push_back({{"path", p.path}, {"what", p.what}, {"error", p.error}});
+    j["problems"] = problems;
+    return j.dump(1);
 }
 
 vector<LanServer::Activity> LanServer::activity() const {
