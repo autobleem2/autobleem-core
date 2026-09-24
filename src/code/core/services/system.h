@@ -44,6 +44,9 @@ public:
     // returns the exit status (0 = success), -1 when the shell could not be started. What OnlineAssets and
     // UpdateService run their download commands with.
     static int runShellCommand(const std::string &commandLine);
+    // the same, stoppable: `cancelled` is asked every 100 ms and, once it answers true, the command and
+    // everything it started is killed and -2 returned (a download worker that must not hold up a power-off)
+    static int runShellCommand(const std::string &commandLine, const std::function<bool()> &cancelled);
     // the same, one entry per non-empty line of stdout, trimmed - for a command that lists things
     static std::vector<std::string> execUnixCommandLines(const std::string &cmd);
 
