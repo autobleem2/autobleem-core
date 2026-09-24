@@ -214,7 +214,8 @@ void LanServer::remember(const string &peer, const string &what) {
 // LanServer::upload
 //*******************************
 // GET    /upload/<game folder>/<file>                how much of it is staged ("0" for nothing)
-// PUT    /upload/<game folder>/<file>?offset=N       appends the body; N must be what is staged already
+// PUT    /upload/<game folder>/<file>?offset=N       appends the body at N: 0 starts the file over, else N
+//                                                     must be what is staged already
 // POST   /upload/<game folder>?commit                 the staged folder into the games, a rescan asked for
 // DELETE /upload/<game folder>                        the staged folder dropped
 // Each with the token in X-AB-Token; ?library=<name> picks a folder when there are several.
@@ -273,7 +274,7 @@ HttpServer::Response LanServer::upload(const HttpServer::Request &request) {
         return HttpServer::Response::text(405, "GET, PUT, POST ?commit or DELETE\n");
 
     const long long offset = atoll(param(request.query, "offset").c_str());
-    if (offset != current)
+    if (offset != 0 && offset != current)
         return HttpServer::Response::text(409, to_string(current) + "\n"); // what is there: go on from it
     if (request.contentLength > LanLibrary::freeSpace(root->dir))
         return HttpServer::Response::text(507, "not enough space for " + file + "\n");
