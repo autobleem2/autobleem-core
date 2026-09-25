@@ -99,6 +99,9 @@ struct Fixture {
         tmp.writeFile("Program Files/AutoBleem/Themes/ab2/theme.json", "{ab2}");
         tmp.writeFile("Program Files/AutoBleem/Themes/ab2/images/bg.png", "png");
         tmp.writeFile("Program Files/AutoBleem/Themes/default/theme.json", "{default}");
+        // the shipped scanner processor (proc_unzip)
+        tmp.writeFile("Program Files/AutoBleem/Processors/unzip/processor.ini", "[Processor]\nVersion=1.0.1\n");
+        tmp.writeFile("Program Files/AutoBleem/Processors/unzip/bin/windows-x86_64/unzip.exe", "exe 1.0.1");
         // the cover databases
         for (const char *r : {"J", "U", "P"}) {
             string name = string("covers") + r + ".db";
@@ -211,6 +214,9 @@ TEST_CASE("a fresh install: the data tree, the shipped themes and the three cove
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/README.txt").find("scanner processors") !=
           string::npos);
     CHECK(fx.tmp.readFile("Documents/AutoBleem/Extensions/README.txt").find("AutoBleem extensions") != string::npos);
+    // the shipped processor is in the data tree
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe") == "exe 1.0.1");
+    CHECK(fx.out.said("1 scanner processors"));
 }
 
 TEST_CASE("an update keeps the user's settings and themes, removes the scan fingerprints") {
@@ -222,6 +228,9 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     fx.tmp.writeFile("Documents/AutoBleem/Games/Tekken 3/Tekken 3.cue", "cue");
     fx.tmp.writeFile("Documents/AutoBleem/System/Databases/coversU.db", "sqlite coversU.db");
     fx.tmp.writeFile("Documents/AutoBleem/System/Processors/README.txt", "my notes");
+    // an older unzip, switched off by the user
+    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe", "exe 1.0.0");
+    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/sequence.ini", "[ps1]\n-unzip\n");
     fx.options.update = true;
     fx.options.coversJapan = fx.options.coversPal = false;
 
@@ -231,6 +240,9 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     string error;
     REQUIRE_MESSAGE(fx.run(error), error);
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/README.txt") == "my notes"); // never rewritten
+    // the update brings the new program; the user's order and on/off stay
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe") == "exe 1.0.1");
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/sequence.ini") == "[ps1]\n-unzip\n");
     {
         // the settings kept, the PS1 emulator every install lands on set (capitalised: the launcher's writer)
         const string cfg = fx.tmp.readFile("Documents/AutoBleem/System/config.ini");

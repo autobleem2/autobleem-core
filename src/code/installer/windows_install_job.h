@@ -26,7 +26,8 @@
 // WindowsInstallOptions
 //******************
 struct WindowsInstallOptions {
-    std::string programDir; // where the launcher was put: <programDir>/Themes are the shipped themes
+    std::string programDir; // where the launcher was put: <programDir>/Themes are the shipped themes,
+                            // <programDir>/Processors the shipped scanner processors
     std::string dataRoot;   // the data tree: Documents\AutoBleem
     std::string repoUrl = "https://autobleem.retromenele.pl";
     std::string buildbotUrl = "https://buildbot.libretro.com"; // libretro's: the fallbacks come from here

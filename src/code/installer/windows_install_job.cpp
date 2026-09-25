@@ -59,6 +59,19 @@ void copyTree(const string &from, const string &to) {
     }
 }
 
+// a shipped processor's folder over the data tree's copy: every file of the shipped one replaces its namesake
+// (an update brings the new program), anything else already there stays
+void copyTreeOver(const string &from, const string &to) {
+    DirEntry::createDirs(to);
+    for (const DirEntry &e : DirEntry::diru(from)) {
+        const string src = from + "/" + e.name, dst = to + "/" + e.name;
+        if (e.isDir)
+            copyTreeOver(src, dst);
+        else
+            DirEntry::copyFile(src, dst);
+    }
+}
+
 //******************
 // Run
 //******************
@@ -123,8 +136,20 @@ private:
                 }
             }
         }
+        // the shipped scanner processors (proc_unzip - docs/scanner-processors-plan.md in the launcher), on
+        // every install and update: their files replace the data tree's copies, so an update brings the new
+        // program; the user's order and on/off (System/Processors/sequence.ini) are never touched
+        const string processors = opt.programDir + "/Processors";
+        int processorsCopied = 0;
+        if (DirEntry::isDirectory(processors)) {
+            for (const DirEntry &p : DirEntry::diru_DirsOnly(processors)) {
+                copyTreeOver(processors + "/" + p.name, at("System/Processors/" + p.name));
+                processorsCopied++;
+            }
+        }
         say("  " + root + (info.installed ? " (AutoBleem has run here before - the settings are kept)" : "") +
-            (copied ? ", " + to_string(copied) + " themes copied in" : ""));
+            (copied ? ", " + to_string(copied) + " themes copied in" : "") +
+            (processorsCopied ? ", " + to_string(processorsCopied) + " scanner processors" : ""));
         if (opt.update) {
             // the launcher's scan then goes over everything once, as it does after a Pi update
             DirEntry::removeFile(at("System/games.fingerprint"));
