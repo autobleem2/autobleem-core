@@ -326,9 +326,9 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     fx.tmp.writeFile("stick/Autobleem/rc/stale.sh", "old");
     fx.tmp.writeFile("stick/Docs/old.txt", "old");
     fx.tmp.writeFile("stick/UpdateRoms/stale.dll", "old");
-    fx.tmp.writeFile("stick/Extensions/pscbios/bin/psc/old.so", "old");      // PSC-Bios, shipped: replaced
-    fx.tmp.writeFile("stick/Extensions/store/stale.txt", "old");             // the Store, shipped: replaced
-    fx.tmp.writeFile("stick/Extensions/mine/extension.ini", "[extension]");  // one the user put there stays
+    fx.tmp.writeFile("stick/Extensions/pscbios/bin/psc/old.so", "old");     // PSC-Bios, shipped: replaced
+    fx.tmp.writeFile("stick/Extensions/store/stale.txt", "old");            // the Store, shipped: replaced
+    fx.tmp.writeFile("stick/Extensions/mine/extension.ini", "[extension]"); // one the user put there stays
     fx.tmp.writeFile("stick/System/Extensions/store/sources.txt", "https://x/list.tsv\n"); // the Store's own
 
     Fixture next; // a newer package, the same stick
