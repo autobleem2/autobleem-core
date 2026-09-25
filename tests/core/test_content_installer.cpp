@@ -73,6 +73,35 @@ TEST_CASE("AppInstaller: another platform's package of the same version merges; 
     CHECK(s.tmp.readFile("Apps/t/pad.ini") == "the user's pad");
 }
 
+
+TEST_CASE("AppInstaller: an App of the old kind (Startup=, no Exec) is replaced whole - nothing of it kept") {
+    Stick s;
+    // RetroBoot's build of the same App: its own ini, script, binary, config and a save
+    s.tmp.makeSubDir("Apps/opentyrian/data");
+    s.tmp.writeFile("Apps/opentyrian/app.ini", "Title=Tyrian (OpenTyrian)\nStartup=run.sh\nKernel=false\n");
+    s.tmp.writeFile("Apps/opentyrian/run.sh", "sh launchot.sh\n");
+    s.tmp.writeFile("Apps/opentyrian/opentyrian", "old binary");
+    s.tmp.writeFile("Apps/opentyrian/tyrian.sav", "old save");
+    s.tmp.writeFile("Apps/opentyrian/pad.ini", "old pad");
+    s.tmp.writeFile("Apps/opentyrian/data/old", "old data");
+    zip(s.tmp.at("dl/opentyrian-psc-2.zip"), {{"Apps/opentyrian/app.ini", "Version=2\nExec=bin/{key}/opentyrian\n"},
+                                             {"Apps/opentyrian/bin/psc/opentyrian", "new binary"},
+                                             {"Apps/opentyrian/data/level1", "level"},
+                                             {"Apps/opentyrian/pad.ini", "package pad"}});
+    REQUIRE(AppInstaller::install(s.tmp.at("dl/opentyrian-psc-2.zip"), s.apps(), s.staging(), {"psc"}).ok);
+    CHECK(s.tmp.readFile("Apps/opentyrian/bin/psc/opentyrian") == "new binary");
+    CHECK(s.tmp.readFile("Apps/opentyrian/data/level1") == "level");
+    CHECK(s.tmp.readFile("Apps/opentyrian/pad.ini") == "package pad"); // the old one went with the rest
+    for (const char *old : {"run.sh", "opentyrian", "tyrian.sav", "data/old"})
+        CHECK_FALSE(DirEntry::exists(s.tmp.at(string("Apps/opentyrian/") + old)));
+
+    // an App of our kind over it again keeps what it always kept (the user's pad.ini, the same version)
+    s.tmp.writeFile("Apps/opentyrian/pad.ini", "the user's pad");
+    s.tmp.writeFile("Apps/opentyrian/opentyrian.cfg", "the user's settings");
+    REQUIRE(AppInstaller::install(s.tmp.at("dl/opentyrian-psc-2.zip"), s.apps(), s.staging(), {"psc"}).ok);
+    CHECK(s.tmp.readFile("Apps/opentyrian/pad.ini") == "the user's pad");
+    CHECK(s.tmp.readFile("Apps/opentyrian/opentyrian.cfg") == "the user's settings");
+}
 TEST_CASE("AppInstaller: an app.ini at the archive's root, or in its one folder; a tar.gz as well") {
     Stick s;
     zip(s.tmp.at("dl/flat-1.0.zip"), {{"app.ini", "Exec=bin/{key}/f\n"}, {"bin/psc/f", "f"}});

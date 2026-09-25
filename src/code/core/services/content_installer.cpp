@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <map>
 #include <set>
 
 using namespace std;
@@ -43,6 +44,14 @@ Kind kindOf(const string &path) {
 // folders an archiver leaves beside the content: macOS resource forks, hidden ones
 bool isJunk(const string &name) {
     return name.empty() || name[0] == '.' || name.compare(0, 2, "__") == 0;
+}
+
+// an app.ini of the old kind (RetroBoot's Apps): no Exec at all, a Startup= script is the program
+bool isOldKindApp(const map<string, string> &values) {
+    for (const auto &v : values)
+        if (v.first == "exec" || v.first.compare(0, 5, "exec.") == 0)
+            return false;
+    return true;
 }
 
 // every file under dir, recursively, as paths relative to it
@@ -212,7 +221,16 @@ InstallResult AppInstaller::install(const string &archive, const string &appsDir
         IniFile existing;
         existing.load(dest + sep + "app.ini");
         const string oldVersion = Strings::trim(existing.values["version"]);
-        if (oldVersion != Strings::trim(incoming.value("version"))) {
+        if (isOldKindApp(existing.values) && !incoming.legacyStartup) {
+            // an App of the old kind (the RetroBoot build of the same App) is replaced whole: nothing of it is
+            // kept - binaries, scripts, configs, saves - since none of it belongs to the new build (the owner,
+            // 2026-09-25: its run.sh and binaries were left beside ours)
+            if (!DirEntry::removeDirAndContents(dest)) {
+                r.error = "cannot remove the old " + dest;
+                return done(r);
+            }
+            PLOG_INFO << "App " << r.name << ": the old kind (Startup=) replaced whole by " << incoming.value("version");
+        } else if (oldVersion != Strings::trim(incoming.value("version"))) {
             // a new version: every platform's binaries go, so no two versions ever mix
             DirEntry::removeDirAndContents(dest + sep + "bin");
             DirEntry::removeDirAndContents(dest + sep + "lib");
