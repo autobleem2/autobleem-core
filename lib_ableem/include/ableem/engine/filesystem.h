@@ -75,6 +75,19 @@ public:
     // the size found by opening `path` and seeking to its end - what a block device answers with (its stat
     // size is 0), a regular file too; -1 when it cannot be opened. 64-bit on the 32-bit console.
     static long long sizeBySeeking(const std::string &path);
+    // the size of a file another process is still writing - a download's .part, for its progress bar.
+    // msvcrt's stat() (every Windows build) reads the size from the folder's directory entry, which NTFS
+    // brings up to date only when a handle to the file is opened or closed: for curl's .part it said 0
+    // until curl finished (the Store's bar went 0 -> 100%, 2026-09-25). Opening it is what gives the real
+    // size there; elsewhere stat() is live. Inline so an extension built against it needs no new export.
+    static long long liveFileSize(const std::string &path) {
+#ifdef _WIN32
+        const long long size = sizeBySeeking(path);
+        return size >= 0 ? size : fileSize(path);
+#else
+        return fileSize(path);
+#endif
+    }
     static bool filesAreIdentical(const std::string &a,
                                   const std::string &b); // same size and bytes; false if either is missing
     static bool createDir(const std::string &name);

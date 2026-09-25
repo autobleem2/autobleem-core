@@ -382,7 +382,8 @@ UpdateService::Status UpdateService::poll() {
             if (!status_.info.autobleemVersion.empty() && workerFile_ != status_.info.autobleem.name &&
                 !status_.info.retroarchVersion.empty())
                 done += status_.info.autobleem.size; // the first file is finished, the second is running
-            const long long partSize = workerOutPath_.empty() ? 0 : DirEntry::fileSize(workerOutPath_);
+            // (live: curl still has it open - on Windows a plain stat says 0 until it is done)
+            const long long partSize = workerOutPath_.empty() ? 0 : DirEntry::liveFileSize(workerOutPath_);
             if (partSize > 0)
                 done += static_cast<uint64_t>(partSize);
             status_.bytesDone = done;

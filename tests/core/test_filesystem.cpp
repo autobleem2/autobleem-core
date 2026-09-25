@@ -7,6 +7,7 @@
 
 #include <ableem/engine/filesystem.h>
 
+#include <fstream>
 #include <string>
 
 using ableem::DirEntry;
@@ -112,4 +113,22 @@ TEST_CASE("writeFileIfChanged writes a new or different file and leaves an ident
     CHECK(DirEntry::writeFileIfChanged(path, "") == DirEntry::WriteResult::Unchanged);
 
     CHECK(DirEntry::writeFileIfChanged(tmp.at("no/such/dir/x.ini"), "x") == DirEntry::WriteResult::Failed);
+}
+
+TEST_CASE("liveFileSize sees what a writer that still has the file open has flushed") {
+    TempDir tmp("fs_live_size");
+    const string path = tmp.at("download.part");
+    {
+        std::ofstream out(path, std::ios::binary);
+        const string chunk(64 * 1024, 'x');
+        out.write(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+        out.flush();
+        // (msvcrt's stat() says 0 here on NTFS - the directory entry lags until the handle closes)
+        CHECK(DirEntry::liveFileSize(path) == 64 * 1024);
+        out.write(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+        out.flush();
+        CHECK(DirEntry::liveFileSize(path) == 128 * 1024);
+    }
+    CHECK(DirEntry::liveFileSize(path) == 128 * 1024);
+    CHECK(DirEntry::liveFileSize(tmp.at("absent.part")) == -1);
 }

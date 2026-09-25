@@ -28,6 +28,7 @@ ab_add_test(test_extension_catalog core/test_extension_catalog.cpp)
 if (AB_CORE_UI)
     # the runtime is ab_classic's (it knows Extension), tested with in-process fake plugins
     ab_add_test(test_extension_runtime classic/test_extension_runtime.cpp LIBS ab_classic)
+    ab_add_test(test_hold_repeat classic/test_hold_repeat.cpp)
 endif()
 ab_add_test(test_game_catalog core/test_game_catalog.cpp)
 ab_add_test(test_game_database core/test_game_database.cpp)
