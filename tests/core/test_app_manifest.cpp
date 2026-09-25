@@ -158,6 +158,13 @@ TEST_CASE("AppManifest: an App of the old kind starts through its Startup script
     plugin.allowStartup = false;
     CHECK_FALSE(AppManifest::load(tmp.path(), "app.ini", {"psc"}, plugin).runnable());
 
+    // a platform that starts programs directly (Windows) has no sh to run the script with
+    Env::setDirectLaunch(true);
+    AppManifest direct = AppManifest::load(tmp.path(), "app.ini", {"win"}, appOptions());
+    Env::setDirectLaunch(false);
+    CHECK_FALSE(direct.runnable());
+    CHECK(direct.problem.find("shell") != string::npos);
+
     // a Startup naming a missing script
     TempDir broken("manifest");
     makeApp(broken, "[app]\nStartup=run.sh\n", {});

@@ -749,13 +749,11 @@ TEST_CASE("direct mode: RetroArch itself with its config, the core and full scre
     }
 }
 
-TEST_CASE("direct mode: an App runs from its own folder") {
+TEST_CASE("direct mode: an App of the old kind (a Startup= script only) is not run - there is no sh") {
     DirectLaunching lib;
     PsGamePtr app = lib.foreignGame(true);
     lib.service->launch(app, EmuMode::Launcher, -1);
-    const FakeProcessRunner::Call &call = lib.runner.only();
-    CHECK(call.exe == "/media/Apps/SomeApp/run.sh");
-    CHECK(call.cwd == "/media/Apps/SomeApp");
+    CHECK(lib.runner.calls.empty());
 }
 
 TEST_CASE("direct mode: a multi-platform App is its program itself, with its Args split and its Lib on PATH") {
@@ -769,7 +767,10 @@ TEST_CASE("direct mode: a multi-platform App is its program itself, with its Arg
     CHECK(call.exe == lib.tmp.at("Apps/Tyrian/bin/" + key + "/tyrian"));
     CHECK(call.args == vector<string>{"--data", "my data", "-f"});
     CHECK(call.cwd == lib.tmp.at("Apps/Tyrian"));
-    CHECK(envValue(call, "PATH").find(lib.tmp.at("Apps/Tyrian/lib/" + key)) == 0);
+    const string path = envValue(call, "PATH");
+    CHECK(path.find(lib.tmp.at("Apps/Tyrian/lib/" + key)) == 0);
+    // then the launcher's own folder, whose SDL2.dll the Apps share
+    CHECK(path.find(";" + Env::executableDir()) != string::npos);
     CHECK(envValue(call, "AB_APP_KEY") == key);
 }
 

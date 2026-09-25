@@ -3,6 +3,7 @@
 //
 #include "app_manifest.h"
 #include "../main.h"
+#include "environment.h"
 
 #include <ableem/engine/log.h>
 
@@ -152,7 +153,10 @@ AppManifest AppManifest::resolve(const string &folder, const map<string, string>
 
     if (!namesAProgram(values, options.programKey)) {
         string startup = m.value("startup");
-        if (options.allowStartup && !startup.empty()) {
+        if (options.allowStartup && !startup.empty() && Env::directLaunch()) {
+            // a Startup= script needs sh, and a platform that starts its programs directly (Windows) has none
+            m.problem = "its Startup script " + startup + " needs a shell, which this platform does not have";
+        } else if (options.allowStartup && !startup.empty()) {
             string script = under(folder, startup);
             if (isFile(script)) {
                 m.program = script;

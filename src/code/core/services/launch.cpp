@@ -253,15 +253,17 @@ void LaunchService::launchRetroArchMenu() {
 // Through a script (the console, the appliances): the App's own Startup= script when it has one, else the
 // generic rc/app_run.sh - either sources rc/app_env.sh and execs $AB_APP_EXEC, which is what the ini names
 // for this platform. Direct (Windows, no sh): the resolved program itself, with its Args=. Both get the
-// AB_APP_* variables and the ini's Env=. An App of the old kind (Startup= only) is run as it always was.
+// AB_APP_* variables and the ini's Env=. An App of the old kind (Startup= only) is run as it always was where
+// there is a shell; direct, it has nothing to run (AppManifest says so, and the Apps set does not list it).
 LaunchPlan LaunchService::planApp(const PsGame &game) {
     LaunchPlan plan;
     AppManifest m = AppManifest::load(game.base, "app.ini", Env::appPlatformKeys());
+    if (Env::directLaunch() && !m.runnable()) {
+        PLOG_WARNING << "App " << game.base << " cannot run here: " << m.problem;
+        return plan;
+    }
     if (!m.runnable() || m.legacyStartup) {
         plan.exe = game.base + sep + game.startup;
-        if (Env::directLaunch()) {
-            plan.cwd = game.base;
-        }
         return plan;
     }
 
@@ -270,10 +272,14 @@ LaunchPlan LaunchService::planApp(const PsGame &game) {
     if (Env::directLaunch()) {
         plan.exe = m.program;
         plan.args = AppManifest::splitArgs(m.args);
-        if (!m.libDir.empty()) {
-            const char *path = getenv("PATH");
-            plan.env.emplace_back("PATH", m.libDir + (path != nullptr && *path ? string(";") + path : ""));
+        // the App's own libraries first, then the launcher's folder: its SDL2.dll is the one every App shares
+        // (autobleem-main docs/decisions.md, "Third-party App ports"), as the launcher's SDL2 is on the console
+        string path = m.libDir;
+        for (const string &dir : {Env::executableDir(), string(getenv("PATH") != nullptr ? getenv("PATH") : "")}) {
+            if (!dir.empty())
+                path += (path.empty() ? "" : ";") + dir;
         }
+        plan.env.emplace_back("PATH", path);
         return plan;
     }
     string own = m.value("startup");
@@ -792,6 +798,9 @@ void LaunchService::launchApp(PsGame &game) {
         PLOG_INFO << "FOREIGN MODE";
     }
 
-    runner_.run(planApp(game));
+    LaunchPlan plan = planApp(game);
+    if (plan.exe.empty())
+        return;
+    runner_.run(plan);
     usleep(3 * 1000);
 }
