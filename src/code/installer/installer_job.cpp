@@ -121,6 +121,13 @@ private:
                 launcher = true;
             if (e.isDir && e.name.rfind("Themes/", 0) == 0 && e.name.find('/', 7) == string::npos)
                 shippedThemes.push_back(e.name.substr(7));
+            // the extensions the package ships (PSC-Bios, the Store): an update replaces those folders whole
+            const size_t slash = e.name.rfind("Extensions/", 0) == 0 ? e.name.find('/', 11) : string::npos;
+            if (slash != string::npos && slash > 11) {
+                const string name = e.name.substr(11, slash - 11);
+                if (find(shippedExtensions.begin(), shippedExtensions.end(), name) == shippedExtensions.end())
+                    shippedExtensions.push_back(name);
+            }
         }
         if (!launcher) {
             error = opt.packageFile + " is not an AutoBleem package (no " + string(LauncherBinary) + ")";
@@ -174,6 +181,11 @@ private:
                 if (DirEntry::isDirectory(at(dir)))
                     DirEntry::removeDirAndContents(at(dir));
             }
+            // what the package ships of Extensions/ goes first, so nothing of the old version is left in it; an
+            // extension the user put there themselves (one the package has not) stays
+            for (const string &extension : shippedExtensions)
+                if (DirEntry::isDirectory(at("Extensions/" + extension)))
+                    DirEntry::removeDirAndContents(at("Extensions/" + extension));
             for (const string &theme : shippedThemes)
                 if (DirEntry::isDirectory(at("Themes/" + theme)))
                     DirEntry::removeDirAndContents(at("Themes/" + theme));
@@ -634,6 +646,7 @@ private:
     ableem::UpdateFile channelUpdateRoms; // UpdateRoms of the channel's release, when it has one
     string root;
     vector<string> shippedThemes;
+    vector<string> shippedExtensions; // the package's Extensions/<name>/ folders
     string savedConfig;
     string themeCfg;
     bool newBinary = false;

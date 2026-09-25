@@ -102,6 +102,9 @@ struct Fixture {
         // the shipped scanner processor (proc_unzip)
         tmp.writeFile("Program Files/AutoBleem/Processors/unzip/processor.ini", "[Processor]\nVersion=1.0.1\n");
         tmp.writeFile("Program Files/AutoBleem/Processors/unzip/bin/windows-x86_64/unzip.exe", "exe 1.0.1");
+        // the shipped extension (the Store)
+        tmp.writeFile("Program Files/AutoBleem/Extensions/store/extension.ini", "[extension]\nVersion=1.0.1\n");
+        tmp.writeFile("Program Files/AutoBleem/Extensions/store/bin/win/store.dll", "dll 1.0.1");
         // the cover databases
         for (const char *r : {"J", "U", "P"}) {
             string name = string("covers") + r + ".db";
@@ -217,6 +220,9 @@ TEST_CASE("a fresh install: the data tree, the shipped themes and the three cove
     // the shipped processor is in the data tree
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe") == "exe 1.0.1");
     CHECK(fx.out.said("1 scanner processors"));
+    // and the shipped extension in the data tree's Extensions/
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/Extensions/store/bin/win/store.dll") == "dll 1.0.1");
+    CHECK(fx.out.said("1 extensions"));
 }
 
 TEST_CASE("an update keeps the user's settings and themes, removes the scan fingerprints") {
@@ -231,6 +237,12 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     // an older unzip, switched off by the user
     fx.tmp.writeFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe", "exe 1.0.0");
     fx.tmp.writeFile("Documents/AutoBleem/System/Processors/sequence.ini", "[ps1]\n-unzip\n");
+    // an older Store with a file the new one has not, the Store's own state, one of the user's own extensions
+    fx.tmp.writeFile("Documents/AutoBleem/Extensions/store/bin/win/store.dll", "dll 1.0.0");
+    fx.tmp.writeFile("Documents/AutoBleem/Extensions/store/stale.txt", "old");
+    fx.tmp.writeFile("Documents/AutoBleem/System/Extensions/store/sources.txt", "https://x/list.tsv\n");
+    fx.tmp.writeFile("Documents/AutoBleem/System/Extensions/disabled.txt", "hello\n");
+    fx.tmp.writeFile("Documents/AutoBleem/Extensions/mine/extension.ini", "[extension]");
     fx.options.update = true;
     fx.options.coversJapan = fx.options.coversPal = false;
 
@@ -243,6 +255,12 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     // the update brings the new program; the user's order and on/off stay
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe") == "exe 1.0.1");
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/sequence.ini") == "[ps1]\n-unzip\n");
+    // the Store replaced whole; its state, the crash guard's list and the user's extension kept
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/Extensions/store/bin/win/store.dll") == "dll 1.0.1");
+    CHECK_FALSE(fx.has("Extensions/store/stale.txt"));
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Extensions/store/sources.txt") == "https://x/list.tsv\n");
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Extensions/disabled.txt") == "hello\n");
+    CHECK(fx.has("Extensions/mine/extension.ini"));
     {
         // the settings kept, the PS1 emulator every install lands on set (capitalised: the launcher's writer)
         const string cfg = fx.tmp.readFile("Documents/AutoBleem/System/config.ini");

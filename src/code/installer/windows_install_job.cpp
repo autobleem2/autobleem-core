@@ -147,9 +147,23 @@ private:
                 processorsCopied++;
             }
         }
+        // the shipped extensions (the Store - the owner, 2026-09-25: every installer brings it), on every install
+        // and update, each folder replaced whole so nothing of an older version is left; what the extension
+        // keeps of its own (System/Extensions/<name>/, disabled.txt) and an extension the user put there stay
+        const string extensions = opt.programDir + "/Extensions";
+        int extensionsCopied = 0;
+        if (DirEntry::isDirectory(extensions)) {
+            for (const DirEntry &x : DirEntry::diru_DirsOnly(extensions)) {
+                if (DirEntry::isDirectory(at("Extensions/" + x.name)))
+                    DirEntry::removeDirAndContents(at("Extensions/" + x.name));
+                copyTree(extensions + "/" + x.name, at("Extensions/" + x.name));
+                extensionsCopied++;
+            }
+        }
         say("  " + root + (info.installed ? " (AutoBleem has run here before - the settings are kept)" : "") +
             (copied ? ", " + to_string(copied) + " themes copied in" : "") +
-            (processorsCopied ? ", " + to_string(processorsCopied) + " scanner processors" : ""));
+            (processorsCopied ? ", " + to_string(processorsCopied) + " scanner processors" : "") +
+            (extensionsCopied ? ", " + to_string(extensionsCopied) + " extensions" : ""));
         if (opt.update) {
             // the launcher's scan then goes over everything once, as it does after a Pi update
             DirEntry::removeFile(at("System/games.fingerprint"));

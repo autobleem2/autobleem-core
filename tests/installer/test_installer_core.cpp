@@ -90,6 +90,9 @@ string makePackage(TempDir &tmp, const string &version) {
     b.dir("./Apps").file("./Apps/abflashkit/abflashkit", "ELF", 0755).file("./Apps/abflashkit/app.ini", "Title=Kit\n");
     b.dir("./Extensions").file("./Extensions/pscbios/bin/psc/pscbios.so", "ELF", 0755);
     b.file("./Extensions/pscbios/extension.ini", "[extension]\nName=PSC-Bios\n");
+    // the Store, which every package ships since 2026-09-25
+    b.file("./Extensions/store/extension.ini", "[extension]\nName=AutoBleem Store\nVersion=" + version + "\n");
+    b.file("./Extensions/store/bin/psc/store.so", "ELF store", 0755);
     b.dir("./Themes")
         .dir("./Themes/ab2")
         .file("./Themes/ab2/theme.json", "{}")
@@ -324,7 +327,9 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     fx.tmp.writeFile("stick/Docs/old.txt", "old");
     fx.tmp.writeFile("stick/UpdateRoms/stale.dll", "old");
     fx.tmp.writeFile("stick/Extensions/pscbios/bin/psc/old.so", "old");      // PSC-Bios, shipped: replaced
-    fx.tmp.writeFile("stick/Extensions/store/extension.ini", "[extension]"); // one the user put there stays
+    fx.tmp.writeFile("stick/Extensions/store/stale.txt", "old");             // the Store, shipped: replaced
+    fx.tmp.writeFile("stick/Extensions/mine/extension.ini", "[extension]");  // one the user put there stays
+    fx.tmp.writeFile("stick/System/Extensions/store/sources.txt", "https://x/list.tsv\n"); // the Store's own
 
     Fixture next; // a newer package, the same stick
     next.options = fx.options;
@@ -354,15 +359,19 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     CHECK(fx.tmp.readFile("stick/System/Processors/README.txt").find("scanner processors") != string::npos);
     // and the extensions', next to the one the user put there (kept)
     CHECK(fx.tmp.readFile("stick/Extensions/README.txt").find("AutoBleem extensions") != string::npos);
-    CHECK(fx.has("Extensions/store/extension.ini"));
     CHECK_FALSE(fx.has("Themes/ab2/stale.png"));
     CHECK_FALSE(fx.has("Autobleem/bin/autobleem/old-file.txt"));
     CHECK_FALSE(fx.has("Autobleem/rc/stale.sh"));
     CHECK_FALSE(fx.has("Docs/old.txt"));
     CHECK_FALSE(fx.has("UpdateRoms/stale.dll"));
     CHECK_FALSE(fx.has("Extensions/pscbios/bin/psc/old.so"));
-    CHECK(fx.has("Extensions/store/extension.ini"));
     CHECK(fx.has("Extensions/pscbios/bin/psc/pscbios.so"));
+    // the Store: the package's version, nothing of the old one; its state and the user's own extension kept
+    CHECK_FALSE(fx.has("Extensions/store/stale.txt"));
+    CHECK(fx.tmp.readFile("stick/Extensions/store/extension.ini").find("Version=v2.0.1") != string::npos);
+    CHECK(fx.has("Extensions/store/bin/psc/store.so"));
+    CHECK(fx.has("Extensions/mine/extension.ini"));
+    CHECK(fx.tmp.readFile("stick/System/Extensions/store/sources.txt") == "https://x/list.tsv\n");
     CHECK(fx.has("UpdateRoms/UpdateRoms.exe"));
     CHECK(next.out.said("config.ini kept as it was"));
     CHECK(next.out.said("Updated."));
