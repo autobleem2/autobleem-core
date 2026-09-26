@@ -79,5 +79,8 @@ InfoSection GuiHardwareInfo::displayAndInput() {
         for (size_t i = 0; i < pads.size(); i++)
             add(_("Controller") + " " + to_string(i + 1), pads[i].name);
     }
+    // the gamecontrollerdb.txt the pads were mapped from (Env::padMappingFiles() - the first that loaded)
+    string mappings = gui->input().currentMappingPath();
+    add(_("Controller mappings"), mappings.empty() ? _("SDL's built-in") : mappings);
     return section;
 }

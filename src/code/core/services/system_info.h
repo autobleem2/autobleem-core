@@ -1,7 +1,7 @@
 //
-// SystemInfoService: what the Hardware Information screen shows where there is no PSC-Bios app to run (a
-// Raspberry Pi, a PC) - the machine and its OS, the CPU, memory and temperature, every volume with its free
-// space, the network addresses, and what AutoBleem itself is running with.
+// SystemInfoService: what the Hardware Information screen shows, on every platform - the machine and its OS
+// and time zone, the CPU, memory and temperature, every volume with its free space, the Wi-Fi/Ethernet/
+// Bluetooth adapters and the network addresses, and what AutoBleem itself is running with.
 //
 #pragma once
 
@@ -35,10 +35,10 @@ public:
     // every section, in display order: System, Hardware, Storage, Network, AutoBleem
     std::vector<InfoSection> collect() const;
 
-    InfoSection system() const;   // OS, kernel, architecture, hostname, uptime, load
+    InfoSection system() const;   // OS, kernel, architecture, hostname, uptime, load, time zone
     InfoSection hardware() const; // model, CPU, cores, clock, temperature, memory
     InfoSection storage() const;  // every real filesystem mounted, and the AutoBleem data root
-    InfoSection network() const;  // each interface's IPv4 address
+    InfoSection network() const;  // the Wi-Fi/Ethernet/Bluetooth adapters and whether they are up, each IPv4 address
     InfoSection software() const; // the build, the platform, the data root, RetroArch
 
     //*******************************
@@ -78,6 +78,36 @@ public:
     static std::string formatDuration(uint64_t seconds);
     // "1.5 GB free of 14.9 GB (10%)"
     static std::string formatSpace(uint64_t freeBytes, uint64_t totalBytes);
+
+    //*******************************
+    // time zone
+    //*******************************
+    // "Europe/Warsaw (UTC+02:00)" - the zone's name when the system has one, and the offset now; "" when
+    // neither can be told
+    static std::string timeZoneText();
+    // the zone a /etc/localtime symlink points at: "/usr/share/zoneinfo/Europe/Dublin" -> "Europe/Dublin",
+    // "../usr/share/zoneinfo/UTC" -> "UTC"; "" when the target is not under a zoneinfo folder
+    static std::string zoneFromLocaltimeLink(const std::string &target);
+    // 7200 -> "UTC+02:00", -12600 -> "UTC-03:30", 0 -> "UTC"
+    static std::string formatUtcOffset(long seconds);
+
+    //*******************************
+    // network adapters
+    //*******************************
+    enum class AdapterKind { Wifi, Ethernet, Bluetooth };
+    struct Adapter {
+        std::string name; // "wlan0", "enp3s0", "hci0"
+        AdapterKind kind = AdapterKind::Ethernet;
+        bool up = false;
+        bool upKnown = true; // false: present, whether it is up could not be told
+    };
+    // the physical adapters under /sys/class/net (a Wi-Fi one has wireless/ or phy80211, an Ethernet one is
+    // type 1 with a device/ - bridges, tunnels, veths and lo are left out; up = operstate "up", or "unknown"
+    // with carrier 1) and /sys/class/bluetooth (hciN - up is not in sysfs, upKnown false), sorted by name
+    // within each kind. The folders are parameters so the tests can hand in a tree of their own.
+    static std::vector<Adapter> readAdapters(const std::string &sysClassNet, const std::string &sysClassBluetooth);
+    // the value of an adapter row: "wlan0 (up), wlan1 (down)"; "hci0" when up is not known; "None"
+    static std::string adapterSummary(const std::vector<Adapter> &adapters, AdapterKind kind);
 
     // the free and total bytes of the filesystem a path is on; false when it cannot be told
     static bool spaceOf(const std::string &path, uint64_t &freeBytes, uint64_t &totalBytes);
