@@ -90,7 +90,7 @@ ExtensionRuntime::Loaded *ExtensionRuntime::load(ExtensionInfo &extension, Refus
     if (stamp == nullptr || strcmp(stamp, AB_SDK_STAMP) != 0) {
         PLOG_ERROR << "[" << extension.name << "] built for " << (stamp ? stamp : "(nothing)")
                    << ", this AutoBleem is " << AB_SDK_STAMP << " - not loaded";
-        extension.loadProblem = "built for a different AutoBleem";
+        extension.loadProblem = ExtensionInfo::WrongAbiProblem;
         why = Refusal::WrongAbi;
         return nullptr;
     }

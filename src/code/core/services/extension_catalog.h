@@ -19,6 +19,15 @@
 enum class ExtensionNetwork { None, Optional, Required };
 
 //******************
+// ExtensionProblem
+//******************
+// why an installed extension cannot run here (ExtensionInfo::problem()), in the order the user can do
+// something about it: switched off (by the user or the crash guard) - it can be switched on in the
+// Extensions list; no library for this machine; built for a different AutoBleem (the ABI - known once the
+// runtime tried to load it); any other load failure
+enum class ExtensionProblem { None, Disabled, NotBuiltForThisSystem, WrongAbi, LoadFailed };
+
+//******************
 // ExtensionInfo
 //******************
 struct ExtensionInfo {
@@ -44,6 +53,11 @@ struct ExtensionInfo {
     bool providesEntry(const std::string &entry) const;
     // it can be offered: built for this machine, not disabled, and not refused by the runtime already
     bool runnable() const { return builtForThisSystem() && !disabled && loadProblem.empty(); }
+    // why it is not runnable(); None when it is
+    ExtensionProblem problem() const;
+
+    // the loadProblem the runtime records for a plugin of another AB_SDK_STAMP
+    static const char *const WrongAbiProblem;
 };
 
 //******************
@@ -67,6 +81,10 @@ public:
     // such as Network & Controllers opens, and whether it is shown at all; nullptr when there is none.
     // Answers from the last scan()
     ExtensionInfo *findProvider(const std::string &entry);
+    // when no extension can provide the entry but one is installed that would, the first of those (title
+    // order) - its problem() says why; nullptr when a runnable provider exists or none provides it at all.
+    // What keeps an item like Network & Controllers on the menu, greyed, pointing at the Extensions list
+    ExtensionInfo *findUnavailableProvider(const std::string &entry);
 
     // the user's switch (and the crash guard's): System/Extensions/disabled.txt, one name per line
     void setDisabled(const std::string &name, bool disabled);

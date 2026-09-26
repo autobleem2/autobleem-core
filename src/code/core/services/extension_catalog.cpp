@@ -146,6 +146,35 @@ ExtensionInfo *ExtensionCatalog::findProvider(const string &entry) {
 }
 
 //*******************************
+// ExtensionCatalog::findUnavailableProvider
+//*******************************
+ExtensionInfo *ExtensionCatalog::findUnavailableProvider(const string &entry) {
+    if (findProvider(entry) != nullptr)
+        return nullptr;
+    for (ExtensionInfo &e : extensions_)
+        if (e.providesEntry(entry))
+            return &e;
+    return nullptr;
+}
+
+//*******************************
+// ExtensionInfo::problem
+//*******************************
+const char *const ExtensionInfo::WrongAbiProblem = "built for a different AutoBleem";
+
+ExtensionProblem ExtensionInfo::problem() const {
+    if (disabled)
+        return ExtensionProblem::Disabled;
+    if (!builtForThisSystem())
+        return ExtensionProblem::NotBuiltForThisSystem;
+    if (loadProblem == WrongAbiProblem)
+        return ExtensionProblem::WrongAbi;
+    if (!loadProblem.empty())
+        return ExtensionProblem::LoadFailed;
+    return ExtensionProblem::None;
+}
+
+//*******************************
 // ExtensionCatalog::readDisabled / isDisabled / setDisabled
 //*******************************
 vector<string> ExtensionCatalog::readDisabled() const {

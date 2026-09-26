@@ -212,3 +212,31 @@ TEST_CASE("ExtensionCatalog::findProvider: the first runnable extension that pro
     CHECK(catalog.findProvider("network") == nullptr);
     CHECK(catalog.findProvider("pads") == nullptr);
 }
+
+TEST_CASE("ExtensionCatalog::findUnavailableProvider: a provider that cannot run, and why") {
+    TempDir tmp("extensions");
+    extension(tmp, "anet", "[extension]\nName=A net\nPlugin=bin/{key}/anet\nProvides=network\n", {"psc"});
+    extension(tmp, "wnet", "[extension]\nName=B win net\nPlugin=bin/{key}/wnet\nProvides=network\n", {"win"});
+    ExtensionCatalog catalog = catalogIn(tmp);
+    catalog.scan();
+
+    // a runnable provider: nothing unavailable to point at
+    CHECK(catalog.findUnavailableProvider("network") == nullptr);
+    CHECK(catalog.find("anet")->problem() == ExtensionProblem::None);
+    // nobody provides it at all
+    CHECK(catalog.findUnavailableProvider("store") == nullptr);
+
+    // the only runnable one switched off: it, since it comes first by title, and why
+    catalog.setDisabled("anet", true);
+    REQUIRE(catalog.findUnavailableProvider("network") != nullptr);
+    CHECK(catalog.findUnavailableProvider("network")->name == "anet");
+    CHECK(catalog.findUnavailableProvider("network")->problem() == ExtensionProblem::Disabled);
+    CHECK(catalog.find("wnet")->problem() == ExtensionProblem::NotBuiltForThisSystem);
+
+    // on again, but refused by the runtime: another AutoBleem, or a load that failed
+    catalog.setDisabled("anet", false);
+    catalog.find("anet")->loadProblem = ExtensionInfo::WrongAbiProblem;
+    CHECK(catalog.findUnavailableProvider("network")->problem() == ExtensionProblem::WrongAbi);
+    catalog.find("anet")->loadProblem = "load failed";
+    CHECK(catalog.findUnavailableProvider("network")->problem() == ExtensionProblem::LoadFailed);
+}
