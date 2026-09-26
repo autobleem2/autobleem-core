@@ -84,8 +84,7 @@ Downloader::Result Downloader::fetch(const DownloadRequest &request, string &err
             return Result::WrongChecksum;
         }
     }
-    DirEntry::removeFile(request.target);
-    if (!DirEntry::renameFile(part, request.target)) {
+    if (!DirEntry::replaceFile(part, request.target)) {
         error = "cannot rename " + part;
         return Result::Failed;
     }
