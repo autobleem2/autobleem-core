@@ -27,8 +27,9 @@ class AppBase;
 //
 // A macro and a string literal on purpose: an inline function here would, on Linux, bind to the launcher's
 // own copy when the plugin is loaded, and the plugin would report the launcher's stamp as its own.
-// 2: ableem::Event gained mods and code; 3: GuiKeyboard rebuilt, Input::keyboardAsPad()/rawKeyboard() (2026-09-24)
-#define AB_SDK_ABI 3
+// 2: ableem::Event gained mods and code; 3: GuiKeyboard rebuilt, Input::keyboardAsPad()/rawKeyboard() (2026-09-24);
+// 4: Extension::runEntry(), extension.ini's Provides= (2026-09-26)
+#define AB_SDK_ABI 4
 
 #define AB_SDK_STR2(x) #x
 #define AB_SDK_STR(x) AB_SDK_STR2(x)
@@ -108,6 +109,13 @@ public:
     virtual void resume() {}
     // the launcher is leaving (power off, RetroArch, an update): join the threads, save what must survive
     virtual void shutdown() {}
+    // a launcher item that opens the extension at one of its pages: `entry` is one of the names its
+    // extension.ini lists in Provides= (e.g. "network" - the System menu's Network & Controllers). Show that
+    // page like run() shows the first one and return true; false = not handled (the launcher says so)
+    virtual bool runEntry(const std::string &entry) {
+        (void)entry;
+        return false;
+    }
 };
 
 #ifdef _WIN32

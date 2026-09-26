@@ -31,12 +31,19 @@ struct ExtensionInfo {
     std::string icon;        // Icon=, absolute; "" when there is none or the file is missing
     ExtensionNetwork network = ExtensionNetwork::None;
     bool background = false; // Background=true: loaded at start-up, polled every frame
+    // Provides=: the entries the launcher may open it at (Extension::runEntry), lower-cased - a list
+    // separated by commas, semicolons or spaces, e.g. "network"
+    std::vector<std::string> provides;
     AppManifest manifest;    // Plugin= resolved for this machine's platform keys
     bool disabled = false;   // System/Extensions/disabled.txt names it
     std::string loadProblem; // set by the runtime when loading failed or the ABI did not match
 
     // there is a library for this machine
     bool builtForThisSystem() const { return manifest.runnable(); }
+    // Provides= names the entry (case-insensitive)
+    bool providesEntry(const std::string &entry) const;
+    // it can be offered: built for this machine, not disabled, and not refused by the runtime already
+    bool runnable() const { return builtForThisSystem() && !disabled && loadProblem.empty(); }
 };
 
 //******************
@@ -56,6 +63,10 @@ public:
     const std::vector<ExtensionInfo> &extensions() const { return extensions_; }
     std::vector<ExtensionInfo> &extensions() { return extensions_; }
     ExtensionInfo *find(const std::string &name);
+    // the first runnable extension (in title order) whose Provides= names the entry - what a launcher item
+    // such as Network & Controllers opens, and whether it is shown at all; nullptr when there is none.
+    // Answers from the last scan()
+    ExtensionInfo *findProvider(const std::string &entry);
 
     // the user's switch (and the crash guard's): System/Extensions/disabled.txt, one name per line
     void setDisabled(const std::string &name, bool disabled);
@@ -71,6 +82,8 @@ public:
     std::string takeCrashed();
 
     static ExtensionNetwork parseNetwork(const std::string &value);
+    // Provides=: "network, wifi" / "network;wifi" / "network wifi" -> {"network", "wifi"}, lower-cased
+    static std::vector<std::string> parseProvides(const std::string &value);
     // what the installers do for a data tree: Extensions/ made, with a README.txt saying what goes there -
     // written only when it is not there (the quiet stick). False when the folder could not be made.
     static bool ensureFolder(const std::string &extensionsDir);

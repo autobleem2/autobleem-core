@@ -56,9 +56,20 @@ struct FakeExtension : Extension {
     ExtensionHost &host;
 };
 
+// one that knows the "network" entry, like PSC-Bios
+struct EntryExtension : FakeExtension {
+    using FakeExtension::FakeExtension;
+    bool runEntry(const string &entry) override {
+        calls.push_back(host.name() + ":entry " + entry +
+                        (DirEntry::exists(currentCatalog->activeFile()) ? "(guarded)" : "(unguarded)"));
+        return entry == "network";
+    }
+};
+
 struct ThrowingExtension : FakeExtension {
     using FakeExtension::FakeExtension;
     void run() override { throw runtime_error("boom"); }
+    bool runEntry(const string &) override { throw runtime_error("boom"); }
 };
 
 // the plugins' two C functions, as the fake loader hands them out
@@ -66,6 +77,7 @@ const char *goodAbi() { return AB_SDK_STAMP; }
 const char *otherAbi() { return "sdk=0;cxx=gcc-6;cxx11abi=1;target=psc"; }
 Extension *createFake(ExtensionHost &host) { return new FakeExtension(host); }
 Extension *createThrowing(ExtensionHost &host) { return new ThrowingExtension(host); }
+Extension *createEntry(ExtensionHost &host) { return new EntryExtension(host); }
 Extension *createNothing(ExtensionHost &) { throw runtime_error("no"); }
 
 struct FakePlugin {
@@ -249,6 +261,42 @@ TEST_CASE("ExtensionRuntime: a disabled background extension is not started") {
     rt->startBackground();
     CHECK_FALSE(rt->isLoaded("store"));
     CHECK(t.loader.opened.empty());
+}
+
+TEST_CASE("ExtensionRuntime::runEntry opens an extension at a Provides= entry, inside the crash guard") {
+    Tree t;
+    t.add("pscbios", "Provides=network\n", {goodAbi, createEntry});
+    t.add("hello", "Provides=network\n", {goodAbi, createFake}); // an extension without runEntry()
+    t.add("thrower", "Provides=network\n", {goodAbi, createThrowing});
+    auto rt = t.runtime();
+
+    CHECK(rt->runEntry("pscbios", "network", true) == ExtensionRuntime::Refusal::None);
+    CHECK(calls == vector<string>{"pscbios:create", "pscbios:entry network(guarded)"});
+    CHECK_FALSE(DirEntry::exists(t.catalog.activeFile()));
+    CHECK(rt->runEntry("pscbios", "store", true) == ExtensionRuntime::Refusal::NotHandled);
+    CHECK(rt->runEntry("hello", "network", true) == ExtensionRuntime::Refusal::NotHandled); // SDK default
+    CHECK(rt->runEntry("nothing", "network", true) == ExtensionRuntime::Refusal::NotFound);
+
+    CHECK(rt->runEntry("thrower", "network", true) == ExtensionRuntime::Refusal::Failed);
+    CHECK(t.catalog.find("thrower")->loadProblem == "runEntry failed");
+    CHECK(rt->run("thrower", true) == ExtensionRuntime::Refusal::Failed); // not called again
+
+    t.catalog.setDisabled("pscbios", true);
+    CHECK(rt->runEntry("pscbios", "network", true) == ExtensionRuntime::Refusal::Disabled);
+}
+
+TEST_CASE("ExtensionRuntime::runProvider runs whichever runnable extension provides the entry") {
+    Tree t;
+    t.add("pscbios", "Name=PSC-Bios\nProvides=network\n", {goodAbi, createEntry});
+    t.add("old", "Name=Old net\nProvides=network\n", {otherAbi, createEntry});
+    auto rt = t.runtime();
+
+    CHECK(rt->runProvider("store", true) == ExtensionRuntime::Refusal::NotFound);
+    // "Old net" is first by title, of another ABI: refused, and then no longer offered
+    CHECK(rt->runProvider("network", true) == ExtensionRuntime::Refusal::WrongAbi);
+    CHECK(t.catalog.findProvider("network")->name == "pscbios");
+    CHECK(rt->runProvider("network", true) == ExtensionRuntime::Refusal::None);
+    CHECK(has("pscbios:entry network(guarded)"));
 }
 
 TEST_CASE("the SDK stamp names the ABI, the compiler and the target") {
