@@ -3,11 +3,29 @@
 //
 #include "gui_hardware_info.h"
 #include "../gui.h"
+#include "core/model/pad_assignment.h"
 
 #include <algorithm>
 #include <cstdio>
 
 using namespace std;
+
+//*******************************
+// psPlayerSlotLabel (local)
+//*******************************
+// the enum's UI text, literal _() calls at each branch so tools/lang_tools.py's extract (which only
+// recognises a literal string inside _(...), not a runtime value) picks up the three keys.
+static string psPlayerSlotLabel(PsPlayerSlot slot) {
+    switch (slot) {
+    case PsPlayerSlot::Player1:
+        return _("Player 1");
+    case PsPlayerSlot::Player2:
+        return _("Player 2");
+    case PsPlayerSlot::Unused:
+    default:
+        return _("not used by the PS1 emulator");
+    }
+}
 
 //*******************************
 // GuiHardwareInfo::collect
@@ -76,8 +94,16 @@ InfoSection GuiHardwareInfo::displayAndInput() {
     if (pads.empty()) {
         add(_("Controllers"), platform.isDevHost() ? _("Keyboard") : _("None"));
     } else {
-        for (size_t i = 0; i < pads.size(); i++)
-            add(_("Controller") + " " + to_string(i + 1), pads[i].name);
+        // pads() is in ascending SDL device-index order - the same order pcsx-ab/pcsx-abnxt assign
+        // PS1 ports 1/2 by, so this position is that assignment (psPlayerSlot, core/model/pad_assignment.h)
+        for (size_t i = 0; i < pads.size(); i++) {
+            PsPlayerSlot slot = psPlayerSlot(static_cast<int>(i), static_cast<int>(pads.size()));
+            string playerLabel = psPlayerSlotLabel(slot);
+            if (i < 2)
+                add(playerLabel, pads[i].name);
+            else
+                add(_("Controller") + " " + to_string(i + 1), pads[i].name + " (" + playerLabel + ")");
+        }
     }
     // the gamecontrollerdb.txt the pads were mapped from (Env::padMappingFiles() - the first that loaded)
     string mappings = gui->input().currentMappingPath();
