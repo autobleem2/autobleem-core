@@ -3,6 +3,7 @@
 #include "types.h"
 
 #include <string>
+#include <vector>
 
 namespace ableem {
 
@@ -35,6 +36,10 @@ public:
     // costs a few ms.
     void setFrameCache(bool enabled);
     bool saveLastFrame(const std::string &path);
+    // like saveLastFrame, but the PNG comes back as bytes instead of a file - what the DebugDriver's `grab`
+    // command sends over the socket, so a test never writes to the device's own storage. Same "no frame
+    // cached yet" false as saveLastFrame.
+    bool encodeLastFramePng(std::vector<unsigned char> &out);
     unsigned long frameCount() const;
 
     // the next present() keeps its frame as a texture (output pixels, drawn over the whole target with

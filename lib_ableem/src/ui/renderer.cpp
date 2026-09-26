@@ -9,10 +9,56 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <stdexcept>
 #include <vector>
 
 namespace ableem {
+
+namespace {
+// A growable in-memory SDL_RWops, write-only: what IMG_SavePNG_RW encodes into for
+// Renderer::encodeLastFramePng - no temp file needed just to hand a screenshot back over a socket.
+struct MemWriter {
+    std::vector<unsigned char> *out;
+    size_t pos = 0;
+};
+
+Sint64 SDLCALL memWriterSize(SDL_RWops *ctx) {
+    return static_cast<Sint64>(static_cast<MemWriter *>(ctx->hidden.unknown.data1)->out->size());
+}
+
+Sint64 SDLCALL memWriterSeek(SDL_RWops *ctx, Sint64 offset, int whence) {
+    MemWriter *m = static_cast<MemWriter *>(ctx->hidden.unknown.data1);
+    Sint64 base = whence == RW_SEEK_CUR   ? static_cast<Sint64>(m->pos)
+                  : whence == RW_SEEK_END ? static_cast<Sint64>(m->out->size())
+                                          : 0;
+    Sint64 next = base + offset;
+    if (next < 0)
+        return -1;
+    m->pos = static_cast<size_t>(next);
+    return next;
+}
+
+size_t SDLCALL memWriterRead(SDL_RWops *, void *, size_t, size_t) {
+    return 0; // write-only: the PNG encoder never reads back what it wrote
+}
+
+size_t SDLCALL memWriterWrite(SDL_RWops *ctx, const void *ptr, size_t size, size_t num) {
+    MemWriter *m = static_cast<MemWriter *>(ctx->hidden.unknown.data1);
+    size_t bytes = size * num;
+    if (m->pos + bytes > m->out->size())
+        m->out->resize(m->pos + bytes);
+    memcpy(m->out->data() + m->pos, ptr, bytes);
+    m->pos += bytes;
+    return num;
+}
+
+int SDLCALL memWriterClose(SDL_RWops *ctx) {
+    delete static_cast<MemWriter *>(ctx->hidden.unknown.data1);
+    SDL_FreeRW(ctx);
+    return 0;
+}
+} // namespace
 
 namespace {
 SDL_BlendMode toSDL(BlendMode m) {
@@ -224,6 +270,28 @@ bool Renderer::saveLastFrame(const std::string &path) {
         rc = IMG_SavePNG(s, path.c_str());
     else
         rc = SDL_SaveBMP(s, path.c_str());
+    SDL_FreeSurface(s);
+    return rc == 0;
+}
+
+bool Renderer::encodeLastFramePng(std::vector<unsigned char> &out) {
+    std::lock_guard<std::mutex> lock(impl->frame.mutex);
+    Impl::FrameCache &f = impl->frame;
+    if (f.pixels.empty())
+        return false;
+    SDL_Surface *s =
+        SDL_CreateRGBSurfaceWithFormatFrom(f.pixels.data(), f.w, f.h, 32, f.pitch, SDL_PIXELFORMAT_ARGB8888);
+    if (!s)
+        return false;
+    out.clear();
+    SDL_RWops *rw = SDL_AllocRW();
+    rw->hidden.unknown.data1 = new MemWriter{&out};
+    rw->size = memWriterSize;
+    rw->seek = memWriterSeek;
+    rw->read = memWriterRead;
+    rw->write = memWriterWrite;
+    rw->close = memWriterClose;
+    int rc = IMG_SavePNG_RW(s, rw, 1); // freesrc = 1: memWriterClose frees the SDL_RWops itself
     SDL_FreeSurface(s);
     return rc == 0;
 }
