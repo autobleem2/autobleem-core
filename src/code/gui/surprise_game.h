@@ -8,7 +8,7 @@
 // closer to Warblade's enemy squadrons than classic Space Invaders. Aliens still occasionally peel off to
 // dive at the player before looping back in from the top. Destroyed aliens sometimes drop a power-up
 // (rapid-fire/autofire, a spread shot, or a piercing "power" shot) that the ship collects by flying over it,
-// and more rarely (about 10% of kills) an extra life instead, collected the same way.
+// and more rarely (about 1% of kills) an extra life instead, collected the same way.
 //
 // Sprites and sound effects are Kenney's "Space Shooter Redux" (CC0 / public domain, www.kenney.nl) plus one
 // CC0 "NES Shooter Music" track by SketchyLogic (opengameart.org), copied into resources/surprise_game/ -

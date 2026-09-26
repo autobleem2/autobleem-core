@@ -44,8 +44,8 @@ const float EnemySpeedStepPerFiveWaves = 0.15f; // dives, shots and the wave its
 const unsigned int EntranceStaggerMs = 180;   // extra entrance delay per row
 const unsigned int EntranceColStaggerMs = 40; // extra entrance delay per column, for a diagonal cascade
 
-const int PowerUpDropPercent = 20;     // chance an exploded alien drops a timed power-up (rapid/spread/power)
-const int ExtraLifeDropPercent = 2;    // separate chance it drops an extra life instead (10 was a life a wave)
+const int PowerUpDropPercent = 10;     // chance an exploded alien drops a timed power-up (rapid/spread/power; was 20)
+const int ExtraLifeDropPercent = 1;    // separate chance it drops an extra life instead (was 2; 10 was a life a wave)
 const int ExtraLifeEveryNthDrop = 50;  // ...and whatever the dice say, the Nth drop since the last one is a life
 const float ExtraLifeFallScale = 0.6f; // a life falls slower than the timed power-ups, so it can be caught
 const unsigned int PowerUpDurationMs = 10000;
