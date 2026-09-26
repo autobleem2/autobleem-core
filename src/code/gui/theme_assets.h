@@ -48,6 +48,9 @@ public:
     std::map<std::string, ableem::Texture> buttonTextureMap; // "X", "O", "Start", "Check", ... -> its texture
     // the launcher's footer hints (theme.json launcher.hints), what PanelStyle draws in a panel's footer
     ableem::Texture hintCross, hintCircle, hintTriangle;
+    // the d-pad hint chips (evoimg/dpad_*.png, tools/make_evoimg_icons.py) - ours, not the theme's: every
+    // theme gets the same four arrows. What PanelStyle::faceIcon draws for "|@Up|"/"|@Down|"/"|@Left|"/"|@Right|"
+    ableem::Texture dpadUp, dpadDown, dpadLeft, dpadRight;
     // the transparent margin to the right of the check switch's art (the larger of on/off), measured
     // from the theme's files: an option row's value text lines up with the switch's visible edge
     int checkIconRightMargin = 0;
