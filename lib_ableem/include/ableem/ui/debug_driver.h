@@ -50,6 +50,16 @@ namespace ableem {
 
 class ABLEEM_API DebugDriver {
 public:
+    // The pre-auth budget (see `serve()` in the .cpp): a peer that has not yet sent a matching `auth <token>`
+    // gets this long to send its first line, and the line itself may not grow past this many bytes - past
+    // either, the connection is dropped as if the peer had closed it. Generous for a real client (connect,
+    // send one line, both well under a second) and short enough that a peer which never authenticates - or
+    // trickles the line in a byte at a time - cannot tie up the one client this server serves at a time for
+    // long. Neither applies once `auth` succeeds: an authenticated session reads with no timeout, since real
+    // commands can be minutes apart. Public so a test can check the policy without a socket.
+    static const int AuthTimeoutMs = 5000;
+    static const size_t MaxAuthLine = 4096;
+
     // listens on bindAddress:port from a thread of its own for the rest of the process ("" = 127.0.0.1,
     // unchanged default). false when allowedToStart() refuses (logged) or the port/address cannot be taken.
     static bool start(GuiBase &gui, int port, const std::string &bindAddress = "", const std::string &token = "");
