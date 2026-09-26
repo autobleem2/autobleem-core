@@ -59,11 +59,14 @@ bool capabilitiesLookLikeKeyboard(const string &keyBitmap) {
 // KeyboardPresence::anyLinuxKeyboard
 //*******************************
 bool anyLinuxKeyboard(const string &sysClassInput) {
-    for (const string &name : DirEntry::listNames(sysClassInput)) {
-        if (name.compare(0, 5, "event") != 0)
+    // Not DirEntry::listNames(): it skips DT_DIR entries, and a real sysfs eventN is a symlink but a
+    // fixture directory (tests/support/temp_dir) is a real one - diru() decides by stat(), not d_type,
+    // so it finds either.
+    for (const DirEntry &entry : DirEntry::diru(sysClassInput)) {
+        if (entry.name.compare(0, 5, "event") != 0)
             continue;
         string bitmap;
-        if (DirEntry::readFile(sysClassInput + "/" + name + "/device/capabilities/key", bitmap) &&
+        if (DirEntry::readFile(sysClassInput + "/" + entry.name + "/device/capabilities/key", bitmap) &&
             capabilitiesLookLikeKeyboard(bitmap))
             return true;
     }
