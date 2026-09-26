@@ -4,7 +4,16 @@
 // only when the program asks for it (AutoBleem: AB_DEBUG_PORT in the environment on a dev host); nothing
 // here runs otherwise.
 //
+// Loopback by default: AB_DEBUG_BIND names another address (a LAN IP, or 0.0.0.0) to reach the driver from
+// another machine - a Pi 400 or a PSC. Off loopback, AB_DEBUG_TOKEN is mandatory: start() refuses to listen
+// at all without one (see allowedToStart), so an unauthenticated driver can never end up reachable from the
+// network. A token may also be set on a loopback bind (then it is required there too - "set = required" is
+// the whole rule); with no AB_DEBUG_TOKEN and a loopback bind, nothing changes from before.
+//
 // One command per line, one reply per command ("ok ..." or "err ..."):
+//   auth <token>              only needed when a token is configured (see above): must be the connection's
+//                            first command - a wrong or missing token gets one "err" reply and the socket is
+//                            closed. Harmless to send when no token is configured (always "ok").
 //   press <button> [ms]      ButtonDown, a hold of ms (60), ButtonUp - x o s t start select l1 r1 l2 r2,
 //                            up down left right (the d-pad)
 //   down <button> / up <button>    a held button (down l2, press r2, up l2 = the L2+R2 system menu)
@@ -16,6 +25,10 @@
 //   shot <file.bmp|.png>     the last presented frame written to the file; waits up to 400 ms for a frame
 //                            newer than the last input first, so a screen that redraws on events is caught
 //                            after it did
+//   grab                     the same frame as `shot`, but sent back instead of written to a file: a reply
+//                            line "ok <n>" (n = byte count) immediately followed by exactly n bytes of PNG,
+//                            with no trailing newline - so a test on a device (the PSC's stick) never has to
+//                            write the screenshot there. "err no frame" as `shot` would.
 //   frames                   how many frames were presented so far
 //   screen                   the class name of the screen showing (GuiScreen::show keeps a stack; the
 //                            launcher is "GuiLauncher", a dialog over it "GuiConfirm", ...) - what a client
@@ -37,9 +50,34 @@ namespace ableem {
 
 class ABLEEM_API DebugDriver {
 public:
-    // listens on 127.0.0.1:port from a thread of its own for the rest of the process; false when the
-    // port cannot be taken
-    static bool start(GuiBase &gui, int port);
+    // The pre-auth budget (see `serve()` in the .cpp): a peer that has not yet sent a matching `auth <token>`
+    // gets this long to send its first line, and the line itself may not grow past this many bytes - past
+    // either, the connection is dropped as if the peer had closed it. Generous for a real client (connect,
+    // send one line, both well under a second) and short enough that a peer which never authenticates - or
+    // trickles the line in a byte at a time - cannot tie up the one client this server serves at a time for
+    // long. Neither applies once `auth` succeeds: an authenticated session reads with no timeout, since real
+    // commands can be minutes apart. Public so a test can check the policy without a socket.
+    static const int AuthTimeoutMs = 5000;
+    static const size_t MaxAuthLine = 4096;
+
+    // listens on bindAddress:port from a thread of its own for the rest of the process ("" = 127.0.0.1,
+    // unchanged default). false when allowedToStart() refuses (logged) or the port/address cannot be taken.
+    static bool start(GuiBase &gui, int port, const std::string &bindAddress = "", const std::string &token = "");
+
+    // The LAN-safety gate, pure (no socket, no I/O - unit-tested directly): false only for a bind beyond
+    // loopback ("" and "127.0.0.1" count as loopback) with no token configured. A token is never mandatory
+    // on loopback, but if one is given it is used there too - callers that configured a token always require
+    // it, regardless of bindAddress.
+    static bool allowedToStart(const std::string &bindAddress, const std::string &token);
+
+    // Constant-time compare of a client's `auth <token>` attempt against the configured token - never
+    // short-circuits on the first differing byte, and never logs either string. `configured` empty always
+    // returns false (callers only compare when a token was actually set).
+    static bool tokensMatch(const std::string &configured, const std::string &attempt);
+
+    // The header line `grab` sends ahead of the raw PNG bytes. Pure formatting, split out so the framing
+    // (does the header's count match what actually follows) is unit-tested without a socket.
+    static std::string grabHeader(size_t byteCount);
 
     // the screen stack GuiScreen::show maintains (a typeid name; the compiler's decoration is stripped for
     // the `screen` reply). Cheap, and kept whether or not the driver runs.

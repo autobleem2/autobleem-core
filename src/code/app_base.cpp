@@ -28,8 +28,14 @@ AppBase::AppBase(const string &windowTitle) {
     // back - tools/ab_drive.py drives the launcher and the console tools through it for automated looks
     // at the UI. In every build (the Windows product is driven the same way, from its own program folder
     // against the installed data tree); nothing listens unless the variable is set.
-    if (const char *port = getenv("AB_DEBUG_PORT"))
-        ableem::DebugDriver::start(*gui_, atoi(port));
+    // AB_DEBUG_BIND=<address> reaches it from another machine (a Pi 400, a PSC) instead of 127.0.0.1 only;
+    // AB_DEBUG_TOKEN is then mandatory (DebugDriver::allowedToStart refuses without one) and, wherever set,
+    // gates every connection's first `auth` command - see debug_driver.h.
+    if (const char *port = getenv("AB_DEBUG_PORT")) {
+        const char *bind = getenv("AB_DEBUG_BIND");
+        const char *token = getenv("AB_DEBUG_TOKEN");
+        ableem::DebugDriver::start(*gui_, atoi(port), bind ? bind : "", token ? token : "");
+    }
 }
 
 //*******************************
