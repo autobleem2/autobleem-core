@@ -20,6 +20,9 @@
 //   screen                   the class name of the screen showing (GuiScreen::show keeps a stack; the
 //                            launcher is "GuiLauncher", a dialog over it "GuiConfirm", ...) - what a client
 //                            waits for before pressing anything
+//   items                    the item names the showing screen published (setItems), '|'-separated -
+//                            a picker's rows by a language-neutral name, so a client can pick one by name
+//                            ("ok Re-Scan Games|Extensions|..."; "ok " when the screen published none)
 //   ping                     ok
 //   quit                     a Quit event, as the window's close button
 //
@@ -28,6 +31,7 @@
 #include "gui_base.h"
 
 #include <string>
+#include <vector>
 
 namespace ableem {
 
@@ -42,6 +46,10 @@ public:
     static void pushScreen(const char *typeName);
     static void popScreen();
     static std::string currentScreen();
+    // what the `items` reply lists: a picker publishes its rows' names when it shows and clears them when it
+    // closes. Kept whether or not the driver runs, like the screen stack.
+    static void setItems(const std::vector<std::string> &items);
+    static std::vector<std::string> items();
 };
 
 } // namespace ableem

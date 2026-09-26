@@ -27,6 +27,7 @@ void ThemeAssets::unload() {
     bigBoxFrame = Texture();
     buttonTextureMap.clear();
     hintCross = hintCircle = hintTriangle = Texture();
+    dpadUp = dpadDown = dpadLeft = dpadRight = Texture();
 }
 
 //*******************************
@@ -91,6 +92,11 @@ void ThemeAssets::load() {
     hintCross = Texture::loadFile(renderer_, launcher.hints.cross);
     hintCircle = Texture::loadFile(renderer_, launcher.hints.circle);
     hintTriangle = Texture::loadFile(renderer_, launcher.hints.triangle);
+    const string evoimg = Env::getWorkingPath() + sep + "evoimg" + sep;
+    dpadUp = Texture::loadFile(renderer_, evoimg + "dpad_up.png");
+    dpadDown = Texture::loadFile(renderer_, evoimg + "dpad_down.png");
+    dpadLeft = Texture::loadFile(renderer_, evoimg + "dpad_left.png");
+    dpadRight = Texture::loadFile(renderer_, evoimg + "dpad_right.png");
 
     // a theme without launcher fonts (and a default theme without them either) gets the shipped pair -
     // Open Sans Medium/Bold (OFL), the stand-in for the console's SST since 2026-09-21

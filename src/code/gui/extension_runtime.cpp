@@ -90,7 +90,7 @@ ExtensionRuntime::Loaded *ExtensionRuntime::load(ExtensionInfo &extension, Refus
     if (stamp == nullptr || strcmp(stamp, AB_SDK_STAMP) != 0) {
         PLOG_ERROR << "[" << extension.name << "] built for " << (stamp ? stamp : "(nothing)")
                    << ", this AutoBleem is " << AB_SDK_STAMP << " - not loaded";
-        extension.loadProblem = "built for a different AutoBleem";
+        extension.loadProblem = ExtensionInfo::WrongAbiProblem;
         why = Refusal::WrongAbi;
         return nullptr;
     }
@@ -127,22 +127,55 @@ void ExtensionRuntime::startBackground() {
 //*******************************
 // ExtensionRuntime::run
 //*******************************
-ExtensionRuntime::Refusal ExtensionRuntime::run(const string &name, bool networkUp) {
+ExtensionRuntime::Loaded *ExtensionRuntime::prepare(const string &name, bool networkUp, Refusal &why) {
     ExtensionInfo *info = catalog_.find(name);
-    if (info == nullptr)
-        return Refusal::NotFound;
-    Refusal why = precheck(*info, networkUp);
+    if (info == nullptr) {
+        why = Refusal::NotFound;
+        return nullptr;
+    }
+    why = precheck(*info, networkUp);
     if (why != Refusal::None) {
         PLOG_INFO << "[" << name << "] not run: " << static_cast<int>(why);
-        return why;
+        return nullptr;
     }
-    Loaded *loaded = load(*info, why);
+    return load(*info, why);
+}
+
+ExtensionRuntime::Refusal ExtensionRuntime::run(const string &name, bool networkUp) {
+    Refusal why = Refusal::None;
+    Loaded *loaded = prepare(name, networkUp, why);
     if (loaded == nullptr)
         return why;
     PLOG_INFO << "[" << name << "] run";
     bool ok = guarded(*loaded, "run", [&]() { loaded->extension->run(); });
     PLOG_INFO << "[" << name << "] run ended";
     return ok ? Refusal::None : Refusal::Failed;
+}
+
+//*******************************
+// ExtensionRuntime::runEntry / runProvider
+//*******************************
+ExtensionRuntime::Refusal ExtensionRuntime::runEntry(const string &name, const string &entry, bool networkUp) {
+    Refusal why = Refusal::None;
+    Loaded *loaded = prepare(name, networkUp, why);
+    if (loaded == nullptr)
+        return why;
+    PLOG_INFO << "[" << name << "] run entry " << entry;
+    bool handled = false;
+    bool ok = guarded(*loaded, "runEntry", [&]() { handled = loaded->extension->runEntry(entry); });
+    PLOG_INFO << "[" << name << "] entry " << entry << (handled ? " ended" : " not handled");
+    if (!ok)
+        return Refusal::Failed;
+    return handled ? Refusal::None : Refusal::NotHandled;
+}
+
+ExtensionRuntime::Refusal ExtensionRuntime::runProvider(const string &entry, bool networkUp) {
+    ExtensionInfo *provider = catalog_.findProvider(entry);
+    if (provider == nullptr) {
+        PLOG_INFO << "no extension provides " << entry;
+        return Refusal::NotFound;
+    }
+    return runEntry(provider->name, entry, networkUp);
 }
 
 //*******************************

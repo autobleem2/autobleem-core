@@ -64,7 +64,16 @@ public:
     PsGames favorites();
     PsGames history();
     PsGames retroArchGames(const std::string &playlistName);
-    PsGames apps();
+    // AppCategory::All is every App; otherwise only the ones whose app.ini Category= matches (unset or
+    // unrecognised = Other)
+    PsGames apps(AppCategory category = AppCategory::All);
+    // the categories with at least one App, in appCategoryName()'s order, each with its count - what the
+    // set picker's Apps tab lists after "All apps"
+    struct AppCategoryCount {
+        AppCategory category;
+        int count;
+    };
+    std::vector<AppCategoryCount> appCategories();
 
     bool showInternalGames() const; // config.ini "origames"
 

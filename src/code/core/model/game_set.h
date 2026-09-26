@@ -20,6 +20,33 @@ inline GameSet nextGameSet(GameSet set) {
 // GameSet::PS1 sub-states. keep GamesSubdir last: it is left off the L2+Select menu.
 enum class Ps1SelectState : int { AllGames = 0, InternalOnly, Favorites, History, GamesSubdir };
 
+// An App's app.ini `Category=` (2026-09-26, docs/app-format-plan.md), case-insensitive; anything else or
+// missing is Other. All is not a category an app.ini can name - it is the picker's "every app" row.
+// Keep the order Games/Emulators/Tools/Media/Other: it is the order the set picker and appCategories() list
+// them in.
+enum class AppCategory : int { All = 0, Games, Emulators, Tools, Media, Other };
+constexpr AppCategory AppCategoryLast = AppCategory::Other;
+
+// the untranslated English name - translate at the call site with _(); GameQueryService::apps()'s parser is
+// the read side of this table.
+inline std::string appCategoryName(AppCategory category) {
+    switch (category) {
+    case AppCategory::All:
+        return "All apps";
+    case AppCategory::Games:
+        return "Games";
+    case AppCategory::Emulators:
+        return "Emulators";
+    case AppCategory::Tools:
+        return "Tools";
+    case AppCategory::Media:
+        return "Media";
+    case AppCategory::Other:
+        return "Other";
+    }
+    return "Other";
+}
+
 //******************
 // GameSetSelection
 //******************
@@ -35,4 +62,5 @@ struct GameSetSelection {
     std::string usbGameDirName;
     int raPlaylistIndex = 0; // row 0 is the first playlist name
     std::string raPlaylistName;
+    AppCategory appCategory = AppCategory::All; // the Apps tab's row; All = every App
 };

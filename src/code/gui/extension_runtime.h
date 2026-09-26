@@ -23,7 +23,18 @@ public:
     using HostFactory = std::function<std::unique_ptr<ExtensionHost>(const ExtensionInfo &)>;
 
     // why an extension cannot run; None = it can
-    enum class Refusal { None, NotFound, NotBuiltForThisSystem, Disabled, Offline, LoadFailed, WrongAbi, Failed };
+    // NotHandled: runEntry() - the extension's runEntry() returned false (it does not know that entry)
+    enum class Refusal {
+        None,
+        NotFound,
+        NotBuiltForThisSystem,
+        Disabled,
+        Offline,
+        LoadFailed,
+        WrongAbi,
+        Failed,
+        NotHandled
+    };
 
     ExtensionRuntime(ExtensionCatalog &catalog, PluginLoader &loader, HostFactory hostFactory);
     ~ExtensionRuntime(); // shutdown(), if nobody did
@@ -38,6 +49,12 @@ public:
     void startBackground();
     // the Extensions list's Cross: loads and creates it if need be, then run()
     Refusal run(const std::string &name, bool networkUp);
+    // a launcher item's Cross: the extension at one of its Provides= entries - loaded and created if need
+    // be, then runEntry(entry) inside the crash guard, as run(). NotHandled when it returned false
+    Refusal runEntry(const std::string &name, const std::string &entry, bool networkUp);
+    // the same for whichever extension provides the entry (ExtensionCatalog::findProvider); NotFound when
+    // none does. The caller scans the catalog first, as for run()
+    Refusal runProvider(const std::string &entry, bool networkUp);
 
     // once a frame: every loaded extension's poll() - nothing while suspended
     void poll();
@@ -59,6 +76,8 @@ private:
     };
 
     Loaded *load(ExtensionInfo &extension, Refusal &why);
+    // precheck + load; nullptr (and why) when it cannot run
+    Loaded *prepare(const std::string &name, bool networkUp, Refusal &why);
     // runs `call` inside the crash guard, catching what a plugin throws; false when it threw
     bool guarded(Loaded &loaded, const char *what, const std::function<void()> &call);
 

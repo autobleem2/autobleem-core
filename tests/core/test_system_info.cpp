@@ -159,3 +159,71 @@ TEST_CASE("collect gives every section a title, and the storage section the data
         for (const InfoRow &row : section.rows)
             CHECK_FALSE(row.value.empty());
 }
+
+TEST_CASE("zoneFromLocaltimeLink takes the zone after zoneinfo/") {
+    CHECK(SystemInfoService::zoneFromLocaltimeLink("/usr/share/zoneinfo/Europe/Dublin") == "Europe/Dublin");
+    CHECK(SystemInfoService::zoneFromLocaltimeLink("../usr/share/zoneinfo/UTC") == "UTC");
+    CHECK(SystemInfoService::zoneFromLocaltimeLink("/usr/share/zoneinfo/posix/America/New_York") ==
+          "America/New_York");
+    CHECK(SystemInfoService::zoneFromLocaltimeLink("/etc/some-file") == "");
+}
+
+TEST_CASE("formatUtcOffset writes hours and minutes, UTC alone for none") {
+    CHECK(SystemInfoService::formatUtcOffset(0) == "UTC");
+    CHECK(SystemInfoService::formatUtcOffset(7200) == "UTC+02:00");
+    CHECK(SystemInfoService::formatUtcOffset(3600) == "UTC+01:00");
+    CHECK(SystemInfoService::formatUtcOffset(-12600) == "UTC-03:30");
+    CHECK(SystemInfoService::formatUtcOffset(20700) == "UTC+05:45");
+}
+
+TEST_CASE("readAdapters finds the Wi-Fi, Ethernet and Bluetooth adapters in sysfs, and which are up") {
+    TempDir tmp("sysinfo_net");
+    // what a Pi 400 has (captured 2026-09-26): wlan0 up with phy80211 and wireless/, eth0 unplugged, lo
+    tmp.makeSubDir("net/wlan0/wireless");
+    tmp.makeSubDir("net/wlan0/phy80211");
+    tmp.makeSubDir("net/wlan0/device");
+    tmp.writeFile("net/wlan0/type", "1\n");
+    tmp.writeFile("net/wlan0/operstate", "up\n");
+    tmp.makeSubDir("net/eth0/device");
+    tmp.writeFile("net/eth0/type", "1\n");
+    tmp.writeFile("net/eth0/operstate", "down\n");
+    tmp.makeSubDir("net/lo");
+    tmp.writeFile("net/lo/type", "772\n");
+    tmp.writeFile("net/lo/operstate", "unknown\n");
+    // a USB Ethernet dongle whose driver says "unknown" but has a carrier, and a bridge (no device/)
+    tmp.makeSubDir("net/enx001122/device");
+    tmp.writeFile("net/enx001122/type", "1\n");
+    tmp.writeFile("net/enx001122/operstate", "unknown\n");
+    tmp.writeFile("net/enx001122/carrier", "1\n");
+    tmp.makeSubDir("net/docker0");
+    tmp.writeFile("net/docker0/type", "1\n");
+    tmp.writeFile("net/docker0/operstate", "up\n");
+    tmp.makeSubDir("bluetooth/hci0");
+    tmp.makeSubDir("bluetooth/hci0:11");
+
+    using Kind = SystemInfoService::AdapterKind;
+    auto adapters = SystemInfoService::readAdapters(tmp.at("net"), tmp.at("bluetooth"));
+    REQUIRE(adapters.size() == 4);
+    CHECK(adapters[0].name == "wlan0");
+    CHECK(adapters[0].kind == Kind::Wifi);
+    CHECK(adapters[0].up);
+    CHECK(adapters[1].name == "enx001122");
+    CHECK(adapters[1].kind == Kind::Ethernet);
+    CHECK(adapters[1].up);
+    CHECK(adapters[2].name == "eth0");
+    CHECK_FALSE(adapters[2].up);
+    CHECK(adapters[3].name == "hci0");
+    CHECK(adapters[3].kind == Kind::Bluetooth);
+    CHECK_FALSE(adapters[3].upKnown);
+
+    CHECK(SystemInfoService::adapterSummary(adapters, Kind::Wifi) == "wlan0 (up)");
+    CHECK(SystemInfoService::adapterSummary(adapters, Kind::Ethernet) == "enx001122 (up), eth0 (down)");
+    CHECK(SystemInfoService::adapterSummary(adapters, Kind::Bluetooth) == "hci0");
+    adapters[3].upKnown = true;
+    CHECK(SystemInfoService::adapterSummary(adapters, Kind::Bluetooth) == "hci0 (down)");
+
+    // nothing there at all (Windows, or a machine without sysfs)
+    auto none = SystemInfoService::readAdapters(tmp.at("missing"), tmp.at("missing"));
+    CHECK(none.empty());
+    CHECK(SystemInfoService::adapterSummary(none, Kind::Wifi) == "None");
+}

@@ -169,3 +169,74 @@ TEST_CASE("ExtensionCatalog: the crash guard lives in RAM; a crash's copy on the
     CHECK(next.find("hello")->disabled);
     CHECK_FALSE(DirEntry::exists(tmp.at("System/Extensions/.active")));
 }
+
+TEST_CASE("ExtensionCatalog: Provides= lists the entries an extension can be opened at") {
+    CHECK(ExtensionCatalog::parseProvides("network") == vector<string>{"network"});
+    CHECK(ExtensionCatalog::parseProvides(" Network, wifi;bt  pads ") == vector<string>{"network", "wifi", "bt", "pads"});
+    CHECK(ExtensionCatalog::parseProvides("network,network") == vector<string>{"network"});
+    CHECK(ExtensionCatalog::parseProvides("").empty());
+    CHECK(ExtensionCatalog::parseProvides(" , ;").empty());
+
+    TempDir tmp("extensions");
+    extension(tmp, "pscbios", "[extension]\nName=PSC-Bios\nPlugin=bin/{key}/pscbios\nProvides=Network\n", {"psc"});
+    extension(tmp, "store", "[extension]\nName=AutoBleem Store\nPlugin=bin/{key}/store\n", {"psc"});
+    ExtensionCatalog catalog = catalogIn(tmp);
+    catalog.scan();
+    const ExtensionInfo *bios = catalog.find("pscbios");
+    REQUIRE(bios != nullptr);
+    CHECK(bios->provides == vector<string>{"network"});
+    CHECK(bios->providesEntry("network"));
+    CHECK(bios->providesEntry(" NETWORK "));
+    CHECK_FALSE(bios->providesEntry("store"));
+    CHECK_FALSE(bios->providesEntry(""));
+    CHECK(catalog.find("store")->provides.empty());
+}
+
+TEST_CASE("ExtensionCatalog::findProvider: the first runnable extension that provides the entry") {
+    TempDir tmp("extensions");
+    // by title: "A net" before "B net"; the Windows-only one is never runnable here
+    extension(tmp, "anet", "[extension]\nName=A net\nPlugin=bin/{key}/anet\nProvides=network\n", {"psc"});
+    extension(tmp, "bnet", "[extension]\nName=B net\nPlugin=bin/{key}/bnet\nProvides=network, pads\n", {"psc"});
+    extension(tmp, "wnet", "[extension]\nName=0 win net\nPlugin=bin/{key}/wnet\nProvides=network\n", {"win"});
+    ExtensionCatalog catalog = catalogIn(tmp);
+    catalog.scan();
+
+    REQUIRE(catalog.findProvider("network") != nullptr);
+    CHECK(catalog.findProvider("network")->name == "anet");
+    CHECK(catalog.findProvider("pads")->name == "bnet");
+    CHECK(catalog.findProvider("store") == nullptr);
+
+    catalog.setDisabled("anet", true); // disabled: the next one
+    CHECK(catalog.findProvider("network")->name == "bnet");
+    catalog.find("bnet")->loadProblem = "built for a different AutoBleem"; // the runtime refused it
+    CHECK(catalog.findProvider("network") == nullptr);
+    CHECK(catalog.findProvider("pads") == nullptr);
+}
+
+TEST_CASE("ExtensionCatalog::findUnavailableProvider: a provider that cannot run, and why") {
+    TempDir tmp("extensions");
+    extension(tmp, "anet", "[extension]\nName=A net\nPlugin=bin/{key}/anet\nProvides=network\n", {"psc"});
+    extension(tmp, "wnet", "[extension]\nName=B win net\nPlugin=bin/{key}/wnet\nProvides=network\n", {"win"});
+    ExtensionCatalog catalog = catalogIn(tmp);
+    catalog.scan();
+
+    // a runnable provider: nothing unavailable to point at
+    CHECK(catalog.findUnavailableProvider("network") == nullptr);
+    CHECK(catalog.find("anet")->problem() == ExtensionProblem::None);
+    // nobody provides it at all
+    CHECK(catalog.findUnavailableProvider("store") == nullptr);
+
+    // the only runnable one switched off: it, since it comes first by title, and why
+    catalog.setDisabled("anet", true);
+    REQUIRE(catalog.findUnavailableProvider("network") != nullptr);
+    CHECK(catalog.findUnavailableProvider("network")->name == "anet");
+    CHECK(catalog.findUnavailableProvider("network")->problem() == ExtensionProblem::Disabled);
+    CHECK(catalog.find("wnet")->problem() == ExtensionProblem::NotBuiltForThisSystem);
+
+    // on again, but refused by the runtime: another AutoBleem, or a load that failed
+    catalog.setDisabled("anet", false);
+    catalog.find("anet")->loadProblem = ExtensionInfo::WrongAbiProblem;
+    CHECK(catalog.findUnavailableProvider("network")->problem() == ExtensionProblem::WrongAbi);
+    catalog.find("anet")->loadProblem = "load failed";
+    CHECK(catalog.findUnavailableProvider("network")->problem() == ExtensionProblem::LoadFailed);
+}

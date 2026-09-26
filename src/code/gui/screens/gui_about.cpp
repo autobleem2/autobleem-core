@@ -127,6 +127,8 @@ void GuiAbout::render() {
                                          XALIGN_LEFT);
     };
     centred(fonts[FONT_15_BOLD], Env::productVersion(), rect.y + rect.h + 4, style.secondary);
+    centred(fonts[FONT_15_BOLD], _("This version is brought to you by screemer and a friendly robot, Claude."),
+            rect.y + rect.h + 24, style.secondary);
 
     // the credits as sections - a heading (the launcher's bold) and its names wrapped under it - flowed
     // into two columns, the left one first
@@ -147,7 +149,7 @@ void GuiAbout::render() {
     const ableem::Font &textFont = fonts[FONT_15_BOLD];
     const int columnGap = 40;
     const int columnWidth = (SCREEN_WIDTH - 2 * 80 - columnGap) / 2;
-    const int top = rect.y + rect.h + 34;
+    const int top = rect.y + rect.h + 54;
     const int footTop = SCREEN_HEIGHT - PanelStyle::FooterHeight - 24 - static_cast<int>(foot.size()) * 20;
     auto sectionHeight = [&](const Section &sec) {
         int h = sec.heading.empty() ? 0 : 26;
@@ -243,6 +245,12 @@ void GuiAbout::loop() {
             // this is for pc Only
             if (e.type == Event::Type::Quit) {
                 menuVisible = false;
+            }
+            // the Konami code, during a game: its last press (Circle) is kept from leaving the game
+            if (surpriseMode && !game.gameOver() && !game.infiniteLives() &&
+                (e.type == Event::Type::ButtonDown || e.type == Event::Type::DpadDown) && konami.feed(e.button)) {
+                game.enableInfiniteLives();
+                continue;
             }
             switch (e.type) {
             case Event::Type::ButtonDown:

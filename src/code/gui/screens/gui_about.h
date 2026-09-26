@@ -39,6 +39,7 @@ private:
     bool crossHeld = false;
     SurpriseGame game;
     SurpriseSprites sprites;
+    KonamiCode konami;      // fed every press during a game; completing it is SurpriseGame::enableInfiniteLives
     int savedHighScore = 0; // mirrors config.ini's "surprisehighscore"; written back only when beaten
 
     // the game always has some music: the theme's track is ducked to 50% if it was already playing, or -

@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <fstream>
 #include <sstream>
 
@@ -27,6 +28,8 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <netinet/in.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 #endif
@@ -68,6 +71,46 @@ string fixed(double value, int decimals) {
 void addRow(InfoSection &section, const string &label, const string &value) {
     if (!value.empty())
         section.rows.push_back({label, value});
+}
+
+#ifndef _WIN32
+//*******************************
+// hciIsUp
+//*******************************
+// whether a Bluetooth adapter is up, asked of the kernel the way hciconfig does (HCIGETDEVINFO on a raw HCI
+// socket; its flags' bit 0 is HCI_UP) - sysfs does not say, and running bluetoothctl every second would be
+// too much. Spelled out rather than taken from <bluetooth/hci.h>, which the toolchains do not all carry: the
+// kernel fills struct hci_dev_info, whose flags are a u32 after dev_id (u16), name (8) and bdaddr (6).
+// -1 when it cannot be told (no Bluetooth socket support, no permission).
+int hciIsUp(int index) {
+    const int afBluetooth = 31, btprotoHci = 1;
+    const unsigned long hciGetDevInfo = _IOR('H', 211, int);
+    int fd = socket(afBluetooth, SOCK_RAW, btprotoHci);
+    if (fd < 0)
+        return -1;
+    alignas(8) unsigned char info[256] = {};
+    uint16_t id = static_cast<uint16_t>(index);
+    memcpy(info, &id, sizeof(id));
+    int result = -1;
+    if (ioctl(fd, hciGetDevInfo, info) == 0) {
+        uint32_t flags = 0;
+        memcpy(&flags, info + 16, sizeof(flags));
+        result = (flags & 1u) ? 1 : 0;
+    }
+    close(fd);
+    return result;
+}
+#endif
+
+string kindLabel(SystemInfoService::AdapterKind kind) {
+    switch (kind) {
+    case SystemInfoService::AdapterKind::Wifi:
+        return _("Wi-Fi");
+    case SystemInfoService::AdapterKind::Ethernet:
+        return _("Ethernet");
+    default:
+        return _("Bluetooth");
+    }
 }
 
 #ifdef _WIN32
@@ -116,6 +159,7 @@ InfoSection SystemInfoService::system() const {
     if (GetComputerNameA(host, &hostSize))
         addRow(section, _("Hostname"), host);
     addRow(section, _("Uptime"), formatDuration(GetTickCount64() / 1000));
+    addRow(section, _("Time zone"), timeZoneText());
 #else
     string os = prettyNameFromOsRelease(readTextFile("/etc/os-release"));
     utsname name{};
@@ -139,6 +183,7 @@ InfoSection SystemInfoService::system() const {
     string one, five, fifteen;
     if (loadIn >> one >> five >> fifteen)
         addRow(section, _("Load average"), one + "  " + five + "  " + fifteen);
+    addRow(section, _("Time zone"), timeZoneText());
 #endif
     return section;
 }
@@ -238,16 +283,46 @@ InfoSection SystemInfoService::storage() const {
 InfoSection SystemInfoService::network() const {
     InfoSection section{_("Network"), {}};
 #ifdef _WIN32
+    vector<Adapter> adapters;
+#else
+    vector<Adapter> adapters = readAdapters("/sys/class/net", "/sys/class/bluetooth");
+    for (Adapter &adapter : adapters) {
+        if (adapter.kind != AdapterKind::Bluetooth || adapter.name.compare(0, 3, "hci") != 0)
+            continue;
+        int up = hciIsUp(atoi(adapter.name.c_str() + 3));
+        adapter.upKnown = up >= 0;
+        adapter.up = up == 1;
+    }
+#endif
+    // filled in below on Windows, from the same call as the addresses
+    const size_t adapterRows = section.rows.size();
+#ifdef _WIN32
     ULONG size = 16 * 1024;
     vector<char> buffer(size);
-    auto *adapters = reinterpret_cast<IP_ADAPTER_ADDRESSES *>(buffer.data());
+    auto *addresses = reinterpret_cast<IP_ADAPTER_ADDRESSES *>(buffer.data());
     ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
-    if (GetAdaptersAddresses(AF_INET, flags, nullptr, adapters, &size) == ERROR_BUFFER_OVERFLOW) {
+    if (GetAdaptersAddresses(AF_INET, flags, nullptr, addresses, &size) == ERROR_BUFFER_OVERFLOW) {
         buffer.resize(size);
-        adapters = reinterpret_cast<IP_ADAPTER_ADDRESSES *>(buffer.data());
+        addresses = reinterpret_cast<IP_ADAPTER_ADDRESSES *>(buffer.data());
     }
-    if (GetAdaptersAddresses(AF_INET, flags, nullptr, adapters, &size) == NO_ERROR) {
-        for (auto *adapter = adapters; adapter; adapter = adapter->Next) {
+    if (GetAdaptersAddresses(AF_INET, flags, nullptr, addresses, &size) == NO_ERROR) {
+        for (auto *adapter = addresses; adapter; adapter = adapter->Next) {
+            if (adapter->IfType == IF_TYPE_IEEE80211 || adapter->IfType == IF_TYPE_ETHERNET_CSMACD) {
+                // what Windows lists as Ethernet includes the virtual switches (Hyper-V, VirtualBox) and VPN
+                // taps; their description says so, and a physical adapter has a hardware address
+                wstring wideName(adapter->FriendlyName);
+                wstring description(adapter->Description);
+                bool isVirtual = false;
+                for (const wchar_t *mark : {L"Virtual", L"Hyper-V", L"VPN", L"TAP-", L"Loopback"})
+                    if (description.find(mark) != wstring::npos)
+                        isVirtual = true;
+                Adapter a;
+                a.name = string(wideName.begin(), wideName.end());
+                a.kind = adapter->IfType == IF_TYPE_IEEE80211 ? AdapterKind::Wifi : AdapterKind::Ethernet;
+                a.up = adapter->OperStatus == IfOperStatusUp;
+                if (adapter->PhysicalAddressLength > 0 && !isVirtual)
+                    adapters.push_back(a);
+            }
             if (adapter->OperStatus != IfOperStatusUp || adapter->IfType == IF_TYPE_SOFTWARE_LOOPBACK)
                 continue;
             for (auto *unicast = adapter->FirstUnicastAddress; unicast; unicast = unicast->Next) {
@@ -276,8 +351,18 @@ InfoSection SystemInfoService::network() const {
         freeifaddrs(list);
     }
 #endif
-    if (section.rows.empty())
+    if (section.rows.size() == adapterRows)
         addRow(section, _("Address"), _("Not connected"));
+    // the adapters go first: what is there, then what it got
+    vector<InfoRow> rows;
+    for (AdapterKind kind : {AdapterKind::Wifi, AdapterKind::Ethernet, AdapterKind::Bluetooth}) {
+#ifdef _WIN32
+        if (kind == AdapterKind::Bluetooth)
+            continue; // not asked on Windows: it has its own settings, and nothing here pairs a pad
+#endif
+        rows.push_back({kindLabel(kind), adapterSummary(adapters, kind)});
+    }
+    section.rows.insert(section.rows.begin(), rows.begin(), rows.end());
     return section;
 }
 
@@ -293,6 +378,131 @@ InfoSection SystemInfoService::software() const {
     addRow(section, _("Games"), Env::getPathToGamesDir());
     addRow(section, _("RetroArch"), Env::retroArchInstalled() ? Env::getPathToRetroarchDir() : _("Not installed"));
     return section;
+}
+
+//*******************************
+// SystemInfoService::timeZoneText
+//*******************************
+string SystemInfoService::timeZoneText() {
+    string zone;
+    long offset = 0;
+    bool haveOffset = false;
+#ifdef _WIN32
+    DYNAMIC_TIME_ZONE_INFORMATION info{};
+    DWORD which = GetDynamicTimeZoneInformation(&info);
+    if (which != TIME_ZONE_ID_INVALID) {
+        wstring key(info.TimeZoneKeyName);
+        zone = string(key.begin(), key.end()); // "Central European Standard Time" - ASCII names
+        long bias = info.Bias + (which == TIME_ZONE_ID_DAYLIGHT ? info.DaylightBias : info.StandardBias);
+        offset = -bias * 60;
+        haveOffset = true;
+    }
+#else
+    // TZ wins when it is set; else /etc/timezone (Debian), else where /etc/localtime points
+    const char *tz = getenv("TZ");
+    if (tz != nullptr && *tz)
+        zone = *tz == ':' ? tz + 1 : tz;
+    if (zone.empty())
+        zone = readFirstLine("/etc/timezone");
+    if (zone.empty()) {
+        char target[512];
+        ssize_t n = readlink("/etc/localtime", target, sizeof(target) - 1);
+        if (n > 0) {
+            target[n] = 0;
+            zone = zoneFromLocaltimeLink(target);
+        }
+    }
+    time_t now = time(nullptr);
+    tm local{};
+    if (localtime_r(&now, &local) != nullptr) {
+        offset = local.tm_gmtoff;
+        haveOffset = true;
+    }
+#endif
+    if (!haveOffset)
+        return zone;
+    string utc = formatUtcOffset(offset);
+    return zone.empty() ? utc : zone + " (" + utc + ")";
+}
+
+//*******************************
+// SystemInfoService::zoneFromLocaltimeLink / formatUtcOffset
+//*******************************
+string SystemInfoService::zoneFromLocaltimeLink(const string &target) {
+    const string marker = "zoneinfo/";
+    size_t at = target.rfind(marker);
+    if (at == string::npos)
+        return "";
+    string zone = target.substr(at + marker.size());
+    // the "posix/" and "right/" copies of the database name the same zones
+    for (const char *prefix : {"posix/", "right/"})
+        if (zone.compare(0, strlen(prefix), prefix) == 0)
+            zone = zone.substr(strlen(prefix));
+    return zone;
+}
+
+string SystemInfoService::formatUtcOffset(long seconds) {
+    if (seconds == 0)
+        return "UTC";
+    char sign = seconds < 0 ? '-' : '+';
+    long minutes = labs(seconds) / 60;
+    char text[16];
+    snprintf(text, sizeof(text), "UTC%c%02ld:%02ld", sign, minutes / 60, minutes % 60);
+    return text;
+}
+
+//*******************************
+// SystemInfoService::readAdapters
+//*******************************
+vector<SystemInfoService::Adapter> SystemInfoService::readAdapters(const string &sysClassNet,
+                                                                   const string &sysClassBluetooth) {
+    vector<Adapter> wifi, ethernet, bluetooth;
+    for (const DirEntry &entry : DirEntry::diru(sysClassNet)) {
+        const string dir = sysClassNet + sep + entry.name;
+        Adapter a;
+        a.name = entry.name;
+        if (DirEntry::exists(dir + sep + "wireless") || DirEntry::exists(dir + sep + "phy80211"))
+            a.kind = AdapterKind::Wifi;
+        else if (readFirstLine(dir + sep + "type") == "1" && DirEntry::exists(dir + sep + "device"))
+            a.kind = AdapterKind::Ethernet;
+        else
+            continue; // lo, a bridge, a tunnel, a veth: nothing a user plugged in
+        const string state = readFirstLine(dir + sep + "operstate");
+        a.up = state == "up" || (state == "unknown" && readFirstLine(dir + sep + "carrier") == "1");
+        (a.kind == AdapterKind::Wifi ? wifi : ethernet).push_back(a);
+    }
+    for (const DirEntry &entry : DirEntry::diru(sysClassBluetooth)) {
+        if (entry.name.compare(0, 3, "hci") != 0 || entry.name.find(':') != string::npos)
+            continue; // hci0:12 and the like are connections, not adapters
+        Adapter a;
+        a.name = entry.name;
+        a.kind = AdapterKind::Bluetooth;
+        a.upKnown = false;
+        bluetooth.push_back(a);
+    }
+    vector<Adapter> all;
+    for (vector<Adapter> *list : {&wifi, &ethernet, &bluetooth}) {
+        sort(list->begin(), list->end(), [](const Adapter &x, const Adapter &y) { return x.name < y.name; });
+        all.insert(all.end(), list->begin(), list->end());
+    }
+    return all;
+}
+
+//*******************************
+// SystemInfoService::adapterSummary
+//*******************************
+string SystemInfoService::adapterSummary(const vector<Adapter> &adapters, AdapterKind kind) {
+    string text;
+    for (const Adapter &a : adapters) {
+        if (a.kind != kind)
+            continue;
+        if (!text.empty())
+            text += ", ";
+        text += a.name;
+        if (a.upKnown)
+            text += " (" + (a.up ? _("up") : _("down")) + ")";
+    }
+    return text.empty() ? _("None") : text;
 }
 
 //*******************************

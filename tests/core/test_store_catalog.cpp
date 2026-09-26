@@ -121,10 +121,10 @@ TEST_CASE("StoreSourceTsv: a bad line is skipped and reported, the rest loads") 
     CHECK(s.items[0].title == "Bad Size");
     CHECK(s.items[0].files[0].size == 0);
     CHECK(s.items[1].title == "Fine");
-    REQUIRE(s.problems.size() == 3);
+    // a non-http(s) url is skipped quietly - no problem recorded for it
+    REQUIRE(s.problems.size() == 2);
     CHECK(s.problems[0] == "line 2: no title");
-    CHECK(s.problems[1] == "line 3: no http(s) url");
-    CHECK(s.problems[2].find("line 4: size") == 0);
+    CHECK(s.problems[1].find("line 4: size") == 0);
 }
 
 TEST_CASE("StoreSourceTsv: the NoPayStation column layout, one item per regional release") {
@@ -137,9 +137,8 @@ TEST_CASE("StoreSourceTsv: the NoPayStation column layout, one item per regional
                        "\t\t2000\t\n"
                        "NPUI00003\tUS\tOther\tMISSING\tUP0000-NPUI00003_00-03\t2020-01-01\t\t0\t\n";
     StoreSourceTsv s = StoreSourceTsv::parse(tsv, "nps");
-    REQUIRE(s.items.size() == 2); // the MISSING link is skipped
-    REQUIRE(s.problems.size() == 1);
-    CHECK(s.problems[0] == "line 4: no http(s) url");
+    REQUIRE(s.items.size() == 2); // the MISSING link is skipped quietly - no problem recorded for it
+    CHECK(s.problems.empty());
 
     CHECK(s.items[0].kind == "ps1");
     CHECK(s.items[0].title == "Placeholder");

@@ -44,8 +44,8 @@ const float EnemySpeedStepPerFiveWaves = 0.15f; // dives, shots and the wave its
 const unsigned int EntranceStaggerMs = 180;   // extra entrance delay per row
 const unsigned int EntranceColStaggerMs = 40; // extra entrance delay per column, for a diagonal cascade
 
-const int PowerUpDropPercent = 20;     // chance an exploded alien drops a timed power-up (rapid/spread/power)
-const int ExtraLifeDropPercent = 2;    // separate chance it drops an extra life instead (10 was a life a wave)
+const int PowerUpDropPercent = 10;     // chance an exploded alien drops a timed power-up (rapid/spread/power; was 20)
+const int ExtraLifeDropPercent = 1;    // separate chance it drops an extra life instead (was 2; 10 was a life a wave)
 const int ExtraLifeEveryNthDrop = 50;  // ...and whatever the dice say, the Nth drop since the last one is a life
 const float ExtraLifeFallScale = 0.6f; // a life falls slower than the timed power-ups, so it can be caught
 const unsigned int PowerUpDurationMs = 10000;
@@ -55,7 +55,51 @@ const unsigned int LifeLostFreezeMs = 2000;
 bool overlaps(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh) {
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
+
+const ableem::Button Konami[] = {ableem::Button::DpadUp,   ableem::Button::DpadUp,    ableem::Button::DpadDown,
+                                 ableem::Button::DpadDown, ableem::Button::DpadLeft,  ableem::Button::DpadRight,
+                                 ableem::Button::DpadLeft, ableem::Button::DpadRight, ableem::Button::Cross,
+                                 ableem::Button::Circle};
+const size_t KonamiLength = sizeof(Konami) / sizeof(Konami[0]);
+
+// the lives counter under the cheat: an infinity sign (Open Sans has it)
+const char *const InfinitySign = "\xE2\x88\x9E";
 } // namespace
+
+//*******************************
+// KonamiCode::wouldComplete / feed
+//*******************************
+bool KonamiCode::wouldComplete(ableem::Button button) const {
+    if (recent.size() + 1 < KonamiLength)
+        return false;
+    // the last KonamiLength - 1 presses plus this one
+    for (size_t i = 0; i + 1 < KonamiLength; i++)
+        if (recent[recent.size() - (KonamiLength - 1) + i] != Konami[i])
+            return false;
+    return button == Konami[KonamiLength - 1];
+}
+
+bool KonamiCode::feed(ableem::Button button) {
+    if (wouldComplete(button)) {
+        recent.clear();
+        return true;
+    }
+    recent.push_back(button);
+    if (recent.size() > KonamiLength - 1)
+        recent.erase(recent.begin());
+    return false;
+}
+
+//*******************************
+// SurpriseGame::enableInfiniteLives
+//*******************************
+void SurpriseGame::enableInfiniteLives() {
+    if (cheating || gameOver())
+        return;
+    cheating = true;
+    sounds.powerup.play();
+    sounds.waveClear.play();
+}
 
 //*******************************
 // SurpriseGame::reset
@@ -65,6 +109,7 @@ void SurpriseGame::reset(unsigned int nowTicks) {
     lives = 3;
     score = 0;
     wave = 1;
+    cheating = false;
     activePowerUp = PowerUpType::None;
     powerUpUntilTicks = 0;
     dropsSinceExtraLife = 0;
@@ -456,7 +501,7 @@ void SurpriseGame::handleCollisions(unsigned int nowTicks) {
                 continue;
             if (overlaps(b.x, b.y, LaserW, LaserH, shipX, shipY, ShipW, ShipH)) {
                 b.alive = false;
-                lives--;
+                loseLife();
                 hitInvulnUntil = nowTicks + HitInvulnMs;
                 sounds.playerHit.play();
                 hitThisFrame = true;
@@ -470,7 +515,7 @@ void SurpriseGame::handleCollisions(unsigned int nowTicks) {
                 continue;
             if (overlaps(a.x, a.y, AlienW, AlienH, shipX, shipY, ShipW, ShipH)) {
                 a.alive = false;
-                lives--;
+                loseLife();
                 hitInvulnUntil = nowTicks + HitInvulnMs;
                 sounds.playerHit.play();
                 hitThisFrame = true;
@@ -587,8 +632,12 @@ void SurpriseGame::render(ableem::Renderer &renderer, TextRenderer &text, const 
 
     text.renderText(font, _("SCORE") + ": " + to_string(score), 30, 20, XALIGN_LEFT);
     text.renderText(font, _("WAVE") + " " + to_string(wave), 0, 20, XALIGN_CENTER);
-    text.renderText(font, _("LIVES") + ": " + to_string(max(0, lives)), 30, 20, XALIGN_RIGHT);
-    text.renderText(font, _("HIGH SCORE") + ": " + to_string(highScore), 0, 46, XALIGN_CENTER);
+    // the Konami code's cue: the lives read as infinite, and the high score is dimmed - it is not being played for
+    text.renderText(font, _("LIVES") + ": " + (cheating ? string(InfinitySign) : to_string(max(0, lives))), 30, 20,
+                    XALIGN_RIGHT);
+    const ableem::Color dimmed(128, 128, 128, 255);
+    text.renderText(font, _("HIGH SCORE") + ": " + to_string(highScore), 0, 46, XALIGN_CENTER,
+                    cheating ? &dimmed : nullptr);
 
     if (activePowerUp != PowerUpType::None) {
         string name = activePowerUp == PowerUpType::Rapid    ? _("RAPID FIRE")

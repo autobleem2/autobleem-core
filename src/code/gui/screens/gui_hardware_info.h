@@ -1,6 +1,6 @@
 //
-// GuiHardwareInfo: the Hardware Information screen for a machine without the PSC-Bios app - a Raspberry Pi
-// or a PC. The system menu shows it instead of running the app when there is no app to run.
+// GuiHardwareInfo: the Hardware Information screen, on every platform (since 2026-09-26 the console's too -
+// PSC-Bios's setup screens are behind the System menu's Network & Controllers item instead).
 //
 #pragma once
 
@@ -12,7 +12,7 @@
 //********************
 // A GuiFactsPage of SystemInfoService's sections - the OS, the hardware, the volumes and their free space,
 // the network - followed by what only the running program can tell (the renderer and display, SDL, the
-// audio driver, the connected pads). The values that move (uptime, temperature, free memory, free space)
+// audio driver, the connected pads and the mapping file they were read with). The values that move (uptime, temperature, free memory, free space)
 // are re-read every second while the screen is up.
 class GuiHardwareInfo : public GuiFactsPage {
 public:
