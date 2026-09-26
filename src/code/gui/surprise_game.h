@@ -1,7 +1,8 @@
 //
 // SurpriseGame: the "Surprise" easter egg on the About screen. Start toggles it on; the starfield already
 // behind the credits keeps running as the backdrop. A small shoot-em-up: dpad moves the ship, Cross fires,
-// Select restarts on the spot, Start exits back to the normal About screen.
+// Start restarts on the spot, Circle goes back to the About screen. The Konami code during a game (B A =
+// Cross Circle, see KonamiCode) gives unlimited lives for that game, and the high score stops counting.
 //
 // Enemy waves fly in staggered from the top and then hold a continuously undulating, snake-like formation
 // (each row swaying on its own sine phase, slowly creeping downward) rather than a rigid marching block -
@@ -19,6 +20,7 @@
 #include <ableem/ui/texture.h>
 #include <ableem/ui/font.h>
 #include <ableem/ui/audio.h>
+#include <ableem/ui/input.h>
 #include <random>
 #include <vector>
 
@@ -54,6 +56,22 @@ struct SurpriseSounds {
 };
 
 //******************
+// KonamiCode
+//******************
+// Up Up Down Down Left Right Left Right B A, fed one press at a time. On the PlayStation pad B and A are
+// Cross and Circle - where a SNES pad's B and A sit (bottom and right), as RetroArch maps it.
+class KonamiCode {
+public:
+    // true when this press completes the code (the history is then cleared)
+    bool feed(ableem::Button button);
+    // true when this press would complete it - the caller can then keep the press from its usual meaning
+    bool wouldComplete(ableem::Button button) const;
+
+private:
+    std::vector<ableem::Button> recent; // the last presses, at most the code's length
+};
+
+//******************
 // PowerUpType
 //******************
 enum class PowerUpType { None, Rapid, Spread, Power, ExtraLife };
@@ -84,6 +102,10 @@ public:
         if (hs > highScore)
             highScore = hs;
     }
+    // the Konami code's cheat: a hit costs no life from now until reset(), and the score no longer counts
+    // towards the high score (what was scored before stays). Plays the power-up and wave-clear sounds.
+    void enableInfiniteLives();
+    bool infiniteLives() const { return cheating; }
 
 private:
     struct Bullet {
@@ -126,11 +148,16 @@ private:
     int score = 0;
     int highScore = 0;
     int wave = 1;
+    bool cheating = false; // the Konami code was entered this game
 
     void bumpScore(int delta) {
         score += delta;
-        if (score > highScore)
+        if (!cheating && score > highScore)
             highScore = score;
+    }
+    void loseLife() {
+        if (!cheating)
+            lives--;
     }
 
     // the formation's continuous Warblade-style weave: each row sways on its own sine phase and the whole

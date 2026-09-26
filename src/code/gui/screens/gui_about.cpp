@@ -244,6 +244,12 @@ void GuiAbout::loop() {
             if (e.type == Event::Type::Quit) {
                 menuVisible = false;
             }
+            // the Konami code, during a game: its last press (Circle) is kept from leaving the game
+            if (surpriseMode && !game.gameOver() && !game.infiniteLives() &&
+                (e.type == Event::Type::ButtonDown || e.type == Event::Type::DpadDown) && konami.feed(e.button)) {
+                game.enableInfiniteLives();
+                continue;
+            }
             switch (e.type) {
             case Event::Type::ButtonDown:
                 if (e.button == Button::Start) {
