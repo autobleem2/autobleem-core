@@ -148,7 +148,9 @@ vector<PanelStyle::HintItem> PanelStyle::parseHints(const string &line, string &
 // PanelStyle::button / buttons
 //*******************************
 // the face buttons' images: the launcher's hint icons for X/O/T (the theme's buttons when a theme has
-// none), the theme's square; an invalid texture for every other key, which is drawn as a chip
+// none), the theme's square, the launcher's own d-pad arrows (evoimg/dpad_*.png - ours, not the theme's,
+// so every theme's hint line gets the same four); an invalid texture for every other key, which is drawn
+// as a chip
 static ableem::Texture faceIcon(ThemeAssets &assets, const string &key) {
     if (key == "X")
         return assets.hintCross.valid() ? assets.hintCross : assets.buttonTextureMap["X"];
@@ -158,6 +160,14 @@ static ableem::Texture faceIcon(ThemeAssets &assets, const string &key) {
         return assets.hintTriangle.valid() ? assets.hintTriangle : assets.buttonTextureMap["T"];
     if (key == "S")
         return assets.buttonTextureMap["S"];
+    if (key == "Up")
+        return assets.dpadUp;
+    if (key == "Down")
+        return assets.dpadDown;
+    if (key == "Left")
+        return assets.dpadLeft;
+    if (key == "Right")
+        return assets.dpadRight;
     return ableem::Texture();
 }
 
