@@ -8,6 +8,7 @@
 
 #include <ableem/engine/log.h>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <mutex>
@@ -143,7 +144,8 @@ void sleepMs(int ms) {
 
 class Server {
 public:
-    Server(GuiBase &gui, int port) : gui_(gui), port_(port) {}
+    Server(GuiBase &gui, int port, string bindAddress, string token)
+        : gui_(gui), port_(port), bindAddress_(std::move(bindAddress)), token_(std::move(token)) {}
 
     bool listen() {
 #ifdef _WIN32
@@ -160,7 +162,13 @@ public:
         memset(&addr, 0, sizeof(addr));
         addr.sin_family = AF_INET;
         addr.sin_port = htons(static_cast<unsigned short>(port_));
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        if (bindAddress_.empty()) {
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        } else if (inet_pton(AF_INET, bindAddress_.c_str(), &addr.sin_addr) != 1) {
+            PLOG_ERROR << "DebugDriver: bad AB_DEBUG_BIND address " << bindAddress_;
+            CLOSESOCK(listener_);
+            return false;
+        }
         if (bind(listener_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
             CLOSESOCK(listener_);
             return false;
@@ -184,24 +192,82 @@ public:
     }
 
 private:
+    // true with the next line in `line`; false when the peer closed (nothing left to serve)
+    static bool nextLine(sock_t client, string &buffer, string &line) {
+        char chunk[512];
+        size_t nl = buffer.find('\n');
+        while (nl == string::npos) {
+            int n = recv(client, chunk, sizeof(chunk), 0);
+            if (n <= 0)
+                return false;
+            buffer.append(chunk, static_cast<size_t>(n));
+            nl = buffer.find('\n');
+        }
+        line = buffer.substr(0, nl);
+        buffer.erase(0, nl + 1);
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        return true;
+    }
+
+    static void sendLine(sock_t client, const string &reply) {
+        string out = reply + "\n";
+        send(client, out.c_str(), static_cast<int>(out.size()), 0);
+    }
+
     void serve(sock_t client) {
         string buffer;
-        char chunk[512];
-        for (;;) {
-            size_t nl = buffer.find('\n');
-            while (nl == string::npos) {
-                int n = recv(client, chunk, sizeof(chunk), 0);
-                if (n <= 0)
-                    return;
-                buffer.append(chunk, static_cast<size_t>(n));
-                nl = buffer.find('\n');
+        // A configured token gates the whole connection: the first line must be `auth <token>` (a wrong or
+        // missing one is one "err" reply and the socket closes) before any real command is read. Nothing
+        // reachable beyond loopback runs without this, by construction of allowedToStart().
+        if (!token_.empty()) {
+            string line;
+            if (!nextLine(client, buffer, line))
+                return;
+            istringstream in(line);
+            string cmd, attempt;
+            in >> cmd;
+            getline(in, attempt);
+            if (!attempt.empty() && attempt[0] == ' ')
+                attempt.erase(0, 1);
+            if (cmd != "auth" || !DebugDriver::tokensMatch(token_, attempt)) {
+                sendLine(client, "err auth");
+                return;
             }
-            string line = buffer.substr(0, nl);
-            buffer.erase(0, nl + 1);
-            if (!line.empty() && line.back() == '\r')
-                line.pop_back();
-            string reply = handle(line) + "\n";
-            send(client, reply.c_str(), static_cast<int>(reply.size()), 0);
+            sendLine(client, "ok");
+        }
+        for (;;) {
+            string line;
+            if (!nextLine(client, buffer, line))
+                return;
+            istringstream peek(line);
+            string cmd;
+            peek >> cmd;
+            if (cmd == "grab") {
+                handleGrab(client);
+                continue;
+            }
+            sendLine(client, handle(line));
+        }
+    }
+
+    void handleGrab(sock_t client) {
+        // a frame newer than the last input, if one comes in time - the same rule `shot` uses
+        for (int i = 0; i < 40 && gui_.renderer().frameCount() <= lastInputFrame_; i++)
+            sleepMs(10);
+        vector<unsigned char> png;
+        if (!gui_.renderer().encodeLastFramePng(png)) {
+            sendLine(client, "err no frame");
+            return;
+        }
+        sendLine(client, DebugDriver::grabHeader(png.size()));
+        size_t sent = 0;
+        while (sent < png.size()) {
+            int n =
+                send(client, reinterpret_cast<const char *>(png.data() + sent), static_cast<int>(png.size() - sent), 0);
+            if (n <= 0)
+                return;
+            sent += static_cast<size_t>(n);
         }
     }
 
@@ -329,6 +395,8 @@ private:
 
     GuiBase &gui_;
     int port_;
+    string bindAddress_;
+    string token_;
     sock_t listener_ = INVALID_SOCKET;
     unsigned long lastInputFrame_ = 0;
 };
@@ -368,17 +436,57 @@ vector<string> DebugDriver::items() {
 }
 
 //*******************************
+// DebugDriver::allowedToStart
+//*******************************
+bool DebugDriver::allowedToStart(const string &bindAddress, const string &token) {
+    bool loopback = bindAddress.empty() || bindAddress == "127.0.0.1";
+    return loopback || !token.empty();
+}
+
+//*******************************
+// DebugDriver::tokensMatch
+//*******************************
+bool DebugDriver::tokensMatch(const string &configured, const string &attempt) {
+    if (configured.empty())
+        return false; // nothing to match against - callers only compare when a token was actually set
+    // constant-time: touch every byte of both strings regardless of where they first differ, so a wrong
+    // guess cannot be timed byte by byte
+    size_t n = std::max(configured.size(), attempt.size());
+    unsigned char diff = static_cast<unsigned char>(configured.size() != attempt.size());
+    for (size_t i = 0; i < n; i++) {
+        unsigned char a = i < configured.size() ? static_cast<unsigned char>(configured[i]) : 0;
+        unsigned char b = i < attempt.size() ? static_cast<unsigned char>(attempt[i]) : 0;
+        diff = static_cast<unsigned char>(diff | (a ^ b));
+    }
+    return diff == 0;
+}
+
+//*******************************
+// DebugDriver::grabHeader
+//*******************************
+string DebugDriver::grabHeader(size_t byteCount) {
+    return "ok " + to_string(byteCount);
+}
+
+//*******************************
 // DebugDriver::start
 //*******************************
-bool DebugDriver::start(GuiBase &gui, int port) {
+bool DebugDriver::start(GuiBase &gui, int port, const string &bindAddress, const string &token) {
+    if (!allowedToStart(bindAddress, token)) {
+        PLOG_ERROR << "DebugDriver: refusing to bind " << (bindAddress.empty() ? "127.0.0.1" : bindAddress)
+                   << " without AB_DEBUG_TOKEN - a LAN driver must be authenticated";
+        return false;
+    }
     static unique_ptr<Server> server; // lives as long as the process: the thread never ends
-    server = make_unique<Server>(gui, port);
+    server = make_unique<Server>(gui, port, bindAddress, token);
     if (!server->listen()) {
-        PLOG_ERROR << "DebugDriver: cannot listen on 127.0.0.1:" << port;
+        PLOG_ERROR << "DebugDriver: cannot listen on " << (bindAddress.empty() ? "127.0.0.1" : bindAddress) << ":"
+                   << port;
         server.reset();
         return false;
     }
-    PLOG_INFO << "DebugDriver listening on 127.0.0.1:" << port;
+    PLOG_INFO << "DebugDriver listening on " << (bindAddress.empty() ? "127.0.0.1" : bindAddress) << ":" << port
+              << (token.empty() ? "" : " (token required)");
     Server *s = server.get();
     thread([s]() { s->run(); }).detach();
     return true;
