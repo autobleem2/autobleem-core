@@ -29,6 +29,10 @@ public:
     std::string crossLabel, circleLabel; // the footer's two hints; empty = "Select" / "Back"
     int result = -1;                     // the index picked, -1 when left with Circle
     int selected = 0;                    // kept across shows, so a menu reopens where it was
+    // drawn full-screen and dimmed under the panel instead of the theme's background when set: a screen
+    // an extension opens from the launcher passes the launcher's frame, gui.renderer().lastCapture() (the
+    // launcher captures it right before it runs an extension), so the panel reads as an overlay on it
+    ableem::Texture background;
 
     void init() override;
     void render() override;

@@ -42,7 +42,12 @@ int GuiActionMenu::visibleRows() const {
 //*******************************
 void GuiActionMenu::render() {
     renderer.clear();
-    gui->renderBackground();
+    // a frame to draw over (the launcher's, captured when it started an extension - GuiSystemMenu's look),
+    // else the theme's background
+    if (background.valid())
+        renderer.copy(background, nullptr, nullptr);
+    else
+        gui->renderBackground();
     style.dim(renderer);
     const int rows = visibleRows();
     const int panelHeight = HeaderHeight + rows * RowHeight + FooterHeight;

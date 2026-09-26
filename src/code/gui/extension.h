@@ -28,7 +28,7 @@ class AppBase;
 // A macro and a string literal on purpose: an inline function here would, on Linux, bind to the launcher's
 // own copy when the plugin is loaded, and the plugin would report the launcher's stamp as its own.
 // 2: ableem::Event gained mods and code; 3: GuiKeyboard rebuilt, Input::keyboardAsPad()/rawKeyboard() (2026-09-24);
-// 4: Extension::runEntry(), extension.ini's Provides= (2026-09-26)
+// 4: Extension::runEntry(), extension.ini's Provides=, GuiActionMenu::background (2026-09-26, one unreleased ABI)
 #define AB_SDK_ABI 4
 
 #define AB_SDK_STR2(x) #x
