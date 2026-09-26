@@ -8,6 +8,7 @@
 
 #include <json.h>
 
+#include "ableem/engine/log.h"
 #include "ableem/engine/strings.h"
 
 using namespace std;
@@ -222,7 +223,7 @@ StoreSourceTsv StoreSourceTsv::parse(const string &text, const string &fallbackN
             continue;
         }
         if (!isUrl(url)) {
-            out.problems.push_back("line " + to_string(number) + ": no http(s) url");
+            PLOG_DEBUG << "line " << number << ": no http(s) url, skipped";
             continue;
         }
         string kind = lower(field("kind"));
