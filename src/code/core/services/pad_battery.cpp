@@ -84,14 +84,17 @@ vector<PadBatteryInfo> PadBatteryService::list() const {
     if (root_.empty() || !DirEntry::exists(root_))
         return out;
 
-    for (const string &name : DirEntry::listNames(root_)) {
+    // each pad's battery is a sub-directory (capacity/status/... inside it), not a plain file - listNames()
+    // filters directories out (it is built for a flat file listing, e.g. Named_Boxarts), so this needs
+    // diru_DirsOnly() instead
+    for (const DirEntry &entry : DirEntry::diru_DirsOnly(root_)) {
         string address;
-        if (!isPadBatteryEntry(name, address))
+        if (!isPadBatteryEntry(entry.name, address))
             continue;
 
-        string dir = root_ + sep + name;
+        string dir = root_ + sep + entry.name;
         PadBatteryInfo info;
-        info.sysfsName = name;
+        info.sysfsName = entry.name;
         info.address = address;
         info.status = readFirstLine(dir + sep + "status");
 
