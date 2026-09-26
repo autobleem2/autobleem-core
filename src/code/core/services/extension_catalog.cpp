@@ -47,6 +47,32 @@ ExtensionNetwork ExtensionCatalog::parseNetwork(const string &value) {
 }
 
 //*******************************
+// ExtensionCatalog::parseProvides / ExtensionInfo::providesEntry
+//*******************************
+vector<string> ExtensionCatalog::parseProvides(const string &value) {
+    vector<string> entries;
+    string current;
+    auto flush = [&]() {
+        if (!current.empty() && std::find(entries.begin(), entries.end(), current) == entries.end())
+            entries.push_back(current);
+        current.clear();
+    };
+    for (char c : ableem::toLowerCopy(value)) {
+        if (c == ',' || c == ';' || c == ' ' || c == '\t')
+            flush();
+        else
+            current += c;
+    }
+    flush();
+    return entries;
+}
+
+bool ExtensionInfo::providesEntry(const string &entry) const {
+    const string wanted = ableem::toLowerCopy(Strings::trim(entry));
+    return !wanted.empty() && std::find(provides.begin(), provides.end(), wanted) != provides.end();
+}
+
+//*******************************
 // ExtensionCatalog::scan
 //*******************************
 const vector<ExtensionInfo> &ExtensionCatalog::scan() {
@@ -83,6 +109,7 @@ const vector<ExtensionInfo> &ExtensionCatalog::scan() {
             e.icon = folder + sep + icon;
         e.network = parseNetwork(e.manifest.value("network"));
         e.background = AppManifest::parseFlag(e.manifest.value("background"), false);
+        e.provides = parseProvides(e.manifest.value("provides"));
         e.disabled =
             find_if(disabled.begin(), disabled.end(), [&](const string &n) { return n == dir.name; }) != disabled.end();
         auto problem = problems.find(dir.name);
@@ -104,6 +131,16 @@ const vector<ExtensionInfo> &ExtensionCatalog::scan() {
 ExtensionInfo *ExtensionCatalog::find(const string &name) {
     for (ExtensionInfo &e : extensions_)
         if (e.name == name)
+            return &e;
+    return nullptr;
+}
+
+//*******************************
+// ExtensionCatalog::findProvider
+//*******************************
+ExtensionInfo *ExtensionCatalog::findProvider(const string &entry) {
+    for (ExtensionInfo &e : extensions_)
+        if (e.runnable() && e.providesEntry(entry))
             return &e;
     return nullptr;
 }
