@@ -285,6 +285,10 @@ bool Renderer::encodeLastFramePng(std::vector<unsigned char> &out) {
         return false;
     out.clear();
     SDL_RWops *rw = SDL_AllocRW();
+    if (!rw) {
+        SDL_FreeSurface(s);
+        return false;
+    }
     rw->hidden.unknown.data1 = new MemWriter{&out};
     rw->size = memWriterSize;
     rw->seek = memWriterSeek;
