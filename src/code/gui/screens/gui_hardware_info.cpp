@@ -3,6 +3,7 @@
 //
 #include "gui_hardware_info.h"
 #include "../gui.h"
+#include "core/model/pad_assignment.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -76,8 +77,15 @@ InfoSection GuiHardwareInfo::displayAndInput() {
     if (pads.empty()) {
         add(_("Controllers"), platform.isDevHost() ? _("Keyboard") : _("None"));
     } else {
-        for (size_t i = 0; i < pads.size(); i++)
-            add(_("Controller") + " " + to_string(i + 1), pads[i].name);
+        // pads() is in ascending SDL device-index order - the same order pcsx-ab/pcsx-abnxt assign
+        // PS1 ports 1/2 by, so this position is that assignment (psPlayerLabel, core/model/pad_assignment.h)
+        for (size_t i = 0; i < pads.size(); i++) {
+            string playerLabel = psPlayerLabel(static_cast<int>(i), static_cast<int>(pads.size()));
+            if (i < 2)
+                add(_(playerLabel), pads[i].name);
+            else
+                add(_("Controller") + " " + to_string(i + 1), pads[i].name + " (" + _(playerLabel) + ")");
+        }
     }
     // the gamecontrollerdb.txt the pads were mapped from (Env::padMappingFiles() - the first that loaded)
     string mappings = gui->input().currentMappingPath();
