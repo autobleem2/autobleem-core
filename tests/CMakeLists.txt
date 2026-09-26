@@ -29,6 +29,9 @@ if (AB_CORE_UI)
     # the runtime is ab_classic's (it knows Extension), tested with in-process fake plugins
     ab_add_test(test_extension_runtime classic/test_extension_runtime.cpp LIBS ab_classic)
     ab_add_test(test_hold_repeat classic/test_hold_repeat.cpp)
+    # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
+    # so it links the ui library the way ab_classic's tests do
+    ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)
 endif()
 ab_add_test(test_game_catalog core/test_game_catalog.cpp)
 ab_add_test(test_game_database core/test_game_database.cpp)
