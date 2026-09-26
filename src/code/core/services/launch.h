@@ -107,6 +107,12 @@ private:
 
     // copy a cfg file forcing LF line endings (the emulator reads it in text mode; CRLF breaks it)
     static void copyCfgAsLf(const std::string &src, const std::string &dst);
+    // the "last played" time, for the three launch paths: skipped when Env::clockIsSet() says the console's
+    // clock has never been set (the AutoBleem kernel sets it once a network is up) - a launch before then
+    // must not overwrite a valid earlier time with the epoch. The play-history ranking
+    // (GameCatalogService::recordGamePlayed) is unaffected and runs regardless.
+    void recordLastPlayed(PsGame &game);
+
     // the disc image handed to an emulator: <folder>/<base>, with .cue appended unless it is a .pbp or .chd
     static std::string discImageFor(const PsGame &game);
     // the image's base name with a .pbp extension dropped - what RetroArch names its saves after

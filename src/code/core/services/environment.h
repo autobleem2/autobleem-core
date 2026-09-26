@@ -140,6 +140,18 @@ struct Environment : ableem::Environment {
     // puts productVersion() into AB_VERSION, so every program started from here inherits it
     static void exportProductVersion();
 
+    // Whether the clock can be trusted right now (2026-09-26): the PSC has no battery-backed clock, and on
+    // the AutoBleem kernel it is only set once a network is up (the payload's dhcpcd hook touches
+    // clockSetMarkerFile()). Elsewhere (every other target, and the console before it has a network) the
+    // system clock is whatever the host gave it, always trusted. A plain stat, re-checked on every call - the
+    // clock can be set mid-session - never cached. What LaunchService checks before writing a "last played"
+    // time, so a launch before the clock is set does not overwrite a valid earlier one with the epoch.
+    static bool clockIsSet();
+    // the marker clockIsSet() stats: "" (always set) off the console, "/run/autobleem/clock-set" on it - the
+    // one place the path is spelled. Settable for tests; production never calls the setter.
+    static std::string clockSetMarkerFile();
+    static void setClockSetMarkerFile(const std::string &path);
+
     // "Keep logs on the stick" (docs/quiet-stick-plan.md): a tester's System/Logs/keep marker - what the rc
     // scripts see before the launcher runs - or config.ini's keeplogs=true (the Options row), or
     // $AB_KEEP_LOGS=1. config.ini on and no marker makes the marker, so the scripts agree from the next boot.

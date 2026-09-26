@@ -140,6 +140,40 @@ TEST_CASE("PCSX is started through rc/launch.sh with the nine arguments the scri
     CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("System/Runtime/autobleem_cfg.sh")));
 }
 
+TEST_CASE("a launch before the clock is set leaves an earlier last-played time alone, on every path") {
+    Launching lib;
+    const string marker = lib.tmp.at("run/autobleem/clock-set");
+    lib.env.setClockSetMarkerFile(marker); // not created: the clock has never been set this boot
+
+    SUBCASE("PCSX") {
+        PsGamePtr game = lib.usbGame();
+        lib.service->launch(game, EmuMode::Pcsx, -1);
+        CHECK(lib.usbGame()->last_played == 0);
+    }
+    SUBCASE("RetroArch") {
+        lib.configure("Raconfig=false\n");
+        PsGamePtr game = lib.usbGame();
+        lib.service->launch(game, EmuMode::RetroArch, -1);
+        CHECK(lib.usbGame()->last_played == 0);
+    }
+    SUBCASE("an App") {
+        lib.tmp.makeSubDir("Apps/SomeApp");
+        PsGamePtr game = lib.foreignGame(true);
+        lib.service->launch(game, EmuMode::Launcher, -1);
+        // an App's launch never touches regional.db (its gameId is not one of ours) - the point here is only
+        // that recordLastPlayed's guard does not stop the launch itself from running
+        CHECK(lib.runner.only().exe == "/media/Apps/SomeApp/run.sh");
+    }
+
+    // once the clock is set (mid-session, as the dhcpcd hook does it), the next launch records normally
+    lib.tmp.makeSubDir("run/autobleem");
+    lib.tmp.writeFile("run/autobleem/clock-set", "");
+    PsGamePtr game = lib.usbGame();
+    lib.runner.calls.clear();
+    lib.service->launch(game, EmuMode::Pcsx, -1);
+    CHECK(lib.usbGame()->last_played > 0);
+}
+
 TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg as Off/Linear/Sharp 0/1/2") {
     Launching lib;
     lib.configure("Aspect=true\n");

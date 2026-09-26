@@ -31,6 +31,17 @@ const char *const PcsxNeonGpu = "builtin_gpu";
 } // namespace
 
 //*******************************
+// LaunchService::recordLastPlayed
+//*******************************
+void LaunchService::recordLastPlayed(PsGame &game) {
+    if (!Env::clockIsSet()) {
+        PLOG_INFO << "clock not set yet - leaving \"" << game.title << "\"'s last played time as it was";
+        return;
+    }
+    library_.updateDatePlayed(game, time(nullptr));
+}
+
+//*******************************
 // LaunchService::pcsxLauncherScript
 //*******************************
 string LaunchService::pcsxLauncherScript() {
@@ -459,7 +470,7 @@ void LaunchService::copyCfgAsLf(const string &src, const string &dst) {
 void LaunchService::launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::Env &env) {
     PLOG_INFO << "calling LaunchService::launchPcsx()";
 
-    library_.updateDatePlayed(game, time(nullptr));
+    recordLastPlayed(game);
 
     string lastCDpoint = game.ssFolder + sep + "lastcdimg.txt";
     string lastCDpointX = game.ssFolder + sep + "lastcdimg." + to_string(resumePoint) + ".txt";
@@ -558,7 +569,7 @@ void LaunchService::launchRetroArch(PsGame &game) {
     // one of our own games: a playlist entry's gameId is only its index in the playlist, and would name
     // some unrelated row in regional.db
     if (!game.foreign) {
-        library_.updateDatePlayed(game, time(nullptr));
+        recordLastPlayed(game);
     }
 
     string gameFile = "";
@@ -792,7 +803,7 @@ void LaunchService::launchApp(PsGame &game) {
     PLOG_INFO << "calling LaunchService::launchApp()";
     PLOG_INFO << "Starting External App";
 
-    library_.updateDatePlayed(game, time(nullptr));
+    recordLastPlayed(game);
 
     if (game.foreign) {
         PLOG_INFO << "FOREIGN MODE";

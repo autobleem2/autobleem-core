@@ -45,6 +45,7 @@ public:
     void setRetroarchCoreFile(const std::string &p) { ableem::Environment::setRetroarchCoreFile(p); }
     void setRetroarchRomsDir(const std::string &p) { ableem::Environment::setRetroarchRomsDir(p); }
     void setRetroArchBinaries(const std::vector<std::string> &b) { ::Environment::setRetroArchBinaries(b); }
+    void setClockSetMarkerFile(const std::string &p) { ::Environment::setClockSetMarkerFile(p); }
 
 private:
     struct Roots {
@@ -55,6 +56,7 @@ private:
         std::vector<std::string> retroArchBinaries;
         std::string coreExtension, downloadCommand, repoUrl, updateDownloadCommand, retroArchCatalog, pcsxDir;
         std::string pcsxNxtDir;
+        std::string clockSetMarkerFile;
         bool directLaunch = false;
         std::string stateDir;   // "" = the working path
         std::string runtimeDir; // "" = usb:/System/Runtime
@@ -83,7 +85,8 @@ private:
                 : E::getPathToRetroarchBiosDir(),
             ::Environment::retroArchBinaries(), E::getRetroarchCoreExtension(), ::Environment::downloadCommand(),
             ::Environment::repoUrl(), ::Environment::updateDownloadCommand(), ::Environment::retroArchCatalog(),
-            ::Environment::pcsxDir(), ::Environment::pcsxNxtDir(), ::Environment::directLaunch(),
+            ::Environment::pcsxDir(), ::Environment::pcsxNxtDir(), ::Environment::clockSetMarkerFile(),
+            ::Environment::directLaunch(),
             E::getPathToStateDir() == E::getWorkingPath() ? std::string() : E::getPathToStateDir(),
             E::getPathToRuntimeDir() == E::getPathToSystemDir() + ableem::sep + "Runtime" ? std::string()
                                                                                           : E::getPathToRuntimeDir(),
@@ -112,6 +115,7 @@ private:
         ::Environment::setUpdateSource(r.repoUrl, r.updateDownloadCommand, r.retroArchCatalog);
         ::Environment::setPcsxDir(r.pcsxDir);
         ::Environment::setPcsxNxtDir(r.pcsxNxtDir);
+        ::Environment::setClockSetMarkerFile(r.clockSetMarkerFile);
         ::Environment::setDirectLaunch(r.directLaunch);
         E::setStateDir(r.stateDir);
         E::setRuntimeDir(r.runtimeDir);

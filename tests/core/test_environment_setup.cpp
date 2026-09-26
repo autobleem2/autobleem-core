@@ -221,3 +221,30 @@ TEST_CASE("productVersion is the package's VERSION file, a parent's AB_VERSION, 
     CHECK(Env::productVersion() == "v2.0.0-alpha2-17-g1760cc8");
     clearVersionEnv();
 }
+
+// --- clockIsSet ---
+
+TEST_CASE("off the console the clock is always trusted: no marker file is even named") {
+    EnvFixture env;
+    (void)env;
+    // this suite is never built for AB_PLATFORM_PSC (the cross toolchains force AB_BUILD_TESTS off), so the
+    // production default here is what a dev host / an appliance / the Windows product actually ships with
+    CHECK(Env::clockSetMarkerFile().empty());
+    CHECK(Env::clockIsSet());
+}
+
+TEST_CASE("clockIsSet mirrors the marker file, live - not cached from one call to the next") {
+    EnvFixture env;
+    TempDir tmp("clock_marker");
+    const string marker = tmp.at("run/autobleem/clock-set");
+    env.setClockSetMarkerFile(marker);
+
+    CHECK_FALSE(Env::clockIsSet()); // the kernel's dhcpcd hook has not touched it yet
+
+    tmp.makeSubDir("run/autobleem");
+    tmp.writeFile("run/autobleem/clock-set", "");
+    CHECK(Env::clockIsSet()); // set mid-session - the network came up
+
+    DirEntry::removeFile(marker);
+    CHECK_FALSE(Env::clockIsSet()); // re-checked, not remembered
+}

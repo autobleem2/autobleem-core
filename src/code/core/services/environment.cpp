@@ -27,6 +27,12 @@ string pcsxDir_;
 string pcsxNxtDir_;
 vector<string> extraAppPlatformKeys_;
 string storeDownloadCommand_;
+string clockSetMarkerFile_ =
+#if defined(AB_PLATFORM_PSC)
+    "/run/autobleem/clock-set";
+#else
+    "";
+#endif
 } // namespace
 
 //*******************************
@@ -186,6 +192,21 @@ void Env::exportProductVersion() {
 #else
     setenv("AB_VERSION", version.c_str(), 1);
 #endif
+}
+
+//*******************************
+// Env::clockIsSet / clockSetMarkerFile / setClockSetMarkerFile
+//*******************************
+string Env::clockSetMarkerFile() {
+    return clockSetMarkerFile_;
+}
+
+void Env::setClockSetMarkerFile(const string &path) {
+    clockSetMarkerFile_ = path;
+}
+
+bool Env::clockIsSet() {
+    return clockSetMarkerFile_.empty() || DirEntry::exists(clockSetMarkerFile_);
 }
 
 //*******************************
