@@ -308,14 +308,19 @@ InfoSection SystemInfoService::network() const {
     if (GetAdaptersAddresses(AF_INET, flags, nullptr, addresses, &size) == NO_ERROR) {
         for (auto *adapter = addresses; adapter; adapter = adapter->Next) {
             if (adapter->IfType == IF_TYPE_IEEE80211 || adapter->IfType == IF_TYPE_ETHERNET_CSMACD) {
-                // what Windows lists as Ethernet includes the virtual switches and VPNs; their description
-                // says so, and a physical adapter has a hardware address
+                // what Windows lists as Ethernet includes the virtual switches (Hyper-V, VirtualBox) and VPN
+                // taps; their description says so, and a physical adapter has a hardware address
                 wstring wideName(adapter->FriendlyName);
+                wstring description(adapter->Description);
+                bool isVirtual = false;
+                for (const wchar_t *mark : {L"Virtual", L"Hyper-V", L"VPN", L"TAP-", L"Loopback"})
+                    if (description.find(mark) != wstring::npos)
+                        isVirtual = true;
                 Adapter a;
                 a.name = string(wideName.begin(), wideName.end());
                 a.kind = adapter->IfType == IF_TYPE_IEEE80211 ? AdapterKind::Wifi : AdapterKind::Ethernet;
                 a.up = adapter->OperStatus == IfOperStatusUp;
-                if (adapter->PhysicalAddressLength > 0)
+                if (adapter->PhysicalAddressLength > 0 && !isVirtual)
                     adapters.push_back(a);
             }
             if (adapter->OperStatus != IfOperStatusUp || adapter->IfType == IF_TYPE_SOFTWARE_LOOPBACK)
