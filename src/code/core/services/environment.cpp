@@ -33,6 +33,8 @@ string clockSetMarkerFile_ =
 #else
     "";
 #endif
+string padBatteryPowerSupplyDir_;
+bool padBatteryPowerSupplyDirSet_ = false;
 } // namespace
 
 //*******************************
@@ -241,6 +243,27 @@ void Env::setKeepLogsMarker(bool keep) {
         return;
     DirEntry::createDirs(getPathToPersistentLogsDir());
     ofstream(keepLogsMarkerFile(), ios::binary) << "Options -> Keep logs on the stick\n";
+}
+
+//*******************************
+// Env::padBatteryPowerSupplyDir / setPadBatteryPowerSupplyDir
+//*******************************
+string Env::padBatteryPowerSupplyDir() {
+    if (padBatteryPowerSupplyDirSet_)
+        return padBatteryPowerSupplyDir_;
+    const char *fromEnv = getenv("AB_PAD_BATTERY_DIR");
+    if (fromEnv != nullptr && *fromEnv != '\0')
+        return fromEnv;
+#ifdef _WIN32
+    return "";
+#else
+    return "/sys/class/power_supply";
+#endif
+}
+
+void Env::setPadBatteryPowerSupplyDir(const string &path) {
+    padBatteryPowerSupplyDir_ = path;
+    padBatteryPowerSupplyDirSet_ = true;
 }
 
 string Env::takeNewCrashLogs() {

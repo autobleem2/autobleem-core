@@ -1,0 +1,116 @@
+//
+// PadBatteryService: see pad_battery.h.
+//
+#include "pad_battery.h"
+#include "environment.h"
+#include "../main.h"
+
+#include <ableem/engine/filesystem.h>
+
+#include <algorithm>
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
+
+using namespace std;
+
+namespace {
+
+// the whole of a small sysfs file's first line, trimmed; "" when the file is not there - so a driver that
+// has not written a value yet (or a kernel without this file at all) just leaves the row unknown
+string readFirstLine(const string &path) {
+    ifstream in(path, ios::binary);
+    if (!in)
+        return "";
+    string line;
+    getline(in, line);
+    return Strings::trim(line);
+}
+
+const vector<string> &batteryPrefixes() {
+    static const vector<string> prefixes = {"sony_controller_battery_", "ps-controller-battery-"};
+    return prefixes;
+}
+
+} // namespace
+
+//*******************************
+// PadBatteryService::defaultPowerSupplyDir
+//*******************************
+string PadBatteryService::defaultPowerSupplyDir() {
+    return Env::padBatteryPowerSupplyDir();
+}
+
+//*******************************
+// PadBatteryService::PadBatteryService
+//*******************************
+PadBatteryService::PadBatteryService(string powerSupplyDir) : root_(std::move(powerSupplyDir)) {}
+
+//*******************************
+// PadBatteryService::isPadBatteryEntry
+//*******************************
+bool PadBatteryService::isPadBatteryEntry(const string &folderName, string &addressOut) {
+    for (const string &prefix : batteryPrefixes()) {
+        if (folderName.size() > prefix.size() && folderName.compare(0, prefix.size(), prefix) == 0) {
+            addressOut = folderName.substr(prefix.size());
+            return true;
+        }
+    }
+    return false;
+}
+
+//*******************************
+// PadBatteryService::percentFromCapacityLevel
+//*******************************
+int PadBatteryService::percentFromCapacityLevel(const string &level) {
+    if (level == "Full")
+        return 100;
+    if (level == "High")
+        return 75;
+    if (level == "Normal")
+        return 50;
+    if (level == "Low")
+        return 15;
+    if (level == "Critical")
+        return 5;
+    return -1; // "Unknown", or anything this list does not know
+}
+
+//*******************************
+// PadBatteryService::list
+//*******************************
+vector<PadBatteryInfo> PadBatteryService::list() const {
+    vector<PadBatteryInfo> out;
+    if (root_.empty() || !DirEntry::exists(root_))
+        return out;
+
+    for (const string &name : DirEntry::listNames(root_)) {
+        string address;
+        if (!isPadBatteryEntry(name, address))
+            continue;
+
+        string dir = root_ + sep + name;
+        PadBatteryInfo info;
+        info.sysfsName = name;
+        info.address = address;
+        info.status = readFirstLine(dir + sep + "status");
+
+        string capacity = readFirstLine(dir + sep + "capacity");
+        if (!capacity.empty()) {
+            char *end = nullptr;
+            long percent = strtol(capacity.c_str(), &end, 10);
+            if (end != capacity.c_str())
+                info.percent = static_cast<int>(max(0L, min(100L, percent)));
+        }
+        if (info.percent < 0) {
+            string level = readFirstLine(dir + sep + "capacity_level");
+            if (!level.empty())
+                info.percent = percentFromCapacityLevel(level);
+        }
+        out.push_back(info);
+    }
+
+    sort(out.begin(), out.end(),
+         [](const PadBatteryInfo &a, const PadBatteryInfo &b) { return a.address < b.address; });
+    return out;
+}

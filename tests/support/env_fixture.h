@@ -46,6 +46,7 @@ public:
     void setRetroarchRomsDir(const std::string &p) { ableem::Environment::setRetroarchRomsDir(p); }
     void setRetroArchBinaries(const std::vector<std::string> &b) { ::Environment::setRetroArchBinaries(b); }
     void setClockSetMarkerFile(const std::string &p) { ::Environment::setClockSetMarkerFile(p); }
+    void setPadBatteryPowerSupplyDir(const std::string &p) { ::Environment::setPadBatteryPowerSupplyDir(p); }
 
 private:
     struct Roots {
@@ -57,6 +58,7 @@ private:
         std::string coreExtension, downloadCommand, repoUrl, updateDownloadCommand, retroArchCatalog, pcsxDir;
         std::string pcsxNxtDir;
         std::string clockSetMarkerFile;
+        std::string padBatteryPowerSupplyDir;
         bool directLaunch = false;
         std::string stateDir;   // "" = the working path
         std::string runtimeDir; // "" = usb:/System/Runtime
@@ -86,7 +88,7 @@ private:
             ::Environment::retroArchBinaries(), E::getRetroarchCoreExtension(), ::Environment::downloadCommand(),
             ::Environment::repoUrl(), ::Environment::updateDownloadCommand(), ::Environment::retroArchCatalog(),
             ::Environment::pcsxDir(), ::Environment::pcsxNxtDir(), ::Environment::clockSetMarkerFile(),
-            ::Environment::directLaunch(),
+            ::Environment::padBatteryPowerSupplyDir(), ::Environment::directLaunch(),
             E::getPathToStateDir() == E::getWorkingPath() ? std::string() : E::getPathToStateDir(),
             E::getPathToRuntimeDir() == E::getPathToSystemDir() + ableem::sep + "Runtime" ? std::string()
                                                                                           : E::getPathToRuntimeDir(),
@@ -116,6 +118,7 @@ private:
         ::Environment::setPcsxDir(r.pcsxDir);
         ::Environment::setPcsxNxtDir(r.pcsxNxtDir);
         ::Environment::setClockSetMarkerFile(r.clockSetMarkerFile);
+        ::Environment::setPadBatteryPowerSupplyDir(r.padBatteryPowerSupplyDir);
         ::Environment::setDirectLaunch(r.directLaunch);
         E::setStateDir(r.stateDir);
         E::setRuntimeDir(r.runtimeDir);
