@@ -23,6 +23,7 @@ endif()
 #*******************************
 add_library(ableem_engine ${ABLEEM_LIB_KIND}
         src/engine/strings.cpp
+        src/engine/keyboard_presence.cpp
         src/engine/filesystem.cpp
         src/engine/environment.cpp
         src/engine/ini_file.cpp

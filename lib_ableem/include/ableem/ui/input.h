@@ -163,10 +163,16 @@ public:
     bool dpadRight() const;
     bool dpadCentered() const;
 
-    // on a dev host (see Platform::isDevHost), keyboard keys are turned into pad Button/Dpad events so the
-    // app is usable without a real controller. On by default on dev hosts, off elsewhere.
+    // keyboard keys turned into pad Button/Dpad events, so every screen driven by the pad works from a
+    // keyboard: the PC-style map (keyboard_map.h - arrows, Enter, Esc/Backspace, Tab, Space, F1/F2, PgUp/PgDn,
+    // Home/End, F10) on every platform, and on a dev host (see Platform::isDevHost) the letter map too
+    // (X O S T, I J K L, ...). On by default everywhere since 2026-09-26 (was dev hosts only); a screen that
+    // takes typed text (GuiKeyboard) turns it off for its own duration.
     void setKeyboardAsPad(bool enabled);
     bool keyboardAsPad() const;
+    // a keyboard is connected (KeyboardPresence::detect - sysfs on Linux, the raw input list on Windows),
+    // or a key went down this session. Asked afresh every call: a keyboard plugged in later counts.
+    bool keyboardPresent() const;
 
     // the power button / Esc: normally poll() calls the power-off handler and swallows it; with this on it
     // comes through as a KeyDown of Key::Sleep instead (a screen that uses it as "cancel", like a pad

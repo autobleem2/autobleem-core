@@ -1,4 +1,6 @@
 #include "ableem/ui/input.h"
+#include "ableem/ui/keyboard_map.h"
+#include "ableem/engine/keyboard_presence.h"
 
 #include <deque>
 #include <mutex>
@@ -18,7 +20,8 @@ namespace {
 // translateKeyboardToPad
 //******************
 // development machines usually have no gamepad. rewrite a key event into the pad event the screens expect.
-// the letters used here are not used by any screen (the on-screen keyboard navigates with arrows).
+// the letters used here are not used by any screen (the on-screen keyboard navigates with arrows). Only on a
+// dev host, next to the PC-style map every platform has (keyboard_map.h), which leaves Space to this one.
 //   X = cross     O = circle    S = square    T = triangle
 //   I J K L = d-pad up left down right         Space = Start    B = Select (Back)
 //   Q = L1        E = R1        1 = L2        2 = R2
@@ -206,7 +209,9 @@ struct Pad {
 
 struct Input::Impl {
     Platform &platform;
-    bool keyboardAsPad;
+    bool keyboardAsPad = true; // the PC-style map (keyboard_map.h), every platform
+    bool devKeyMap;            // a dev host's letter map as well (translateKeyboardToPad)
+    bool keySeen = false;      // a key went down this session: a keyboard is here, whatever detect() says
     bool powerKeyAsKey = false;
     bool rawKeyboard = false;   // setRawKeyboard(): Esc is a key, not the power button
     bool quitRequested = false; // requestQuit(): poll() returns Quit on every other call from then on
@@ -230,7 +235,58 @@ struct Input::Impl {
     std::string currentMappingPath;
     std::vector<std::unique_ptr<Pad>> pads;
 
-    explicit Impl(Platform &p) : platform(p), keyboardAsPad(p.isDevHost()) {}
+    explicit Impl(Platform &p) : platform(p), devKeyMap(p.isDevHost()) {}
+
+    void setDpad(Button b, bool down) {
+        if (b == Button::DpadUp)
+            dpadState[DUP] = down;
+        else if (b == Button::DpadDown)
+            dpadState[DDOWN] = down;
+        else if (b == Button::DpadLeft)
+            dpadState[DLEFT] = down;
+        else if (b == Button::DpadRight)
+            dpadState[DRIGHT] = down;
+    }
+
+    // a KeyDown/KeyUp in `out` made the pad event the PC-style map says (keyboard_map.h); false when the key
+    // is not one of the map's, or the map is off. A key held down repeats as a KeyDown with repeat set: a
+    // mapped one is swallowed (swallow = true) - the screens have their own hold logic, and a repeated Esc
+    // must not fall through to the power off.
+    bool mapKey(Event &out, bool repeat, bool &swallow) {
+        swallow = false;
+        if (!keyboardAsPad || (out.type != Event::Type::KeyDown && out.type != Event::Type::KeyUp))
+            return false;
+        if (rawKeyboard && out.key == Key::Escape)
+            return false;
+        const KeyboardMap::Mapped m = KeyboardMap::toPad(out.key, out.code, platform.isDevHost());
+        if (!m.mapped())
+            return false;
+        if (repeat) {
+            swallow = true;
+            return false;
+        }
+        const bool down = out.type == Event::Type::KeyDown;
+        Event pad;
+        if (m.systemChord) {
+            // L2 and R2 together, let go of in the other order
+            Event second;
+            pad.type = second.type = down ? Event::Type::ButtonDown : Event::Type::ButtonUp;
+            pad.button = down ? Button::L2 : Button::R2;
+            second.button = down ? Button::R2 : Button::L2;
+            std::lock_guard<std::mutex> lock(injectedMutex);
+            injected.push_front(second);
+        } else if (m.button == Button::DpadUp || m.button == Button::DpadDown || m.button == Button::DpadLeft ||
+                   m.button == Button::DpadRight) {
+            pad.type = down ? Event::Type::DpadDown : Event::Type::DpadUp;
+            pad.button = m.button;
+            setDpad(m.button, down);
+        } else {
+            pad.type = down ? Event::Type::ButtonDown : Event::Type::ButtonUp;
+            pad.button = m.button;
+        }
+        out = pad;
+        return true;
+    }
 
     void registerPad(int joystickIndex) {
         SDL_Joystick *js = SDL_JoystickOpen(joystickIndex);
@@ -300,17 +356,13 @@ bool Input::poll(Event &out) {
         return true;
     }
     if (impl->takeInjected(out)) {
-        if (out.type == Event::Type::DpadDown || out.type == Event::Type::DpadUp) {
-            const bool down = out.type == Event::Type::DpadDown;
-            if (out.button == Button::DpadUp)
-                impl->dpadState[DUP] = down;
-            else if (out.button == Button::DpadDown)
-                impl->dpadState[DDOWN] = down;
-            else if (out.button == Button::DpadLeft)
-                impl->dpadState[DLEFT] = down;
-            else if (out.button == Button::DpadRight)
-                impl->dpadState[DRIGHT] = down;
-        }
+        if (out.type == Event::Type::DpadDown || out.type == Event::Type::DpadUp)
+            impl->setDpad(out.button, out.type == Event::Type::DpadDown);
+        // a key the DebugDriver typed goes through the map as a real one would
+        if (out.type == Event::Type::KeyDown)
+            impl->keySeen = true;
+        bool swallow = false;
+        impl->mapKey(out, false, swallow);
         return true;
     }
     SDL_Event e;
@@ -328,8 +380,27 @@ bool Input::poll(Event &out) {
         return true;
     }
 
-    if (impl->keyboardAsPad) {
+    if (e.type == SDL_KEYDOWN)
+        impl->keySeen = true;
+
+    if (impl->keyboardAsPad && impl->devKeyMap) {
         translateKeyboardToPad(e); // mutates e in place; falls through to the normal handling below
+    }
+
+    // the PC-style map, ahead of the power button's check: Esc is Circle there (but on a dev host)
+    if ((e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) && e.key.keysym.scancode != SDL_SCANCODE_SLEEP) {
+        Event key;
+        key.type = e.type == SDL_KEYDOWN ? Event::Type::KeyDown : Event::Type::KeyUp;
+        key.key = toKey(e.key.keysym.scancode, e.key.keysym.sym);
+        key.mods = toMods(e.key.keysym.mod);
+        key.code = toCode(e.key.keysym.sym);
+        bool swallow = false;
+        if (impl->mapKey(key, e.key.repeat != 0, swallow)) {
+            out = key;
+            return true;
+        }
+        if (swallow)
+            return true; // out stays Type::None: consumed
     }
 
     if (e.type == SDL_QUIT) {
@@ -449,6 +520,10 @@ bool Input::dpadRight() const {
 }
 bool Input::dpadCentered() const {
     return !impl->dpadState[DUP] && !impl->dpadState[DDOWN] && !impl->dpadState[DLEFT] && !impl->dpadState[DRIGHT];
+}
+
+bool Input::keyboardPresent() const {
+    return impl->keySeen || KeyboardPresence::detect();
 }
 
 void Input::setKeyboardAsPad(bool enabled) {
