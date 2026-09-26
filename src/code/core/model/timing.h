@@ -14,6 +14,15 @@
 // scan directly (milliseconds) - see ScanService::checkForChanges()
 #define ScanWatchInterval (10 * TicksPerSecond)
 
+// GuiLauncher: how often it re-reads PadBatteryService's list (milliseconds) - a handful of small sysfs
+// reads, cheap enough to poll but not worth doing every frame (C8, docs/todo.md)
+#define PadBatteryPollInterval (5 * TicksPerSecond)
+// GuiLauncher: a pad at or under this percent gets the one-time "battery low" notification line
+#define PadBatteryLowPercent 15
+// ... and has to climb back over this (a charge, or a fresh read once it is unplugged and replugged) before
+// the same pad can be notified again - keeps a reading bouncing around 15% from renotifying every poll
+#define PadBatteryLowResetPercent 25
+
 // GuiSplash::loop(): how long the screen stays black after the window comes up before the splash fades in,
 // milliseconds. A TV takes a moment to lock onto the freshly set HDMI mode at boot - on the Pi 400 the
 // whole fade-in/hold went by before the picture appeared - so the splash waits for it.
