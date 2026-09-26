@@ -41,6 +41,7 @@ namespace ableem {
 namespace {
 std::mutex screenMutex;
 std::vector<std::string> screenStack;
+std::vector<std::string> screenItems; // under screenMutex too
 
 // "11GuiLauncher" (gcc) / "class GuiLauncher" (msvc) -> "GuiLauncher"
 std::string plainName(const char *typeName) {
@@ -283,6 +284,13 @@ private:
             return "ok " + to_string(gui_.renderer().frameCount());
         if (cmd == "screen")
             return "ok " + DebugDriver::currentScreen();
+        if (cmd == "items") {
+            string reply = "ok ";
+            const vector<string> names = DebugDriver::items();
+            for (size_t i = 0; i < names.size(); i++)
+                reply += (i > 0 ? "|" : "") + names[i];
+            return reply;
+        }
         if (cmd == "shot") {
             string path;
             getline(in, path);
@@ -344,6 +352,19 @@ void DebugDriver::popScreen() {
 string DebugDriver::currentScreen() {
     lock_guard<mutex> lock(screenMutex);
     return screenStack.empty() ? string("none") : screenStack.back();
+}
+
+//*******************************
+// DebugDriver::setItems / items
+//*******************************
+void DebugDriver::setItems(const vector<string> &names) {
+    lock_guard<mutex> lock(screenMutex);
+    screenItems = names;
+}
+
+vector<string> DebugDriver::items() {
+    lock_guard<mutex> lock(screenMutex);
+    return screenItems;
 }
 
 //*******************************
