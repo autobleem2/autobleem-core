@@ -172,6 +172,13 @@ struct Environment : ableem::Environment {
     // for every program started from here, and writes <runtime>/log_dir for the scripts that are not
     // (rc/selection.sh runs after the launcher has left)
     static void exportLogDirs();
+
+    // PadBatteryService's sysfs root: "/sys/class/power_supply" on a Linux target (cheap to read even when
+    // no driver has published anything there), "" on Windows unless overridden - a dev host reads
+    // $AB_PAD_BATTERY_DIR once at start-up so a fake sysfs tree can be tried without a console. Settable
+    // directly for tests (tests/support/env_fixture.h restores it like every other root).
+    static std::string padBatteryPowerSupplyDir();
+    static void setPadBatteryPowerSupplyDir(const std::string &path);
 };
 
 using Env = Environment;
