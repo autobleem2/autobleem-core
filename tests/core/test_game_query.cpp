@@ -366,4 +366,69 @@ TEST_CASE("no Apps directory at all is empty, not an error") {
     GameQueryService query(lib.library, *cfg);
 
     CHECK(query.apps().empty());
+    CHECK(query.appCategories().empty());
+}
+
+// Category=, case-insensitive; unset or unrecognised is Other (docs/app-format-plan.md)
+namespace {
+struct FourApps : GameLibraryFixture {
+    FourApps() {
+        auto add = [&](const string &name, const string &category) {
+            tmp.makeSubDir("Apps/" + name);
+            string ini = "Title=" + name + "\nStartup=run.sh\n";
+            if (!category.empty())
+                ini += "Category=" + category + "\n";
+            tmp.writeFile("Apps/" + name + "/app.ini", ini);
+            tmp.writeFile("Apps/" + name + "/run.sh", "#!/bin/sh\n");
+        };
+        add("Doom", "games");   // lower-case, still Games
+        add("Tyrian", "GAMES"); // upper-case, still Games
+        add("RetroArch", "Emulators");
+        add("Terminal", "Tools");
+        add("Weird", "SomethingElse"); // unrecognised -> Other
+        add("NoCategory", "");         // missing -> Other
+    }
+};
+} // namespace
+
+TEST_CASE("apps() filters by Category=, case-insensitively") {
+    FourApps lib;
+    ConfigIn cfg(lib.tmp, "Origames=false\n");
+    GameQueryService query(lib.library, *cfg);
+
+    CHECK(titlesOf(query.apps(AppCategory::Games)) == vector<string>{"Doom", "Tyrian"});
+    CHECK(titlesOf(query.apps(AppCategory::Emulators)) == vector<string>{"RetroArch"});
+    CHECK(titlesOf(query.apps(AppCategory::Tools)) == vector<string>{"Terminal"});
+    CHECK(query.apps(AppCategory::Media).empty());
+    CHECK(titlesOf(query.apps(AppCategory::Other)) == vector<string>{"NoCategory", "Weird"});
+    CHECK(query.apps(AppCategory::All).size() == 6);
+}
+
+TEST_CASE("appCategories() counts only the categories present, in Games/Emulators/Tools/Media/Other order") {
+    FourApps lib;
+    ConfigIn cfg(lib.tmp, "Origames=false\n");
+    GameQueryService query(lib.library, *cfg);
+
+    auto counts = query.appCategories();
+    REQUIRE(counts.size() == 4); // Games, Emulators, Tools, Other - no Media app in this fixture
+    CHECK(counts[0].category == AppCategory::Games);
+    CHECK(counts[0].count == 2);
+    CHECK(counts[1].category == AppCategory::Emulators);
+    CHECK(counts[1].count == 1);
+    CHECK(counts[2].category == AppCategory::Tools);
+    CHECK(counts[2].count == 1);
+    CHECK(counts[3].category == AppCategory::Other);
+    CHECK(counts[3].count == 2); // Weird (unrecognised) + NoCategory (missing)
+}
+
+TEST_CASE("gamesFor(Apps) reads the selection's category") {
+    FourApps lib;
+    ConfigIn cfg(lib.tmp, "Origames=false\n");
+    GameQueryService query(lib.library, *cfg);
+
+    GameSetSelection selection;
+    selection.set = GameSet::Apps;
+    selection.appCategory = AppCategory::Tools;
+
+    CHECK(titlesOf(query.gamesFor(selection)) == vector<string>{"Terminal"});
 }

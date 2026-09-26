@@ -16,6 +16,25 @@
 
 using namespace std;
 
+namespace {
+// app.ini's Category= value, case-insensitive; anything unrecognised (including missing) is Other. The
+// read side of AppCategory::appCategoryName()'s table - AppManifest::value() already lower-cases the key
+// and trims the value, so this only has to lower-case a couple of Latin letters.
+AppCategory parseAppCategory(const string &raw) {
+    string value = raw;
+    lcase(value);
+    if (value == "games")
+        return AppCategory::Games;
+    if (value == "emulators")
+        return AppCategory::Emulators;
+    if (value == "tools")
+        return AppCategory::Tools;
+    if (value == "media")
+        return AppCategory::Media;
+    return AppCategory::Other;
+}
+} // namespace
+
 //*******************************
 // GameQueryService::showInternalGames
 //*******************************
@@ -132,7 +151,7 @@ PsGames GameQueryService::retroArchGames(const string &playlistName) {
 // everything the UI shows comes out of the ini. An App with nothing this machine can run - no binary for
 // any of its platform keys, or a Startup script that is not there - is left out (docs/app-format-plan.md);
 // `startup` is what it runs, as the folder names it (bin/psc/tyrian, or the old run.sh).
-PsGames GameQueryService::apps() {
+PsGames GameQueryService::apps(AppCategory category) {
     PsGames games;
 
     string appPath = Env::getPathToAppsDir();
@@ -147,6 +166,9 @@ PsGames GameQueryService::apps() {
         AppManifest manifest = AppManifest::load(folder, "app.ini", Env::appPlatformKeys());
         if (!manifest.runnable())
             continue; // AppManifest::load has logged why
+
+        if (category != AppCategory::All && parseAppCategory(manifest.value("category")) != category)
+            continue;
 
         PsGamePtr game = std::make_shared<PsGame>();
         game->gameId = 0;
@@ -168,6 +190,36 @@ PsGames GameQueryService::apps() {
         games.push_back(game);
     }
     return games;
+}
+
+//*******************************
+// GameQueryService::appCategories
+//*******************************
+// the categories with at least one App, in appCategoryName()'s order, each with its count - what the set
+// picker lists after "All apps". Categories with none (an empty Media row on a stick with no media apps)
+// are left out rather than shown at 0.
+vector<GameQueryService::AppCategoryCount> GameQueryService::appCategories() {
+    string appPath = Env::getPathToAppsDir();
+    int counts[static_cast<int>(AppCategoryLast) + 1] = {}; // indexed by AppCategory; [All] stays 0
+
+    if (DirEntry::exists(appPath)) {
+        for (auto &dir : DirEntry::diru_DirsOnly(appPath)) {
+            string folder = appPath + sep + dir.name;
+            if (!DirEntry::exists(folder + sep + "app.ini"))
+                continue;
+            AppManifest manifest = AppManifest::load(folder, "app.ini", Env::appPlatformKeys());
+            if (!manifest.runnable())
+                continue;
+            counts[static_cast<int>(parseAppCategory(manifest.value("category")))]++;
+        }
+    }
+
+    vector<AppCategoryCount> result;
+    for (int i = static_cast<int>(AppCategory::Games); i <= static_cast<int>(AppCategoryLast); i++) {
+        if (counts[i] > 0)
+            result.push_back({static_cast<AppCategory>(i), counts[i]});
+    }
+    return result;
 }
 
 //*******************************
@@ -208,7 +260,7 @@ PsGames GameQueryService::gamesFor(GameSetSelection &selection) {
     } else if (selection.set == GameSet::Lightgun) {
         games = lightgunGames();
     } else if (selection.set == GameSet::Apps) {
-        games = apps();
+        games = apps(selection.appCategory);
     }
 
     // the RetroArch history playlist arrives most-recently-played first and must keep that order

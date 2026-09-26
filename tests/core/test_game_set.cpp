@@ -46,6 +46,17 @@ TEST_CASE("a default GameSetSelection opens on all PS1 games") {
     CHECK(selection.raPlaylistIndex == 0);
     CHECK(selection.usbGameDirName.empty());
     CHECK(selection.raPlaylistName.empty());
+    CHECK(selection.appCategory == AppCategory::All);
+}
+
+TEST_CASE("appCategoryName covers every AppCategory, Games/Emulators/Tools/Media/Other in that order") {
+    CHECK(appCategoryName(AppCategory::All) == "All apps");
+    CHECK(appCategoryName(AppCategory::Games) == "Games");
+    CHECK(appCategoryName(AppCategory::Emulators) == "Emulators");
+    CHECK(appCategoryName(AppCategory::Tools) == "Tools");
+    CHECK(appCategoryName(AppCategory::Media) == "Media");
+    CHECK(appCategoryName(AppCategory::Other) == "Other");
+    CHECK(AppCategoryLast == AppCategory::Other);
 }
 
 TEST_CASE("GameSetSelection copies whole, which is what the save/restore relies on") {
