@@ -158,8 +158,13 @@ public:
     // (button/motion/wheel) event sitting in the queue, plus everything still waiting in Input's own
     // injected queue - a DebugDriver command is always one of those same input events (see inject()'s call
     // sites), never a device or quit event. It keeps device hotplug (PadAdded/PadRemoved - a pad plugged in
-    // while the job ran must not be lost) and a pending Quit. It also resets the tracked d-pad-held state,
-    // so a direction half-pressed before the flush does not keep reading as held afterwards. This is
+    // while the job ran must not be lost) and a pending Quit. CONSOLE-12: it also keeps the release (key
+    // up, button up, d-pad/hat back to centre) of anything pressed before the job - a screen's hold-repeat
+    // loop (GuiScreen::fastForwardUntilAnotherEvent) runs until that release is pending, and Options'
+    // Left/Right starts a busy reload on every step, so a dropped release made one press step through
+    // every theme or language. A release whose press was queued during the same job is dropped with it.
+    // It also resets the tracked d-pad-held state (a kept d-pad release says the same when read), so a
+    // direction half-pressed before the flush does not keep reading as held afterwards. This is
     // distinct from flushEvents() above, which discards everything unconditionally and keeps its existing
     // behaviour - other screens rely on that.
     void flushInputEvents();
