@@ -69,7 +69,13 @@ TEST_CASE("runShellCommand with a cancel: runs to the end when not asked, stops 
     TempDir tmp("shell");
 #ifdef _WIN32
     const string touch = "echo hi > \"" + tmp.at("made.txt") + "\"";
-    const string slow = "ping -n 30 127.0.0.1 > nul";
+    // D23: was "ping -n 30 127.0.0.1 > nul" - a real ICMP round trip has no minimum duration this test
+    // controls. TerminateJobObject kills the child outright whatever it is doing, so the test only needs
+    // *something* guaranteed to still be running a few hundred ms in; it never needs the network stack to
+    // cooperate at all - proc_helper's own !sleep (tests/support/proc_helper.cpp, already used by the
+    // runStreaming tests below) does the same 30-second wait with nothing but a std::this_thread::sleep_for.
+    tmp.writeFile("ps1.txt", "!sleep 30000\n");
+    const string slow = "cd /d \"" + tmp.path() + "\" && \"" + string(AB_PROC_HELPER) + "\" --ps1 x";
 #else
     const string touch = "echo hi > '" + tmp.at("made.txt") + "'";
     const string slow = "sleep 30";
