@@ -40,10 +40,16 @@ if (AB_CORE_UI)
     # it links SDL directly, the one exception to "nothing SDL-shaped in a consumer" (see lib_ableem's own
     # CMakeLists.txt) - this suite tests ableem's own Input class, not a consumer of it.
     ab_add_test(test_input_flush classic/test_input_flush.cpp LIBS ableem)
+    # ab_add_test() links its target with the plain (non-keyword) signature, so this must match it.
+    # lib_ableem/CMakeLists.txt's own SDL2 imported target is directory-scoped there, not visible here -
+    # this repeats its discovery for this one test target.
     if (MINGW)
-        target_link_libraries(test_input_flush PRIVATE PkgConfig::ABLEEM_SDL)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(AB_TEST_SDL REQUIRED IMPORTED_TARGET sdl2)
+        target_link_libraries(test_input_flush PkgConfig::AB_TEST_SDL)
     else()
-        target_link_libraries(test_input_flush PRIVATE SDL2)
+        find_package(SDL2 REQUIRED)
+        target_link_libraries(test_input_flush SDL2)
     endif()
 endif()
 ab_add_test(test_game_catalog core/test_game_catalog.cpp)
