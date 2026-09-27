@@ -494,31 +494,126 @@ void Input::flushEvents() {
 //*******************************
 // Input::flushInputEvents
 //*******************************
-// See the header comment (CONSOLE-11). Keep-list, not a drop-list: only device hotplug and Quit survive,
-// so a custom event type (the PSC event filter's synthesized hat-motion events among them) is dropped by
-// default rather than needing to be named here.
+// See the header comment (CONSOLE-11, CONSOLE-12). Keep-list, not a drop-list: device hotplug, Quit and the
+// release of a button/key/direction pressed before the job survive, so a custom event type is dropped by
+// default rather than needing to be named here - the PSC event filter's synthesized hat-motion events are
+// named, as the d-pad's press and release.
+namespace {
+
+// what a press and its release have in common: which device, which button/key/hat (kind tells them apart)
+struct InputId {
+    int kind;
+    Sint32 which;
+    int code;
+    bool operator==(const InputId &o) const { return kind == o.kind && which == o.which && code == o.code; }
+};
+
+// true when e is a press (isPress) or a release of something; id says of what
+bool pressOrRelease(const SDL_Event &e, InputId &id, bool &isPress) {
+    switch (e.type) {
+    case SDL_KEYDOWN:
+        if (e.key.repeat)
+            return false; // a held key's repeat: dropped, and not the press its release belongs to
+        // fall through
+    case SDL_KEYUP:
+        id = {0, 0, static_cast<int>(e.key.keysym.scancode)};
+        isPress = e.type == SDL_KEYDOWN;
+        return true;
+    case SDL_CONTROLLERBUTTONDOWN:
+    case SDL_CONTROLLERBUTTONUP:
+        id = {1, e.cbutton.which, e.cbutton.button};
+        isPress = e.type == SDL_CONTROLLERBUTTONDOWN;
+        return true;
+    case SDL_CONTROLLERHATMOTIONDOWN:
+    case SDL_CONTROLLERHATMOTIONUP:
+        id = {2, e.cbutton.which, e.cbutton.button};
+        isPress = e.type == SDL_CONTROLLERHATMOTIONDOWN;
+        return true;
+    case SDL_JOYBUTTONDOWN:
+    case SDL_JOYBUTTONUP:
+        id = {3, e.jbutton.which, e.jbutton.button};
+        isPress = e.type == SDL_JOYBUTTONDOWN;
+        return true;
+    case SDL_JOYHATMOTION:
+        id = {4, e.jhat.which, e.jhat.hat};
+        isPress = e.jhat.value != SDL_HAT_CENTERED;
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool pressOrRelease(const Event &e, InputId &id, bool &isPress) {
+    switch (e.type) {
+    case Event::Type::ButtonDown:
+    case Event::Type::ButtonUp:
+    case Event::Type::DpadDown:
+    case Event::Type::DpadUp:
+        id = {5, 0, static_cast<int>(e.button)};
+        isPress = e.type == Event::Type::ButtonDown || e.type == Event::Type::DpadDown;
+        return true;
+    case Event::Type::KeyDown:
+    case Event::Type::KeyUp:
+        id = {6, static_cast<Sint32>(e.key), e.code};
+        isPress = e.type == Event::Type::KeyDown;
+        return true;
+    default:
+        return false;
+    }
+}
+
+// a release is kept unless its press was among the events dropped by this same flush (then the whole
+// press happened during the job, and neither half of it means anything afterwards)
+template <typename E> bool keepRelease(const E &e, std::vector<InputId> &droppedPresses) {
+    InputId id{};
+    bool isPress = false;
+    if (!pressOrRelease(e, id, isPress))
+        return false;
+    if (isPress) {
+        droppedPresses.push_back(id);
+        return false;
+    }
+    for (auto it = droppedPresses.begin(); it != droppedPresses.end(); ++it) {
+        if (*it == id) {
+            droppedPresses.erase(it);
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
 void Input::flushInputEvents() {
     SDL_PumpEvents();
     std::vector<SDL_Event> keep;
+    std::vector<InputId> droppedPresses;
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         if (e.type == SDL_JOYDEVICEADDED || e.type == SDL_JOYDEVICEREMOVED || e.type == SDL_CONTROLLERDEVICEADDED ||
-            e.type == SDL_CONTROLLERDEVICEREMOVED || e.type == SDL_CONTROLLERDEVICEREMAPPED || e.type == SDL_QUIT) {
+            e.type == SDL_CONTROLLERDEVICEREMOVED || e.type == SDL_CONTROLLERDEVICEREMAPPED || e.type == SDL_QUIT ||
+            keepRelease(e, droppedPresses)) {
             keep.push_back(e);
         }
-        // everything else - keyboard, mouse, joystick/controller axis/ball/hat/button motion, text
-        // input/editing - is an input event and is dropped here.
+        // everything else - a press, keyboard/mouse/axis/ball motion, text input/editing - is dropped here.
     }
     for (SDL_Event &kept : keep) {
         SDL_PushEvent(&kept);
     }
     {
         // the DebugDriver's synthetic queue is always input (button/dpad/key/text - see inject()'s call
-        // sites), never a device or quit event, so it is always safe to drop in full.
+        // sites), never a device or quit event: only its releases can survive, by the same rule.
         std::lock_guard<std::mutex> lock(impl->injectedMutex);
-        impl->injected.clear();
+        std::deque<Event> injectedKeep;
+        std::vector<InputId> droppedInjected;
+        for (const Event &queued : impl->injected) {
+            if (keepRelease(queued, droppedInjected))
+                injectedKeep.push_back(queued);
+        }
+        impl->injected.swap(injectedKeep);
     }
-    // a direction half-seen before the flush must not keep reading as held afterwards
+    // a direction half-seen before the flush must not keep reading as held afterwards (a kept release
+    // says the same again when it is read)
     impl->dpadState[DUP] = impl->dpadState[DDOWN] = impl->dpadState[DLEFT] = impl->dpadState[DRIGHT] = false;
 }
 
