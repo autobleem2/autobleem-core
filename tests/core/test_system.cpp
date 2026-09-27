@@ -111,14 +111,21 @@ TEST_CASE("runStreaming hands each line over as it comes, stdout and stderr apar
 TEST_CASE("runStreaming stops a child when asked, and says -1 for a program that is not there") {
     TempDir tmp("streaming_stop");
     tmp.writeFile("ps1.txt", "#Starting - helper\n#Working\n!sleep 30000\n#DONE\n");
-    auto start = std::chrono::steady_clock::now();
     bool sawStage = false;
+    std::chrono::steady_clock::time_point stopRequested;
     int code = System::runStreaming(
         AB_PROC_HELPER, {"--start", "--ps1", tmp.path()}, tmp.path(), {},
-        [&sawStage](const string &line, bool) { sawStage = sawStage || line == "#Working"; },
+        [&sawStage, &stopRequested](const string &line, bool) {
+            if (!sawStage && line == "#Working") {
+                sawStage = true;
+                stopRequested = std::chrono::steady_clock::now();
+            }
+        },
         [&sawStage] { return sawStage; });
     CHECK(code == -2);
-    CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(10));
+    // timed from when the stop was first requested, not from before the child started - a loaded
+    // machine's process start-up can itself take a while
+    CHECK(std::chrono::steady_clock::now() - stopRequested < std::chrono::seconds(10));
 
     CHECK(System::runStreaming(tmp.at("no-such-program"), {}, "", {}, nullptr, nullptr) == -1);
 }
