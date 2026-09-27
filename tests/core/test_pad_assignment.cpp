@@ -5,6 +5,7 @@
 #include "doctest/doctest.h"
 
 #include "core/model/pad_assignment.h"
+#include "core/model/timing.h"
 
 TEST_CASE("the first two pads are Player 1 / Player 2") {
     CHECK(psPlayerSlot(0, 2) == PsPlayerSlot::Player1);
@@ -66,56 +67,119 @@ TEST_CASE("psPlayerSlot swapped: two-plus pads is exactly where the swap takes e
     CHECK(psPlayerSlot(2, 3, true) == PsPlayerSlot::Unused);
 }
 
+// C16: decidePadAssignmentChange()/checkPadAssignmentEmptyNotice() carry state in a PadAssignmentState
+// (lastShown + emptySince) instead of the old single "was the previous reading a suppressed empty one"
+// bool - the bool only ever worked when a *second* event arrived to ask again, which a lone pad's unplug
+// never produces (one PadRemoved, then nothing). `now` is an opaque tick count in the same units as
+// PadEmptyNoticeDelay (milliseconds in the app; the tests use round numbers).
+
 TEST_CASE("decidePadAssignmentChange: unchanged from what was last shown is never shown") {
-    PadAssignment last{{"guidA|Pad A", "guidB|Pad B"}};
+    PadAssignmentState state;
+    state.lastShown = PadAssignment{{"guidA|Pad A", "guidB|Pad B"}};
     PadAssignment current{{"guidA|Pad A", "guidB|Pad B"}};
-    auto decision = decidePadAssignmentChange(current, last, false);
+    auto decision = decidePadAssignmentChange(current, state, 1000);
     CHECK(decision.show == false);
-    CHECK(decision.suppressedEmpty == false);
+    CHECK(state.emptySince == 0);
 }
 
-TEST_CASE("decidePadAssignmentChange: a genuinely different assignment is shown") {
-    PadAssignment last{{"guidA|Pad A"}};
+TEST_CASE("decidePadAssignmentChange: a genuinely different assignment is shown at once") {
+    PadAssignmentState state;
+    state.lastShown = PadAssignment{{"guidA|Pad A"}};
     PadAssignment current{{"guidA|Pad A", "guidB|Pad B"}};
-    auto decision = decidePadAssignmentChange(current, last, false);
+    auto decision = decidePadAssignmentChange(current, state, 1000);
     CHECK(decision.show == true);
-    CHECK(decision.suppressedEmpty == false);
+    CHECK(state.lastShown == current);
 }
 
-TEST_CASE("decidePadAssignmentChange: order matters (P1/P2 swapped is a change)") {
-    PadAssignment last{{"guidA|Pad A", "guidB|Pad B"}};
+TEST_CASE("decidePadAssignmentChange: order matters (P1/P2 swapped is a change), shown at once") {
+    // "the two-pad case... unplugging one of two changes the assignment and is shown at once" (C16) -
+    // still non-empty, so this path is untouched by the empty-notice delay.
+    PadAssignmentState state;
+    state.lastShown = PadAssignment{{"guidA|Pad A", "guidB|Pad B"}};
     PadAssignment current{{"guidB|Pad B", "guidA|Pad A"}};
-    auto decision = decidePadAssignmentChange(current, last, false);
+    auto decision = decidePadAssignmentChange(current, state, 1000);
     CHECK(decision.show == true);
 }
 
-TEST_CASE("decidePadAssignmentChange: a first empty reading is suppressed, not shown") {
-    PadAssignment last{{"guidA|Pad A"}};
-    PadAssignment current{}; // empty
-    auto decision = decidePadAssignmentChange(current, last, false);
-    CHECK(decision.show == false);
-    CHECK(decision.suppressedEmpty == true);
-}
-
-TEST_CASE("decidePadAssignmentChange: a second consecutive empty reading is shown") {
-    PadAssignment last{{"guidA|Pad A"}}; // still what was last actually shown - the empty one wasn't
-    PadAssignment current{};
-    auto decision = decidePadAssignmentChange(current, last, /*previousWasSuppressedEmpty=*/true);
+TEST_CASE("decidePadAssignmentChange: unplugging one of two pads (still non-empty) is shown at once") {
+    PadAssignmentState state;
+    state.lastShown = PadAssignment{{"guidA|Pad A", "guidB|Pad B"}};
+    PadAssignment current{{"guidB|Pad B"}}; // A unplugged, B is still Player 1 now
+    auto decision = decidePadAssignmentChange(current, state, 1000);
     CHECK(decision.show == true);
-    CHECK(decision.suppressedEmpty == false);
+    CHECK(state.emptySince == 0);
 }
 
-TEST_CASE("decidePadAssignmentChange: reappearing right after a suppressed empty reading is shown") {
-    PadAssignment last{{"guidA|Pad A"}};    // unchanged since the empty blip was never shown
-    PadAssignment current{{"guidA|Pad A"}}; // the same pad came back
-    auto decision = decidePadAssignmentChange(current, last, /*previousWasSuppressedEmpty=*/true);
-    // current == last here, so this is the "unchanged" case, not a re-show
+TEST_CASE("decidePadAssignmentChange: a first empty reading is never shown immediately, but starts the clock") {
+    PadAssignmentState state;
+    state.lastShown = PadAssignment{{"guidA|Pad A"}};
+    PadAssignment current{}; // empty: the only pad was just unplugged
+    auto decision = decidePadAssignmentChange(current, state, 1000);
     CHECK(decision.show == false);
+    CHECK(state.emptySince == 1000); // recorded so checkPadAssignmentEmptyNotice() can pick it up later
+    CHECK(state.lastShown == PadAssignment{{"guidA|Pad A"}}); // not shown yet, so not updated yet either
 }
 
-TEST_CASE("decidePadAssignmentChange: staying empty after already having shown 'no pads' once is not repeated") {
-    PadAssignment last{}; // "no pads" was already shown once, so lastShown is itself empty
+TEST_CASE("decidePadAssignmentChange: a repeated empty reading while pending does not restart the clock") {
+    PadAssignmentState state;
+    state.lastShown = PadAssignment{{"guidA|Pad A"}};
+    state.emptySince = 1000; // already pending from an earlier empty reading
     PadAssignment current{};
-    auto decision = decidePadAssignmentChange(current, last, false);
-    CHECK(decision.show == false); // current == lastShown
+    auto decision = decidePadAssignmentChange(current, state, 1400); // another empty event, 400ms later
+    CHECK(decision.show == false);
+    CHECK(state.emptySince == 1000); // unchanged - the clock started at the *first* empty reading
+}
+
+TEST_CASE("checkPadAssignmentEmptyNotice: one pad unplugged and not back is shown after the delay, not before") {
+    PadAssignmentState state;
+    state.lastShown = PadAssignment{{"guidA|Pad A"}};
+    decidePadAssignmentChange(PadAssignment{}, state, 1000); // the single unplug event
+    // just short of the delay: not shown yet
+    CHECK(checkPadAssignmentEmptyNotice(state, 1000 + PadEmptyNoticeDelay - 1, PadEmptyNoticeDelay).show == false);
+    CHECK(state.emptySince != 0); // still pending
+    // the delay has now passed: shown, once
+    auto decision = checkPadAssignmentEmptyNotice(state, 1000 + PadEmptyNoticeDelay, PadEmptyNoticeDelay);
+    CHECK(decision.show == true);
+    CHECK(state.emptySince == 0);
+    CHECK(state.lastShown.empty());
+}
+
+TEST_CASE("checkPadAssignmentEmptyNotice: shown only once - a later frame with nothing new stays quiet") {
+    PadAssignmentState state;
+    state.lastShown = PadAssignment{{"guidA|Pad A"}};
+    decidePadAssignmentChange(PadAssignment{}, state, 1000);
+    CHECK(checkPadAssignmentEmptyNotice(state, 1000 + PadEmptyNoticeDelay, PadEmptyNoticeDelay).show == true);
+    // several frames later, still no pad: the notice does not repeat
+    CHECK(checkPadAssignmentEmptyNotice(state, 1000 + PadEmptyNoticeDelay + 5000, PadEmptyNoticeDelay).show == false);
+}
+
+TEST_CASE("a pad that comes back within the delay is never shown as gone (a re-enumeration blip)") {
+    PadAssignmentState state;
+    state.lastShown = PadAssignment{{"guidA|Pad A"}};
+    decidePadAssignmentChange(PadAssignment{}, state, 1000); // unplug event
+    // the pad reappears well inside the delay (SDL's own re-enumeration burst, or the flush/reopen
+    // around a launch): a live event with the *same* assignment as before the blip
+    auto backDecision = decidePadAssignmentChange(PadAssignment{{"guidA|Pad A"}}, state, 1100);
+    CHECK(backDecision.show == false);
+    CHECK(state.emptySince == 0); // the pending timer is cleared - back to "nothing pending"
+    // even if a frame is checked past where the original deadline would have landed, nothing fires -
+    // there is no pending timer left to expire
+    CHECK(checkPadAssignmentEmptyNotice(state, 1000 + PadEmptyNoticeDelay, PadEmptyNoticeDelay).show == false);
+}
+
+TEST_CASE("a different pad plugged in within the delay is shown at once, not held back") {
+    PadAssignmentState state;
+    state.lastShown = PadAssignment{{"guidA|Pad A"}};
+    decidePadAssignmentChange(PadAssignment{}, state, 1000); // unplug event
+    // a *different* pad (not the same GUID+name) shows up before the deadline
+    auto decision = decidePadAssignmentChange(PadAssignment{{"guidB|Pad B"}}, state, 1100);
+    CHECK(decision.show == true);
+    CHECK(state.emptySince == 0);
+}
+
+TEST_CASE("staying empty after already having shown 'no controllers' once is not repeated by a live event either") {
+    PadAssignmentState state; // lastShown already empty, as after checkPadAssignmentEmptyNotice() fired
+    auto decision = decidePadAssignmentChange(PadAssignment{}, state, 2000);
+    CHECK(decision.show == false); // current == lastShown (both empty)
+    CHECK(state.emptySince == 0);
 }
