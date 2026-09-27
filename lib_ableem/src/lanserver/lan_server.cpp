@@ -150,7 +150,7 @@ bool LanServer::start(string &error) {
         }
         return HttpServer::Response::text(404, "not found\n");
     });
-    if (!http_->listen(config_.port, error)) {
+    if (!http_->listen(config_.port, error, config_.bindAddress)) {
         http_.reset();
         return false;
     }

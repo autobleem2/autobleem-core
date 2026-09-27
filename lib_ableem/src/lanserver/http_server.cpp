@@ -182,7 +182,7 @@ HttpServer::~HttpServer() {
 #endif
 }
 
-bool HttpServer::listen(int port, string &error) {
+bool HttpServer::listen(int port, string &error, const string &bindAddress) {
 #ifdef _WIN32
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
@@ -206,7 +206,13 @@ bool HttpServer::listen(int port, string &error) {
 #endif
     sockaddr_in address{};
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bindAddress.empty() || bindAddress == "0.0.0.0") {
+        address.sin_addr.s_addr = htonl(INADDR_ANY);
+    } else if (inet_pton(AF_INET, bindAddress.c_str(), &address.sin_addr) != 1) {
+        error = "bad bind address " + bindAddress;
+        AB_CLOSE_SOCKET(s);
+        return false;
+    }
     address.sin_port = htons(static_cast<uint16_t>(port));
     if (::bind(s, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0 || ::listen(s, 16) != 0) {
         error = "port " + to_string(port) + " is in use or not allowed";
@@ -215,6 +221,19 @@ bool HttpServer::listen(int port, string &error) {
     }
     listener_ = s;
     return true;
+}
+
+string HttpServer::boundAddress() const {
+    if (listener_ < 0)
+        return "";
+    sockaddr_in address{};
+    SocketLength length = sizeof(address);
+    if (getsockname(static_cast<int>(listener_), reinterpret_cast<sockaddr *>(&address), &length) != 0)
+        return "";
+    char buf[64] = {0};
+    if (!inet_ntop(AF_INET, &address.sin_addr, buf, sizeof(buf)))
+        return "";
+    return buf;
 }
 
 void HttpServer::serve(const atomic<bool> &stop) {
