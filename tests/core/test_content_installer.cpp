@@ -1,6 +1,6 @@
 //
 // AppInstaller and GameInstaller: downloaded content into Apps/ and Games/ through a staging folder
-// (docs/store-plan.md, docs/app-format-plan.md in the launcher).
+// (the launcher's docs/store-plan.md, autobleem-main docs/archive/app-format-plan.md).
 //
 #include "doctest/doctest.h"
 

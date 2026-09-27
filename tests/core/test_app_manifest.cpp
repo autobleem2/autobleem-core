@@ -1,6 +1,6 @@
 //
 // AppManifest and Env::appPlatformKeys: which of a multi-platform App's binaries this machine runs
-// (docs/app-format-plan.md in the launcher).
+// (autobleem-main docs/archive/app-format-plan.md).
 //
 #include "doctest/doctest.h"
 

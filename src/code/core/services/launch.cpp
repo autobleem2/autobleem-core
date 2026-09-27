@@ -268,9 +268,10 @@ void LaunchService::launchRetroArchMenu() {
 //*******************************
 // LaunchService::planApp
 //*******************************
-// A multi-platform App (docs/app-format-plan.md): its app.ini resolved for this machine by AppManifest.
-// Through a script (the console, the appliances): the App's own Startup= script when it has one, else the
-// generic rc/app_run.sh - either sources rc/app_env.sh and execs $AB_APP_EXEC, which is what the ini names
+// A multi-platform App (autobleem-main docs/archive/app-format-plan.md): its app.ini resolved for this
+// machine by AppManifest. Through a script (the console, the appliances): the App's own Startup= script
+// when it has one, else the generic rc/app_run.sh - either sources rc/app_env.sh and execs $AB_APP_EXEC,
+// which is what the ini names
 // for this platform. Direct (Windows, no sh): the resolved program itself, with its Args=. Both get the
 // AB_APP_* variables and the ini's Env=. An App of the old kind (Startup= only) is run as it always was where
 // there is a shell; direct, it has nothing to run (AppManifest says so, and the Apps set does not list it).

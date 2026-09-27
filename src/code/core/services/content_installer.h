@@ -2,7 +2,7 @@
 // The installers an extension (the AutoBleem Store) puts downloaded content in place with - an App (our
 // multi-platform App format) into Apps/<name>/, a game's discs into Games/<title>/ - always through a staging
 // folder on the same filesystem, so nothing half-written ever shows under Apps/ or Games/ (where the scan's
-// watcher would pick it up). docs/store-plan.md and docs/app-format-plan.md in the launcher.
+// watcher would pick it up). The launcher's docs/store-plan.md and autobleem-main docs/archive/app-format-plan.md.
 //
 #pragma once
 
