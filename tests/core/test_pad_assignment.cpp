@@ -49,10 +49,21 @@ TEST_CASE("psPlayerSlot swapped: an index outside the connected count is still u
     CHECK(psPlayerSlot(0, 0, true) == PsPlayerSlot::Unused);
 }
 
-TEST_CASE("psPlayerSlot swapped: a single connected pad becomes Player 2 - a positional swap, no smarts") {
-    // matches what AB_PAD_ORDER="1,0" actually does to a lone SDL device: it lands on PS1 port 2, not
-    // port 1 - the UI must say the same thing the emulator will do, not invent a "still player 1" story.
-    CHECK(psPlayerSlot(0, 1, true) == PsPlayerSlot::Player2);
+TEST_CASE("psPlayerSlot swapped: a lone pad stays Player 1 regardless of the swap (Marcus's review fix)") {
+    // the swap only takes effect with two or more pads connected - both emulators' own C11 code checks
+    // the same thing (pcsx-ab counts the pads it is about to accept before applying pad_order,
+    // pcsx-abnxt checks pads_changed()'s pad_count) so a player who left the row on and plays alone still
+    // gets a game that responds, instead of a lone pad silently landing on PS1 port 2.
+    CHECK(psPlayerSlot(0, 1, true) == PsPlayerSlot::Player1);
+    CHECK(psPlayerSlot(0, 0, true) == PsPlayerSlot::Unused); // no pads at all: still unused, swap or not
+}
+
+TEST_CASE("psPlayerSlot swapped: two-plus pads is exactly where the swap takes effect") {
+    CHECK(psPlayerSlot(0, 2, true) == PsPlayerSlot::Player2);
+    CHECK(psPlayerSlot(1, 2, true) == PsPlayerSlot::Player1);
+    CHECK(psPlayerSlot(0, 3, true) == PsPlayerSlot::Player2);
+    CHECK(psPlayerSlot(1, 3, true) == PsPlayerSlot::Player1);
+    CHECK(psPlayerSlot(2, 3, true) == PsPlayerSlot::Unused);
 }
 
 TEST_CASE("decidePadAssignmentChange: unchanged from what was last shown is never shown") {

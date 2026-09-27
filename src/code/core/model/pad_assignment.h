@@ -37,12 +37,15 @@ inline PsPlayerSlot psPlayerSlot(int index, int count) {
 // *positional* swap, nothing more - it says "SDL index 0 and SDL index 1 trade places", exactly what
 // AB_PAD_ORDER="1,0" tells each emulator to do (LaunchService, core/services/launch.cpp) - there is no pad
 // identity here (no GUID/serial pinning): a hot-plug still reorders exactly as it does today, only mirrored
-// through whichever slot is on top. So index 0 is Player 2 and index 1 is Player 1 when swapped, index 2+
-// is still Unused, and an out-of-range index is still Unused regardless of the flag - swapping does not
-// invent a second pad from a single connected one, it just changes which label that one pad gets (a lone
-// pad at index 0 becomes "Player 2" when swapped, matching a single SDL device landing on PS1 port 2).
+// through whichever slot is on top. **The swap only takes effect with two or more pads connected**
+// (`count >= 2`) - with a lone pad it is always Player 1, swap or not, so a player who left the row on and
+// plays alone still gets a game that responds (both emulators' own C11 code follows the same rule: pcsx-ab's
+// in_sdl2gc_probe() counts the pads it is about to accept before it decides whether to apply pad_order,
+// pcsx-abnxt's pads_changed() checks its pad_count the same way). So with two-plus pads, index 0 is Player 2
+// and index 1 is Player 1 when swapped; with zero or one pad, or index out of range, this is identical to
+// the unswapped 2-arg form.
 inline PsPlayerSlot psPlayerSlot(int index, int count, bool swapped) {
-    if (!swapped)
+    if (!swapped || count < 2)
         return psPlayerSlot(index, count);
     if (index < 0 || index >= count)
         return PsPlayerSlot::Unused;
