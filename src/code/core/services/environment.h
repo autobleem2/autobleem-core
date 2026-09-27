@@ -67,7 +67,8 @@ struct Environment : ableem::Environment {
     static const char *platformName();
 
     // the platform keys an App's or an extension's binary may be built for, most specific first - what
-    // AppManifest resolves Exec.<key>= / Exec=bin/{key}/... against (autobleem-main docs/archive/app-format-plan.md). The built-in
+    // AppManifest resolves Exec.<key>= / Exec=bin/{key}/... against (autobleem-main
+    // docs/archive/app-format-plan.md). The built-in
     // list (appPlatformKeysFor(buildTargetKey(), buildOs(), buildArch())) followed by the platform ini's
     // app_platform_keys, which may add keys but never remove one.
     static std::vector<std::string> appPlatformKeys();
