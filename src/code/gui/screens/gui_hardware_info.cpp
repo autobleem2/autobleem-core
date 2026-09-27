@@ -4,6 +4,7 @@
 #include "gui_hardware_info.h"
 #include "../gui.h"
 #include "core/model/pad_assignment.h"
+#include "core/model/pad_battery_match.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -94,8 +95,32 @@ InfoSection GuiHardwareInfo::displayAndInput() {
     if (pads.empty()) {
         add(_("Controllers"), platform.isDevHost() ? _("Keyboard") : _("None"));
     } else {
+        // matched to each pad by its SDL serial (a Bluetooth pad's own MAC) against the sysfs battery
+        // nodes' addresses - see core/model/pad_battery_match.h. A pad with no match (unplugged since, no
+        // serial reported, or simply no battery node - a wired pad) gets no battery row at all.
+        vector<PadBatterySource> sources;
+        for (size_t i = 0; i < pads.size(); i++)
+            sources.push_back({static_cast<int>(i), pads[i].serial});
+        vector<MatchedPadBattery> matches = matchPadBatteries(padBattery.list(), sources);
+        auto batteryTextFor = [&](size_t padIndex) -> string {
+            for (const MatchedPadBattery &m : matches) {
+                if (m.padIndex == static_cast<int>(padIndex) && m.battery.known()) {
+                    string text = to_string(m.battery.percent) + "%";
+                    string status = batteryStatusText(m.battery.status);
+                    if (!status.empty())
+                        text += " (" + status + ")";
+                    return text;
+                }
+            }
+            return "";
+        };
+
         // pads() is in ascending SDL device-index order - the same order pcsx-ab/pcsx-abnxt assign
-        // PS1 ports 1/2 by, so this position is that assignment (psPlayerSlot, core/model/pad_assignment.h)
+        // PS1 ports 1/2 by, so this position is that assignment (psPlayerSlot, core/model/pad_assignment.h).
+        // A matched battery gets its own row, "Battery", right under the pad's own row - never appended to
+        // the pad's label: concatenating a translated label and a translated word ("Player 1" + " " +
+        // "battery") reads backwards in more than one language (Polish among them), and a capitalised,
+        // stand-alone key reads as belonging to the row above it in every language instead.
         for (size_t i = 0; i < pads.size(); i++) {
             PsPlayerSlot slot = psPlayerSlot(static_cast<int>(i), static_cast<int>(pads.size()));
             string playerLabel = psPlayerSlotLabel(slot);
@@ -103,6 +128,7 @@ InfoSection GuiHardwareInfo::displayAndInput() {
                 add(playerLabel, pads[i].name);
             else
                 add(_("Controller") + " " + to_string(i + 1), pads[i].name + " (" + playerLabel + ")");
+            add(_("Battery"), batteryTextFor(i));
         }
     }
     // the gamecontrollerdb.txt the pads were mapped from (Env::padMappingFiles() - the first that loaded)

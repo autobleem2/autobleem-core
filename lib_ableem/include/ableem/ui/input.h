@@ -114,6 +114,12 @@ struct PadInfo {
     std::string name;
     std::string guid;
     int index = 0;
+    // SDL_JoystickGetSerial() (SDL 2.0.14+): a Bluetooth pad's own serial number, which for a DualShock 4 /
+    // DualSense read through Linux's hidraw backend is its Bluetooth MAC, "aa:bb:cc:dd:ee:ff" - the same
+    // address the kernel's power_supply node for that pad is named after (see core/model/pad_battery_match.h,
+    // ab_core). "" when SDL has none: an SDL predating 2.0.14, a wired pad, a non-Sony pad, or the evdev
+    // fallback backend, which does not report one.
+    std::string serial;
 };
 
 //******************

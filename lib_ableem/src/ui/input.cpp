@@ -201,7 +201,7 @@ enum { DUP = 0, DDOWN = 1, DLEFT = 2, DRIGHT = 3 };
 struct Pad {
     SDL_GameController *controller = nullptr;
     SDL_Joystick *joystick = nullptr;
-    std::string name, guid;
+    std::string name, guid, serial;
     int index = 0;
 };
 
@@ -309,6 +309,13 @@ struct Input::Impl {
         pad->guid = guidStr;
         pad->name = SDL_GameControllerName(controller);
         pad->index = joystickIndex;
+#if SDL_VERSION_ATLEAST(2, 0, 14)
+        // a Bluetooth DualShock 4 / DualSense read through Linux's hidraw backend reports its own MAC
+        // here (see PadInfo::serial); nullptr on anything else - a wired pad, evdev, an older SDL build,
+        // or simply a controller whose driver never set one.
+        if (const char *serial = SDL_JoystickGetSerial(pad->joystick))
+            pad->serial = serial;
+#endif
         PLOG_INFO << "New GameController: " << pad->name << " GUID: " << pad->guid;
         pads.push_back(std::move(pad));
     }
@@ -630,7 +637,7 @@ int Input::joystickCount() const {
 std::vector<PadInfo> Input::pads() const {
     std::vector<PadInfo> result;
     for (const auto &pad : impl->pads) {
-        result.push_back(PadInfo{pad->name, pad->guid, pad->index});
+        result.push_back(PadInfo{pad->name, pad->guid, pad->index, pad->serial});
     }
     return result;
 }
