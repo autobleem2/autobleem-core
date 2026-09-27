@@ -26,6 +26,35 @@ TEST_CASE("one pad connected is still Player 1") {
     CHECK(psPlayerSlot(0, 1) == PsPlayerSlot::Player1);
 }
 
+TEST_CASE("psPlayerSlot with swapped=false matches the two-argument form") {
+    CHECK(psPlayerSlot(0, 2, false) == PsPlayerSlot::Player1);
+    CHECK(psPlayerSlot(1, 2, false) == PsPlayerSlot::Player2);
+    CHECK(psPlayerSlot(2, 3, false) == PsPlayerSlot::Unused);
+    CHECK(psPlayerSlot(-1, 2, false) == PsPlayerSlot::Unused);
+}
+
+TEST_CASE("psPlayerSlot with swapped=true trades the first two positions (C11)") {
+    CHECK(psPlayerSlot(0, 2, true) == PsPlayerSlot::Player2);
+    CHECK(psPlayerSlot(1, 2, true) == PsPlayerSlot::Player1);
+}
+
+TEST_CASE("psPlayerSlot swapped: a third+ pad is still unused") {
+    CHECK(psPlayerSlot(2, 3, true) == PsPlayerSlot::Unused);
+    CHECK(psPlayerSlot(5, 6, true) == PsPlayerSlot::Unused);
+}
+
+TEST_CASE("psPlayerSlot swapped: an index outside the connected count is still unused") {
+    CHECK(psPlayerSlot(-1, 2, true) == PsPlayerSlot::Unused);
+    CHECK(psPlayerSlot(2, 2, true) == PsPlayerSlot::Unused);
+    CHECK(psPlayerSlot(0, 0, true) == PsPlayerSlot::Unused);
+}
+
+TEST_CASE("psPlayerSlot swapped: a single connected pad becomes Player 2 - a positional swap, no smarts") {
+    // matches what AB_PAD_ORDER="1,0" actually does to a lone SDL device: it lands on PS1 port 2, not
+    // port 1 - the UI must say the same thing the emulator will do, not invent a "still player 1" story.
+    CHECK(psPlayerSlot(0, 1, true) == PsPlayerSlot::Player2);
+}
+
 TEST_CASE("decidePadAssignmentChange: unchanged from what was last shown is never shown") {
     PadAssignment last{{"guidA|Pad A", "guidB|Pad B"}};
     PadAssignment current{{"guidA|Pad A", "guidB|Pad B"}};

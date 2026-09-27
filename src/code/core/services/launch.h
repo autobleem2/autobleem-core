@@ -154,6 +154,10 @@ public:
     // frontend/ab/ab_config.h). An emulator without the file takes none of them and runs as it always did.
     std::string pcsxDirForLaunch() const;
     std::vector<std::string> pcsxFeatures() const;
+    // C11: whether the PS1 emulator this launch would use declares "padorder" in its abfeatures file - the
+    // launcher's Options row and its pad-assignment notice use this to decide whether to say the swap
+    // applies, instead of silently doing nothing when an older/other emulator does not understand it.
+    bool pcsxSupportsPadOrder() const;
     // <runtime>/exit: where an emulator with "exitdir" leaves the run's resume point (RAM)
     static std::string pcsxExitDir();
 

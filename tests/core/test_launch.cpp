@@ -846,3 +846,57 @@ TEST_CASE("an emulator that lists them in abfeatures gets the card set in place,
     vector<string> changes = before.changesTo(test_support::TreeSnapshot(lib.tmp.at("Games")));
     CHECK(changes == vector<string>{"+ Tekken 3/sstates/lastcdimg.1.txt"});
 }
+
+TEST_CASE("C11: padswap on, and the emulator declares padorder - AB_PAD_ORDER is sent") {
+    Launching lib;
+    lib.configure("Emulator=pcsx-abnxt\nPadswap=true\n");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "padorder\n");
+    PsGamePtr game = lib.usbGame();
+
+    CHECK(lib.service->pcsxSupportsPadOrder() == true);
+    lib.service->launch(game, EmuMode::Pcsx, 0);
+
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    auto env = [&call](const string &name) {
+        for (const auto &e : call.env)
+            if (e.first == name)
+                return e.second;
+        return string("-");
+    };
+    CHECK(env("AB_PAD_ORDER") == "1,0");
+    CHECK(lib.session.padOrderUnsupportedNotice == false);
+}
+
+TEST_CASE("C11: padswap on, but the emulator's abfeatures has no padorder - nothing is sent") {
+    Launching lib;
+    lib.configure("Emulator=pcsx-abnxt\nPadswap=true\n");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+    // an older emulator's abfeatures, with no padorder line at all
+    lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "exitdir\nmemcarddir\nloadstate\n");
+    PsGamePtr game = lib.usbGame();
+
+    CHECK(lib.service->pcsxSupportsPadOrder() == false);
+    lib.service->launch(game, EmuMode::Pcsx, 0);
+
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    for (const auto &e : call.env)
+        CHECK(e.first != "AB_PAD_ORDER");
+    CHECK(lib.session.padOrderUnsupportedNotice == true); // wanted but could not happen - say so
+}
+
+TEST_CASE("C11: padorder supported, but the swap is off - nothing is sent, and no notice") {
+    Launching lib;
+    lib.configure("Emulator=pcsx-abnxt\nPadswap=false\n");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "padorder\n");
+    PsGamePtr game = lib.usbGame();
+
+    CHECK(lib.service->pcsxSupportsPadOrder() == true); // the emulator supports it, the user just left it off
+    lib.service->launch(game, EmuMode::Pcsx, 0);
+
+    CHECK(lib.session.padOrderUnsupportedNotice == false); // not wanted, so nothing to warn about
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    for (const auto &e : call.env)
+        CHECK(e.first != "AB_PAD_ORDER");
+}

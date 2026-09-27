@@ -116,13 +116,16 @@ InfoSection GuiHardwareInfo::displayAndInput() {
         };
 
         // pads() is in ascending SDL device-index order - the same order pcsx-ab/pcsx-abnxt assign
-        // PS1 ports 1/2 by, so this position is that assignment (psPlayerSlot, core/model/pad_assignment.h).
+        // PS1 ports 1/2 by, so this position is that assignment (psPlayerSlot, core/model/pad_assignment.h) -
+        // taking Options -> "Swap Player 1 / Player 2" (C11, config.ini "padswap") into account, so this
+        // screen tells the same story LaunchService's AB_PAD_ORDER is about to hand the emulator.
         // A matched battery gets its own row, "Battery", right under the pad's own row - never appended to
         // the pad's label: concatenating a translated label and a translated word ("Player 1" + " " +
         // "battery") reads backwards in more than one language (Polish among them), and a capitalised,
         // stand-alone key reads as belonging to the row above it in every language instead.
+        bool padSwap = app.config().inifile.values["padswap"] == "true";
         for (size_t i = 0; i < pads.size(); i++) {
-            PsPlayerSlot slot = psPlayerSlot(static_cast<int>(i), static_cast<int>(pads.size()));
+            PsPlayerSlot slot = psPlayerSlot(static_cast<int>(i), static_cast<int>(pads.size()), padSwap);
             string playerLabel = psPlayerSlotLabel(slot);
             if (i < 2)
                 add(playerLabel, pads[i].name);

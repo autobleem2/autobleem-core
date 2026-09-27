@@ -95,6 +95,13 @@ Config::Config() {
         inifile.values["surprisehighscore"] = "0";
     }
 
+    // Options -> "Swap Player 1 / Player 2" (C11): a positional swap only - SDL device-index 0 and 1 trade
+    // PS1 ports, no pad identity involved (core/model/pad_assignment.h's swapped psPlayerSlot() overload,
+    // LaunchService's AB_PAD_ORDER). Off by default - the emulators' own ascending-index order, unchanged.
+    if (inifile.values["padswap"] != "true") {
+        inifile.values["padswap"] = "false";
+    }
+
     // "Keep logs on the stick" (Options): off unless asked for - the logs live in RAM (docs/quiet-stick-plan.md).
     // A tester's System/Logs/keep marker is the same switch, so it shows as on
     if (DirEntry::exists(Env::keepLogsMarkerFile()))
