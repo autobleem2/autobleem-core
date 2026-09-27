@@ -1,7 +1,8 @@
 //
 // AppManifest: an App's app.ini (or an extension's extension.ini) resolved for this machine - which of the
 // folder's binaries is this platform's, with what arguments, libraries and environment. The one rule every
-// launch path uses (the launcher, rc/app_env.sh's copy of it, Windows' direct start); docs/app-format-plan.md.
+// launch path uses (the launcher, rc/app_env.sh's copy of it, Windows' direct start); autobleem-main
+// docs/archive/app-format-plan.md.
 //
 #pragma once
 

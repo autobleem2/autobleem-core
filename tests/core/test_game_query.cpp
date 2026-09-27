@@ -369,7 +369,7 @@ TEST_CASE("no Apps directory at all is empty, not an error") {
     CHECK(query.appCategories().empty());
 }
 
-// Category=, case-insensitive; unset or unrecognised is Other (docs/app-format-plan.md)
+// Category=, case-insensitive; unset or unrecognised is Other (autobleem-main docs/archive/app-format-plan.md)
 namespace {
 struct FourApps : GameLibraryFixture {
     FourApps() {

@@ -149,7 +149,7 @@ PsGames GameQueryService::retroArchGames(const string &playlistName) {
 //*******************************
 // usb:/Apps/<name>/app.ini, one launchable app each. These are "foreign" games: no database row, no serial,
 // everything the UI shows comes out of the ini. An App with nothing this machine can run - no binary for
-// any of its platform keys, or a Startup script that is not there - is left out (docs/app-format-plan.md);
+// any of its platform keys, or a Startup script that is not there - is left out (autobleem-main docs/archive/app-format-plan.md);
 // `startup` is what it runs, as the folder names it (bin/psc/tyrian, or the old run.sh).
 PsGames GameQueryService::apps(AppCategory category) {
     PsGames games;

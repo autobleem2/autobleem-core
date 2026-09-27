@@ -20,7 +20,7 @@ inline GameSet nextGameSet(GameSet set) {
 // GameSet::PS1 sub-states. keep GamesSubdir last: it is left off the L2+Select menu.
 enum class Ps1SelectState : int { AllGames = 0, InternalOnly, Favorites, History, GamesSubdir };
 
-// An App's app.ini `Category=` (2026-09-26, docs/app-format-plan.md), case-insensitive; anything else or
+// An App's app.ini `Category=` (2026-09-26, autobleem-main docs/archive/app-format-plan.md), case-insensitive; anything else or
 // missing is Other. All is not a category an app.ini can name - it is the picker's "every app" row.
 // Keep the order Games/Emulators/Tools/Media/Other: it is the order the set picker and appCategories() list
 // them in.
