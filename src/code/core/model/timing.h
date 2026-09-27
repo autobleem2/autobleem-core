@@ -32,6 +32,14 @@
 // GuiLauncher: how long the launcher takes to fade in from black when it is first shown, milliseconds
 #define LauncherFadeInDuration 300
 
+// GuiLauncher: how long an assignment has to stay empty (no pads at all) before "Controllers: None" is
+// shown (checkPadAssignmentEmptyNotice(), C16) - milliseconds. Long enough to ride out a re-enumeration
+// blip (SDL re-registering a pad after a display release/reacquire around a game launch, or a multi-mode
+// pad's own mode-switch dance - see the ab2 pad note in CLAUDE.md, 1-3s on a Pi 400) without also being
+// so long that a genuine unplug feels unacknowledged. 1.5s split the difference: comfortably past a
+// same-frame or next-frame replug, short enough that the notice still reads as "just happened".
+#define PadEmptyNoticeDelay (TicksPerSecond + TicksPerSecond / 2)
+
 // GuiLauncher: one carousel step from a tap, milliseconds; from a held stick, after CarouselHoldDelay,
 // the steps follow each other without a pause, each this long
 #define CarouselScrollDuration 110

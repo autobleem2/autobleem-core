@@ -69,32 +69,68 @@ struct PadAssignment {
     bool empty() const { return ids.empty(); }
 };
 
-// decidePadAssignmentChange()'s answer: whether to show `current` as a new assignment, and whether
-// this call's "no pads" reading should count as already-suppressed the next time round.
+// decidePadAssignmentChange()'s answer: whether to show `current` (or, from checkPadAssignmentEmptyNotice(),
+// whether to show "no controllers") right now.
 struct PadAssignmentDecision {
     bool show = false;
-    bool suppressedEmpty = false;
 };
 
-// Whether a newly observed assignment (`current`) is worth telling the user about, given the last
-// one actually shown (`lastShown`) and whether the reading right before this one was suppressed for
-// being momentarily empty (`previousWasSuppressedEmpty` - the caller passes back this call's own
-// `suppressedEmpty`, carried from the previous call).
+// Carries what a caller needs across calls: the assignment last actually shown, and - while an empty
+// reading is pending a decision - the tick it was first seen (0 = nothing pending). Kept by the caller,
+// one instance per place that tracks "what's shown" (the launcher keeps exactly one).
+struct PadAssignmentState {
+    PadAssignment lastShown;
+    long emptySince = 0;
+};
+
+// Whether a newly observed assignment (`current`) is worth telling the user about *right now*, given
+// what has been shown so far (`state`, updated in place) and the current time `now` (an opaque,
+// monotonically increasing tick count - the launcher's frame clock).
 //
-// SDL fires PadAdded for every pad already present at start-up, and a re-enumeration (unplug/replug,
-// or the display release/reacquire around a game launch) can pass through an instant with no pads
-// enumerated at all before they reappear - neither should pop a notification on its own:
-//  - `current` unchanged from `lastShown` -> never shown;
-//  - `current` newly empty, and the previous reading was not already a suppressed-empty one -> not
-//    shown yet, but remembered (suppressedEmpty = true) so a *second* consecutive empty reading (the
-//    pads really are gone, not just re-enumerating) is shown as "no controllers" rather than silently
-//    swallowed forever;
-//  - anything else different from `lastShown` -> shown.
-inline PadAssignmentDecision decidePadAssignmentChange(const PadAssignment &current, const PadAssignment &lastShown,
-                                                       bool previousWasSuppressedEmpty) {
-    if (current == lastShown)
-        return {false, false};
-    if (current.empty() && !previousWasSuppressedEmpty)
-        return {false, true};
-    return {true, false};
+// SDL fires PadAdded for every pad already present at start-up, and a re-enumeration (unplug/replug, or
+// the display release/reacquire around a game launch) can pass through an instant with no pads
+// enumerated at all before they reappear - neither should pop a notification on its own. But unlike a
+// two-pad change (still non-empty, so still an ordinary comparison against `lastShown`), an unplug that
+// leaves *zero* pads can never be told apart, from a single event alone, from a blip that will resolve
+// itself a moment later: SDL sends exactly one PadRemoved for a lone pad's unplug, never a second
+// "still gone" event to confirm it. So an empty reading is never shown here - it only starts (or leaves
+// running) a pending timer in `state.emptySince`; checkPadAssignmentEmptyNotice(), called once a frame
+// regardless of events, is what actually shows "no controllers" once that timer expires.
+//  - `current` unchanged from `lastShown` -> never shown; clears any pending timer (the assignment the
+//    user already sees is exactly what's connected again - see "a pad that comes back" below);
+//  - `current` empty and different from `lastShown` -> not shown yet; `state.emptySince` is set to `now`
+//    if nothing was already pending, otherwise left alone (the clock runs from the *first* empty
+//    reading, not the latest one an SDL re-enumeration burst might repeat);
+//  - anything else different from `lastShown` (including a still non-empty change, e.g. one of two pads
+//    unplugged) -> shown at once, `lastShown` updated, any pending timer cleared.
+inline PadAssignmentDecision decidePadAssignmentChange(const PadAssignment &current, PadAssignmentState &state,
+                                                        long now) {
+    if (current == state.lastShown) {
+        state.emptySince = 0;
+        return {false};
+    }
+    if (current.empty()) {
+        if (state.emptySince == 0)
+            state.emptySince = now;
+        return {false};
+    }
+    state.lastShown = current;
+    state.emptySince = 0;
+    return {true};
+}
+
+// Called once a frame (regardless of any pad event, the way the launcher already polls pad battery
+// levels) to see whether a pending empty reading has been pending long enough - `delay` ticks since
+// `state.emptySince` - to show as "no controllers". A pad that reappears before then goes through
+// decidePadAssignmentChange() above, which clears `state.emptySince` first, so this never fires for a
+// re-enumeration blip. Shown at most once per empty spell: firing it also sets `lastShown` to the empty
+// assignment, so a later frame with nothing changed takes the "unchanged" branch above instead of
+// repeating the notice; a real pad returning afterwards is then a `current != lastShown` change again -
+// shown at once, as any other new assignment is.
+inline PadAssignmentDecision checkPadAssignmentEmptyNotice(PadAssignmentState &state, long now, long delay) {
+    if (state.emptySince == 0 || now - state.emptySince < delay)
+        return {false};
+    state.lastShown = PadAssignment{};
+    state.emptySince = 0;
+    return {true};
 }
