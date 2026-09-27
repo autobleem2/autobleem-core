@@ -35,6 +35,16 @@ if (AB_CORE_UI)
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)
     # Platform's AB_HEADLESS policy - pure, no display needed
     ab_add_test(test_headless classic/test_headless.cpp LIBS ableem)
+    # CONSOLE-11: Input::flushInputEvents() driven with real SDL events through a real GuiBase - needs a
+    # working renderer (see the file's opening comment; it skips itself when this environment has none), so
+    # it links SDL directly, the one exception to "nothing SDL-shaped in a consumer" (see lib_ableem's own
+    # CMakeLists.txt) - this suite tests ableem's own Input class, not a consumer of it.
+    ab_add_test(test_input_flush classic/test_input_flush.cpp LIBS ableem)
+    if (MINGW)
+        target_link_libraries(test_input_flush PRIVATE PkgConfig::ABLEEM_SDL)
+    else()
+        target_link_libraries(test_input_flush PRIVATE SDL2)
+    endif()
 endif()
 ab_add_test(test_game_catalog core/test_game_catalog.cpp)
 ab_add_test(test_game_database core/test_game_database.cpp)

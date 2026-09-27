@@ -148,6 +148,22 @@ public:
 
     void flushEvents(); // discard everything currently queued (SDL_PumpEvents + SDL_FlushEvents)
 
+    // CONSOLE-11: called by Gui::endBusy() when a long busy job (Applying settings..., the reload after a
+    // game) that read no input while it ran is actually over. drawBusyFrame() never calls poll() - see its
+    // own comment - so the pads' and keyboard's events pile up for as long as the job takes; on the console
+    // that reload was ~12 s, long enough that a player pressing Cross because the spinner looked stuck left
+    // a queued press that the launcher then handled as "start the selected game" the instant it read input
+    // again. This discards every keyboard (KEYDOWN/UP, TEXTEDITING/TEXTINPUT), joystick/game-controller
+    // (axis/ball/hat/button, including the PSC event filter's synthesized hat-motion events) and mouse
+    // (button/motion/wheel) event sitting in the queue, plus everything still waiting in Input's own
+    // injected queue - a DebugDriver command is always one of those same input events (see inject()'s call
+    // sites), never a device or quit event. It keeps device hotplug (PadAdded/PadRemoved - a pad plugged in
+    // while the job ran must not be lost) and a pending Quit. It also resets the tracked d-pad-held state,
+    // so a direction half-pressed before the flush does not keep reading as held afterwards. This is
+    // distinct from flushEvents() above, which discards everything unconditionally and keeps its existing
+    // behaviour - other screens rely on that.
+    void flushInputEvents();
+
     // from now on poll() hands out a Quit event on every other call (and "nothing queued" in between, so
     // a while (poll(e)) drain ends), whatever else is queued: every screen's loop closes on Quit, so a
     // request made deep inside nested screens (the power button, handled inside poll() itself) unwinds

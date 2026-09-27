@@ -232,6 +232,13 @@ void Gui::busyTick() {
 }
 
 void Gui::endBusy() {
+    // CONSOLE-11: drawBusyFrame() reads no input while the job runs, so whatever the pads/keyboard queued
+    // meanwhile piled up (see its own comment); a Cross pressed because the spinner looked stuck was left
+    // queued and handled as a real press the moment the next poll() ran - on the console, Options' ~12 s
+    // reload started a game the player never meant to start. Flush only on the busy -> not busy transition
+    // (render() calls endBusy() every frame, including every idle one where nothing is queued to lose).
+    if (busy_)
+        input().flushInputEvents();
     busy_ = false;
     busyBackdrop_ = Texture();
 }

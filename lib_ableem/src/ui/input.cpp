@@ -4,6 +4,7 @@
 
 #include <deque>
 #include <mutex>
+#include <vector>
 #include "ableem/ui/platform.h"
 #include "sdl_common.h"
 #include "psc_event_filter.h"
@@ -488,6 +489,37 @@ bool Input::poll(Event &out) {
 void Input::flushEvents() {
     SDL_PumpEvents();
     SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+}
+
+//*******************************
+// Input::flushInputEvents
+//*******************************
+// See the header comment (CONSOLE-11). Keep-list, not a drop-list: only device hotplug and Quit survive,
+// so a custom event type (the PSC event filter's synthesized hat-motion events among them) is dropped by
+// default rather than needing to be named here.
+void Input::flushInputEvents() {
+    SDL_PumpEvents();
+    std::vector<SDL_Event> keep;
+    SDL_Event e;
+    while (SDL_PollEvent(&e)) {
+        if (e.type == SDL_JOYDEVICEADDED || e.type == SDL_JOYDEVICEREMOVED || e.type == SDL_CONTROLLERDEVICEADDED ||
+            e.type == SDL_CONTROLLERDEVICEREMOVED || e.type == SDL_CONTROLLERDEVICEREMAPPED || e.type == SDL_QUIT) {
+            keep.push_back(e);
+        }
+        // everything else - keyboard, mouse, joystick/controller axis/ball/hat/button motion, text
+        // input/editing - is an input event and is dropped here.
+    }
+    for (SDL_Event &kept : keep) {
+        SDL_PushEvent(&kept);
+    }
+    {
+        // the DebugDriver's synthetic queue is always input (button/dpad/key/text - see inject()'s call
+        // sites), never a device or quit event, so it is always safe to drop in full.
+        std::lock_guard<std::mutex> lock(impl->injectedMutex);
+        impl->injected.clear();
+    }
+    // a direction half-seen before the flush must not keep reading as held afterwards
+    impl->dpadState[DUP] = impl->dpadState[DDOWN] = impl->dpadState[DLEFT] = impl->dpadState[DRIGHT] = false;
 }
 
 void Input::requestQuit() {
