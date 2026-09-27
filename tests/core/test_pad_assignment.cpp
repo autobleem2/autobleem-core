@@ -26,6 +26,46 @@ TEST_CASE("one pad connected is still Player 1") {
     CHECK(psPlayerSlot(0, 1) == PsPlayerSlot::Player1);
 }
 
+TEST_CASE("psPlayerSlot with swapped=false matches the two-argument form") {
+    CHECK(psPlayerSlot(0, 2, false) == PsPlayerSlot::Player1);
+    CHECK(psPlayerSlot(1, 2, false) == PsPlayerSlot::Player2);
+    CHECK(psPlayerSlot(2, 3, false) == PsPlayerSlot::Unused);
+    CHECK(psPlayerSlot(-1, 2, false) == PsPlayerSlot::Unused);
+}
+
+TEST_CASE("psPlayerSlot with swapped=true trades the first two positions (C11)") {
+    CHECK(psPlayerSlot(0, 2, true) == PsPlayerSlot::Player2);
+    CHECK(psPlayerSlot(1, 2, true) == PsPlayerSlot::Player1);
+}
+
+TEST_CASE("psPlayerSlot swapped: a third+ pad is still unused") {
+    CHECK(psPlayerSlot(2, 3, true) == PsPlayerSlot::Unused);
+    CHECK(psPlayerSlot(5, 6, true) == PsPlayerSlot::Unused);
+}
+
+TEST_CASE("psPlayerSlot swapped: an index outside the connected count is still unused") {
+    CHECK(psPlayerSlot(-1, 2, true) == PsPlayerSlot::Unused);
+    CHECK(psPlayerSlot(2, 2, true) == PsPlayerSlot::Unused);
+    CHECK(psPlayerSlot(0, 0, true) == PsPlayerSlot::Unused);
+}
+
+TEST_CASE("psPlayerSlot swapped: a lone pad stays Player 1 regardless of the swap (Marcus's review fix)") {
+    // the swap only takes effect with two or more pads connected - both emulators' own C11 code checks
+    // the same thing (pcsx-ab counts the pads it is about to accept before applying pad_order,
+    // pcsx-abnxt checks pads_changed()'s pad_count) so a player who left the row on and plays alone still
+    // gets a game that responds, instead of a lone pad silently landing on PS1 port 2.
+    CHECK(psPlayerSlot(0, 1, true) == PsPlayerSlot::Player1);
+    CHECK(psPlayerSlot(0, 0, true) == PsPlayerSlot::Unused); // no pads at all: still unused, swap or not
+}
+
+TEST_CASE("psPlayerSlot swapped: two-plus pads is exactly where the swap takes effect") {
+    CHECK(psPlayerSlot(0, 2, true) == PsPlayerSlot::Player2);
+    CHECK(psPlayerSlot(1, 2, true) == PsPlayerSlot::Player1);
+    CHECK(psPlayerSlot(0, 3, true) == PsPlayerSlot::Player2);
+    CHECK(psPlayerSlot(1, 3, true) == PsPlayerSlot::Player1);
+    CHECK(psPlayerSlot(2, 3, true) == PsPlayerSlot::Unused);
+}
+
 TEST_CASE("decidePadAssignmentChange: unchanged from what was last shown is never shown") {
     PadAssignment last{{"guidA|Pad A", "guidB|Pad B"}};
     PadAssignment current{{"guidA|Pad A", "guidB|Pad B"}};

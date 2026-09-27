@@ -47,6 +47,13 @@ struct Session {
     int resumePoint = -1;
     bool resumingGui = false; // true right after a game exits: skip the classic menu and reopen the carousel
 
+    // C11: Options -> "Swap Player 1 / Player 2" was on for a PS1 launch whose emulator's abfeatures had no
+    // "padorder" - LaunchService::launch() sets this instead of silently sending nothing, since the screen
+    // that asked for the launch is already gone by the time the emulator returns. GuiLauncher shows one
+    // notification line for it the next time it comes up (right where it seeds the pad-assignment notice)
+    // and clears the flag - so it fires once per such launch, not on every later re-show.
+    bool padOrderUnsupportedNotice = false;
+
     // where the EvolutionUI carousel was, so Start brings it back to the same place.
     // GuiLauncher holds a copy of this and writes it back through GuiLauncher::rememberSelection().
     GameSetSelection launcher;

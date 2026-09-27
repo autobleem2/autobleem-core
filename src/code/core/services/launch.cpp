@@ -190,6 +190,14 @@ vector<string> LaunchService::pcsxFeatures() const {
     return features;
 }
 
+//*******************************
+// LaunchService::pcsxSupportsPadOrder
+//*******************************
+bool LaunchService::pcsxSupportsPadOrder() const {
+    const vector<string> features = pcsxFeatures();
+    return std::find(features.begin(), features.end(), "padorder") != features.end();
+}
+
 string LaunchService::pcsxExitDir() {
     return Env::getPathToRuntimeDir() + sep + "exit";
 }
@@ -406,6 +414,16 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
         const string loadState = resumePoints_.prepareForLaunch(*game, resumePoint, has("loadstate"));
         if (!loadState.empty())
             env.emplace_back("AB_LOAD_STATE", loadState);
+        // C11: Options -> "Swap Player 1 / Player 2" - a positional swap of the first two SDL pads' PS1
+        // ports. Only sent when this emulator's abfeatures declares it understands the token; an emulator
+        // without it gets nothing and keeps its own ascending-index order, and the launcher is told so it
+        // can say so (Session::padOrderUnsupportedNotice) instead of silently claiming a swap that did not
+        // happen.
+        const bool padSwapWanted = config_.inifile.values["padswap"] == "true";
+        if (padSwapWanted && has("padorder"))
+            env.emplace_back("AB_PAD_ORDER", "1,0");
+        else if (padSwapWanted)
+            session_.padOrderUnsupportedNotice = true;
         PcsxConfig::migrateLegacy(*game); // what an older build left becomes the game's own config
         launchPcsx(*game, resumePoint, env);
         PcsxConfig::migrateLegacy(*game); // ...and what an older emulator left just now

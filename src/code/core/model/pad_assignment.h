@@ -33,6 +33,29 @@ inline PsPlayerSlot psPlayerSlot(int index, int count) {
     return PsPlayerSlot::Unused;
 }
 
+// C11: the same question with Options -> "Swap Player 1 / Player 2" taken into account. `swapped` is a
+// *positional* swap, nothing more - it says "SDL index 0 and SDL index 1 trade places", exactly what
+// AB_PAD_ORDER="1,0" tells each emulator to do (LaunchService, core/services/launch.cpp) - there is no pad
+// identity here (no GUID/serial pinning): a hot-plug still reorders exactly as it does today, only mirrored
+// through whichever slot is on top. **The swap only takes effect with two or more pads connected**
+// (`count >= 2`) - with a lone pad it is always Player 1, swap or not, so a player who left the row on and
+// plays alone still gets a game that responds (both emulators' own C11 code follows the same rule: pcsx-ab's
+// in_sdl2gc_probe() counts the pads it is about to accept before it decides whether to apply pad_order,
+// pcsx-abnxt's pads_changed() checks its pad_count the same way). So with two-plus pads, index 0 is Player 2
+// and index 1 is Player 1 when swapped; with zero or one pad, or index out of range, this is identical to
+// the unswapped 2-arg form.
+inline PsPlayerSlot psPlayerSlot(int index, int count, bool swapped) {
+    if (!swapped || count < 2)
+        return psPlayerSlot(index, count);
+    if (index < 0 || index >= count)
+        return PsPlayerSlot::Unused;
+    if (index == 0)
+        return PsPlayerSlot::Player2;
+    if (index == 1)
+        return PsPlayerSlot::Player1;
+    return PsPlayerSlot::Unused;
+}
+
 // The Player 1 / Player 2 pads right now, as opaque identifiers (the caller's choice of what
 // identifies a physical pad - e.g. its GUID plus its name; this struct never looks inside them,
 // only compares them). Used to tell whether a pad (dis)connect actually changed who plays as P1/P2,

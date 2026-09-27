@@ -38,6 +38,22 @@ TEST_CASE("Config fills in a default for every key the UI reads") {
     CHECK(config.inifile.values["showingtimeout"] == "2");
     CHECK(config.inifile.values["raconfig"] == "true");
     CHECK(config.inifile.values["emulator"] == "pcsx-abnxt");
+    CHECK(config.inifile.values["padswap"] == "false");
+}
+
+TEST_CASE("Config: padswap defaults off and keeps an explicit true (C11)") {
+    TempDir tmp("config_padswap");
+    EnvFixture env;
+    env.setWorkingPath(tmp.path());
+
+    CHECK(Config().inifile.values["padswap"] == "false");
+
+    tmp.writeFile("config.ini", "[General]\nPadswap=true\n");
+    CHECK(Config().inifile.values["padswap"] == "true");
+
+    // anything else - a stray value from hand-editing - is not kept as "true"
+    tmp.writeFile("config.ini", "[General]\nPadswap=yes\n");
+    CHECK(Config().inifile.values["padswap"] == "false");
 }
 
 TEST_CASE("Config keeps a known emulator and falls back to pcsx-abnxt for anything else") {
