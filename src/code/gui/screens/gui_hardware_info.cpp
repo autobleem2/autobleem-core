@@ -106,8 +106,9 @@ InfoSection GuiHardwareInfo::displayAndInput() {
             for (const MatchedPadBattery &m : matches) {
                 if (m.padIndex == static_cast<int>(padIndex) && m.battery.known()) {
                     string text = to_string(m.battery.percent) + "%";
-                    if (!m.battery.status.empty())
-                        text += " (" + m.battery.status + ")";
+                    string status = batteryStatusText(m.battery.status);
+                    if (!status.empty())
+                        text += " (" + status + ")";
                     return text;
                 }
             }
@@ -115,16 +116,19 @@ InfoSection GuiHardwareInfo::displayAndInput() {
         };
 
         // pads() is in ascending SDL device-index order - the same order pcsx-ab/pcsx-abnxt assign
-        // PS1 ports 1/2 by, so this position is that assignment (psPlayerSlot, core/model/pad_assignment.h)
+        // PS1 ports 1/2 by, so this position is that assignment (psPlayerSlot, core/model/pad_assignment.h).
+        // A matched battery gets its own row, "Battery", right under the pad's own row - never appended to
+        // the pad's label: concatenating a translated label and a translated word ("Player 1" + " " +
+        // "battery") reads backwards in more than one language (Polish among them), and a capitalised,
+        // stand-alone key reads as belonging to the row above it in every language instead.
         for (size_t i = 0; i < pads.size(); i++) {
             PsPlayerSlot slot = psPlayerSlot(static_cast<int>(i), static_cast<int>(pads.size()));
             string playerLabel = psPlayerSlotLabel(slot);
-            string batteryLabel = i < 2 ? playerLabel : _("Controller") + " " + to_string(i + 1);
             if (i < 2)
                 add(playerLabel, pads[i].name);
             else
-                add(batteryLabel, pads[i].name + " (" + playerLabel + ")");
-            add(batteryLabel + " " + _("battery"), batteryTextFor(i));
+                add(_("Controller") + " " + to_string(i + 1), pads[i].name + " (" + playerLabel + ")");
+            add(_("Battery"), batteryTextFor(i));
         }
     }
     // the gamecontrollerdb.txt the pads were mapped from (Env::padMappingFiles() - the first that loaded)

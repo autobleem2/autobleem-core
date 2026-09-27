@@ -76,3 +76,15 @@ TEST_CASE("matchPadBatteries keeps the batteries vector's own order, one entry p
     CHECK(result[2].battery.address == c.address);
     CHECK(result[2].padIndex == -1);
 }
+
+TEST_CASE("batteryStatusText translates the known kernel words, passes anything else through, empty for Unknown") {
+    // no Lang is loaded in a unit test, so _() is the identity (see core/main.h) - this only checks which
+    // word maps to something and which does not, not the actual translated text (that is the lang files' job)
+    CHECK(batteryStatusText("Charging") == "Charging");
+    CHECK(batteryStatusText("Discharging") == "Discharging");
+    CHECK(batteryStatusText("Full") == "Full");
+    CHECK(batteryStatusText("Not charging") == "Not charging");
+    CHECK(batteryStatusText("Unknown") == ""); // known, but nothing worth showing
+    CHECK(batteryStatusText("") == "");
+    CHECK(batteryStatusText("Some Future Kernel Word") == "Some Future Kernel Word"); // passed through, not dropped
+}

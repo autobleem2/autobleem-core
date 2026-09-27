@@ -13,6 +13,7 @@
 //
 #pragma once
 
+#include "../main.h"
 #include "../services/pad_battery.h"
 
 #include <algorithm>
@@ -72,4 +73,26 @@ inline std::vector<MatchedPadBattery> matchPadBatteries(const std::vector<PadBat
         result.push_back(matched);
     }
     return result;
+}
+
+// PadBatteryInfo::status, translated: the kernel's power_supply "status" file only ever holds a handful of
+// English words (see Linux's power_supply_sysfs.c) - literal _() calls for the ones actually seen from a
+// pad's battery ("Unknown" included, even though it says nothing worth showing on its own - a caller
+// checks for "" rather than testing the untranslated English word). Anything this list does not recognise
+// (a status a newer/other kernel reports under a different name) is passed through untranslated rather
+// than silently dropped, so it is still visible as *something* if never as a translated one. Shared here,
+// not duplicated as a static per-file copy like psPlayerSlotLabel, so both the launcher's icon row and
+// GuiHardwareInfo's battery row (and anything else that ever shows a status) read the one list.
+inline std::string batteryStatusText(const std::string &status) {
+    if (status == "Charging")
+        return _("Charging");
+    if (status == "Discharging")
+        return _("Discharging");
+    if (status == "Full")
+        return _("Full");
+    if (status == "Not charging")
+        return _("Not charging");
+    if (status == "Unknown")
+        return "";
+    return status;
 }
