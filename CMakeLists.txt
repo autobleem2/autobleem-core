@@ -54,6 +54,24 @@ if (AB_TARGET STREQUAL "psc" OR AB_TARGET STREQUAL "rpi" OR AB_TARGET STREQUAL "
     set(ABLEEM_EMBEDDED_TARGET ON CACHE BOOL "" FORCE)
 endif()
 
+# MSYS2 UCRT64 packaging regression (seen from mingw-w64-ucrt-x86_64-gcc 16.2.0-3, 2026-09): the gcc driver's
+# own specs only add -D_UCRT when -mcrtdll=ucrt is passed explicitly (`gcc -dumpspecs`'s `*cpp:` rule) - there
+# is no `self_spec` defaulting that in for the ucrt64 environment any more, so mingw-w64's <cstdlib> (which
+# gates at_quick_exit/quick_exit on _UCRT) fails to declare them on a from-scratch build: "'at_quick_exit' has
+# not been declared in '::'". An already-configured build dir keeps its object files and never retriggers this,
+# which is why it looked intermittent. Scoped to exactly that toolchain - MinGW GNU gcc whose binary resolves
+# under a ucrt64 tree - so llvm-mingw (Clang, no `MSYS2`/`ucrt64` path) and Debian's mingw-w64 gcc-posix cross
+# compiler (no ucrt64 path either) are untouched; harmless again once MSYS2 fixes the packaging, since the
+# compiler would then define it on its own. add_compile_definitions() (not CMAKE_CXX_FLAGS) because the root
+# launcher CMakeLists' Debug branch overwrites CMAKE_CXX_FLAGS wholesale further down its own file.
+if (MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    get_filename_component(_ab_core_cxx_compiler_real "${CMAKE_CXX_COMPILER}" REALPATH)
+    if (_ab_core_cxx_compiler_real MATCHES "/ucrt64/" OR "$ENV{MSYSTEM}" STREQUAL "UCRT64")
+        message(STATUS "autobleem-core: MSYS2 UCRT64 gcc without a default -D_UCRT detected - defining it (see CMakeLists.txt comment)")
+        add_compile_definitions(_UCRT)
+    endif()
+endif()
+
 find_package(Threads REQUIRED)
 
 set(ABLEEM_ENABLE_CHD ${AB_ENABLE_CHD} CACHE BOOL "" FORCE)
