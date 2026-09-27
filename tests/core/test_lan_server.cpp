@@ -241,12 +241,19 @@ TEST_CASE("HttpServer::listen binds the address it is given, not always every in
     CHECK(server.boundAddress() == "127.0.0.1");
 }
 
-TEST_CASE("HttpServer::listen still binds every interface by default - every caller's behaviour before R29") {
+TEST_CASE("HttpServer::listen's default is still every interface - never actually bound in this test, to avoid "
+          "the firewall prompt on the owner's test PC") {
+    // documents the default without a socket bind: every caller before R29 got LanServer::Config{}.bindAddress,
+    // and listen()'s own default argument matches it (see the header comment above bindAddress)
+    CHECK(LanServer::Config{}.bindAddress == "0.0.0.0");
+}
+
+TEST_CASE("HttpServer::listen refuses a bad bind address, naming it, without ever binding a socket") {
     HttpServer server([](const HttpServer::Request &) { return HttpServer::Response::text(200, "ok\n"); });
     const int port = 20000 + static_cast<int>(chrono::steady_clock::now().time_since_epoch().count() % 20000) + 1;
     string error;
-    REQUIRE_MESSAGE(server.listen(port, error), error);
-    CHECK(server.boundAddress() == "0.0.0.0");
+    CHECK_FALSE(server.listen(port, error, "not-an-address"));
+    CHECK(error.find("not-an-address") != string::npos);
 }
 
 TEST_CASE("abstored over a socket: the list, a file resumed with a Range, a file it does not serve") {
