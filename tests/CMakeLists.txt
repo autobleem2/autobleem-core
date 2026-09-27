@@ -33,6 +33,8 @@ if (AB_CORE_UI)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)
+    # Platform's AB_HEADLESS policy - pure, no display needed
+    ab_add_test(test_headless classic/test_headless.cpp LIBS ableem)
 endif()
 ab_add_test(test_game_catalog core/test_game_catalog.cpp)
 ab_add_test(test_game_database core/test_game_database.cpp)

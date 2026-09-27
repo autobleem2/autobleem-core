@@ -231,6 +231,24 @@ TEST_CASE("HttpServer::parseRange and decodePercent") {
     CHECK(htmlEscape("<a & \"b\">") == "&lt;a &amp; &quot;b&quot;&gt;");
 }
 
+// R29: the LAN server's bind address is set by its caller, never INADDR_ANY unconditionally (the firewall
+// prompt on the owner's test PC) - checked with getsockname(), not by trusting listen()'s own argument back.
+TEST_CASE("HttpServer::listen binds the address it is given, not always every interface") {
+    HttpServer server([](const HttpServer::Request &) { return HttpServer::Response::text(200, "ok\n"); });
+    const int port = 20000 + static_cast<int>(chrono::steady_clock::now().time_since_epoch().count() % 20000);
+    string error;
+    REQUIRE_MESSAGE(server.listen(port, error, "127.0.0.1"), error);
+    CHECK(server.boundAddress() == "127.0.0.1");
+}
+
+TEST_CASE("HttpServer::listen still binds every interface by default - every caller's behaviour before R29") {
+    HttpServer server([](const HttpServer::Request &) { return HttpServer::Response::text(200, "ok\n"); });
+    const int port = 20000 + static_cast<int>(chrono::steady_clock::now().time_since_epoch().count() % 20000) + 1;
+    string error;
+    REQUIRE_MESSAGE(server.listen(port, error), error);
+    CHECK(server.boundAddress() == "0.0.0.0");
+}
+
 TEST_CASE("abstored over a socket: the list, a file resumed with a Range, a file it does not serve") {
     Games g;
     LanLibrary library(g.config());
@@ -250,7 +268,7 @@ TEST_CASE("abstored over a socket: the list, a file resumed with a Range, a file
     });
     const int port = 20000 + static_cast<int>(chrono::steady_clock::now().time_since_epoch().count() % 20000);
     string error;
-    REQUIRE(server.listen(port, error));
+    REQUIRE(server.listen(port, error, "127.0.0.1"));
     atomic<bool> stop{false};
     thread serving([&] { server.serve(stop); });
 
@@ -389,6 +407,7 @@ TEST_CASE("LanServer serves the library: the list, a file, the status page, what
     c.port = 20000 + static_cast<int>((chrono::steady_clock::now().time_since_epoch().count() / 7) % 20000);
     c.name = "Living room";
     c.version = "9.9";
+    c.bindAddress = "127.0.0.1"; // this test only ever talks to itself - no firewall prompt on a test machine
     LanServer server(c);
     string error;
     REQUIRE_MESSAGE(server.start(error), error);
@@ -472,6 +491,7 @@ TEST_CASE(
     LanServer::Config c;
     c.library = g.config();
     c.port = 20000 + static_cast<int>((chrono::steady_clock::now().time_since_epoch().count() / 11) % 20000);
+    c.bindAddress = "127.0.0.1";
     {
         LanServer off(c);
         string error;

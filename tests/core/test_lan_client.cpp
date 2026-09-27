@@ -36,6 +36,7 @@ struct Rig {
         c.library.gamesDir = tmp.at("Server");
         c.library.stateDir = tmp.at("state");
         c.port = port;
+        c.bindAddress = "127.0.0.1";
         c.name = "Pi";
         c.checksums = false;
         c.uploads = true;

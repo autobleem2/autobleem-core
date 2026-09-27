@@ -37,6 +37,9 @@ public:
     struct Config {
         LanLibrary::Config library;
         int port = 8124;
+        // "0.0.0.0" (every interface) is every caller's behaviour before R29; test_lan_server binds
+        // "127.0.0.1" so its tests never prompt the test machine's firewall
+        std::string bindAddress = "0.0.0.0";
         std::string name = "My games"; // the source's name in the Store
         bool checksums = true;         // work out every file's SHA-256 (cached in library.stateDir)
         std::string version;           // the program's, on the status page

@@ -43,10 +43,15 @@ public:
     explicit HttpServer(Handler handler) : handler_(std::move(handler)) {}
     ~HttpServer();
 
-    // bind and listen on every interface; false (and why) when the port is taken
-    bool listen(int port, std::string &error);
+    // bind and listen; false (and why) when the port is taken. bindAddress is a dotted IPv4 address to bind
+    // to a single interface ("127.0.0.1" for loopback-only), or "" / "0.0.0.0" (the default, and every
+    // caller's behaviour before R29) for every interface.
+    bool listen(int port, std::string &error, const std::string &bindAddress = "0.0.0.0");
     // accepts until stop is set (checked twice a second); each connection on a thread of its own
     void serve(const std::atomic<bool> &stop);
+    // the address listen() actually bound (getsockname), "" before listen() or on error - what a test
+    // checks instead of trusting listen()'s argument back
+    std::string boundAddress() const;
 
     // "bytes=a-b" / "bytes=a-" / "bytes=-n" against a file of `size`: false when there is no usable single
     // range (the whole file is sent); `unsatisfiable` when the start lies past the end (416)

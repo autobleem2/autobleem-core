@@ -37,6 +37,21 @@ public:
     // true when running on a development machine rather than the real target (console/RPi image).
     bool isDevHost() const;
 
+    // AB_HEADLESS=1 in the environment: an automated test run wants the window created with
+    // SDL_WINDOW_HIDDEN from its very first frame (never flashes visible, never takes the input focus)
+    // and audio sent through SDL's dummy driver - so a tester's desktop shows and hears nothing. `shot`/
+    // `grab` (DebugDriver) keep producing real frames: SDL_RenderReadPixels reads the renderer's own
+    // back buffer/render target, never the screen, so a window that starts hidden is no different from
+    // one hidden mid-run by the DebugDriver's existing `window hide` (see Renderer::present()'s frame
+    // cache, filled before SDL_RenderPresent). Read fresh each call - cheap, and lets a test toggle it.
+    static bool headlessRequested();
+
+    // pure policy, exposed for testing without SDL: does a headless run start its window hidden?
+    static bool startsHidden(bool headless);
+    // pure policy, exposed for testing without SDL: the SDL_AUDIODRIVER to force for a headless run
+    // ("dummy"), or "" to leave SDL's own probing alone.
+    static std::string audioDriverOverride(bool headless);
+
     // hides the mouse cursor and grabs/relative-mode it. no-op on a dev host.
     void hideAndGrabCursor();
 

@@ -1,6 +1,7 @@
 #include "ableem/ui/platform.h"
 #include "sdl_common.h"
 #include <ableem/engine/log.h>
+#include <cstdlib>
 #include <sstream>
 #include <stdexcept>
 
@@ -14,6 +15,7 @@ struct Platform::Impl {
     int logicalWidth = 0, logicalHeight = 0;
     int multisampleSamples = 0; // asked for, then what was got
     bool fullscreen = false;    // the whole desktop rather than a width x height window
+    bool headless = false;      // AB_HEADLESS=1 at construction time - see Platform::headlessRequested()
 };
 
 namespace {
@@ -23,10 +25,12 @@ namespace {
 // cover strips included, real MSAA edges. SDL_WINDOW_OPENGL makes the window come with that context at
 // once instead of being recreated by the renderer later. A driver without MSAA fails the window, and the
 // window is then made again without it.
-SDL_Window *createWindow(const std::string &title, int w, int h, int &samples, bool fullscreen) {
+SDL_Window *createWindow(const std::string &title, int w, int h, int &samples, bool fullscreen, bool headless) {
     // the desktop's own mode, no modeset: what a launcher that hands the screen to an emulator and takes it
     // back wants (a mode change would flash the display twice per game)
-    const Uint32 flags = fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0;
+    Uint32 flags = fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0;
+    if (Platform::startsHidden(headless))
+        flags |= SDL_WINDOW_HIDDEN;
     if (samples > 0) {
 #ifdef _WIN32
         SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl"); // Windows would otherwise take direct3d, which ignores this
@@ -72,11 +76,18 @@ int Platform::logicalHeight() const {
 Platform::Platform(const std::string &windowTitle, int logicalWidth, int logicalHeight, int outputWidth,
                    int outputHeight, int multisampleSamples, bool fullscreen)
     : impl(new Impl()) {
+    impl->headless = headlessRequested();
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         throw std::runtime_error(std::string("SDL_Init failed: ") + SDL_GetError());
     }
+    // SDL picks the audio driver at SDL_InitSubSystem(SDL_INIT_AUDIO) time, from SDL_AUDIODRIVER (env) or
+    // its own probing - so the override must be in the environment before that call, not after.
+    const std::string audioDriver = audioDriverOverride(impl->headless);
+    if (!audioDriver.empty())
+        SDL_setenv("SDL_AUDIODRIVER", audioDriver.c_str(), 1);
     SDL_InitSubSystem(SDL_INIT_AUDIO);
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+    PLOG_INFO << "Audio driver: " << (SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "(none)");
 
     impl->windowTitle = windowTitle;
     impl->width = outputWidth;
@@ -85,7 +96,8 @@ Platform::Platform(const std::string &windowTitle, int logicalWidth, int logical
     impl->logicalHeight = logicalHeight;
     impl->multisampleSamples = multisampleSamples;
     impl->fullscreen = fullscreen;
-    impl->window = createWindow(windowTitle, outputWidth, outputHeight, impl->multisampleSamples, fullscreen);
+    impl->window =
+        createWindow(windowTitle, outputWidth, outputHeight, impl->multisampleSamples, fullscreen, impl->headless);
     if (!impl->window) {
         throw std::runtime_error(std::string("SDL_CreateWindow failed: ") + SDL_GetError());
     }
@@ -170,8 +182,23 @@ bool Platform::isDevHost() const {
 #endif
 }
 
+bool Platform::headlessRequested() {
+    const char *v = std::getenv("AB_HEADLESS");
+    return v && std::string(v) == "1";
+}
+
+bool Platform::startsHidden(bool headless) {
+    return headless;
+}
+
+std::string Platform::audioDriverOverride(bool headless) {
+    return headless ? std::string("dummy") : std::string();
+}
+
 void Platform::hideAndGrabCursor() {
-    if (!impl->window)
+    // a headless run never takes the input focus - grabbing the cursor/relative-mouse-mode on a hidden
+    // window can still steal focus on Windows, which is exactly what AB_HEADLESS promises not to do
+    if (!impl->window || impl->headless)
         return;
     SDL_ShowCursor(SDL_DISABLE);
     SDL_SetWindowGrab(impl->window, SDL_TRUE);
@@ -194,8 +221,8 @@ void Platform::acquireDisplay() {
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
         throw std::runtime_error(std::string("SDL_InitSubSystem(VIDEO) failed: ") + SDL_GetError());
     }
-    impl->window =
-        createWindow(impl->windowTitle, impl->width, impl->height, impl->multisampleSamples, impl->fullscreen);
+    impl->window = createWindow(impl->windowTitle, impl->width, impl->height, impl->multisampleSamples,
+                                impl->fullscreen, impl->headless);
     if (!impl->window) {
         throw std::runtime_error(std::string("SDL_CreateWindow failed: ") + SDL_GetError());
     }
@@ -209,7 +236,8 @@ bool Platform::hasDisplay() const {
 }
 
 void Platform::raiseWindow() {
-    if (!impl->window)
+    // never takes focus in a headless run - see hideAndGrabCursor()
+    if (!impl->window || impl->headless)
         return;
     SDL_RaiseWindow(impl->window);
 }
