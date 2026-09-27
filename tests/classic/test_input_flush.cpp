@@ -156,3 +156,134 @@ TEST_CASE("flushInputEvents: a pending Quit survives the flush") {
     vector<Event::Type> seen = drain(mg.input());
     CHECK(contains(seen, Event::Type::Quit));
 }
+
+// CONSOLE-12: Options' theme/language rows ran through every value by themselves after one press. A row's
+// Left/Right repeats (GuiScreen::fastForwardUntilAnotherEvent) until padEventPending() sees the next pad
+// event - normally the button's own release. Each step reloads under the busy spinner, so the release
+// arrived while it was busy; the flush dropped it, nothing ever ended the repeat, and it stepped on to the
+// last value (and kept reloading that one). A release whose press was read before the job must survive.
+
+namespace {
+
+void pushHat(Uint32 customType, int sdlButton) {
+    SDL_Event e{};
+    e.type = customType;
+    e.cbutton.button = static_cast<Uint8>(sdlButton);
+    e.cbutton.state = customType == static_cast<Uint32>(SDL_LASTEVENT - 1) ? SDL_PRESSED : SDL_RELEASED;
+    SDL_PushEvent(&e);
+}
+
+void pushKey(Uint32 type, SDL_Scancode scancode, SDL_Keycode sym) {
+    SDL_Event e{};
+    e.type = type;
+    e.key.keysym.scancode = scancode;
+    e.key.keysym.sym = sym;
+    e.key.state = type == SDL_KEYDOWN ? SDL_PRESSED : SDL_RELEASED;
+    SDL_PushEvent(&e);
+}
+
+const Uint32 HatDown = SDL_LASTEVENT - 1; // psc_event_filter.h's SDL_CONTROLLERHATMOTIONDOWN
+const Uint32 HatUp = SDL_LASTEVENT - 2;   // ... and SDL_CONTROLLERHATMOTIONUP
+
+} // namespace
+
+TEST_CASE("flushInputEvents: a d-pad release queued during the busy period survives it (CONSOLE-12)") {
+    MaybeGui mg;
+    if (!mg.available())
+        return;
+
+    mg.input().flushEvents();
+    pushHat(HatDown, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+    vector<Event::Type> before = drain(mg.input()); // the screen reads the press, then starts the busy job
+    REQUIRE(contains(before, Event::Type::DpadDown));
+    REQUIRE(mg.input().dpadRight());
+
+    pushHat(HatUp, SDL_CONTROLLER_BUTTON_DPAD_RIGHT); // let go while the spinner shows
+    mg.input().flushInputEvents();
+
+    CHECK(mg.input().padEventPending()); // what ends the row's repeat loop
+    vector<Event::Type> seen = drain(mg.input());
+    CHECK(contains(seen, Event::Type::DpadUp));
+    CHECK(mg.input().dpadCentered());
+}
+
+TEST_CASE("flushInputEvents: a button release queued during the busy period survives it (CONSOLE-12)") {
+    MaybeGui mg;
+    if (!mg.available())
+        return;
+
+    mg.input().flushEvents();
+    pushButton(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER); // R1 steps a row by several
+    REQUIRE(contains(drain(mg.input()), Event::Type::ButtonDown));
+
+    pushButton(SDL_CONTROLLERBUTTONUP, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+    mg.input().flushInputEvents();
+
+    CHECK(mg.input().padEventPending());
+    vector<Event::Type> seen = drain(mg.input());
+    CHECK(contains(seen, Event::Type::ButtonUp));
+}
+
+TEST_CASE("flushInputEvents: a keyboard release queued during the busy period survives it (CONSOLE-12)") {
+    MaybeGui mg;
+    if (!mg.available())
+        return;
+
+    mg.input().flushEvents();
+    pushKey(SDL_KEYDOWN, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
+    REQUIRE(contains(drain(mg.input()), Event::Type::DpadDown)); // the PC-style map: Right is the d-pad
+
+    pushKey(SDL_KEYUP, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
+    mg.input().flushInputEvents();
+
+    CHECK(mg.input().padEventPending());
+    vector<Event::Type> seen = drain(mg.input());
+    CHECK(contains(seen, Event::Type::DpadUp));
+}
+
+TEST_CASE("flushInputEvents: an injected release survives, an injected press and its release do not (CONSOLE-12)") {
+    MaybeGui mg;
+    if (!mg.available())
+        return;
+
+    mg.input().flushEvents();
+    Event e;
+    e.type = Event::Type::DpadDown;
+    e.button = Button::DpadRight;
+    mg.input().inject(e);
+    REQUIRE(contains(drain(mg.input()), Event::Type::DpadDown));
+
+    // the DebugDriver's `press right`: the release comes in while the reload is running
+    e.type = Event::Type::DpadUp;
+    mg.input().inject(e);
+    // and a whole Cross press made during the job - it must still never act (CONSOLE-11)
+    Event cross;
+    cross.button = Button::Cross;
+    cross.type = Event::Type::ButtonDown;
+    mg.input().inject(cross);
+    cross.type = Event::Type::ButtonUp;
+    mg.input().inject(cross);
+
+    mg.input().flushInputEvents();
+
+    CHECK(mg.input().padEventPending());
+    vector<Event::Type> seen = drain(mg.input());
+    CHECK(contains(seen, Event::Type::DpadUp));
+    CHECK_FALSE(contains(seen, Event::Type::ButtonDown));
+    CHECK_FALSE(contains(seen, Event::Type::ButtonUp));
+}
+
+TEST_CASE("flushInputEvents: a d-pad press and release both made during the busy period are dropped") {
+    MaybeGui mg;
+    if (!mg.available())
+        return;
+
+    mg.input().flushEvents();
+    pushHat(HatDown, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+    pushHat(HatUp, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+    mg.input().flushInputEvents();
+
+    vector<Event::Type> seen = drain(mg.input());
+    CHECK_FALSE(contains(seen, Event::Type::DpadDown));
+    CHECK_FALSE(contains(seen, Event::Type::DpadUp));
+}
