@@ -429,9 +429,16 @@ private:
             return "ok";
         }
         if (cmd == "quit") {
-            Event e;
-            e.type = Event::Type::Quit;
-            gui_.input().inject(e);
+            // requestQuit(), not inject(Quit): an injected event is a single item in the queue, consumed by
+            // whichever screen's own poll() loop happens to read it first - on a nested screen (a PSC-Bios
+            // wizard under the System Menu's Network & Controllers hub, say) that only closes the innermost
+            // one and nothing above it ever sees a reason to unwind, so the process is left running with
+            // nothing left to do (TOOLS-8: measured as a ~13s-and-up stall on `ab_drive.py stop`, ending in
+            // its own force-kill rather than a clean exit). requestQuit() is the same persistent condition
+            // the real Power button uses (Input::poll() keeps handing back Quit on every call from then on),
+            // so every nested screen's own event loop sees it in turn and closes, the way a physical
+            // power-off already does.
+            gui_.input().requestQuit();
             return "ok";
         }
         return "err unknown command " + cmd;
