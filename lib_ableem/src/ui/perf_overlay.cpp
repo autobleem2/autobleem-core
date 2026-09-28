@@ -57,6 +57,12 @@ double msBetween(Uint64 a, Uint64 b) {
 }
 } // namespace
 
+static Uint64 idleTicks = 0; // the main thread's only: Input waits there
+
+void noteIdleWait(Uint64 ticks) {
+    idleTicks += ticks;
+}
+
 //*******************************
 // PerfOverlay::beforePresent
 //*******************************
@@ -70,7 +76,8 @@ void PerfOverlay::beforePresent(SDL_Renderer *renderer, long copies, float outpu
     const Uint64 now = SDL_GetPerformanceCounter();
     if (lastPresent != 0) {
         const double frameMs = msBetween(lastPresent, now);
-        const double workMs = msBetween(workStart, now);
+        const Uint64 idle = std::min(idleTicks - idleAtWorkStart, now - workStart);
+        const double workMs = msBetween(workStart + idle, now);
         frames++;
         sumFrameMs += frameMs;
         maxFrameMs = std::max(maxFrameMs, frameMs);
@@ -106,6 +113,7 @@ void PerfOverlay::beforePresent(SDL_Renderer *renderer, long copies, float outpu
 
 void PerfOverlay::afterPresent() {
     workStart = SDL_GetPerformanceCounter();
+    idleAtWorkStart = idleTicks;
 }
 
 void PerfOverlay::release() {

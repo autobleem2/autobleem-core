@@ -9,6 +9,7 @@
 #include <vector>
 #include "ableem/ui/platform.h"
 #include "sdl_common.h"
+#include "perf_overlay.h"
 #include "psc_event_filter.h"
 #include <iostream>
 #include <fstream>
@@ -411,6 +412,11 @@ bool Input::frameDue() {
 
 bool Input::waitForEvent(int timeoutMs) {
     const Uint32 start = SDL_GetTicks();
+    const Uint64 waitStart = SDL_GetPerformanceCounter();
+    struct Noted { // however the wait ends
+        Uint64 from;
+        ~Noted() { noteIdleWait(SDL_GetPerformanceCounter() - from); }
+    } noted{waitStart};
     for (;;) {
         if (impl->quitRequested || impl->injectedPending())
             return true;

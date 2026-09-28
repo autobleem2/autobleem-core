@@ -9,6 +9,10 @@
 
 namespace ableem {
 
+// the time the program waited for input or for its next frame (Input::waitForEvent), in performance-counter
+// ticks: the overlay's "work" leaves it out, so a screen that rests does not look busy
+void noteIdleWait(Uint64 ticks);
+
 //******************
 // PerfOverlay
 //******************
@@ -32,7 +36,7 @@ private:
     void rebuildText(SDL_Renderer *renderer);
     void rebuildTexture(SDL_Renderer *renderer);
 
-    Uint64 lastPresent = 0, workStart = 0;
+    Uint64 lastPresent = 0, workStart = 0, idleAtWorkStart = 0;
     long frames = 0;
     double sumFrameMs = 0, maxFrameMs = 0, sumWorkMs = 0, maxWorkMs = 0;
     long sumCopies = 0;
