@@ -80,8 +80,8 @@ void GuiTextPage::render() {
             gui->text().renderTextLine(line, -y, 0, centred ? XALIGN_CENTER : XALIGN_LEFT);
         } else {
             if (!l.marker.empty())
-                gui->text().renderText_WithColor(font, l.marker, x + l.textX - gui->text().textWidth(font, l.marker),
-                                                 y, color, XALIGN_LEFT);
+                gui->text().renderText_WithColor(font, l.marker, x + l.textX - gui->text().textWidth(font, l.marker), y,
+                                                 color, XALIGN_LEFT);
             gui->text().renderWrappedText(font, l.text, x + l.textX, y, width - l.textX, color);
         }
         y += height;
@@ -100,8 +100,10 @@ void GuiTextPage::render() {
 //*******************************
 void GuiTextPage::loop() {
     menuVisible = true;
+    gui->input().setFrameNeed(ableem::Input::FrameNeed::Idle); // nothing moves between presses
     while (menuVisible) {
-        render();
+        if (gui->input().frameDue())
+            render();
         Event e;
         while (gui->input().poll(e)) {
             if (e.type == Event::Type::Quit)

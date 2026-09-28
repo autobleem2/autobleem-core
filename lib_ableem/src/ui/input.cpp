@@ -3,6 +3,7 @@
 #include "ableem/engine/keyboard_presence.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <deque>
 #include <mutex>
 #include <vector>
@@ -217,7 +218,13 @@ struct Input::Impl {
     bool powerKeyAsKey = false;
     bool rawKeyboard = false;   // setRawKeyboard(): Esc is a key, not the power button
     bool quitRequested = false; // requestQuit(): poll() returns Quit on every other call from then on
-    bool quitArmed = false;     // ... and false in between, so a "while (poll(e))" drain loop ends
+
+    // the frame pacer (Input::frameDue)
+    FrameNeed need = FrameNeed::Active;
+    std::vector<FrameNeed> needStack;
+    bool eventSinceDraw = true;
+    Uint32 lastDraw = 0;
+    bool quitArmed = false; // ... and false in between, so a "while (poll(e))" drain loop ends
     bool dpadState[4] = {false, false, false, false};
     std::mutex injectedMutex;
     std::deque<Event> injected; // what inject() queued, handed out ahead of SDL's events
@@ -352,6 +359,56 @@ void Input::inject(const Event &e) {
     impl->injected.push_back(e);
 }
 
+//*******************************
+// the frame pacer
+//*******************************
+void Input::setFrameNeed(FrameNeed need) {
+    impl->need = need;
+}
+
+Input::FrameNeed Input::frameNeed() const {
+    return impl->need;
+}
+
+void Input::pushFrameNeed() {
+    impl->needStack.push_back(impl->need);
+    impl->need = FrameNeed::Active;
+    impl->eventSinceDraw = true; // a new screen draws its first frame at once
+}
+
+void Input::popFrameNeed() {
+    if (!impl->needStack.empty()) {
+        impl->need = impl->needStack.back();
+        impl->needStack.pop_back();
+    }
+    impl->eventSinceDraw = true; // and the screen underneath draws again at once
+}
+
+static int ambientIntervalMs() {
+    static const int ms = [] {
+        const char *v = getenv("AB_AMBIENT_FPS");
+        const int fps = v && *v ? atoi(v) : 30;
+        return fps > 0 ? 1000 / fps : 33;
+    }();
+    return ms;
+}
+
+bool Input::frameDue() {
+    const Uint32 now = SDL_GetTicks();
+    if (impl->need == FrameNeed::Active || impl->eventSinceDraw || impl->quitRequested) {
+        impl->eventSinceDraw = false;
+        impl->lastDraw = now;
+        return true;
+    }
+    const int interval = impl->need == FrameNeed::Ambient ? ambientIntervalMs() : 250;
+    const int since = static_cast<int>(now - impl->lastDraw);
+    if (since >= interval || waitForEvent(interval - since) == false) {
+        impl->lastDraw = SDL_GetTicks();
+        return true; // the frame is due (or became due while waiting)
+    }
+    return false; // input came: the loop polls it, and the next call draws
+}
+
 bool Input::waitForEvent(int timeoutMs) {
     const Uint32 start = SDL_GetTicks();
     for (;;) {
@@ -380,6 +437,7 @@ bool Input::poll(Event &out) {
         return true;
     }
     if (impl->takeInjected(out)) {
+        impl->eventSinceDraw = true; // the frame pacer draws after input
         if (out.type == Event::Type::DpadDown || out.type == Event::Type::DpadUp)
             impl->setDpad(out.button, out.type == Event::Type::DpadDown);
         // a key the DebugDriver typed goes through the map as a real one would
@@ -392,6 +450,7 @@ bool Input::poll(Event &out) {
     SDL_Event e;
     if (!SDL_PollEvent(&e))
         return false;
+    impl->eventSinceDraw = true;
 
     if (e.type == SDL_JOYDEVICEADDED) {
         impl->registerPad(e.jdevice.which);

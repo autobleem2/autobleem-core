@@ -351,8 +351,10 @@ void GuiKeyboard::loop() {
     input.setRawKeyboard(true);
 
     menuVisible = true;
+    input.setFrameNeed(ableem::Input::FrameNeed::Idle); // nothing moves between presses
     while (menuVisible) {
-        render();
+        if (input.frameDue())
+            render();
         Event e;
         while (menuVisible && input.poll(e)) {
             switch (e.type) {

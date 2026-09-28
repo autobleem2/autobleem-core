@@ -106,10 +106,12 @@ void GuiFactsPage::render() {
 //*******************************
 void GuiFactsPage::loop() {
     menuVisible = true;
+    gui->input().setFrameNeed(ableem::Input::FrameNeed::Idle); // the refresh interval is far above 4 Hz
     while (menuVisible) {
         if (gui->platform().ticks() - lastRefresh >= refreshInterval)
             refresh();
-        render();
+        if (gui->input().frameDue())
+            render();
 
         Event e;
         while (gui->input().poll(e)) {

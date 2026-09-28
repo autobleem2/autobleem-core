@@ -10,9 +10,11 @@ namespace ableem {
 //*******************************
 void GuiScreen::show() {
     DebugDriver::pushScreen(typeid(*this).name());
+    gui.input().pushFrameNeed(); // Active until the screen says otherwise (init() or its loop)
     init();
     render();
     loop();
+    gui.input().popFrameNeed();
     DebugDriver::popScreen();
 }
 
@@ -174,7 +176,8 @@ void GuiScreen::loop() {
                 break;
             }
         }
-        render();
+        if (input.frameDue()) // the pacer: every pass unless the screen said it rests
+            render();
     }
 }
 

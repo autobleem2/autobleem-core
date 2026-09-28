@@ -141,6 +141,19 @@ public:
     // pulls one event off the queue, translating it and updating internal dpad/pad state as a side effect.
     // returns false when the queue is empty.
     bool poll(Event &out);
+    // The frame pacer (the render plan's B2). A screen says what its picture needs - Active: a frame every pass
+    // (anything animating; the default, so a forgotten case costs CPU, never a stale picture), Ambient: only
+    // slow ambient motion (AB_AMBIENT_FPS, 30 by default), Idle: nothing moves until input - and its loop
+    // draws `if (input.frameDue()) render();`. frameDue() is true right after input and at the screen's rate
+    // (an idle screen still redraws 4 times a second - the performance overlay, the DebugDriver's shots);
+    // otherwise it sleeps until the next frame is due or an event comes, and says false. GuiScreen::show()
+    // saves the need and resets it to Active for the screen it shows, and puts the caller's back afterwards.
+    enum class FrameNeed { Active, Ambient, Idle };
+    void setFrameNeed(FrameNeed need);
+    FrameNeed frameNeed() const;
+    bool frameDue();
+    void pushFrameNeed(); // GuiScreen::show()
+    void popFrameNeed();
     // sleeps until an event is waiting (SDL's or an injected one - those are looked for every 10 ms) or
     // timeoutMs has passed; true when poll() has something. What a screen that draws nothing between presses
     // calls instead of spinning on poll().

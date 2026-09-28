@@ -82,6 +82,7 @@ public:
 // void GuiMenuBase<LineDataType>::init()
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::init() {
+    gui->input().setFrameNeed(ableem::Input::FrameNeed::Idle); // a list: nothing moves between presses
     font = gui->assets().themeFont;
     if (useSmallerFont) {
         // sometimes the left column will overwrite into the right column.
