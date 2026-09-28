@@ -3,6 +3,7 @@
 //
 #include "gui_text_page.h"
 #include "../gui.h"
+#include "../panel_style.h"
 
 #include <algorithm>
 
@@ -14,13 +15,15 @@ using namespace std;
 void GuiTextPage::render() {
     gui->renderBackground();
     gui->renderTextBar();
-    const ableem::Rect panel = gui->text().getOpscreenRectOfTheme();
+    const ableem::Rect panel = gui->classicPanel();
     const ableem::Font &font = gui->assets().themeFont;
     const int lineHeight = font.lineHeight();
     int yoffset = gui->renderHeader(title);
-    // each line wrapped to the panel; a line that wraps takes the rows it needs
-    const int x = panel.x + 10;
-    const int width = panel.w - 20;
+    // each line wrapped to the panel, at the rows' inset from both edges (the header's text x - the old
+    // opscreen rect's 10 px put the text against the panel's edge); a line that wraps takes the rows it needs
+    const int inset = PanelStyle::RowInset + 8;
+    const int x = panel.x + inset;
+    const int width = panel.w - 2 * inset;
     const ableem::Color color = TextRenderer::toColor(app.theme().classic().textColor, 255);
     // the lines from `firstLine` down, each wrapped, until the content rect is full
     const ableem::Rect content = gui->classicContent();

@@ -67,6 +67,9 @@ public:
 
     // this is useful in menus that have blank lines like gui_networkMenu.cpp
     virtual bool skipSelectingThisLineWhenMovingByOne(int index) { return false; }
+    // the lines are only information (nothing to pick - e.g. "no adapter found"): no selection box, and the
+    // cursor keys, paging and L1/R1 do not move anything
+    bool labelsOnly = false;
 
     void adjustPageBy(int moveBy); // move the page up or down by an amount
     void computePagePosition();    // complete recompute of positions based on the selected value
@@ -148,7 +151,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::renderLines() {
 // GuiMenuBase<LineDataType>::renderSelectionBox
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::renderSelectionBox() {
-    if (!getVerticalSize() == 0) {
+    if (!labelsOnly && getVerticalSize() > 0) {
         gui->text().renderSelectionBox(selected - firstVisibleIndex + firstRow, yoffset, selectionBoxXOffset, font,
                                        selectionRightEdge);
     }
@@ -202,7 +205,7 @@ template <typename LineDataType> std::string GuiMenuBase<LineDataType>::getStatu
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyDown() {
     app.audio().cursor.play();
-    if (getVerticalSize() > 1) {
+    if (!labelsOnly && getVerticalSize() > 1) {
         if (selected >= getVerticalSize() - 1) {
             selected = 0;
             computePagePosition();
@@ -221,7 +224,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyDown() {
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyUp() {
     app.audio().cursor.play();
-    if (getVerticalSize() > 1) {
+    if (!labelsOnly && getVerticalSize() > 1) {
         if (selected <= 0) {
             selected = getVerticalSize() - 1;
             computePagePosition();
@@ -260,7 +263,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doJoyUp() {
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageDown() {
     app.audio().home_up.play();
-    if (getVerticalSize() > 1) {
+    if (!labelsOnly && getVerticalSize() > 1) {
         if (lastVisibleIndex + maxVisible >= getVerticalSize()) {
             selected = getVerticalSize() - 1;
             computePagePosition();
@@ -275,7 +278,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageDown() {
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageUp() {
     app.audio().home_down.play();
-    if (getVerticalSize() > 1) {
+    if (!labelsOnly && getVerticalSize() > 1) {
         if (firstVisibleIndex - maxVisible < 0) {
             selected = 0;
             computePagePosition();
@@ -290,7 +293,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageUp() {
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doHome() {
     app.audio().home_down.play();
-    if (getVerticalSize() > 1) {
+    if (!labelsOnly && getVerticalSize() > 1) {
         selected = 0;
         computePagePosition();
     }
@@ -301,7 +304,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doHome() {
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doEnd() {
     app.audio().home_down.play();
-    if (getVerticalSize() > 1) {
+    if (!labelsOnly && getVerticalSize() > 1) {
         selected = getVerticalSize() - 1;
         computePagePosition();
     }
