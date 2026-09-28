@@ -385,11 +385,16 @@ void Input::popFrameNeed() {
     impl->eventSinceDraw = true; // and the screen underneath draws again at once
 }
 
+// The ambient rate is every second vsync of a 60 Hz screen. The interval is counted from when the frame was
+// begun, and the present then waits for the vsync, so it has to be a little under two vsyncs (33.3 ms): at
+// 33 ms the next frame often started just after the second vsync and waited for the third, and the frames
+// came 33 and 50 ms apart by turns - a judder even in motion that runs on time. 28 ms leaves room for the
+// frame's work and still lands on every second vsync.
 static int ambientIntervalMs() {
     static const int ms = [] {
         const char *v = getenv("AB_AMBIENT_FPS");
-        const int fps = v && *v ? atoi(v) : 30;
-        return fps > 0 ? 1000 / fps : 33;
+        const int fps = v && *v ? atoi(v) : 0;
+        return fps > 0 ? std::max(1, 1000 / fps - 5) : 28;
     }();
     return ms;
 }

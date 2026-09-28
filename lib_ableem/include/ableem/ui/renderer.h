@@ -66,6 +66,9 @@ public:
 
     // src/dst nullptr means "whole texture" / "whole render target"
     void copy(const Texture &tex, const Rect *src = nullptr, const Rect *dst = nullptr);
+    // the same to a fractional destination - no rounding, so an animated size or position moves smoothly
+    // instead of a whole pixel at a time (SDL 2.0.10+; older SDLs round)
+    void copy(const Texture &tex, const Rect *src, const FRect &dst);
 
     // Pseudo-3D: draws `src` (nullptr = the whole texture) into the trapezoid whose vertical sides are `left`
     // and `right` - what a rectangle standing in 3D and turned about its vertical axis looks like on screen.

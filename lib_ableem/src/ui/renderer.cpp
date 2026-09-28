@@ -543,6 +543,25 @@ void Renderer::copy(const Texture &tex, const Rect *src, const Rect *dst) {
     SDL_RenderCopy(impl->renderer, static_cast<SDL_Texture *>(tex.native()), psrc, pdst);
 }
 
+void Renderer::copy(const Texture &tex, const Rect *src, const FRect &dst) {
+    SDL_Rect ssrc;
+    SDL_Rect *psrc = nullptr;
+    if (src) {
+        ssrc = toSDL(tex.pixelScale() == 1.0f ? *src : scaleRect(*src, tex.pixelScale()));
+        psrc = &ssrc;
+    }
+    const float k = impl->scale;
+    impl->noteCopy(tex.native(), 1);
+#if SDL_VERSION_ATLEAST(2, 0, 10)
+    SDL_FRect fdst{dst.x * k, dst.y * k, dst.w * k, dst.h * k};
+    SDL_RenderCopyF(impl->renderer, static_cast<SDL_Texture *>(tex.native()), psrc, &fdst);
+#else
+    SDL_Rect sdst = toSDL(toOutput(Rect(static_cast<int>(std::lround(dst.x)), static_cast<int>(std::lround(dst.y)),
+                                        static_cast<int>(std::lround(dst.w)), static_cast<int>(std::lround(dst.h)))));
+    SDL_RenderCopy(impl->renderer, static_cast<SDL_Texture *>(tex.native()), psrc, &sdst);
+#endif
+}
+
 void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge left, VerticalEdge right, Color tint) {
     Rect s;
     if (src) {

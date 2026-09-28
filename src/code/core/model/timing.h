@@ -3,6 +3,8 @@
 //
 #pragma once
 
+#include <cmath>
+
 // every tick and timeout in the app is in milliseconds - this is the conversion, not an SDL detail.
 #define TicksPerSecond 1000
 // how long a notification line stays up when no timeout is given, and the config.ini default for the same
@@ -52,6 +54,18 @@
 // panel then looks like it arrives rather than stopping dead. t is the fraction of the animation's time
 // gone, 0..1; the result is the fraction of the way it is, 0..1. Not for a held stick, where the row is
 // meant to move at one speed (Carousel::scrollLeft's `eased`).
+// A smooth loop for something that pulses or bobs for as long as it is shown: 0 at the start, 1 half way
+// through `period`, back to 0 at its end, slowing into both turns (a cosine), from the time gone since the
+// loop began - so a late frame lands where it should instead of jumping or drifting.
+inline float pulseWave(long elapsed, long period) {
+    if (period <= 0)
+        return 0.0f;
+    long phase = elapsed % period;
+    if (phase < 0)
+        phase += period;
+    return 0.5f - 0.5f * std::cos(6.2831853f * static_cast<float>(phase) / static_cast<float>(period));
+}
+
 inline float easeOutCubic(float t) {
     if (t <= 0.0f)
         return 0.0f;

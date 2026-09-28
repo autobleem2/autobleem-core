@@ -53,6 +53,16 @@ struct Rect {
 };
 
 //******************
+// FRect
+//******************
+// A rect at fractional pixels, for something that moves or grows smoothly (Renderer::copy's FRect overload)
+struct FRect {
+    float x = 0, y = 0, w = 0, h = 0;
+    FRect() = default;
+    FRect(float _x, float _y, float _w, float _h) : x(_x), y(_y), w(_w), h(_h) {}
+};
+
+//******************
 // VerticalEdge
 //******************
 // One vertical side of a trapezoid on screen: where it stands and from where to where it runs (top < bottom).
