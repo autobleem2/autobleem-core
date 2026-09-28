@@ -52,15 +52,12 @@ float Gui::outputScale() {
 // window's GL context. 4x on a dev host and a Windows PC. None on an appliance: measured on a Pi 400 at 1080p
 // (2026-09-18), even 2x misses vsync and halves the frame rate for stretches, where 0x holds 60 fps with an 18 ms worst
 // frame - the covers get their smooth edges from the transparent margin PsCarouselGame composes them
-// with instead. AB_MSAA in the environment overrides either. Not on the console: whether its GL driver
-// has it is unknown until the build has run there.
+// with instead. AB_MSAA in the environment overrides either, on the console too (off there by default).
 int Gui::multisampleSamples() {
-#if !defined(AB_PLATFORM_PSC)
     const char *env = getenv("AB_MSAA");
     if (env) {
         return atoi(env);
     }
-#endif
 #if defined(AB_DEBUG_HOST) || defined(AB_PLATFORM_WIN)
     return 4;
 #else

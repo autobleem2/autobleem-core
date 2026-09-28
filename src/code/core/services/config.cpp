@@ -115,6 +115,11 @@ Config::Config() {
     else if (inifile.values["keeplogs"] != "true")
         inifile.values["keeplogs"] = "false";
 
+    // "Cover shine" (Options -> Interface): the shine across the selected cover in the launcher, on unless
+    // switched off
+    if (inifile.values["covershine"] != "false")
+        inifile.values["covershine"] = "true";
+
     // "Show performance" (Options -> Diagnostics): the renderer's overlay, off unless asked for
     if (inifile.values["perfoverlay"] != "true")
         inifile.values["perfoverlay"] = "false";

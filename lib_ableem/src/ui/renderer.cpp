@@ -563,6 +563,11 @@ void Renderer::copy(const Texture &tex, const Rect *src, const FRect &dst) {
 }
 
 void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge left, VerticalEdge right, Color tint) {
+    copyTrapezoidFaded(tex, src, left, right, tint, tint, false);
+}
+
+void Renderer::copyTrapezoidFaded(const Texture &tex, const Rect *src, VerticalEdge left, VerticalEdge right,
+                                  Color topTint, Color bottomTint, bool flipVertically) {
     Rect s;
     if (src) {
         s = tex.pixelScale() == 1.0f ? *src : scaleRect(*src, tex.pixelScale());
@@ -595,9 +600,12 @@ void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge l
     int xLast = static_cast<int>(std::ceil(right.x));
 
 #if SDL_VERSION_ATLEAST(2, 0, 18)
-    // one triangle strip: a pair of vertices at the left side, at every whole output column between, and at
+    // one triangle mesh: a column of vertices at the left side, at every whole output column between, and at
     // the right side, each with its own perspective-correct texture column; the tint rides in the vertex
-    // colours, so no texture state changes and one draw call per trapezoid
+    // colours, so no texture state changes and one draw call per trapezoid. The sloping top and bottom edges
+    // get a skirt one output pixel wide that fades to nothing (the edge row of the texture at alpha 0 on its
+    // outer side): without MSAA a GPU draws a triangle's edge hard, and a turned cover's top and bottom are
+    // the slopes that showed as steps - the texture's own transparent margin is under a pixel on a small cover
     int texW = 0, texH = 0;
     SDL_QueryTexture(native, nullptr, nullptr, &texW, &texH);
     if (texW <= 0 || texH <= 0)
@@ -609,24 +617,30 @@ void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge l
     uv.clear();
     colors.clear();
     indices.clear();
-    const float v0 = static_cast<float>(s.y) / texH, v1 = static_cast<float>(s.y + s.h) / texH;
-    const SDL_Color color{tint.r, tint.g, tint.b, tint.a};
+    float v0 = static_cast<float>(s.y) / texH, v1 = static_cast<float>(s.y + s.h) / texH;
+    if (flipVertically)
+        std::swap(v0, v1);
+    const SDL_Color topColor{topTint.r, topTint.g, topTint.b, topTint.a};
+    const SDL_Color bottomColor{bottomTint.r, bottomTint.g, bottomTint.b, bottomTint.a};
+    const SDL_Color topClear{topTint.r, topTint.g, topTint.b, 0};
+    const SDL_Color bottomClear{bottomTint.r, bottomTint.g, bottomTint.b, 0};
+    const float skirt = 1.0f;
     auto addColumn = [&](float x) {
         float t = std::min(1.0f, std::max(0.0f, (x - left.x) / width));
         float top = left.top + (right.top - left.top) * t;
         float bottom = left.bottom + (right.bottom - left.bottom) * t;
         // clamped: SDL 2.0.18 (the console's) refuses the whole call for a u a rounding error past 1
         float u = std::min(1.0f, std::max(0.0f, (s.x + sourceAt(t) * s.w) / texW));
-        xy.push_back(x);
-        xy.push_back(top);
-        xy.push_back(x);
-        xy.push_back(bottom);
-        uv.push_back(u);
-        uv.push_back(v0);
-        uv.push_back(u);
-        uv.push_back(v1);
-        colors.push_back(color);
-        colors.push_back(color);
+        const float ys[4] = {top - skirt, top, bottom, bottom + skirt};
+        const float vs[4] = {v0, v0, v1, v1};
+        const SDL_Color cs[4] = {topClear, topColor, bottomColor, bottomClear};
+        for (int r = 0; r < 4; r++) {
+            xy.push_back(x);
+            xy.push_back(ys[r]);
+            uv.push_back(u);
+            uv.push_back(vs[r]);
+            colors.push_back(cs[r]);
+        }
     };
     addColumn(left.x);
     for (int x = xFirst + 1; x < xLast; x++) {
@@ -634,15 +648,17 @@ void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge l
             addColumn(static_cast<float>(x));
     }
     addColumn(right.x);
-    const int columns = static_cast<int>(colors.size() / 2);
+    const int columns = static_cast<int>(colors.size() / 4);
     for (int i = 0; i + 1 < columns; i++) {
-        int a = 2 * i;
-        indices.push_back(a);
-        indices.push_back(a + 1);
-        indices.push_back(a + 2);
-        indices.push_back(a + 1);
-        indices.push_back(a + 3);
-        indices.push_back(a + 2);
+        const int a = 4 * i, b = a + 4;
+        for (int r = 0; r < 3; r++) { // the top skirt, the face, the bottom skirt
+            indices.push_back(a + r);
+            indices.push_back(a + r + 1);
+            indices.push_back(b + r);
+            indices.push_back(a + r + 1);
+            indices.push_back(b + r + 1);
+            indices.push_back(b + r);
+        }
     }
     impl->noteCopy(native, 1);
     SDL_SetTextureColorMod(native, 255, 255, 255); // the tint is in the vertices; a mod left on it would double up
@@ -664,6 +680,8 @@ void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge l
 #endif
 
     impl->noteCopy(native, xLast - xFirst);
+    const Color tint((topTint.r + bottomTint.r) / 2, (topTint.g + bottomTint.g) / 2, (topTint.b + bottomTint.b) / 2,
+                     (topTint.a + bottomTint.a) / 2);
     Uint8 modR = 255, modG = 255, modB = 255, modA = 255; // the tint goes on as the texture's mods for the strips
     SDL_GetTextureColorMod(native, &modR, &modG, &modB);
     SDL_GetTextureAlphaMod(native, &modA);
@@ -687,11 +705,13 @@ void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge l
 #if SDL_VERSION_ATLEAST(2, 0, 10)
         // the ends placed to a fraction of a pixel, so that a multisampled context can smooth the slope
         SDL_FRect dr{static_cast<float>(x), top, 1.0f, std::max(1.0f, bottom - top)};
-        SDL_RenderCopyF(impl->renderer, native, &sr, &dr);
+        SDL_RenderCopyExF(impl->renderer, native, &sr, &dr, 0.0, nullptr,
+                          flipVertically ? SDL_FLIP_VERTICAL : SDL_FLIP_NONE);
 #else
         int topPixel = static_cast<int>(std::lround(top)), bottomPixel = static_cast<int>(std::lround(bottom));
         SDL_Rect dr{x, topPixel, 1, std::max(1, bottomPixel - topPixel)};
-        SDL_RenderCopy(impl->renderer, native, &sr, &dr);
+        SDL_RenderCopyEx(impl->renderer, native, &sr, &dr, 0.0, nullptr,
+                         flipVertically ? SDL_FLIP_VERTICAL : SDL_FLIP_NONE);
 #endif
     }
     SDL_SetTextureColorMod(native, modR, modG, modB);

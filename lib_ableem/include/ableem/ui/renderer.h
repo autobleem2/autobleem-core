@@ -82,6 +82,12 @@ public:
     // texture is drawn mirrored.
     void copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge left, VerticalEdge right,
                        Color tint = Color());
+    // the same with a vertical gradient: `topTint` along the edges' tops, `bottomTint` along their bottoms
+    // (alpha included), and with `flipVertically` the source upside down - a reflection on the floor under a
+    // box is its bottom slice flipped, fading out. The gradient needs SDL_RenderGeometry (2.0.18+); an older
+    // SDL draws the strips in the two tints' average.
+    void copyTrapezoidFaded(const Texture &tex, const Rect *src, VerticalEdge left, VerticalEdge right, Color topTint,
+                            Color bottomTint, bool flipVertically);
 
     // nullptr switches back to rendering to the screen
     void setTarget(Texture *target);
