@@ -225,6 +225,7 @@ struct Input::Impl {
     std::vector<FrameNeed> needStack;
     bool eventSinceDraw = true;
     Uint32 lastDraw = 0;
+    Uint64 ambientDue = 0;  // the ambient timeline: when its next frame is due (performance counter), 0 = not running
     bool quitArmed = false; // ... and false in between, so a "while (poll(e))" drain loop ends
     bool dpadState[4] = {false, false, false, false};
     std::mutex injectedMutex;
@@ -385,18 +386,18 @@ void Input::popFrameNeed() {
     impl->eventSinceDraw = true; // and the screen underneath draws again at once
 }
 
-// The ambient rate is every second vsync of a 60 Hz screen. The interval is counted from when the frame was
-// begun, and the present then waits for the vsync, so it has to be a little under two vsyncs (33.3 ms): at
-// 33 ms the next frame often started just after the second vsync and waited for the third, and the frames
-// came 33 and 50 ms apart by turns - a judder even in motion that runs on time. 28 ms leaves room for the
-// frame's work and still lands on every second vsync.
-static int ambientIntervalMs() {
-    static const int ms = [] {
+/// The ambient rate, 30 fps (AB_AMBIENT_FPS): its frames follow a timeline 1/30 s apart, not "an interval after
+// the last one began". A display that does not wait for vsync in present() (the console's) then gets its
+// frames evenly; one that does (a Pi) shows each frame one vsync after its time, the same every frame. Counted
+// from the last frame instead, the frames drifted against the screen's 60 Hz and came 33 and 50 (or 17) ms
+// apart by turns - a judder even in motion that runs on time.
+static int ambientFps() {
+    static const int fps = [] {
         const char *v = getenv("AB_AMBIENT_FPS");
-        const int fps = v && *v ? atoi(v) : 0;
-        return fps > 0 ? std::max(1, 1000 / fps - 5) : 28;
+        const int n = v && *v ? atoi(v) : 0;
+        return n > 0 ? n : 30;
     }();
-    return ms;
+    return fps;
 }
 
 bool Input::frameDue() {
@@ -404,9 +405,26 @@ bool Input::frameDue() {
     if (impl->need == FrameNeed::Active || impl->eventSinceDraw || impl->quitRequested) {
         impl->eventSinceDraw = false;
         impl->lastDraw = now;
+        impl->ambientDue = 0; // the timeline starts afresh when the screen rests again
         return true;
     }
-    const int interval = impl->need == FrameNeed::Ambient ? ambientIntervalMs() : 250;
+    if (impl->need == FrameNeed::Ambient) {
+        const Uint64 freq = SDL_GetPerformanceFrequency();
+        const Uint64 period = freq / static_cast<Uint64>(ambientFps());
+        const Uint64 t = SDL_GetPerformanceCounter();
+        if (impl->ambientDue == 0 || t > impl->ambientDue + period)
+            impl->ambientDue = t; // starting, or far behind: from here
+        if (t < impl->ambientDue) {
+            const int ms = static_cast<int>((impl->ambientDue - t) * 1000 / freq);
+            // (under a millisecond early at most: the timeline, not this frame's start, sets the next one)
+            if (ms > 0 && waitForEvent(ms))
+                return false; // input came: the loop polls it, and the next call draws
+        }
+        impl->ambientDue += period;
+        impl->lastDraw = SDL_GetTicks();
+        return true;
+    }
+    const int interval = 250; // Idle: only after input, else four times a second
     const int since = static_cast<int>(now - impl->lastDraw);
     if (since >= interval || waitForEvent(interval - since) == false) {
         impl->lastDraw = SDL_GetTicks();
