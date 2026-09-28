@@ -23,7 +23,7 @@ GuiTextPage::Item GuiTextPage::splitItem(const string &line) {
     size_t digits = 0;
     while (digits < item.text.size() && isdigit(static_cast<unsigned char>(item.text[digits])))
         digits++;
-    if (digits > 0 && digits + 1 < item.text.size() && item.text[digits] == '.' && item.text[digits + 1] == ' ') {
+    if (digits > 0 && digits + 2 < item.text.size() && item.text[digits] == '.' && item.text[digits + 1] == ' ') {
         item.marker = item.text.substr(0, digits + 2);
         item.text = item.text.substr(digits + 2);
     }
