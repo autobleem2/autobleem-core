@@ -626,7 +626,13 @@ void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge l
     }
     impl->noteCopy(native, 1);
     SDL_SetTextureColorMod(native, 255, 255, 255); // the tint is in the vertices; a mod left on it would double up
-    SDL_RenderGeometryRaw(impl->renderer, native, xy.data(), 2 * sizeof(float), colors.data(), sizeof(SDL_Color),
+#if SDL_VERSION_ATLEAST(2, 0, 20)
+    const SDL_Color *vertexColors = colors.data();
+#else
+    // 2.0.18 (the console's) takes the colours as ints - the same four bytes each
+    const int *vertexColors = reinterpret_cast<const int *>(colors.data());
+#endif
+    SDL_RenderGeometryRaw(impl->renderer, native, xy.data(), 2 * sizeof(float), vertexColors, sizeof(SDL_Color),
                           uv.data(), 2 * sizeof(float), static_cast<int>(colors.size()), indices.data(),
                           static_cast<int>(indices.size()), sizeof(int));
     return;
