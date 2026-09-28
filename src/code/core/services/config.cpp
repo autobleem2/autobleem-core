@@ -115,6 +115,10 @@ Config::Config() {
     else if (inifile.values["keeplogs"] != "true")
         inifile.values["keeplogs"] = "false";
 
+    // "Show performance" (Options -> Diagnostics): the renderer's overlay, off unless asked for
+    if (inifile.values["perfoverlay"] != "true")
+        inifile.values["perfoverlay"] = "false";
+
     inifile.values["pcsx"] = "bleemsync";
 
     // once, and only when a key was dropped or a default filled in: save() leaves an unchanged file alone

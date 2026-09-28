@@ -3,6 +3,7 @@
 #include <mutex>
 #include "ableem/ui/platform.h"
 #include "ableem/ui/texture.h"
+#include "perf_overlay.h"
 #include "sdl_common.h"
 #include <ableem/engine/log.h>
 #include <algorithm>
@@ -111,6 +112,9 @@ struct Renderer::Impl {
         long frames = 0, slowFrames = 0, sumMs = 0, maxMs = 0, sumCopies = 0, sumSwitches = 0;
         unsigned int lastPresent = 0, lastReport = 0;
     } stats;
+
+    PerfOverlay overlay; // see Renderer::setPerfOverlay
+
     void noteCopy(const void *texture, int n) {
         stats.copies += n;
         if (texture != stats.lastTexture) {
@@ -129,11 +133,29 @@ void Renderer::countCopies(int n) {
     impl->stats.copies += n;
 }
 
+static bool perfOverlayForced() {
+    static const bool forced = [] {
+        const char *v = getenv("AB_PERF_OVERLAY");
+        return v != nullptr && *v != '\0' && strcmp(v, "0") != 0;
+    }();
+    return forced;
+}
+
+void Renderer::setPerfOverlay(bool on) {
+    impl->overlay.enabled = on || perfOverlayForced();
+}
+
+bool Renderer::perfOverlay() const {
+    return impl->overlay.enabled;
+}
+
 Renderer::Renderer(Platform &platform) : impl(new Impl()) {
+    impl->overlay.enabled = perfOverlayForced();
     recreate(platform);
 }
 
 void Renderer::release() {
+    impl->overlay.release(); // its texture goes with the renderer
     if (impl->renderer) {
         SDL_DestroyRenderer(impl->renderer);
         impl->renderer = nullptr;
@@ -200,6 +222,7 @@ Rect Renderer::toOutput(const Rect &r) const {
 }
 
 Renderer::~Renderer() {
+    impl->overlay.release();
     if (impl->renderer) {
         SDL_DestroyRenderer(impl->renderer);
     }
@@ -325,6 +348,8 @@ void Renderer::present() {
             }
         }
     }
+    // after the capture (a backdrop without it), before the frame cache (the DebugDriver's shots show it)
+    impl->overlay.beforePresent(impl->renderer, impl->stats.copies, impl->scale);
     {
         // the frame cache: a copy of what is about to be shown, for saveLastFrame()
         std::lock_guard<std::mutex> lock(impl->frame.mutex);
@@ -341,9 +366,14 @@ void Renderer::present() {
         }
     }
     SDL_RenderPresent(impl->renderer);
-    if (!statsEnabled())
-        return;
+    impl->overlay.afterPresent();
     Impl::Stats &st = impl->stats;
+    if (!statsEnabled()) {
+        st.copies = 0; // per frame, for the overlay
+        st.switches = 0;
+        st.lastTexture = nullptr;
+        return;
+    }
     unsigned int now = SDL_GetTicks();
     if (st.lastPresent != 0) {
         long ms = static_cast<long>(now - st.lastPresent);

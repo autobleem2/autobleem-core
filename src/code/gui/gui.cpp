@@ -96,6 +96,7 @@ Gui::Gui()
     // the pad mappings the launcher and the pscbios wizard share; probePads() reads the first that exists
     input().loadMappings(Env::padMappingFiles());
     input().probePads();
+    renderer().setPerfOverlay(AppBase::get().config().inifile.values["perfoverlay"] == "true");
 }
 
 //*******************************

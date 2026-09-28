@@ -92,6 +92,13 @@ public:
     // progress; Font adds its glyphs through countCopies() since it draws past this class.
     static bool statsEnabled();
     void countCopies(int n);
+
+    // the performance overlay (Options -> Diagnostics -> "Show performance", or AB_PERF_OVERLAY=1 in the
+    // environment, which keeps it on whatever the setting says): two lines of small white text on black in
+    // the bottom-left corner of every frame - the frame rate, frame and work times, draw calls, CPU load
+    // (this process and the machine), cores, threads, memory, temperature and the render driver
+    void setPerfOverlay(bool on);
+    bool perfOverlay() const;
     // a logical rect in output pixels, edges rounded so that neighbouring rects still tile
     Rect toOutput(const Rect &r) const;
 

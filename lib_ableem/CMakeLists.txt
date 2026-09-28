@@ -24,6 +24,7 @@ endif()
 add_library(ableem_engine ${ABLEEM_LIB_KIND}
         src/engine/strings.cpp
         src/engine/keyboard_presence.cpp
+        src/engine/process_stats.cpp
         src/engine/filesystem.cpp
         src/engine/environment.cpp
         src/engine/ini_file.cpp
@@ -142,6 +143,8 @@ add_library(ableem ${ABLEEM_LIB_KIND}
         src/ui/gui_base.cpp
         src/ui/gui_screen.cpp
         src/ui/debug_driver.cpp
+        src/ui/perf_overlay.cpp
+        src/ui/perf_overlay.h
         src/ui/SDL_FontCache.c
         src/ui/SDL_FontCache.h
         src/ui/psc_event_filter.c
