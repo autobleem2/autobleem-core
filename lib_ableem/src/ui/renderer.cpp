@@ -596,7 +596,8 @@ void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge l
         float t = std::min(1.0f, std::max(0.0f, (x - left.x) / width));
         float top = left.top + (right.top - left.top) * t;
         float bottom = left.bottom + (right.bottom - left.bottom) * t;
-        float u = (s.x + sourceAt(t) * s.w) / texW;
+        // clamped: SDL 2.0.18 (the console's) refuses the whole call for a u a rounding error past 1
+        float u = std::min(1.0f, std::max(0.0f, (s.x + sourceAt(t) * s.w) / texW));
         xy.push_back(x);
         xy.push_back(top);
         xy.push_back(x);
@@ -632,10 +633,15 @@ void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge l
     // 2.0.18 (the console's) takes the colours as ints - the same four bytes each
     const int *vertexColors = reinterpret_cast<const int *>(colors.data());
 #endif
-    SDL_RenderGeometryRaw(impl->renderer, native, xy.data(), 2 * sizeof(float), vertexColors, sizeof(SDL_Color),
-                          uv.data(), 2 * sizeof(float), static_cast<int>(colors.size()), indices.data(),
-                          static_cast<int>(indices.size()), sizeof(int));
-    return;
+    if (SDL_RenderGeometryRaw(impl->renderer, native, xy.data(), 2 * sizeof(float), vertexColors, sizeof(SDL_Color),
+                              uv.data(), 2 * sizeof(float), static_cast<int>(colors.size()), indices.data(),
+                              static_cast<int>(indices.size()), sizeof(int)) == 0)
+        return;
+    static bool reported = false; // then the strips below draw it
+    if (!reported) {
+        reported = true;
+        PLOG_WARNING << "SDL_RenderGeometryRaw failed, drawing strips instead: " << SDL_GetError();
+    }
 #endif
 
     impl->noteCopy(native, xLast - xFirst);
