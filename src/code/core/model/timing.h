@@ -29,6 +29,8 @@
 #define SplashSettleDuration (1500)
 // GuiSplash::loop(): how long the fully-faded-in splash holds before fading back out, milliseconds
 #define SplashHoldDuration (2 * TicksPerSecond)
+// GuiSplash::loop(): each fade (in, and out), milliseconds - what 10 alpha a frame took at 60 fps
+#define SplashFadeDuration 425
 // GuiLauncher: how long the launcher takes to fade in from black when it is first shown, milliseconds
 #define LauncherFadeInDuration 300
 

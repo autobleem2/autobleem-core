@@ -28,13 +28,18 @@ public:
     ~Renderer();
 
     void clear();
+    // shows the frame; never returns sooner than a frame after the previous one (60 fps, AB_MAX_FPS another
+    // rate, 0 none) - so a screen's loop cannot spin where the display does not wait for vsync
     void present();
 
-    // the frame cache (the DebugDriver's): with it on, present() keeps a copy of every frame it shows;
-    // saveLastFrame() writes the newest one as BMP or PNG (by extension) and frameCount() says how many
-    // frames were presented - both callable from another thread. Off by default: reading the frame back
-    // costs a few ms.
+    // the frame cache (the DebugDriver's): with it on, the next present() after a requestFrameCopy() keeps a
+    // copy of the frame it shows (copiedFrame() is its number); saveLastFrame() writes the newest copy as BMP
+    // or PNG (by extension) and frameCount() says how many frames were presented - all callable from another
+    // thread. Only on request, since reading a frame back costs a few ms (in a VM's software GL, most of it).
     void setFrameCache(bool enabled);
+    // asks for a copy of the next frame presented; returns frameCount() at the time of asking
+    unsigned long requestFrameCopy();
+    unsigned long copiedFrame() const;
     bool saveLastFrame(const std::string &path);
     // like saveLastFrame, but the PNG comes back as bytes instead of a file - what the DebugDriver's `grab`
     // command sends over the socket, so a test never writes to the device's own storage. Same "no frame

@@ -100,9 +100,11 @@ struct Renderer::Impl {
     struct FrameCache {
         std::mutex mutex;
         bool enabled = false;
+        bool requested = false;            // copy the next frame (requestFrameCopy)
         std::vector<unsigned char> pixels; // ARGB8888, `pitch` bytes a row
         int w = 0, h = 0, pitch = 0;
         unsigned long frames = 0;
+        unsigned long copied = 0; // the number of the frame in `pixels`
     } frame;
 
     // frame statistics (see Renderer::statsEnabled)
@@ -114,6 +116,10 @@ struct Renderer::Impl {
     } stats;
 
     PerfOverlay overlay; // see Renderer::setPerfOverlay
+
+    // the frame cap (see Renderer::present): when the next frame is due, in performance-counter ticks
+    Uint64 nextFrameDue = 0;
+    void capFrameRate();
 
     void noteCopy(const void *texture, int n) {
         stats.copies += n;
@@ -131,6 +137,44 @@ bool Renderer::statsEnabled() {
 
 void Renderer::countCopies(int n) {
     impl->stats.copies += n;
+}
+
+//*******************************
+// the frame cap
+//*******************************
+// A display that waits for vsync paces present() by itself; one that does not (a VM's software GL, an offscreen
+// sandbox, a driver with vsync off) would let every screen's loop spin as fast as it can draw. So present()
+// never returns sooner than a frame after the previous one: 60 fps, AB_MAX_FPS for another rate (a sandbox
+// runs at 20-30), 0 for no cap. The deadline advances by whole frames, so a frame that ran late does not make
+// the next one short.
+static int maxFps() {
+    static const int fps = [] {
+        const char *v = getenv("AB_MAX_FPS");
+        if (!v || !*v)
+            return 60;
+        const int n = atoi(v);
+        return n < 0 ? 60 : n;
+    }();
+    return fps;
+}
+
+void Renderer::Impl::capFrameRate() {
+    const int fps = maxFps();
+    if (fps <= 0)
+        return;
+    const Uint64 freq = SDL_GetPerformanceFrequency();
+    const Uint64 frame = freq / static_cast<Uint64>(fps);
+    Uint64 now = SDL_GetPerformanceCounter();
+    if (nextFrameDue == 0 || now > nextFrameDue + frame) {
+        nextFrameDue = now + frame; // the first frame, or one far behind: start the count again from here
+        return;
+    }
+    if (now < nextFrameDue) {
+        const Uint64 ms = (nextFrameDue - now) * 1000 / freq;
+        if (ms > 0)
+            SDL_Delay(static_cast<Uint32>(ms));
+    }
+    nextFrameDue += frame;
 }
 
 static bool perfOverlayForced() {
@@ -279,6 +323,17 @@ unsigned long Renderer::frameCount() const {
     return impl->frame.frames;
 }
 
+unsigned long Renderer::requestFrameCopy() {
+    std::lock_guard<std::mutex> lock(impl->frame.mutex);
+    impl->frame.requested = true;
+    return impl->frame.frames;
+}
+
+unsigned long Renderer::copiedFrame() const {
+    std::lock_guard<std::mutex> lock(impl->frame.mutex);
+    return impl->frame.copied;
+}
+
 bool Renderer::saveLastFrame(const std::string &path) {
     std::lock_guard<std::mutex> lock(impl->frame.mutex);
     Impl::FrameCache &f = impl->frame;
@@ -351,21 +406,24 @@ void Renderer::present() {
     // after the capture (a backdrop without it), before the frame cache (the DebugDriver's shots show it)
     impl->overlay.beforePresent(impl->renderer, impl->stats.copies, impl->scale);
     {
-        // the frame cache: a copy of what is about to be shown, for saveLastFrame()
+        // the frame cache: a copy of what is about to be shown, for saveLastFrame() - when one was asked for
         std::lock_guard<std::mutex> lock(impl->frame.mutex);
         Impl::FrameCache &f = impl->frame;
         f.frames++;
         int w = 0, h = 0;
-        if (f.enabled && SDL_GetRendererOutputSize(impl->renderer, &w, &h) == 0) {
+        if (f.enabled && f.requested && SDL_GetRendererOutputSize(impl->renderer, &w, &h) == 0) {
             const int pitch = w * 4;
             f.pixels.resize(static_cast<size_t>(pitch) * h);
             f.w = w;
             f.h = h;
             f.pitch = pitch;
             SDL_RenderReadPixels(impl->renderer, nullptr, SDL_PIXELFORMAT_ARGB8888, f.pixels.data(), pitch);
+            f.requested = false;
+            f.copied = f.frames;
         }
     }
     SDL_RenderPresent(impl->renderer);
+    impl->capFrameRate();
     impl->overlay.afterPresent();
     Impl::Stats &st = impl->stats;
     if (!statsEnabled()) {

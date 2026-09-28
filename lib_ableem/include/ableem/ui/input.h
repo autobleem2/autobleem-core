@@ -141,6 +141,10 @@ public:
     // pulls one event off the queue, translating it and updating internal dpad/pad state as a side effect.
     // returns false when the queue is empty.
     bool poll(Event &out);
+    // sleeps until an event is waiting (SDL's or an injected one - those are looked for every 10 ms) or
+    // timeoutMs has passed; true when poll() has something. What a screen that draws nothing between presses
+    // calls instead of spinning on poll().
+    bool waitForEvent(int timeoutMs);
     // queues an event as if it had come from a pad or keyboard: poll() hands it out before anything SDL
     // has, and a d-pad event moves the d-pad state as a real one would. Thread-safe - the DebugDriver
     // calls it from its own thread.

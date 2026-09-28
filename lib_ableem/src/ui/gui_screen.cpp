@@ -208,6 +208,7 @@ bool GuiScreen::fastForwardUntilAnotherEvent(unsigned int ticksPerFastForwardRep
         if (gui.input().padEventPending()) {
             return false; // exit fast forward mode
         }
+        gui.platform().delay(2); // a few ms of repeat timing, not a core spinning on the queue
     }
 }
 

@@ -2,6 +2,7 @@
 #include "ableem/ui/keyboard_map.h"
 #include "ableem/engine/keyboard_presence.h"
 
+#include <algorithm>
 #include <deque>
 #include <mutex>
 #include <vector>
@@ -349,6 +350,21 @@ Input::~Input() {
 void Input::inject(const Event &e) {
     std::lock_guard<std::mutex> lock(impl->injectedMutex);
     impl->injected.push_back(e);
+}
+
+bool Input::waitForEvent(int timeoutMs) {
+    const Uint32 start = SDL_GetTicks();
+    for (;;) {
+        if (impl->quitRequested || impl->injectedPending())
+            return true;
+        const int elapsed = static_cast<int>(SDL_GetTicks() - start);
+        if (elapsed >= timeoutMs)
+            return false;
+        // in slices, so the DebugDriver's injected events (not SDL events - nothing wakes SDL for them)
+        // are seen within 10 ms
+        if (SDL_WaitEventTimeout(nullptr, std::min(10, timeoutMs - elapsed)) == 1)
+            return true;
+    }
 }
 
 bool Input::poll(Event &out) {

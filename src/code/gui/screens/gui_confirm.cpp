@@ -53,6 +53,10 @@ void GuiConfirm::loop() {
     shared_ptr<Gui> gui(Gui::getInstance());
     menuVisible = true;
     while (menuVisible) {
+        // nothing animates here: sleep until a press, and redraw 4 times a second meanwhile (the performance
+        // overlay, the DebugDriver's shots)
+        if (!gui->input().waitForEvent(250))
+            render();
         Event e;
         while (gui->input().poll(e)) {
             // this is for pc Only

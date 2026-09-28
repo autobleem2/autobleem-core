@@ -7,6 +7,7 @@
 #include "../../core/model/timing.h"
 #include "../../core/services/environment.h"
 
+#include <algorithm>
 #include <cstdlib>
 using namespace std;
 
@@ -72,39 +73,32 @@ void GuiSplash::loop() {
                 break;
         }
         render();
-        int current = gui->platform().ticks();
-        int time = current - start;
-        if (time > 2) {
-            if (phase == Phase::Settle) {
-                // black frames until the display has had time to sync - see SplashSettleDuration
-                if (gui->platform().ticks() - holdStart >= SplashSettleDuration) {
-                    phase = Phase::FadeIn;
-                }
-            } else if (phase == Phase::FadeIn) {
-                if (alpha < 255) {
-                    alpha += 10;
-                    if (alpha > 255) {
-                        alpha = 255;
-                    }
-                } else {
-                    phase = Phase::Hold;
-                    holdStart = gui->platform().ticks();
-                }
-            } else if (phase == Phase::Hold) {
-                if (gui->platform().ticks() - holdStart >= SplashHoldDuration) {
-                    phase = Phase::FadeOut;
-                }
-            } else { // FadeOut
-                if (alpha > 0) {
-                    alpha -= 10;
-                    if (alpha < 0) {
-                        alpha = 0;
-                    }
-                } else {
-                    break; // faded out; render() has put the shared textures back to alpha 255 already
-                }
+        // every phase on the clock (holdStart = when it began), so the frame rate does not change the fades
+        const int inPhase = static_cast<int>(gui->platform().ticks() - holdStart);
+        if (phase == Phase::Settle) {
+            // black frames until the display has had time to sync - see SplashSettleDuration
+            if (inPhase >= SplashSettleDuration) {
+                phase = Phase::FadeIn;
+                holdStart = gui->platform().ticks();
             }
-            start = gui->platform().ticks();
+        } else if (phase == Phase::FadeIn) {
+            if (alpha < 255) {
+                alpha = std::min(255, inPhase * 255 / SplashFadeDuration);
+            } else {
+                phase = Phase::Hold;
+                holdStart = gui->platform().ticks();
+            }
+        } else if (phase == Phase::Hold) {
+            if (inPhase >= SplashHoldDuration) {
+                phase = Phase::FadeOut;
+                holdStart = gui->platform().ticks();
+            }
+        } else { // FadeOut
+            if (alpha > 0) {
+                alpha = std::max(0, 255 - inPhase * 255 / SplashFadeDuration);
+            } else {
+                break; // faded out; render() has put the shared textures back to alpha 255 already
+            }
         }
     }
 }

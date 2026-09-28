@@ -3,6 +3,8 @@
 #include "core/version.h"
 
 #include <algorithm>
+#include <chrono>
+#include <mutex>
 #include <cstdlib>
 #include <fstream>
 #ifdef _WIN32
@@ -430,9 +432,22 @@ const vector<string> &Env::retroArchBinaries() {
 }
 
 bool Env::retroArchInstalled() {
+    // asked every frame by the launcher's footer: the answer is kept for 2 s instead of a stat per binary
+    // per frame (an install shows within 2 s)
+    static std::mutex mutex;
+    static auto checkedAt = std::chrono::steady_clock::time_point();
+    static bool installed = false;
+    std::lock_guard<std::mutex> lock(mutex);
+    const auto now = std::chrono::steady_clock::now();
+    if (checkedAt != std::chrono::steady_clock::time_point() && now - checkedAt < std::chrono::seconds(2))
+        return installed;
+    installed = false;
     for (const string &path : retroArchBinaries_) {
-        if (DirEntry::exists(path))
-            return true;
+        if (DirEntry::exists(path)) {
+            installed = true;
+            break;
+        }
     }
-    return false;
+    checkedAt = now;
+    return installed;
 }

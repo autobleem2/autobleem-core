@@ -303,10 +303,20 @@ private:
     }
 
     // false: the peer is gone, `serve()` should stop (close, back to accept) rather than keep going.
-    bool handleGrab(sock_t client) {
-        // a frame newer than the last input, if one comes in time - the same rule `shot` uses
-        for (int i = 0; i < 40 && gui_.renderer().frameCount() <= lastInputFrame_; i++)
+    // shot and grab: the renderer copies a frame only when asked (it costs a readback), so ask, and wait for a
+    // copy of a frame newer than the last input - up to 600 ms; a screen with nothing to animate still
+    // redraws a few times a second. Past that the newest copy there is serves.
+    void awaitFreshFrame() {
+        Renderer &r = gui_.renderer();
+        const unsigned long after = std::max(lastInputFrame_, r.requestFrameCopy());
+        for (int i = 0; i < 60 && r.copiedFrame() <= after; i++) {
+            r.requestFrameCopy(); // again, in case a frame before the input's took the first request
             sleepMs(10);
+        }
+    }
+
+    bool handleGrab(sock_t client) {
+        awaitFreshFrame();
         vector<unsigned char> png;
         if (!gui_.renderer().encodeLastFramePng(png))
             return sendLine(client, "err no frame");
@@ -408,9 +418,7 @@ private:
                 path.erase(0, 1);
             if (path.empty())
                 return "err no path";
-            // a frame newer than the last input, if one comes in time
-            for (int i = 0; i < 40 && gui_.renderer().frameCount() <= lastInputFrame_; i++)
-                sleepMs(10);
+            awaitFreshFrame();
             return gui_.renderer().saveLastFrame(path) ? "ok " + path : "err no frame";
         }
         if (cmd == "window") {

@@ -148,6 +148,7 @@ void Gui::hideMouseCursor() {
 void Gui::criticalException(const string &text) {
     drawText(text);
     while (true) {
+        input().waitForEvent(250); // nothing to draw until a press
         Event e;
         while (input().poll(e)) {
             if (e.type == Event::Type::Quit)
