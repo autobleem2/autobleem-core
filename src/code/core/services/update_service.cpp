@@ -7,6 +7,7 @@
 #include <ableem/engine/sha256.h>
 #include <ableem/engine/strings.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -382,8 +383,18 @@ UpdateService::Status UpdateService::poll() {
             if (!status_.info.autobleemVersion.empty() && workerFile_ != status_.info.autobleem.name &&
                 !status_.info.retroarchVersion.empty())
                 done += status_.info.autobleem.size; // the first file is finished, the second is running
-            // (live: curl still has it open - on Windows a plain stat says 0 until it is done)
-            const long long partSize = workerOutPath_.empty() ? 0 : DirEntry::liveFileSize(workerOutPath_);
+            // (live: curl still has it open - on Windows a plain stat says 0 until it is done); read at most
+            // 4 times a second - the screen polls every frame, and a bar does not need a stat per frame
+            static string sizedPath;
+            static long long sizedBytes = 0;
+            static chrono::steady_clock::time_point sizedAt;
+            const auto now = chrono::steady_clock::now();
+            if (workerOutPath_ != sizedPath || now - sizedAt >= chrono::milliseconds(250)) {
+                sizedPath = workerOutPath_;
+                sizedBytes = workerOutPath_.empty() ? 0 : DirEntry::liveFileSize(workerOutPath_);
+                sizedAt = now;
+            }
+            const long long partSize = sizedBytes;
             if (partSize > 0)
                 done += static_cast<uint64_t>(partSize);
             status_.bytesDone = done;

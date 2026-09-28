@@ -7,6 +7,7 @@
 #include "sdl_common.h"
 #include <ableem/engine/log.h>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -117,6 +118,10 @@ struct Renderer::Impl {
 
     PerfOverlay overlay; // see Renderer::setPerfOverlay
 
+    // the render-target stack (see Renderer::pushTarget) and the count of target losses (targetsLost)
+    std::vector<SDL_Texture *> targetStack;
+    std::atomic<unsigned long> targetsLost{0};
+
     // the frame cap (see Renderer::present): when the next frame is due, in performance-counter ticks
     Uint64 nextFrameDue = 0;
     void capFrameRate();
@@ -193,8 +198,20 @@ bool Renderer::perfOverlay() const {
     return impl->overlay.enabled;
 }
 
+// SDL says the targets' contents are gone (a D3D device lost, a GL context reset): count it, so that every
+// cache drawn into a target (text runs, covers, layers) is made again. An event watch sees it whichever screen
+// is polling, and before that screen draws again.
+static int SDLCALL watchTargetsReset(void *userdata, SDL_Event *e) {
+    if (e->type == SDL_RENDER_TARGETS_RESET || e->type == SDL_RENDER_DEVICE_RESET) {
+        static_cast<std::atomic<unsigned long> *>(userdata)->fetch_add(1);
+        PLOG_WARNING << "Render targets reset - the cached textures are drawn again";
+    }
+    return 1;
+}
+
 Renderer::Renderer(Platform &platform) : impl(new Impl()) {
     impl->overlay.enabled = perfOverlayForced();
+    SDL_AddEventWatch(watchTargetsReset, &impl->targetsLost);
     recreate(platform);
 }
 
@@ -208,6 +225,8 @@ void Renderer::release() {
 
 void Renderer::recreate(Platform &platform) {
     release();
+    impl->targetStack.clear();
+    impl->targetsLost++; // a new renderer: nothing drawn into the old one's targets survives
     SDL_Window *window = static_cast<SDL_Window *>(platform.nativeWindow());
     impl->renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!impl->renderer) {
@@ -266,6 +285,7 @@ Rect Renderer::toOutput(const Rect &r) const {
 }
 
 Renderer::~Renderer() {
+    SDL_DelEventWatch(watchTargetsReset, &impl->targetsLost);
     impl->overlay.release();
     if (impl->renderer) {
         SDL_DestroyRenderer(impl->renderer);
@@ -647,6 +667,26 @@ void Renderer::copyTrapezoid(const Texture &tex, const Rect *src, VerticalEdge l
 
 void Renderer::setTarget(Texture *target) {
     SDL_SetRenderTarget(impl->renderer, target ? static_cast<SDL_Texture *>(target->native()) : nullptr);
+}
+
+void Renderer::pushTarget(Texture *target) {
+    impl->targetStack.push_back(SDL_GetRenderTarget(impl->renderer));
+    setTarget(target);
+}
+
+void Renderer::popTarget() {
+    SDL_Texture *previous = nullptr;
+    if (!impl->targetStack.empty()) {
+        previous = impl->targetStack.back();
+        impl->targetStack.pop_back();
+    } else {
+        PLOG_WARNING << "Renderer::popTarget without a pushTarget - back to the screen";
+    }
+    SDL_SetRenderTarget(impl->renderer, previous);
+}
+
+unsigned long Renderer::targetsLost() const {
+    return impl->targetsLost.load();
 }
 
 int Renderer::width() const {

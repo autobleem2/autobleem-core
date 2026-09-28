@@ -198,7 +198,9 @@ private:
 
     struct CachedRun {
         ableem::Texture tex;
-        int pad = 0; // the margin around the text the halo needs, drawn that much up and left of (x, y)
+        int pad = 0;                // the margin around the text the halo needs, drawn that much up and left of (x, y)
+        unsigned long lastUsed = 0; // for the eviction: the least recently drawn runs go first
+        unsigned long drawnAt = 0;  // Renderer::targetsLost() when composed: drawn again when that changed
     };
     // the run's texture, composed on first use; invalid when the run has no size
     const CachedRun &cachedRun(const ableem::Font &font, const ableem::Color *color, bool halo, const std::string &run);

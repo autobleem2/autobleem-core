@@ -82,6 +82,14 @@ public:
 
     // nullptr switches back to rendering to the screen
     void setTarget(Texture *target);
+    // the nesting way: pushTarget draws into `target` (nullptr the screen) until the matching popTarget, which
+    // goes back to whatever was the target before - so a text run cached while a layer is being drawn does not
+    // send the rest of the layer to the screen. Use these for anything that may run inside another target.
+    void pushTarget(Texture *target);
+    void popTarget();
+    // how many times the render targets' contents were lost (SDL_RENDER_TARGETS_RESET/DEVICE_RESET, a new
+    // renderer): a cache drawn into a target keeps the value it was drawn at and draws again when it changed
+    unsigned long targetsLost() const;
 
     // the logical canvas, in the app's coordinates
     int width() const;

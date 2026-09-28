@@ -5,13 +5,17 @@
 #include "panel_style.h"
 #include "../core/services/system.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <iterator>
 #include <cstring>
 #include <iostream>
 #include <ableem/engine/log.h>
 
 using namespace std;
+
+static const size_t CacheLimit = 512; // text runs kept as textures (TextRenderer::cachedRun)
 using ableem::Color;
 using ableem::Rect;
 using ableem::Size;
@@ -271,21 +275,40 @@ const TextRenderer::CachedRun &TextRenderer::cachedRun(const ableem::Font &font,
              color ? (color->r << 24 | color->g << 16 | color->b << 8 | color->a) : 0xffffffffu,
              halo ? (shadow_.color.r << 24 | shadow_.color.g << 16 | shadow_.color.b << 8 | shadow_.color.a) : 0u);
     string key = head + run;
+    static unsigned long useCounter = 0;
+    const unsigned long lost = renderer_.targetsLost();
     auto found = runCache_.find(key);
-    if (found != runCache_.end())
-        return found->second;
+    if (found != runCache_.end()) {
+        if (found->second.drawnAt == lost) {
+            found->second.lastUsed = ++useCounter;
+            return found->second;
+        }
+        runCache_.erase(found); // its target lost what was drawn into it: compose it again
+    }
 
-    // a screen's worth is a few dozen; a runaway (a clock, say) is cut off by starting over
-    if (runCache_.size() > 512)
-        runCache_.clear();
+    // a screen's worth is a few dozen; a runaway (a clock, a progress line) is cut off by dropping the least
+    // recently drawn quarter - not everything, so the screen's own runs are not all composed again at once
+    if (runCache_.size() >= CacheLimit) {
+        vector<unsigned long> uses;
+        uses.reserve(runCache_.size());
+        for (const auto &e : runCache_)
+            uses.push_back(e.second.lastUsed);
+        auto cut = uses.begin() + CacheLimit / 4;
+        std::nth_element(uses.begin(), cut, uses.end());
+        const unsigned long oldest = *cut;
+        for (auto it = runCache_.begin(); it != runCache_.end();)
+            it = it->second.lastUsed < oldest ? runCache_.erase(it) : std::next(it);
+    }
 
     CachedRun entry;
+    entry.lastUsed = ++useCounter;
+    entry.drawnAt = lost;
     entry.pad = halo ? 3 : 0;
     Size text = font.textSize(run);
     if (text.w > 0 && text.h > 0) {
         entry.tex = ableem::Texture::createTarget(renderer_, text.w + 2 * entry.pad, text.h + 2 * entry.pad);
         entry.tex.setBlendMode(ableem::BlendMode::Blend);
-        renderer_.setTarget(&entry.tex);
+        renderer_.pushTarget(&entry.tex); // may run while a layer is being drawn: back to it afterwards
         renderer_.setBlendMode(ableem::BlendMode::None);
         renderer_.setDrawColor(Color(0, 0, 0, 0)); // transparent, and dark where the edges blend into it
         renderer_.fillRect();
@@ -302,7 +325,7 @@ const TextRenderer::CachedRun &TextRenderer::cachedRun(const ableem::Font &font,
             font.drawColor(renderer_, x, y, *color, run);
         else
             font.drawAlign(renderer_, x, y, ableem::Align::Left, run);
-        renderer_.setTarget(nullptr);
+        renderer_.popTarget();
     }
     return runCache_.emplace(key, entry).first->second;
 }

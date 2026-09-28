@@ -450,7 +450,19 @@ bool Input::poll(Event &out) {
     SDL_Event e;
     if (!SDL_PollEvent(&e))
         return false;
-    impl->eventSinceDraw = true;
+    // motion nobody draws from (a VM's mouse, a stick's jitter) must not wake a resting screen: an Idle
+    // Options page ran at 20 fps on the VM from them
+    switch (e.type) {
+    case SDL_MOUSEMOTION:
+    case SDL_JOYAXISMOTION:
+    case SDL_JOYBALLMOTION:
+    case SDL_CONTROLLERAXISMOTION:
+    case SDL_FINGERMOTION:
+    case SDL_SYSWMEVENT:
+        break;
+    default:
+        impl->eventSinceDraw = true;
+    }
 
     if (e.type == SDL_JOYDEVICEADDED) {
         impl->registerPad(e.jdevice.which);
