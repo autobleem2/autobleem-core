@@ -14,3 +14,16 @@
 #ifndef ABLEEM_EMBEDDED_TARGET
 #define ABLEEM_DEV_HOST 1
 #endif
+
+// BlendMode::Premultiplied: colour = src + dst * (1 - srcA), alpha the same - "over" for premultiplied
+// colours. SDL before 2.0.6 has no custom blend modes; plain blending is the nearest it offers.
+inline SDL_BlendMode premultipliedBlendMode() {
+#if SDL_VERSION_ATLEAST(2, 0, 6)
+    static const SDL_BlendMode mode =
+        SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
+                                   SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD);
+    return mode;
+#else
+    return SDL_BLENDMODE_BLEND;
+#endif
+}

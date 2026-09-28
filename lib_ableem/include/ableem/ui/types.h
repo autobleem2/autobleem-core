@@ -71,6 +71,9 @@ enum class Align { Left, Center, Right };
 //******************
 // BlendMode
 //******************
-enum class BlendMode { None, Blend, Add, Mod };
+// Premultiplied: for a texture whose colours are already multiplied by its alpha - what a render target
+// drawn into with Blend holds (a cached layer). Copying it with Premultiplied gives the same pixels as drawing
+// its contents straight onto the screen; with Blend the see-through parts would come out darker.
+enum class BlendMode { None, Blend, Add, Mod, Premultiplied };
 
 } // namespace ableem
