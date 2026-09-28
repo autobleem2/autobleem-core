@@ -114,6 +114,9 @@ public:
     // at the refresh rate nearest 60 Hz of those at 50 Hz or more - a 4K TV's 24/30 Hz modes are left out, a
     // game would stutter in them. Initialises SDL's video subsystem to ask; empty when it cannot be told.
     static std::vector<DisplayMode> displayModes();
+    // what displayModes() makes of every mode the display lists (sizes repeated at each refresh rate): the
+    // filter, the one refresh rate per size and the order - pure, no SDL
+    static std::vector<DisplayMode> listableModes(const std::vector<DisplayMode> &all);
     // The mode full-screen windows are made in from now on - the next acquireDisplay() (or the first window):
     // 0x0 is the desktop's own mode (SDL_WINDOW_FULLSCREEN_DESKTOP, no modeset), anything else a real modeset
     // to that size at displayModes()' refresh rate. A size the display does not list falls back to the

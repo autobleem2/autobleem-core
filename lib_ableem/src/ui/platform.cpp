@@ -124,25 +124,34 @@ Size Platform::desktopDisplaySize() {
 }
 
 std::vector<DisplayMode> Platform::displayModes() {
-    std::vector<DisplayMode> modes;
+    std::vector<DisplayMode> all;
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
-        return modes;
+        return all;
     const int n = SDL_GetNumDisplayModes(0);
     for (int i = 0; i < n; i++) {
         SDL_DisplayMode m;
-        if (SDL_GetDisplayMode(0, i, &m) != 0 || !usableRefresh(m.refresh_rate))
+        if (SDL_GetDisplayMode(0, i, &m) != 0)
             continue;
-        auto same = std::find_if(modes.begin(), modes.end(),
-                                 [&m](const DisplayMode &d) { return d.w == m.w && d.h == m.h; });
-        if (same == modes.end()) {
-            DisplayMode d;
-            d.w = m.w;
-            d.h = m.h;
-            d.refreshRate = m.refresh_rate;
-            modes.push_back(d);
-        } else if (betterRefresh(m.refresh_rate, same->refreshRate)) {
-            same->refreshRate = m.refresh_rate;
-        }
+        DisplayMode d;
+        d.w = m.w;
+        d.h = m.h;
+        d.refreshRate = m.refresh_rate;
+        all.push_back(d);
+    }
+    return listableModes(all);
+}
+
+std::vector<DisplayMode> Platform::listableModes(const std::vector<DisplayMode> &all) {
+    std::vector<DisplayMode> modes;
+    for (const DisplayMode &m : all) {
+        if (!usableRefresh(m.refreshRate))
+            continue;
+        auto same =
+            std::find_if(modes.begin(), modes.end(), [&m](const DisplayMode &d) { return d.w == m.w && d.h == m.h; });
+        if (same == modes.end())
+            modes.push_back(m);
+        else if (betterRefresh(m.refreshRate, same->refreshRate))
+            same->refreshRate = m.refreshRate;
     }
     // the TV modes (16:9 - 720p, 1080p, 1440p, 2160p) first, then the rest (the VESA ones), each from the smallest
     std::sort(modes.begin(), modes.end(), [](const DisplayMode &a, const DisplayMode &b) {
