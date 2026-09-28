@@ -3,9 +3,15 @@
 #include "ableem/engine/keyboard_presence.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <csignal>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <mutex>
+#include <thread>
 #include <vector>
 #include "ableem/ui/platform.h"
 #include "sdl_common.h"
@@ -16,9 +22,61 @@
 #include <memory>
 #include <ableem/engine/log.h>
 
+#ifndef _WIN32
+#include <signal.h>
+#endif
+
 namespace ableem {
 
 namespace {
+
+//******************
+// SIGTERM / SIGINT
+//******************
+// SDL turns both into one SDL_QUIT - a window's close button - which the innermost screen's loop eats and which
+// the launcher, off a dev host, takes for a display that went away (it rebuilds it and carries on). So a
+// handler of ours takes SDL's place, and poll() turns the flag into requestQuit(): every screen unwinds and the
+// program leaves the way a power off or the DebugDriver's `quit` does. SDL leaves a handler that is not its own
+// alone (it installs its own only over SIG_DFL, and restores only its own), so this one stays across the
+// display hand-offs.
+volatile sig_atomic_t termSignal = 0;
+
+#ifndef _WIN32
+void onTermSignal(int) {
+    termSignal = 1;
+}
+
+void installTermHandler() {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = onTermSignal;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGTERM, &sa, nullptr);
+    sigaction(SIGINT, &sa, nullptr);
+}
+#else
+void installTermHandler() {}
+#endif
+
+// a piece of SDL work another thread (the DebugDriver's) hands to the thread that polls Input - see
+// Input::Impl::onMain
+struct MainTask {
+    std::function<bool()> fn;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false, cancelled = false, result = false;
+};
+
+// one of the DebugDriver's virtual pads, not a device the machine has (what AB_INPUT_ISOLATED keeps)
+bool isVirtualDevice(int joystickIndex) {
+#if SDL_VERSION_ATLEAST(2, 0, 14)
+    return SDL_JoystickIsVirtual(joystickIndex) == SDL_TRUE;
+#else
+    (void)joystickIndex;
+    return false;
+#endif
+}
 
 //******************
 // translateKeyboardToPad
@@ -213,6 +271,8 @@ struct Pad {
 
 struct Input::Impl {
     Platform &platform;
+    const bool isolated = Input::isolationRequested(); // AB_INPUT_ISOLATED
+    std::thread::id mainThread = std::this_thread::get_id();
     bool keyboardAsPad = true; // the PC-style map (keyboard_map.h), every platform
     bool devKeyMap;            // a dev host's letter map as well (translateKeyboardToPad)
     bool keySeen = false;      // a key went down this session: a keyboard is here, whatever detect() says
@@ -221,7 +281,7 @@ struct Input::Impl {
     bool quitRequested = false; // requestQuit(): poll() returns Quit on every other call from then on
 
     // the frame pacer (Input::frameDue)
-    FrameNeed need = FrameNeed::Active;
+    std::atomic<FrameNeed> need{FrameNeed::Active}; // read by the DebugDriver's `wait_idle` from its thread
     std::vector<FrameNeed> needStack;
     bool eventSinceDraw = true;
     Uint32 lastDraw = 0;
@@ -246,6 +306,194 @@ struct Input::Impl {
     std::vector<std::unique_ptr<Pad>> pads;
 
     explicit Impl(Platform &p) : platform(p), devKeyMap(p.isDevHost()) {}
+
+    //*******************************
+    // work handed to the polling thread
+    //*******************************
+    std::mutex tasksMutex;
+    std::deque<std::shared_ptr<MainTask>> tasks;
+
+    bool tasksPending() {
+        std::lock_guard<std::mutex> lock(tasksMutex);
+        return !tasks.empty();
+    }
+
+    void runTasks() {
+        for (;;) {
+            std::shared_ptr<MainTask> task;
+            {
+                std::lock_guard<std::mutex> lock(tasksMutex);
+                if (tasks.empty())
+                    return;
+                task = tasks.front();
+                tasks.pop_front();
+            }
+            std::unique_lock<std::mutex> lock(task->mutex);
+            if (task->cancelled)
+                continue; // its caller gave up waiting: never done late
+            task->result = task->fn();
+            task->done = true;
+            task->cv.notify_all();
+        }
+    }
+
+    // fn on the thread that polls (at once when that is this one), false when it did not run within 3 s - the
+    // program was busy with something that reads no input
+    bool onMain(std::function<bool()> fn) {
+        if (std::this_thread::get_id() == mainThread)
+            return fn();
+        auto task = std::make_shared<MainTask>();
+        task->fn = std::move(fn);
+        {
+            std::lock_guard<std::mutex> lock(tasksMutex);
+            tasks.push_back(task);
+        }
+        std::unique_lock<std::mutex> lock(task->mutex);
+        if (!task->cv.wait_for(lock, std::chrono::seconds(3), [&task] { return task->done; })) {
+            task->cancelled = true;
+            return false;
+        }
+        return task->result;
+    }
+
+    //*******************************
+    // virtual pads (see Input::plugVirtualPad)
+    //*******************************
+    struct VirtualSlot {
+        bool plugged = false;
+        VirtualPadSpec spec;
+        SDL_Joystick *joystick = nullptr;         // our own handle, to set its state through
+        SDL_GameController *controller = nullptr; // a game controller's: what its mapping binds each control to
+        SDL_JoystickID instance = -1;
+        Uint8 hat = 0; // the hat's bits as set so far (a d-pad bound to a hat: each direction one bit)
+    };
+    VirtualSlot vslots[Input::VirtualPadSlots];
+    std::mutex vmutex; // guards each slot's joystick handle: the setters run on the DebugDriver's thread
+
+    // the slot's pad made in SDL (it is plugged); true also when the joystick subsystem is down - probePads()
+    // plugs it in then
+    bool attachVirtual(int slot) {
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+        VirtualSlot &v = vslots[slot];
+        if (v.joystick || !SDL_WasInit(SDL_INIT_JOYSTICK))
+            return true;
+        SDL_VirtualJoystickDesc d;
+        SDL_zero(d);
+        d.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
+        d.type = v.spec.gameController ? SDL_JOYSTICK_TYPE_GAMECONTROLLER : SDL_JOYSTICK_TYPE_UNKNOWN;
+        d.naxes = static_cast<Uint16>(v.spec.axes);
+        d.nbuttons = static_cast<Uint16>(v.spec.buttons);
+        d.nhats = static_cast<Uint16>(v.spec.hats);
+        d.vendor_id = v.spec.vendor;
+        d.product_id = v.spec.product;
+        if (v.spec.gameController) {
+            // which of SDL's standard buttons and axes the pad has, in their enum order - what SDL builds the
+            // pad's mapping from
+            d.button_mask = v.spec.buttons >= 32 ? 0xffffffffu : ((1u << v.spec.buttons) - 1);
+            d.axis_mask = v.spec.axes >= 32 ? 0xffffffffu : ((1u << v.spec.axes) - 1);
+        }
+        d.name = v.spec.name.c_str();
+        // a test drives a window that may never have the focus (a hidden or headless one): without this SDL
+        // drops every pad's input while no window of ours is focused
+        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+        const int index = SDL_JoystickAttachVirtualEx(&d);
+        if (index < 0) {
+            PLOG_WARNING << "Virtual pad " << (slot + 1) << ": " << SDL_GetError();
+            return false;
+        }
+        SDL_Joystick *js = SDL_JoystickOpen(index);
+        if (!js) {
+            PLOG_WARNING << "Virtual pad " << (slot + 1) << " cannot be opened: " << SDL_GetError();
+            SDL_JoystickDetachVirtual(index);
+            return false;
+        }
+        // SDL picks the mapping itself - for an Xbox pad's ids its xpad-shaped default, for the others one from
+        // the declared layout - so the controls are set through what it binds them to (setControl below)
+        SDL_GameController *controller =
+            v.spec.gameController && SDL_IsGameController(index) ? SDL_GameControllerOpen(index) : nullptr;
+        std::lock_guard<std::mutex> lock(vmutex);
+        v.joystick = js;
+        v.controller = controller;
+        v.instance = SDL_JoystickInstanceID(js);
+        v.hat = 0;
+        // the triggers at rest (a full-range axis: -32768 is released)
+        if (controller) {
+            setControlAxis(v, SDL_CONTROLLER_AXIS_TRIGGERLEFT, -32768);
+            setControlAxis(v, SDL_CONTROLLER_AXIS_TRIGGERRIGHT, -32768);
+        } else {
+            for (int axis : v.spec.triggerAxes) {
+                if (axis >= 0)
+                    SDL_JoystickSetVirtualAxis(js, axis, -32768);
+            }
+        }
+        PLOG_INFO << "Virtual pad " << (slot + 1) << " plugged in: " << v.spec.name;
+        return true;
+#else
+        (void)slot;
+        return false;
+#endif
+    }
+
+    // the slot's pad taken out of SDL (its `plugged` stays as it is)
+    void detachVirtual(int slot) {
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+        VirtualSlot &v = vslots[slot];
+        std::lock_guard<std::mutex> lock(vmutex);
+        if (!v.joystick)
+            return;
+        for (int i = 0; i < SDL_NumJoysticks(); i++) {
+            if (SDL_JoystickGetDeviceInstanceID(i) == v.instance) {
+                SDL_JoystickDetachVirtual(i);
+                break;
+            }
+        }
+        if (v.controller)
+            SDL_GameControllerClose(v.controller);
+        SDL_JoystickClose(v.joystick);
+        v.joystick = nullptr;
+        v.controller = nullptr;
+        v.instance = -1;
+#else
+        (void)slot;
+#endif
+    }
+
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+    // a game controller's button / axis on whatever the pad's mapping binds it to; vmutex held
+    static bool setControl(VirtualSlot &v, int button, bool down) {
+        if (!v.controller)
+            return false;
+        const SDL_GameControllerButtonBind b =
+            SDL_GameControllerGetBindForButton(v.controller, static_cast<SDL_GameControllerButton>(button));
+        switch (b.bindType) {
+        case SDL_CONTROLLER_BINDTYPE_BUTTON:
+            return SDL_JoystickSetVirtualButton(v.joystick, b.value.button, down ? SDL_PRESSED : SDL_RELEASED) == 0;
+        case SDL_CONTROLLER_BINDTYPE_AXIS:
+            return SDL_JoystickSetVirtualAxis(v.joystick, b.value.axis, down ? 32767 : -32768) == 0;
+        case SDL_CONTROLLER_BINDTYPE_HAT:
+            v.hat = static_cast<Uint8>(down ? (v.hat | b.value.hat.hat_mask) : (v.hat & ~b.value.hat.hat_mask));
+            return SDL_JoystickSetVirtualHat(v.joystick, b.value.hat.hat, v.hat) == 0;
+        default:
+            return false; // the mapping has no such control
+        }
+    }
+
+    static bool setControlAxis(VirtualSlot &v, int axis, int value) {
+        if (!v.controller)
+            return false;
+        const SDL_GameControllerButtonBind b =
+            SDL_GameControllerGetBindForAxis(v.controller, static_cast<SDL_GameControllerAxis>(axis));
+        const Sint16 raw = static_cast<Sint16>(std::max(-32768, std::min(32767, value)));
+        switch (b.bindType) {
+        case SDL_CONTROLLER_BINDTYPE_AXIS:
+            return SDL_JoystickSetVirtualAxis(v.joystick, b.value.axis, raw) == 0;
+        case SDL_CONTROLLER_BINDTYPE_BUTTON: // a digital trigger
+            return SDL_JoystickSetVirtualButton(v.joystick, b.value.button, raw > 0 ? SDL_PRESSED : SDL_RELEASED) == 0;
+        default:
+            return false;
+        }
+    }
+#endif
 
     void setDpad(Button b, bool down) {
         if (b == Button::DpadUp)
@@ -298,20 +546,31 @@ struct Input::Impl {
         return true;
     }
 
-    void registerPad(int joystickIndex) {
+    // true when the pad is ours now (it is a game controller, not ignored, and was not already registered)
+    bool registerPad(int joystickIndex) {
+        if (isolated && !isVirtualDevice(joystickIndex))
+            return false; // AB_INPUT_ISOLATED: the machine's own pads are someone else's
+#if SDL_VERSION_ATLEAST(2, 0, 6)
+        // probePads() registers what is there, and SDL still queues a device-added event for each of them
+        const SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(joystickIndex);
+        for (const auto &pad : pads) {
+            if (SDL_JoystickInstanceID(pad->joystick) == id)
+                return false;
+        }
+#endif
         SDL_Joystick *js = SDL_JoystickOpen(joystickIndex);
         if (!js)
-            return;
+            return false;
         SDL_JoystickGUID guid = SDL_JoystickGetGUID(js);
         char guidStr[64];
         SDL_JoystickGetGUIDString(guid, guidStr, sizeof(guidStr));
         if (!SDL_IsGameController(joystickIndex)) {
             SDL_JoystickClose(js);
-            return;
+            return false;
         }
         SDL_GameController *controller = SDL_GameControllerOpen(joystickIndex);
         if (!controller)
-            return;
+            return false;
 
         std::unique_ptr<Pad> pad = std::make_unique<Pad>();
         pad->controller = controller;
@@ -328,22 +587,163 @@ struct Input::Impl {
 #endif
         PLOG_INFO << "New GameController: " << pad->name << " GUID: " << pad->guid;
         pads.push_back(std::move(pad));
+        return true;
     }
 
-    void removePad(int joystickInstanceId) {
+    // true when it was one of ours
+    bool removePad(int joystickInstanceId) {
         for (size_t i = 0; i < pads.size(); i++) {
             if (SDL_JoystickInstanceID(pads[i]->joystick) == joystickInstanceId) {
                 PLOG_INFO << "Pad disconnected: " << pads[i]->index << ":" << pads[i]->name;
                 SDL_GameControllerClose(pads[i]->controller);
                 pads.erase(pads.begin() + i);
-                return;
+                return true;
             }
+        }
+        return false;
+    }
+
+    // SIGTERM/SIGINT seen: the same as requestQuit()
+    void takeTermSignal() {
+        if (termSignal && !quitRequested) {
+            PLOG_INFO << "Termination signal - leaving";
+            quitRequested = true;
         }
     }
 };
 
 Input::Input(Platform &platform) : impl(new Impl(platform)) {
     reinstallEventFilter();
+    installTermHandler();
+    if (impl->isolated) {
+        PLOG_INFO << "AB_INPUT_ISOLATED: the machine's own input devices are ignored";
+    }
+}
+
+bool Input::isolationRequested() {
+    static const bool isolated = [] {
+        const char *v = getenv("AB_INPUT_ISOLATED");
+        return v != nullptr && strcmp(v, "1") == 0;
+    }();
+    return isolated;
+}
+
+bool Input::isolated() const {
+    return impl->isolated;
+}
+
+//*******************************
+// virtual pads
+//*******************************
+bool Input::virtualPadsSupported() {
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+    SDL_version v;
+    SDL_GetVersion(&v);
+    return SDL_VERSIONNUM(v.major, v.minor, v.patch) >= SDL_VERSIONNUM(2, 24, 0);
+#else
+    return false;
+#endif
+}
+
+bool Input::plugVirtualPad(int slot, const VirtualPadSpec &spec) {
+    if (!virtualPadsSupported() || slot < 0 || slot >= VirtualPadSlots)
+        return false;
+    Impl *d = impl;
+    return impl->onMain([d, slot, spec]() {
+        d->detachVirtual(slot);
+        d->vslots[slot].spec = spec;
+        d->vslots[slot].plugged = true;
+        return d->attachVirtual(slot);
+    });
+}
+
+bool Input::unplugVirtualPad(int slot) {
+    if (!virtualPadsSupported() || slot < 0 || slot >= VirtualPadSlots)
+        return false;
+    Impl *d = impl;
+    return impl->onMain([d, slot]() {
+        d->detachVirtual(slot);
+        d->vslots[slot].plugged = false;
+        return true;
+    });
+}
+
+bool Input::virtualPadPlugged(int slot) const {
+    if (!virtualPadsSupported() || slot < 0 || slot >= VirtualPadSlots)
+        return false;
+    Impl *d = impl;
+    return impl->onMain([d, slot]() { return d->vslots[slot].plugged; });
+}
+
+bool Input::setVirtualPadButton(int slot, int button, bool down) {
+    if (!virtualPadsSupported() || slot < 0 || slot >= VirtualPadSlots)
+        return false;
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+    // straight from the calling thread: SDL locks its joysticks for these, and vmutex keeps our handle alive
+    std::lock_guard<std::mutex> lock(impl->vmutex);
+    SDL_Joystick *js = impl->vslots[slot].joystick;
+    return js && SDL_JoystickSetVirtualButton(js, button, down ? SDL_PRESSED : SDL_RELEASED) == 0;
+#else
+    (void)button;
+    (void)down;
+    return false;
+#endif
+}
+
+bool Input::setVirtualPadAxis(int slot, int axis, int value) {
+    if (!virtualPadsSupported() || slot < 0 || slot >= VirtualPadSlots)
+        return false;
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+    const Sint16 v = static_cast<Sint16>(std::max(-32768, std::min(32767, value)));
+    std::lock_guard<std::mutex> lock(impl->vmutex);
+    SDL_Joystick *js = impl->vslots[slot].joystick;
+    return js && SDL_JoystickSetVirtualAxis(js, axis, v) == 0;
+#else
+    (void)axis;
+    (void)value;
+    return false;
+#endif
+}
+
+bool Input::setVirtualPadHat(int slot, int value) {
+    if (!virtualPadsSupported() || slot < 0 || slot >= VirtualPadSlots)
+        return false;
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+    std::lock_guard<std::mutex> lock(impl->vmutex);
+    SDL_Joystick *js = impl->vslots[slot].joystick;
+    return js && SDL_JoystickSetVirtualHat(js, 0, static_cast<Uint8>(value)) == 0;
+#else
+    (void)value;
+    return false;
+#endif
+}
+
+bool Input::setVirtualPadControl(int slot, int controllerButton, bool down) {
+    if (!virtualPadsSupported() || slot < 0 || slot >= VirtualPadSlots)
+        return false;
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+    std::lock_guard<std::mutex> lock(impl->vmutex);
+    Impl::VirtualSlot &v = impl->vslots[slot];
+    return v.joystick && Impl::setControl(v, controllerButton, down);
+#else
+    (void)controllerButton;
+    (void)down;
+    return false;
+#endif
+}
+
+bool Input::setVirtualPadControlAxis(int slot, int controllerAxis, int value) {
+    if (!virtualPadsSupported() || slot < 0 || slot >= VirtualPadSlots)
+        return false;
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+    std::lock_guard<std::mutex> lock(impl->vmutex);
+    Impl::VirtualSlot &v = impl->vslots[slot];
+    return v.joystick && Impl::setControlAxis(v, controllerAxis, value);
+#else
+    (void)controllerAxis;
+    (void)value;
+    return false;
+#endif
 }
 
 void Input::reinstallEventFilter() {
@@ -418,7 +818,8 @@ bool Input::waitForEvent(int timeoutMs) {
         ~Noted() { noteIdleWait(SDL_GetPerformanceCounter() - from); }
     } noted{waitStart};
     for (;;) {
-        if (impl->quitRequested || impl->injectedPending())
+        impl->takeTermSignal();
+        if (impl->quitRequested || impl->injectedPending() || impl->tasksPending())
             return true;
         const int elapsed = static_cast<int>(SDL_GetTicks() - start);
         if (elapsed >= timeoutMs)
@@ -432,6 +833,8 @@ bool Input::waitForEvent(int timeoutMs) {
 
 bool Input::poll(Event &out) {
     out = Event();
+    impl->takeTermSignal();
+    impl->runTasks(); // the DebugDriver's virtual-pad work, on this thread
     if (impl->quitRequested) {
         // a Quit, then "nothing queued", then a Quit again: every screen drains its events with
         // while (poll(e)) and closes on a Quit - a Quit on every call would never let that loop end
@@ -471,14 +874,36 @@ bool Input::poll(Event &out) {
     }
 
     if (e.type == SDL_JOYDEVICEADDED) {
-        impl->registerPad(e.jdevice.which);
-        out.type = Event::Type::PadAdded;
+        const bool ours = impl->registerPad(e.jdevice.which);
+        // an ignored device (AB_INPUT_ISOLATED) comes and goes unseen
+        if (ours || !impl->isolated)
+            out.type = Event::Type::PadAdded;
         return true;
     }
     if (e.type == SDL_JOYDEVICEREMOVED) {
-        impl->removePad(e.jdevice.which);
-        out.type = Event::Type::PadRemoved;
+        const bool ours = impl->removePad(e.jdevice.which);
+        if (ours || !impl->isolated)
+            out.type = Event::Type::PadRemoved;
         return true;
+    }
+
+    if (impl->isolated) {
+        switch (e.type) {
+        case SDL_KEYDOWN:
+        case SDL_KEYUP:
+        case SDL_TEXTINPUT:
+        case SDL_TEXTEDITING:
+        case SDL_MOUSEMOTION:
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP:
+        case SDL_MOUSEWHEEL:
+        case SDL_FINGERDOWN:
+        case SDL_FINGERUP:
+        case SDL_FINGERMOTION:
+            return true; // consumed: the machine's own keyboard and mouse are someone else's
+        default:
+            break;
+        }
     }
 
     if (e.type == SDL_KEYDOWN)
@@ -750,6 +1175,8 @@ bool Input::dpadCentered() const {
 }
 
 bool Input::keyboardPresent() const {
+    if (impl->isolated)
+        return impl->keySeen; // only what the DebugDriver typed
     return impl->keySeen || KeyboardPresence::detect();
 }
 
@@ -792,6 +1219,9 @@ bool Input::addMapping(const std::string &line) {
 
 std::string Input::mappingForDeviceIndex(int index) const {
     // by GUID rather than SDL_GameControllerMappingForDeviceIndex: that one is SDL 2.0.6, the console has 2.0.4
+    index = sdlJoystickIndex(index); // Joystick's numbering (AB_INPUT_ISOLATED: the virtual pads only)
+    if (index < 0)
+        return "";
     char *mapping = SDL_GameControllerMappingForGUID(SDL_JoystickGetDeviceGUID(index));
     if (!mapping)
         return "";
@@ -824,6 +1254,12 @@ void Input::probePads() {
         PLOG_WARNING << "default mapping db in use - no gamecontrollerdb.txt file found";
     }
 
+    // the DebugDriver's virtual pads that were plugged in before flushPads() took them away
+    for (int slot = 0; slot < VirtualPadSlots; slot++) {
+        if (impl->vslots[slot].plugged)
+            impl->attachVirtual(slot);
+    }
+
     std::string zeroGuid = "00000000000000000000000000000000";
     for (int i = 0; i < SDL_NumJoysticks(); ++i) {
         SDL_JoystickGUID guid = SDL_JoystickGetDeviceGUID(i);
@@ -843,6 +1279,9 @@ void Input::flushPads() {
         SDL_GameControllerClose(pad->controller);
     }
     impl->pads.clear();
+    // the virtual pads go too (they stay "plugged": probePads() brings them back)
+    for (int slot = 0; slot < VirtualPadSlots; slot++)
+        impl->detachVirtual(slot);
     SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
     SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
 }
@@ -851,7 +1290,28 @@ int Input::activePadCount() const {
     return static_cast<int>(impl->pads.size());
 }
 int Input::joystickCount() const {
-    return SDL_NumJoysticks();
+    return visibleJoystickCount();
+}
+
+int visibleJoystickCount() {
+    if (!Input::isolationRequested())
+        return SDL_NumJoysticks();
+    int n = 0;
+    for (int i = 0; i < SDL_NumJoysticks(); i++) {
+        if (isVirtualDevice(i))
+            n++;
+    }
+    return n;
+}
+
+int sdlJoystickIndex(int visibleIndex) {
+    if (!Input::isolationRequested())
+        return visibleIndex;
+    for (int i = 0, seen = 0; i < SDL_NumJoysticks(); i++) {
+        if (isVirtualDevice(i) && seen++ == visibleIndex)
+            return i;
+    }
+    return -1;
 }
 
 std::vector<PadInfo> Input::pads() const {

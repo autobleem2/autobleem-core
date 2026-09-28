@@ -123,6 +123,23 @@ struct PadInfo {
 };
 
 //******************
+// VirtualPadSpec
+//******************
+// A pad made inside the process (Input::plugVirtualPad): what SDL is told about it. A game controller gets a
+// mapping from SDL itself (its xpad-shaped default for an Xbox pad's ids, else one built from the declared
+// layout) - drive it with setVirtualPadControl*, which follow that mapping; a raw joystick (gameController
+// false) gets none, like a pad SDL's database does not know - what makes a mapping wizard start. The
+// vendor/product are the real pad's; SDL gives the device its "virtual" bus in the GUID, so a database line for
+// the real pad does not apply to it.
+struct VirtualPadSpec {
+    std::string name;
+    unsigned short vendor = 0, product = 0;
+    bool gameController = true;
+    int buttons = 15, axes = 6, hats = 0;
+    int triggerAxes[2] = {4, 5}; // put at rest (-32768) when the pad is plugged in; -1 for none
+};
+
+//******************
 // Input
 //******************
 // Wraps SDL's event queue, game controller API and joystick hot-plug, plus the platform-specific quirks that
@@ -192,6 +209,9 @@ public:
     // the whole stack of screens back to the program's loop, which can then end cleanly - databases
     // closed, threads joined - instead of exit()ing from the handler. Not cleared by flushEvents();
     // quitRequested() is how that loop tells the request from a window's close button.
+    // SIGTERM and SIGINT are the same request (POSIX): the constructor puts a handler in place of SDL's own -
+    // which turns them into one SDL_QUIT, a window's close, that a nested screen may eat and that the
+    // launcher takes for a lost display - and the next poll() or waitForEvent() makes it requestQuit().
     void requestQuit();
     bool quitRequested() const;
 
@@ -245,6 +265,37 @@ public:
     int activePadCount() const;
     int joystickCount() const; // SDL_NumJoysticks(), including devices that are not recognized as game controllers
     std::vector<PadInfo> pads() const;
+
+    // AB_INPUT_ISOLATED=1 in the environment (read once): the machine's own input devices are ignored - no
+    // keyboard, mouse or text events, no real pad is opened or reported, keyboardPresent() only counts keys
+    // injected by the DebugDriver - so only the DebugDriver (its injected events and its virtual pads) drives
+    // the program. What a headless sandbox next to another tester's session needs. Joystick (the raw API) lists
+    // only the virtual pads then, too.
+    static bool isolationRequested();
+    bool isolated() const;
+
+    // Virtual pads, made inside the process with SDL_JoystickAttachVirtualEx: needs SDL 2.24 at build and at
+    // run time (virtualPadsSupported(); false on the console's SDL, where every call below returns false).
+    // Four slots, 0..3. Thread-safe: plugging and unplugging from another thread (the DebugDriver's) is handed
+    // to the thread that polls this Input and the call waits for it (up to 3 s - false when the program
+    // polled no input for that long); the button/axis/hat setters work from any thread at once (SDL applies
+    // them at its next joystick update, as it would a real pad's). A plugged pad survives flushPads()/probePads() (a
+    // game launch): it is taken away with the others and plugged in again after. plugVirtualPad on a plugged slot
+    // replugs it.
+    static const int VirtualPadSlots = 4;
+    static bool virtualPadsSupported();
+    bool plugVirtualPad(int slot, const VirtualPadSpec &spec);
+    bool unplugVirtualPad(int slot);
+    bool virtualPadPlugged(int slot) const;
+    bool setVirtualPadButton(int slot, int button, bool down);
+    bool setVirtualPadAxis(int slot, int axis, int value); // -32768..32767
+    bool setVirtualPadHat(int slot, int value);            // SDL's hat bits: 1 up, 2 right, 4 down, 8 left
+    // a game-controller pad's standard control - a button in SDL_GameControllerButton order (A B X Y Back Guide
+    // Start L3 R3 L1 R1, the d-pad 11..14), an axis in SDL_GameControllerAxis order (LX LY RX RY LT RT) - set on
+    // whatever button, axis or hat bit the mapping SDL chose for the pad binds it to (for an Xbox pad's ids SDL
+    // uses its own xpad-shaped mapping, not the declared layout). False for a raw pad.
+    bool setVirtualPadControl(int slot, int controllerButton, bool down);
+    bool setVirtualPadControlAxis(int slot, int controllerAxis, int value);
 
 private:
     struct Impl;

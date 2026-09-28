@@ -28,6 +28,9 @@ void ensureSubsystems() {
 }
 } // namespace
 
+// The indices here are the program's (sdl_common.h): SDL's own, or with AB_INPUT_ISOLATED only the virtual
+// pads' - so a wizard in a sandbox never sees the test machine's real pads.
+
 Joystick::Joystick() : impl(new Impl) {}
 
 Joystick::~Joystick() {
@@ -36,43 +39,48 @@ Joystick::~Joystick() {
 
 int Joystick::count() {
     ensureSubsystems();
-    return SDL_NumJoysticks();
+    return visibleJoystickCount();
 }
 
 std::string Joystick::nameForIndex(int index) {
     ensureSubsystems();
-    const char *name = SDL_JoystickNameForIndex(index);
+    index = sdlJoystickIndex(index);
+    const char *name = index < 0 ? nullptr : SDL_JoystickNameForIndex(index);
     return name ? name : "";
 }
 
 std::string Joystick::guidForIndex(int index) {
     ensureSubsystems();
-    return guidString(SDL_JoystickGetDeviceGUID(index));
+    index = sdlJoystickIndex(index);
+    return index < 0 ? std::string() : guidString(SDL_JoystickGetDeviceGUID(index));
 }
 
 bool Joystick::isGameControllerAtIndex(int index) {
     ensureSubsystems();
-    return SDL_IsGameController(index) == SDL_TRUE;
+    index = sdlJoystickIndex(index);
+    return index >= 0 && SDL_IsGameController(index) == SDL_TRUE;
 }
 
 std::string Joystick::controllerNameForIndex(int index) {
     ensureSubsystems();
-    const char *name = SDL_GameControllerNameForIndex(index);
+    index = sdlJoystickIndex(index);
+    const char *name = index < 0 ? nullptr : SDL_GameControllerNameForIndex(index);
     return name ? name : "";
 }
 
 bool Joystick::open(int index) {
     close();
     ensureSubsystems();
-    if (index < 0 || index >= SDL_NumJoysticks())
+    const int device = sdlJoystickIndex(index);
+    if (index < 0 || device < 0 || device >= SDL_NumJoysticks())
         return false;
-    impl->joystick = SDL_JoystickOpen(index);
+    impl->joystick = SDL_JoystickOpen(device);
     if (!impl->joystick)
         return false;
     impl->index = index;
-    impl->guid = guidString(SDL_JoystickGetDeviceGUID(index));
-    if (SDL_IsGameController(index))
-        impl->controller = SDL_GameControllerOpen(index);
+    impl->guid = guidString(SDL_JoystickGetDeviceGUID(device));
+    if (SDL_IsGameController(device))
+        impl->controller = SDL_GameControllerOpen(device);
     impl->state.axes.assign(SDL_JoystickNumAxes(impl->joystick), 0);
     impl->state.buttons.assign(SDL_JoystickNumButtons(impl->joystick), false);
     impl->state.hats.assign(SDL_JoystickNumHats(impl->joystick), HatCentered);
