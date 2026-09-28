@@ -2,6 +2,7 @@
 #include <ableem/ui/debug_driver.h>
 #include <cstdlib>
 #include "core/services/system.h"
+#include "core/services/output_mode.h"
 
 using namespace std;
 
@@ -16,6 +17,12 @@ AppBase::AppBase(const string &windowTitle) {
     lang_.load(Env::getPathToLangDir(), cfg_.inifile.values["language"]);
 
     Gui::setWindowTitle(windowTitle);
+#ifndef AB_PLATFORM_PSC
+    // Options -> Display (OutputMode): the mode the first window is made in. The console's mode is Weston's,
+    // set by rc/boot.sh before anything of ours starts.
+    const OutputMode mode = OutputMode::parse(cfg_.inifile.values[OutputMode::ConfigKey]);
+    ableem::Platform::setOutputMode(mode.w, mode.h);
+#endif
     gui_ = Gui::getInstance();
     audio_ = make_unique<AppAudio>(gui_->audio(), cfg_, theme_);
 

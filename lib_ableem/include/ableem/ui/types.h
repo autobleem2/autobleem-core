@@ -38,6 +38,11 @@ struct Size {
     int w = 0, h = 0;
 };
 
+// a display mode as Platform::displayModes() lists it (refreshRate 0 = the driver does not say)
+struct DisplayMode {
+    int w = 0, h = 0, refreshRate = 0;
+};
+
 //******************
 // Rect
 //******************

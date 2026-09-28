@@ -2,6 +2,7 @@
 
 #include <string>
 #include <functional>
+#include <vector>
 #include "types.h"
 
 namespace ableem {
@@ -107,6 +108,17 @@ public:
     static Size desktopDisplaySize();
     // the MSAA the window actually got (0 when it was not asked for or the driver refused it)
     int multisampleSamples() const;
+
+    // The display's modes (its EDID, as SDL lists them) a launcher can offer: one per size - the TV (16:9) modes
+    // first, then the others (VESA), each group from the smallest - each
+    // at the refresh rate nearest 60 Hz of those at 50 Hz or more - a 4K TV's 24/30 Hz modes are left out, a
+    // game would stutter in them. Initialises SDL's video subsystem to ask; empty when it cannot be told.
+    static std::vector<DisplayMode> displayModes();
+    // The mode full-screen windows are made in from now on - the next acquireDisplay() (or the first window):
+    // 0x0 is the desktop's own mode (SDL_WINDOW_FULLSCREEN_DESKTOP, no modeset), anything else a real modeset
+    // to that size at displayModes()' refresh rate. A size the display does not list falls back to the
+    // desktop's. Process-wide, so it can be set before the GuiBase that makes the first window exists.
+    static void setOutputMode(int w, int h);
 
     // internal: used by Input to invoke the app's power-off handler and by Renderer/Texture/Font/Audio to
     // reach the underlying SDL objects without exposing them in a public header.

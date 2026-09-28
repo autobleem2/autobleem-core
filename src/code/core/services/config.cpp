@@ -8,6 +8,7 @@
 #include "../model/timing.h"
 #include "core/version.h"
 #include "environment.h"
+#include "output_mode.h"
 
 //*******************************
 // Config::Config()
@@ -55,6 +56,11 @@ Config::Config() {
     }
     if (inifile.values["showingtimeout"] == "") {
         inifile.values["showingtimeout"] = DefaultShowingTimeoutText;
+    }
+
+    // Options -> Display (OutputMode): auto | 720 | 1080 | <w>x<h>; the console 720 unless 1080 was kept
+    if (inifile.values[OutputMode::ConfigKey] == "") {
+        inifile.values[OutputMode::ConfigKey] = OutputMode::defaultToken();
     }
 
     if (inifile.values["raconfig"] == "") {

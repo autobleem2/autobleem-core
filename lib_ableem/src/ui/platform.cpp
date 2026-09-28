@@ -1,6 +1,7 @@
 #include "ableem/ui/platform.h"
 #include "sdl_common.h"
 #include <ableem/engine/log.h>
+#include <algorithm>
 #include <cstdlib>
 #include <sstream>
 #include <stdexcept>
@@ -19,16 +20,72 @@ struct Platform::Impl {
 };
 
 namespace {
+// Platform::setOutputMode's choice: 0x0 = the desktop's own mode
+int outputModeW = 0, outputModeH = 0;
+
+// of two refresh rates for one size, the one a launcher and its games want: nearest 60 Hz, the higher on a tie;
+// under 50 Hz never (0 - unknown - is taken as fine)
+bool betterRefresh(int candidate, int current) {
+    const auto distance = [](int hz) { return hz == 0 ? 0 : std::abs(hz - 60); };
+    return distance(candidate) < distance(current) || (distance(candidate) == distance(current) && candidate > current);
+}
+bool usableRefresh(int hz) {
+    return hz == 0 || hz >= 50;
+}
+
+// the SDL mode for w x h on the first display, at the refresh rate displayModes() would list; false if none
+bool findDisplayMode(int w, int h, SDL_DisplayMode &found) {
+    bool any = false;
+    const int n = SDL_GetNumDisplayModes(0);
+    for (int i = 0; i < n; i++) {
+        SDL_DisplayMode m;
+        if (SDL_GetDisplayMode(0, i, &m) != 0 || m.w != w || m.h != h || !usableRefresh(m.refresh_rate))
+            continue;
+        if (!any || betterRefresh(m.refresh_rate, found.refresh_rate))
+            found = m;
+        any = true;
+    }
+    return any;
+}
+
 // The renderer SDL will pick is its GL one everywhere this runs (opengl on a PC, opengles2 on a Pi and,
 // presumably, the console), and that renderer draws through the window's GL context - so asking for a
 // multisampled context before the window is created gives every quad the renderer draws, the carousel's
 // cover strips included, real MSAA edges. SDL_WINDOW_OPENGL makes the window come with that context at
 // once instead of being recreated by the renderer later. A driver without MSAA fails the window, and the
 // window is then made again without it.
+SDL_Window *createWindowWith(const std::string &title, int w, int h, int &samples, Uint32 fullscreenFlag, bool headless);
+
+// A full-screen window in the mode Platform::setOutputMode chose: made at that size with SDL_WINDOW_FULLSCREEN
+// and given that exact mode (the refresh rate too), which SDL applies at once to a full-screen window. The
+// desktop's own mode otherwise - and when the display does not list the mode any more (another TV).
 SDL_Window *createWindow(const std::string &title, int w, int h, int &samples, bool fullscreen, bool headless) {
-    // the desktop's own mode, no modeset: what a launcher that hands the screen to an emulator and takes it
-    // back wants (a mode change would flash the display twice per game)
-    Uint32 flags = fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0;
+    SDL_DisplayMode mode;
+    if (!fullscreen || outputModeW <= 0 || outputModeH <= 0)
+        return createWindowWith(title, w, h, samples, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0, headless);
+    if (!findDisplayMode(outputModeW, outputModeH, mode)) {
+        PLOG_WARNING << "The display has no " << outputModeW << "x" << outputModeH
+                     << " mode (at 50 Hz or more) - using its own";
+        return createWindowWith(title, w, h, samples, SDL_WINDOW_FULLSCREEN_DESKTOP, headless);
+    }
+    SDL_Window *window = createWindowWith(title, mode.w, mode.h, samples, SDL_WINDOW_FULLSCREEN, headless);
+    if (!window)
+        return nullptr;
+    if (SDL_SetWindowDisplayMode(window, &mode) != 0) {
+        PLOG_WARNING << "Could not switch to " << mode.w << "x" << mode.h << " (" << SDL_GetError()
+                     << ") - using the display's own mode";
+        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    } else {
+        PLOG_INFO << "Display mode: " << mode.w << "x" << mode.h << " @ " << mode.refresh_rate << " Hz";
+    }
+    return window;
+}
+
+SDL_Window *createWindowWith(const std::string &title, int w, int h, int &samples, Uint32 fullscreenFlag, bool headless) {
+    // SDL_WINDOW_FULLSCREEN_DESKTOP - the desktop's own mode, no modeset - unless a mode was chosen: what a
+    // launcher that hands the screen to an emulator and takes it back wants (a mode change would flash the
+    // display twice per game, which is why the emulator is told the same mode - AB_OUTPUT_MODE)
+    Uint32 flags = fullscreenFlag;
     if (Platform::startsHidden(headless))
         flags |= SDL_WINDOW_HIDDEN;
     if (samples > 0) {
@@ -64,6 +121,42 @@ Size Platform::desktopDisplaySize() {
         s.h = mode.h;
     }
     return s;
+}
+
+std::vector<DisplayMode> Platform::displayModes() {
+    std::vector<DisplayMode> modes;
+    if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
+        return modes;
+    const int n = SDL_GetNumDisplayModes(0);
+    for (int i = 0; i < n; i++) {
+        SDL_DisplayMode m;
+        if (SDL_GetDisplayMode(0, i, &m) != 0 || !usableRefresh(m.refresh_rate))
+            continue;
+        auto same = std::find_if(modes.begin(), modes.end(),
+                                 [&m](const DisplayMode &d) { return d.w == m.w && d.h == m.h; });
+        if (same == modes.end()) {
+            DisplayMode d;
+            d.w = m.w;
+            d.h = m.h;
+            d.refreshRate = m.refresh_rate;
+            modes.push_back(d);
+        } else if (betterRefresh(m.refresh_rate, same->refreshRate)) {
+            same->refreshRate = m.refresh_rate;
+        }
+    }
+    // the TV modes (16:9 - 720p, 1080p, 1440p, 2160p) first, then the rest (the VESA ones), each from the smallest
+    std::sort(modes.begin(), modes.end(), [](const DisplayMode &a, const DisplayMode &b) {
+        const bool tvA = a.w * 9 == a.h * 16, tvB = b.w * 9 == b.h * 16;
+        if (tvA != tvB)
+            return tvA;
+        return a.w * a.h != b.w * b.h ? a.w * a.h < b.w * b.h : a.w < b.w;
+    });
+    return modes;
+}
+
+void Platform::setOutputMode(int w, int h) {
+    outputModeW = w > 0 && h > 0 ? w : 0;
+    outputModeH = w > 0 && h > 0 ? h : 0;
 }
 
 int Platform::logicalWidth() const {

@@ -32,10 +32,11 @@ private:
     Gui();
     static float outputScale();
     static int multisampleSamples();
-    static bool fullscreen();
     static std::string windowTitle_;
 
 public:
+    // whether the window is the whole screen (every real target) - where a display mode can be chosen
+    static bool fullscreen();
     // the window's title: the program's name. Set by AppBase before the first getInstance() - it cannot
     // change once the window exists
     static void setWindowTitle(const std::string &title) { windowTitle_ = title; }

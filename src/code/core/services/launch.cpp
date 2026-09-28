@@ -2,6 +2,7 @@
 // LaunchService: what App::launchGame and the three EmuInterceptors used to do between them.
 //
 #include "launch.h"
+#include "output_mode.h"
 #include "app_manifest.h"
 #include "environment.h"
 #include "../main.h"
@@ -425,6 +426,13 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
             env.emplace_back("AB_PAD_ORDER", "1,0");
         else if (padSwapWanted)
             session_.padOrderUnsupportedNotice = true;
+        // Options -> Display (OutputMode): the emulator opens in the launcher's mode instead of switching the
+        // display to its own; a change the player makes in its menu comes back in <runtime>/outputmode, which
+        // AutoBleem::runOutside takes into config.ini after the game
+        if (has("outputmode")) {
+            env.emplace_back("AB_OUTPUT_MODE", OutputMode::parse(config_.inifile.values[OutputMode::ConfigKey]).token());
+            DirEntry::removeFile(OutputMode::emulatorFile()); // nothing left over from an earlier game
+        }
         PcsxConfig::migrateLegacy(*game); // what an older build left becomes the game's own config
         launchPcsx(*game, resumePoint, env);
         PcsxConfig::migrateLegacy(*game); // ...and what an older emulator left just now
@@ -706,6 +714,13 @@ void LaunchService::prepareRaAppend(PsGame *game) {
     // of ours reads them (measured on the Pi 400: a write per RetroArch game)
     set(raConfig, "content_runtime_log", "false");
     set(raConfig, "content_runtime_log_aggregate", "false");
+#ifndef AB_PLATFORM_PSC
+    // Options -> Display: RetroArch full screen in the launcher's mode (0 = the display's own); on the console
+    // the mode is Weston's, whatever RetroArch asks for
+    const OutputMode mode = OutputMode::parse(config_.inifile.values[OutputMode::ConfigKey]);
+    set(raConfig, "video_fullscreen_x", to_string(mode.isAuto() ? 0 : mode.w));
+    set(raConfig, "video_fullscreen_y", to_string(mode.isAuto() ? 0 : mode.h));
+#endif
     if (game != nullptr && config_.inifile.values["raconfig"] == "true")
         raSettingsFor(*game, raConfig, coreOptions);
 
