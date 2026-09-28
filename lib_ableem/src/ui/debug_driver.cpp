@@ -37,6 +37,7 @@ typedef SOCKET sock_t;
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
 typedef int sock_t;
@@ -57,6 +58,22 @@ const int DebugDriver::AuthTimeoutMs;
 const size_t DebugDriver::MaxAuthLine;
 
 namespace {
+
+// the driver's output folders (shots, clips, batteries): open as the umask allows, not DirEntry's 0775 - a test
+// sandbox writes through a share where a folder it made counts as someone else's
+bool makeOutputDirs(const std::string &dir) {
+#ifdef _WIN32
+    return DirEntry::createDirs(dir);
+#else
+    if (dir.empty() || DirEntry::isDirectory(dir))
+        return true;
+    const size_t slash = dir.find_last_of('/');
+    if (slash != std::string::npos && slash > 0 && !makeOutputDirs(dir.substr(0, slash)))
+        return false;
+    return mkdir(dir.c_str(), 0777) == 0 || DirEntry::isDirectory(dir);
+#endif
+}
+
 std::mutex screenMutex;
 std::vector<std::string> screenStack;
 std::vector<std::string> screenItems; // under screenMutex too
@@ -574,7 +591,7 @@ private:
 #endif
             return "ok";
         }
-        DirEntry::createDirs(dir);
+        makeOutputDirs(dir);
         const string values[] = {to_string(p.level), PadScript::batteryStatus(p.level, p.cable), "Battery", "Device"};
         for (size_t i = 0; i < 4; i++) {
             ofstream out(dir + "/" + files[i], ios::binary);
@@ -892,7 +909,7 @@ private:
         if (clip_)
             return "err a clip is running (" + clip_->dir() + ")";
         const string dir = DebugDriver::outputPath(outDir_, name);
-        if (!DirEntry::createDirs(dir))
+        if (!makeOutputDirs(dir))
             return "err cannot make " + dir;
         // a folder from an earlier clip of the same name: its frames go, the new ones are numbered from 0
         for (const string &f : DirEntry::listNames(dir)) {
@@ -1011,7 +1028,7 @@ private:
             path = DebugDriver::outputPath(outDir_, path);
             const string dir = parentDir(path);
             if (!dir.empty())
-                DirEntry::createDirs(dir);
+                makeOutputDirs(dir);
             if (!awaitFreshFrame())
                 return "err no frame";
             return gui_.renderer().saveLastFrame(path) ? "ok " + path : "err cannot write " + path;
