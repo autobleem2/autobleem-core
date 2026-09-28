@@ -54,7 +54,8 @@ bool findDisplayMode(int w, int h, SDL_DisplayMode &found) {
 // cover strips included, real MSAA edges. SDL_WINDOW_OPENGL makes the window come with that context at
 // once instead of being recreated by the renderer later. A driver without MSAA fails the window, and the
 // window is then made again without it.
-SDL_Window *createWindowWith(const std::string &title, int w, int h, int &samples, Uint32 fullscreenFlag, bool headless);
+SDL_Window *createWindowWith(const std::string &title, int w, int h, int &samples, Uint32 fullscreenFlag,
+                             bool headless);
 
 // A full-screen window in the mode Platform::setOutputMode chose: made at that size with SDL_WINDOW_FULLSCREEN
 // and given that exact mode (the refresh rate too), which SDL applies at once to a full-screen window. The
@@ -81,7 +82,8 @@ SDL_Window *createWindow(const std::string &title, int w, int h, int &samples, b
     return window;
 }
 
-SDL_Window *createWindowWith(const std::string &title, int w, int h, int &samples, Uint32 fullscreenFlag, bool headless) {
+SDL_Window *createWindowWith(const std::string &title, int w, int h, int &samples, Uint32 fullscreenFlag,
+                             bool headless) {
     // SDL_WINDOW_FULLSCREEN_DESKTOP - the desktop's own mode, no modeset - unless a mode was chosen: what a
     // launcher that hands the screen to an emulator and takes it back wants (a mode change would flash the
     // display twice per game, which is why the emulator is told the same mode - AB_OUTPUT_MODE)
@@ -191,6 +193,18 @@ Platform::Platform(const std::string &windowTitle, int logicalWidth, int logical
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
     PLOG_INFO << "Audio driver: " << (SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "(none)");
 
+    // AB_WINDOW_SIZE=<w>x<h>: a window of that size instead of the target's own choice (a headless sandbox's
+    // offscreen driver would otherwise be a 1024x768 "desktop"); never full screen
+    int sizeW = 0, sizeH = 0;
+    const char *sizeEnv = std::getenv("AB_WINDOW_SIZE");
+    if (sizeEnv && parseWindowSize(sizeEnv, sizeW, sizeH)) {
+        PLOG_INFO << "Window size " << sizeW << "x" << sizeH << " (AB_WINDOW_SIZE)";
+        outputWidth = sizeW;
+        outputHeight = sizeH;
+        fullscreen = false;
+    } else if (sizeEnv && *sizeEnv) {
+        PLOG_WARNING << "AB_WINDOW_SIZE=" << sizeEnv << " is not <width>x<height> - ignored";
+    }
     impl->windowTitle = windowTitle;
     impl->width = outputWidth;
     impl->height = outputHeight;
@@ -287,6 +301,25 @@ bool Platform::isDevHost() const {
 bool Platform::headlessRequested() {
     const char *v = std::getenv("AB_HEADLESS");
     return v && std::string(v) == "1";
+}
+
+bool Platform::parseWindowSize(const std::string &text, int &w, int &h) {
+    // "1280x720": two whole numbers, 16..16384 each, an 'x' (or 'X') between them and nothing else
+    size_t x = text.find_first_of("xX");
+    if (x == std::string::npos || x == 0 || x + 1 >= text.size())
+        return false;
+    auto number = [](const std::string &s, int &out) {
+        if (s.empty() || s.size() > 5 || s.find_first_not_of("0123456789") != std::string::npos)
+            return false;
+        out = std::atoi(s.c_str());
+        return out >= 16 && out <= 16384;
+    };
+    int pw = 0, ph = 0;
+    if (!number(text.substr(0, x), pw) || !number(text.substr(x + 1), ph))
+        return false;
+    w = pw;
+    h = ph;
+    return true;
 }
 
 bool Platform::startsHidden(bool headless) {
