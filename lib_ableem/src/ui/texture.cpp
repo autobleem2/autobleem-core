@@ -93,6 +93,39 @@ Texture Texture::loadMemory(Renderer &renderer, const void *data, unsigned int s
     return Texture(t);
 }
 
+Image Image::loadFile(const std::string &path) {
+    Image image;
+    if (path.empty())
+        return image;
+    SDL_Surface *s = IMG_Load(path.c_str());
+    if (!s) {
+        PLOG_ERROR << "Could not load image: " << path << " (" << IMG_GetError() << ")";
+        return image;
+    }
+    image.surface = std::shared_ptr<void>(s, [](void *p) { SDL_FreeSurface(static_cast<SDL_Surface *>(p)); });
+    return image;
+}
+
+Size Image::size() const {
+    Size s;
+    if (surface) {
+        s.w = static_cast<SDL_Surface *>(surface.get())->w;
+        s.h = static_cast<SDL_Surface *>(surface.get())->h;
+    }
+    return s;
+}
+
+Texture Texture::fromImage(Renderer &renderer, const Image &image) {
+    if (!image.valid())
+        return Texture();
+    SDL_Texture *t = SDL_CreateTextureFromSurface(static_cast<SDL_Renderer *>(renderer.native()),
+                                                  static_cast<SDL_Surface *>(image.surface.get()));
+    if (!t) {
+        PLOG_ERROR << "Could not upload image (" << SDL_GetError() << ")";
+    }
+    return Texture(t);
+}
+
 Texture Texture::createTarget(Renderer &renderer, int w, int h) {
     // allocated in output pixels, so that what is composed into it at a scale above 1 keeps its sharpness
     float k = renderer.outputScale();

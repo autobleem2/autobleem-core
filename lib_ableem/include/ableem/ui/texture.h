@@ -37,6 +37,24 @@ private:
 };
 
 //******************
+// Image
+//******************
+// A decoded picture in memory, not yet on the GPU: loadFile may run on any thread (a background decoder),
+// Texture::fromImage then uploads it on the render thread - the slow part of a load (the decode) off the
+// frame, the cheap part (the upload) on it.
+class ABLEEM_API Image {
+public:
+    // an invalid Image for an empty path or a file that cannot be read (logged)
+    static Image loadFile(const std::string &path);
+    bool valid() const { return surface != nullptr; }
+    Size size() const;
+
+private:
+    friend class Texture;
+    std::shared_ptr<void> surface;
+};
+
+//******************
 // Texture
 //******************
 // Cheap shared handle (copy freely); the underlying GPU texture is released when the last copy is destroyed.
@@ -54,6 +72,8 @@ public:
     static Rect opaqueBounds(const std::string &path);
     // decodes an in-memory image (e.g. a cover PNG blob read from a database)
     static Texture loadMemory(Renderer &renderer, const void *data, unsigned int size);
+    // uploads an Image decoded earlier (on the render thread)
+    static Texture fromImage(Renderer &renderer, const Image &image);
     // a render target texture (used for the carousel cover compositing)
     static Texture createTarget(Renderer &renderer, int w, int h);
     // a texture whose pixels can be locked and written directly (used by the memory card editor)
