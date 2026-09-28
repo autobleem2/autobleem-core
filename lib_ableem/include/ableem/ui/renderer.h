@@ -45,6 +45,9 @@ public:
     // command sends over the socket, so a test never writes to the device's own storage. Same "no frame
     // cached yet" false as saveLastFrame.
     bool encodeLastFramePng(std::vector<unsigned char> &out);
+    // the newest copy's pixels (ARGB8888, `pitch` bytes a row) handed out, so a caller encodes them without
+    // holding the renderer up (the DebugDriver's clips); returns the copy's frame number, 0 when there is none
+    unsigned long copyLastFrame(std::vector<unsigned char> &pixels, int &w, int &h, int &pitch) const;
     unsigned long frameCount() const;
 
     // the next present() keeps its frame as a texture (output pixels, drawn over the whole target with

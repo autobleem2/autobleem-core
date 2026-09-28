@@ -400,6 +400,18 @@ bool Renderer::encodeLastFramePng(std::vector<unsigned char> &out) {
     return rc == 0;
 }
 
+unsigned long Renderer::copyLastFrame(std::vector<unsigned char> &pixels, int &w, int &h, int &pitch) const {
+    std::lock_guard<std::mutex> lock(impl->frame.mutex);
+    const Impl::FrameCache &f = impl->frame;
+    if (f.pixels.empty())
+        return 0;
+    pixels = f.pixels;
+    w = f.w;
+    h = f.h;
+    pitch = f.pitch;
+    return f.copied;
+}
+
 void Renderer::captureNextFrame() {
     impl->captureRequested = true;
 }
