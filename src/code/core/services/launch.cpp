@@ -25,6 +25,16 @@ using namespace std;
 
 namespace {
 
+// config.ini "scaler" (Options -> "Emulator screen scaling") as pcsx-abnxt's g_scaler, the order of its menu's
+// Scaler (SCALE_1_1 .. SCALE_FULLSCREEN); -1 for anything else
+int scalerIndex(const string &token) {
+    static const char *const tokens[] = {"1x1", "2x", "4:3", "4:3i", "full"};
+    for (int i = 0; i < 5; i++)
+        if (token == tokens[i])
+            return i;
+    return -1;
+}
+
 const char *const RaNeonCore = "NEON";
 const char *const RaPeopsCore = "PEOPS";
 const char *const PcsxNeonGpu = "builtin_gpu";
@@ -437,6 +447,11 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
         // this run only (it keeps them out of the game's saved config)
         if (has("perfoverlay") && config_.inifile.values["perfoverlay"] == "true")
             env.emplace_back("AB_PERF_OVERLAY", "1");
+        // Options -> "Emulator screen scaling": any of the emulator's own Scaler values; one without the
+        // feature (the classic pcsx-ab) gets -ratio's full/4:3 only
+        const int scaler = scalerIndex(config_.inifile.values["scaler"]);
+        if (has("scaler") && scaler >= 0)
+            env.emplace_back("AB_SCALER", to_string(scaler));
         PcsxConfig::migrateLegacy(*game); // what an older build left becomes the game's own config
         launchPcsx(*game, resumePoint, env);
         PcsxConfig::migrateLegacy(*game); // ...and what an older emulator left just now
@@ -508,7 +523,7 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::
     string gameFile = "";
 
     string aspect = "0";
-    if (config_.inifile.values["aspect"] == "true") {
+    if (config_.inifile.values["scaler"] == "full") { // -ratio 1 fills the screen; the rest is 4:3 here
         aspect = "1";
     }
 
@@ -820,8 +835,8 @@ void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raCo
         }
     }
 
-    // retroarch.cfg: 1280x720 for widescreen (config.ini aspect=true), 960x720 centred for 4:3
-    bool wide = config_.inifile.values["aspect"] == "true";
+    // retroarch.cfg: 1280x720 for "full" scaling (config.ini scaler), 960x720 centred for the rest
+    bool wide = config_.inifile.values["scaler"] == "full";
     set(raConfig, "custom_viewport_width", wide ? "1280" : "960");
     set(raConfig, "custom_viewport_height", "720");
     set(raConfig, "custom_viewport_x", wide ? "0" : "160");
