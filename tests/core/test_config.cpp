@@ -56,6 +56,25 @@ TEST_CASE("Config: padswap defaults off and keeps an explicit true (C11)") {
     CHECK(Config().inifile.values["padswap"] == "false");
 }
 
+TEST_CASE("Config: covershine defaults on and keeps an explicit false") {
+    TempDir tmp("config_covershine");
+    EnvFixture env;
+    env.setWorkingPath(tmp.path());
+
+    // nothing set: on
+    CHECK(Config().inifile.values["covershine"] == "true");
+
+    tmp.writeFile("config.ini", "[General]\nCovershine=false\n");
+    CHECK(Config().inifile.values["covershine"] == "false");
+
+    // anything else - a stray value from hand-editing - is not kept as "false"
+    tmp.writeFile("config.ini", "[General]\nCovershine=no\n");
+    CHECK(Config().inifile.values["covershine"] == "true");
+
+    tmp.writeFile("config.ini", "[General]\nCovershine=true\n");
+    CHECK(Config().inifile.values["covershine"] == "true");
+}
+
 TEST_CASE("Config keeps a known emulator and falls back to pcsx-abnxt for anything else") {
     TempDir tmp("config_emulator");
     EnvFixture env;
