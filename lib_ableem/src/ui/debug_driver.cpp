@@ -83,6 +83,8 @@ int screenSelected = -1;              // the cursor in screenItems (-1 = none), 
 // with none, popScreen brings them back - a picker over a picker never leaves the lower one's rows behind
 std::vector<std::pair<std::vector<std::string>, int>> savedItems;
 int busyDepth = 0; // Gui::beginBusy/endBusy nesting, under screenMutex too
+// set once start() listens: the screens build their `items` only then, so a normal run pays nothing per frame
+std::atomic<bool> driverActive{false};
 
 typedef chrono::steady_clock Clock;
 
@@ -1288,7 +1290,15 @@ bool DebugDriver::start(GuiBase &gui, int port, const string &bindAddress, const
               << (token.empty() ? "" : " (token required)");
     Server *s = server.get();
     thread([s]() { s->run(); }).detach();
+    driverActive = true;
     return true;
+}
+
+//*******************************
+// DebugDriver::active
+//*******************************
+bool DebugDriver::active() {
+    return driverActive;
 }
 
 } // namespace ableem

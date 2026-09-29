@@ -150,6 +150,8 @@ public:
     // busy() = depth > 0 (the `busy` command), busyLevel() the depth itself.
     static void setBusy(bool on);
     static bool busy();
+    // true once start() listens - a screen builds its `items` only then (they are rebuilt every frame)
+    static bool active();
     static int busyLevel();
 };
 

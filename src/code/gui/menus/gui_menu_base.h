@@ -189,7 +189,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::computePagePosi
 // row's text (an icon mark) becomes '/', the reply's separator being '|'. Skipped once the menu is closing:
 // Gui::beginBusy redraws a closed Options panel as its backdrop, and that must not publish into the screen below.
 template <typename LineDataType> void GuiMenuBase<LineDataType>::publishToDriver() {
-    if (!menuVisible)
+    if (!menuVisible || !ableem::DebugDriver::active())
         return;
     std::vector<std::string> names;
     const int size = getVerticalSize();
