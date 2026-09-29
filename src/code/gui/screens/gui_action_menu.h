@@ -7,6 +7,7 @@
 #pragma once
 
 #include "../gui_screen.h"
+#include "../hold_repeat.h"
 #include "../panel_style.h"
 
 #include <string>
@@ -41,6 +42,7 @@ public:
 private:
     int firstVisible = 0;
     PanelStyle style;
+    DpadHold hold; // Up/Down held: the rows go on at the shared HoldRepeat pace
     int visibleRows() const;
     void moveSelection(int step);
 };
