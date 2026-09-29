@@ -9,10 +9,47 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <vector>
 
 using namespace std;
 using ableem::Color;
 using ableem::Rect;
+
+//*******************************
+// PanelStyle::outlineOf
+//*******************************
+ableem::Texture PanelStyle::outlineOf(ableem::Renderer &renderer, const ableem::Image &image) {
+    if (!image.valid())
+        return ableem::Texture();
+    const ableem::Size s = image.size();
+    const int w = s.w + 5, h = s.h + 5;
+    vector<float> shape(static_cast<size_t>(w * h), 0.0f);
+    for (int y = 0; y < s.h; y++)
+        for (int x = 0; x < s.w; x++)
+            shape[static_cast<size_t>((y + 2) * w + x + 2)] = image.pixel(x, y).a / 255.0f;
+
+    static const int offsets[9][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}, {2, 2}};
+    const float passAlpha = 150.0f / 255.0f;
+    ableem::Texture tex = ableem::Texture::createStreaming(renderer, w, h);
+    if (!tex.valid())
+        return tex;
+    tex.setBlendMode(ableem::BlendMode::Blend);
+    {
+        ableem::PixelLock px = tex.lock();
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                float clear = 1.0f;
+                for (const auto &o : offsets) {
+                    const int sx = x - o[0], sy = y - o[1];
+                    if (sx >= 0 && sy >= 0 && sx < w && sy < h)
+                        clear *= 1.0f - passAlpha * shape[static_cast<size_t>(sy * w + sx)];
+                }
+                px.set(x, y, ableem::Color(0, 0, 0, static_cast<unsigned char>(std::lround((1.0f - clear) * 255))));
+            }
+    }
+    return tex;
+}
 
 //*******************************
 // PanelStyle::fromTheme
@@ -171,12 +208,31 @@ static ableem::Texture faceIcon(ThemeAssets &assets, const string &key) {
     return ableem::Texture();
 }
 
+// faceIcon's outline (UIREV-2): only the launcher's own d-pad arrows need one - X/O/T/S already carry the
+// theme's own art and read fine on every theme's hint bar
+static ableem::Texture faceIconOutline(ThemeAssets &assets, const string &key) {
+    if (key == "Up")
+        return assets.dpadUpOutline;
+    if (key == "Down")
+        return assets.dpadDownOutline;
+    if (key == "Left")
+        return assets.dpadLeftOutline;
+    if (key == "Right")
+        return assets.dpadRightOutline;
+    return ableem::Texture();
+}
+
 int PanelStyle::button(Gui &gui, const string &key, int x, int y, int height) const {
     ThemeAssets &assets = gui.assets();
     ableem::Texture icon = faceIcon(assets, key);
     if (icon.valid()) {
         ableem::Size s = icon.size();
         Rect dst(x, y + (height - s.h) / 2, s.w, s.h);
+        ableem::Texture outline = faceIconOutline(assets, key);
+        if (outline.valid()) {
+            Rect outlineDst(dst.x - 2, dst.y - 2, s.w + 5, s.h + 5);
+            gui.renderer().copy(outline, nullptr, &outlineDst);
+        }
         gui.renderer().copy(icon, nullptr, &dst);
         return s.w;
     }

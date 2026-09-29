@@ -3,6 +3,7 @@
 //
 #include "theme_assets.h"
 #include "gui.h" // Gui::tickBusy, the spinner between the loads
+#include "panel_style.h" // PanelStyle::outlineOf, the d-pad arrows' dark halo (UIREV-2)
 #include "../core/services/environment.h"
 #include "../core/main.h"
 
@@ -29,6 +30,7 @@ void ThemeAssets::unload() {
     buttonTextureMap.clear();
     hintCross = hintCircle = hintTriangle = Texture();
     dpadUp = dpadDown = dpadLeft = dpadRight = Texture();
+    dpadUpOutline = dpadDownOutline = dpadLeftOutline = dpadRightOutline = Texture();
 }
 
 //*******************************
@@ -98,6 +100,12 @@ void ThemeAssets::load() {
     dpadDown = Texture::loadFile(renderer_, evoimg + "dpad_down.png");
     dpadLeft = Texture::loadFile(renderer_, evoimg + "dpad_left.png");
     dpadRight = Texture::loadFile(renderer_, evoimg + "dpad_right.png");
+    // the arrows' own dark halo (UIREV-2, L1): a loaded Texture cannot be read back pixel by pixel, so the
+    // outline is built from a fresh Image decode of the same file, once here rather than per frame
+    dpadUpOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_up.png"));
+    dpadDownOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_down.png"));
+    dpadLeftOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_left.png"));
+    dpadRightOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_right.png"));
 
     // a theme without launcher fonts (and a default theme without them either) gets the shipped pair -
     // Open Sans Medium/Bold (OFL), the stand-in for the console's SST since 2026-09-21

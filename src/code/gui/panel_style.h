@@ -78,6 +78,14 @@ public:
     // the same from the protocol string
     void footer(Gui &gui, const ableem::Rect &footer, const std::string &line, bool withRule = true) const;
 
+    // a dark outline/halo texture from an image's own alpha shape: the shape drawn in black at alpha 150 at
+    // each of the eight 1 px offsets and once more 2 px down-right, composited as TextRenderer's text halo
+    // is - what keeps the launcher's Play button and (since UIREV-2/UIREV-27) the d-pad hint arrows and the
+    // meta icons readable over a light background. The texture is the image's size plus 5 in each dimension,
+    // the image's own shape sitting at (2, 2) in it; draw it at the icon's rect expanded by (-2, -2, +5, +5).
+    // An invalid image (or one `Renderer::createStreaming` cannot back) gives an invalid texture back.
+    static ableem::Texture outlineOf(ableem::Renderer &renderer, const ableem::Image &image);
+
     // one button as the footer draws it at (x, y), `height` tall: the face buttons (X, O, T, S) as the
     // theme's 30 px images, every named button (Start, Select, L1..R2, Esc, Enter, Tab, or any word such as
     // RESET) as a chip - a small dark box with a light edge and the name in small bold capitals - so a
