@@ -299,9 +299,23 @@ struct Input::Impl {
         return true;
     }
     bool injectedPending() {
+        if (!barrierReleases.empty())
+            return true;
         std::lock_guard<std::mutex> lock(injectedMutex);
         return !injected.empty();
     }
+
+    // CONSOLE-13, the busy rule (see flushInputEvents in the header): what poll() has handed out as pressed and
+    // not yet as released - a press is a ButtonDown/DpadDown/KeyDown, told apart as flushInputEvents' InputId
+    // does. The end of a busy job releases all of them (barrierReleases, handed out first), and from then on a
+    // release or a key repeat of anything not in here is not handed out: its press was made before or during
+    // the job. Only the thread that polls touches these.
+    std::vector<Event> held;
+    std::deque<Event> barrierReleases;
+    bool keyRepeat = false;   // the SDL key event the last poll read was the key's own repeat
+    bool swallowText = false; // a key repeat was just kept back: the text it types comes next
+    void admit(Event &out);
+    void releaseHeld();
     std::vector<std::string> mappingPaths;
     std::string currentMappingPath;
     std::vector<std::unique_ptr<Pad>> pads;
@@ -854,7 +868,29 @@ bool Input::waitForEvent(int timeoutMs) {
     }
 }
 
+//*******************************
+// Input::poll
+//*******************************
+// pollEvent() is the event itself; poll() hands it out under the busy rule (CONSOLE-13): the releases the end of
+// a busy job made come first, and Impl::admit() keeps back a release or key repeat of what was pressed before
+// or during the job
 bool Input::poll(Event &out) {
+    if (!impl->barrierReleases.empty()) {
+        out = impl->barrierReleases.front();
+        impl->barrierReleases.pop_front();
+        impl->eventSinceDraw = true;
+        if (out.type == Event::Type::DpadUp)
+            impl->setDpad(out.button, false);
+        return true;
+    }
+    impl->keyRepeat = false;
+    if (!pollEvent(out))
+        return false;
+    impl->admit(out);
+    return true;
+}
+
+bool Input::pollEvent(Event &out) {
     out = Event();
     impl->takeTermSignal();
     impl->runTasks(); // the DebugDriver's virtual-pad work, on this thread
@@ -929,8 +965,10 @@ bool Input::poll(Event &out) {
         }
     }
 
-    if (e.type == SDL_KEYDOWN)
+    if (e.type == SDL_KEYDOWN) {
         impl->keySeen = true;
+        impl->keyRepeat = e.key.repeat != 0;
+    }
 
     if (impl->keyboardAsPad && impl->devKeyMap) {
         translateKeyboardToPad(e); // mutates e in place; falls through to the normal handling below
@@ -1123,7 +1161,66 @@ template <typename E> bool keepRelease(const E &e, std::vector<InputId> &dropped
     return true;
 }
 
+bool sameInput(const Event &a, const Event &b) {
+    InputId ia{}, ib{};
+    bool pa = false, pb = false;
+    return pressOrRelease(a, ia, pa) && pressOrRelease(b, ib, pb) && ia == ib;
+}
+
 } // namespace
+
+//*******************************
+// Input::Impl::admit / releaseHeld
+//*******************************
+// the busy rule (CONSOLE-13): `out` is what pollEvent() read; a press is noted as held, the release of a held
+// press ends it, and anything a screen must not see - the release of a press it was never handed (made during
+// a busy job, or ended by releaseHeld() at the end of one), the repeat of a key it does not hold, and the text
+// such a repeat types - becomes a consumed event (Type::None), as a swallowed key repeat already was
+void Input::Impl::admit(Event &out) {
+    if (out.type == Event::Type::TextInput) {
+        if (swallowText) {
+            swallowText = false;
+            out = Event();
+        }
+        return;
+    }
+    InputId id{};
+    bool isPress = false;
+    if (!pressOrRelease(out, id, isPress))
+        return;
+    swallowText = false;
+    auto it = std::find_if(held.begin(), held.end(), [&out](const Event &down) { return sameInput(down, out); });
+    if (isPress) {
+        if (keyRepeat) {
+            if (it == held.end()) { // a key held since before the job: its repeats and their text stay back
+                out = Event();
+                swallowText = true;
+            }
+            return; // a repeat is not a press of its own
+        }
+        if (it == held.end())
+            held.push_back(out);
+        return;
+    }
+    if (it == held.end()) {
+        out = Event(); // nothing handed out is let go of
+        return;
+    }
+    held.erase(it);
+}
+
+// the end of a busy job: every press handed out is released now, whether or not the player has let go
+void Input::Impl::releaseHeld() {
+    for (const Event &down : held) {
+        Event up = down;
+        up.type = down.type == Event::Type::ButtonDown ? Event::Type::ButtonUp
+                  : down.type == Event::Type::DpadDown ? Event::Type::DpadUp
+                                                       : Event::Type::KeyUp;
+        barrierReleases.push_back(up);
+    }
+    held.clear();
+    swallowText = false;
+}
 
 void Input::flushInputEvents() {
     SDL_PumpEvents();
@@ -1156,6 +1253,10 @@ void Input::flushInputEvents() {
     // a direction half-seen before the flush must not keep reading as held afterwards (a kept release
     // says the same again when it is read)
     impl->dpadState[DUP] = impl->dpadState[DDOWN] = impl->dpadState[DLEFT] = impl->dpadState[DRIGHT] = false;
+    // CONSOLE-13: and nothing a screen was handed stays held - every open press is released, first thing the
+    // next poll() hands out; the real releases (the ones kept above, or the player's own later) are then the
+    // releases of nothing held, which poll() keeps back
+    impl->releaseHeld();
 }
 
 void Input::requestQuit() {

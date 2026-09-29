@@ -288,6 +288,21 @@ Every screen but the launcher's own carousel frame draws in **one look**, and ne
   `endBusy()` with `Gui::tickBusy()` in its loops (the spinner over the dimmed screen); a blocking call
   with no loop goes through `Gui::drawText(message)` (background, logo, spinner). Background work
   reports in the launcher's `NotificationBubble` (top-right, slides in and out), never in a status line.
+- **Input across a busy job (the busy rule, CONSOLE-13).** While a spinner shows every pad and key input is
+  ignored, and when the job ends the input starts clean - nothing held, no hold-repeat carried over. It is
+  done once, in `Input` (`Gui::endBusy()` -> `Input::flushInputEvents()`, and `poll()`), never per screen:
+  a press made before the job's end and not yet handed out is dropped (CONSOLE-11); every press a screen was
+  handed and not the release of is released at the job's end (a `ButtonUp`/`DpadUp`/`KeyUp`, the first
+  things `poll()` hands out, `padEventPending()` true until read, the d-pad state centred), whether or not the
+  player let go (CONSOLE-12's hold stops on it); and `poll()` never hands out a release of a press it did not
+  hand out, nor a key's repeat or its text while no screen holds that key - so the player's own later release,
+  or a press made during the job and held past it, never reaches a screen. A screen or an extension gets it
+  for free by ending a hold on any one of: its release event (`GuiScreen`'s loop, the launcher's L1/R1),
+  `padEventPending()` (`fastForwardUntilAnotherEvent`, the list menus), or the live d-pad state read once a
+  frame (`HoldRepeat` + a `holdTick` as Options and the game editor do). A hold that can outlive a screen
+  opened over it must use the live state: that screen may read the release, the one under it never sees it
+  (the launcher's carousel, e57dfa4). Never act on a `...Up` event as if it were a press. Tests:
+  `tests/classic/test_busy_input.cpp` (and `test_input_flush.cpp`).
 - **Every string on screen is `_()`** and lands in all 16 language files in the same commit
   (`tools/lang_tools.py extract`/`update`, then translate); no `=` in a key.
 - **Testing a screen** is `tools/ab_drive.py` (`start --show`, `run "menu 6; wait_screen GuiOptions; shot
