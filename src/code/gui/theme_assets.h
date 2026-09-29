@@ -60,9 +60,6 @@ public:
     // the d-pad hint chips (evoimg/dpad_*.png, tools/make_evoimg_icons.py) - ours, not the theme's: every
     // theme gets the same four arrows. What PanelStyle::faceIcon draws for "|@Up|"/"|@Down|"/"|@Left|"/"|@Right|"
     ableem::Texture dpadUp, dpadDown, dpadLeft, dpadRight;
-    // each arrow's dark outline (PanelStyle::outlineOf, UIREV-2), made once here so a white arrow still
-    // reads on a light theme's hint bar (aergb, autobleem, default, evolution)
-    ableem::Texture dpadUpOutline, dpadDownOutline, dpadLeftOutline, dpadRightOutline;
     // the transparent margin to the right of the check switch's art (the larger of on/off), measured
     // from the theme's files: an option row's value text lines up with the switch's visible edge
     int checkIconRightMargin = 0;
@@ -76,4 +73,10 @@ private:
     Theme &theme_;
     Config &config_;
     std::string classicFontFile_;
+
+public:
+    // each arrow's dark outline (PanelStyle::outlineOf, UIREV-2), made once here so a white arrow still
+    // reads on a light theme's hint bar (aergb, autobleem, default, evolution). Last in the class on purpose:
+    // an extension built before them keeps every other member's offset (new members go at the end).
+    ableem::Texture dpadUpOutline, dpadDownOutline, dpadLeftOutline, dpadRightOutline;
 };
