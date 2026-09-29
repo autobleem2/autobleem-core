@@ -78,6 +78,10 @@ public:
     void setShadow(const Shadow &shadow) { shadow_ = shadow; }
     const Shadow &shadow() const { return shadow_; }
 
+    // how opaque the text and markers drawn from now on are (255 = as composed); a fade sets it per frame
+    // and puts it back to 255 - applied at the copy, so the cached runs are not composed again per alpha
+    void setAlpha(unsigned char alpha) { alpha_ = alpha; }
+
     // Every run of text drawn through here is kept as a texture (the halo and the text composed once) and
     // copied thereafter, so a frame costs one copy per label instead of ten passes of one copy per glyph.
     // Gui drops the cache whenever the fonts go - a theme or language load, the display given up for an
@@ -212,6 +216,7 @@ private:
     ableem::Font &themeFont_;
     std::map<std::string, ableem::Texture> &emojis_;
     Shadow shadow_;
+    unsigned char alpha_ = 255;
     int checkIconRightMargin_ = 0;
     const ableem::Rect *panelOverride_ = nullptr;
 };

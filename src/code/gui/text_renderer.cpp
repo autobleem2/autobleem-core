@@ -238,7 +238,10 @@ void TextRenderer::AllTextOrEmojiTokenInfo::render(int x, int y, XAlignment xAli
             Rect tempRect = tokenInfo.rect;
             tempRect.x += x;
             tempRect.y += y;
-            renderer.copy(tokenInfo.emoji, nullptr, &tempRect);
+            ableem::Texture emoji = tokenInfo.emoji; // shared with every other screen: put the alpha back
+            emoji.setAlphaMod(text.alpha_);
+            renderer.copy(emoji, nullptr, &tempRect);
+            emoji.setAlphaMod(255);
         } else {
             // the token is text
             text.drawRun(font, x + tokenInfo.rect.x, y + tokenInfo.rect.y, useTextColor ? &textColor : nullptr,
@@ -261,7 +264,10 @@ void TextRenderer::drawRun(const ableem::Font &font, int x, int y, const Color *
         return;
     Size size = cached.tex.size();
     Rect dst(x - cached.pad, y - cached.pad, size.w, size.h);
-    renderer_.copy(cached.tex, nullptr, &dst);
+    ableem::Texture tex = cached.tex; // a handle onto the cached one
+    tex.setAlphaMod(alpha_);
+    renderer_.copy(tex, nullptr, &dst);
+    tex.setAlphaMod(255);
 }
 
 //*******************************
