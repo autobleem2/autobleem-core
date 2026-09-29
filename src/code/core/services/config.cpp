@@ -40,6 +40,11 @@ Config::Config() {
     if (inifile.values["aspect"] == "") {
         inifile.values["aspect"] = "false";
     }
+    // the PS1 emulator's screen scaling (Options -> "Emulator screen scaling"): pcsx-abnxt's Scaler values -
+    // 1x1, 2x, 4:3, 4:3i (integer 4:3), full. Until 2026-09-29 it was the on/off "aspect": on = full, off = 4:3
+    if (inifile.values["scaler"] == "") {
+        inifile.values["scaler"] = inifile.values["aspect"] == "true" ? "full" : "4:3";
+    }
     // which PS1 emulator a game starts in (Options -> "PS1 Emulator"): pcsx-abnxt, the next one
     // (Autobleem/bin/emunxt) - the default on every build since 2026-09-21 - or pcsx-ab, the one AutoBleem
     // has always shipped (Autobleem/bin/emu); the launch scripts get the name as their last argument. Both
