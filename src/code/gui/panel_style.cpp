@@ -2,6 +2,7 @@
 // PanelStyle: the shared look of the menus and dialogs. See the header.
 //
 #include "panel_style.h"
+#include "footer_shorten.h"
 #include "gui.h"
 #include "theme_assets.h"
 
@@ -430,11 +431,29 @@ void PanelStyle::footer(Gui &gui, const Rect &footer, const vector<HintItem> &gi
             if (widthAt(font, gap, false) > room) {
                 font = assets.themeFonts[FONT_15_BOLD];
                 if (widthAt(font, gap, false) > room) {
-                    // even the smallest font's labels do not fit: icons only from here - they are fixed
-                    // width, so this always fits unless there are too many hints for even bare icons, which
-                    // is outside this fallback's job (UIREV-3) and is left to clip as before
-                    iconsOnly = true;
-                    gap = IconOnlyGap;
+                    // even the smallest font's labels do not fit: cut the labels ("Back" -> "B..", the longest
+                    // first) and only when even the shortest do not fit, icons only - they are fixed width, so
+                    // that always fits unless there are too many hints for even bare icons, which is outside
+                    // this fallback's job (UIREV-3) and is left to clip as before
+                    vector<string> labels;
+                    for (const HintItem &h : hints)
+                        labels.push_back(h.label);
+                    auto measureLabels = [&](const vector<string> &l) {
+                        vector<HintItem> cut = hints;
+                        for (size_t i = 0; i < cut.size(); i++)
+                            cut[i].label = l[i];
+                        hints.swap(cut);
+                        const int w = widthAt(font, gap, false);
+                        hints.swap(cut);
+                        return w;
+                    };
+                    if (ableem::shortenFooterLabels(labels, room, measureLabels)) {
+                        for (size_t i = 0; i < hints.size(); i++)
+                            hints[i].label = labels[i];
+                    } else {
+                        iconsOnly = true;
+                        gap = IconOnlyGap;
+                    }
                 }
             }
         }

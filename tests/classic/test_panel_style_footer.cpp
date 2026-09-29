@@ -29,6 +29,8 @@
 //
 #include "doctest/doctest.h"
 
+#include "gui/footer_shorten.h"
+
 #include <algorithm>
 #include <cctype>
 #include <string>
@@ -103,6 +105,7 @@ struct FooterPlan {
     int fontPx;
     int gap;
     bool iconsOnly;
+    vector<string> labels; // the labels as drawn (cut when the shortening step was needed)
 };
 const int IconOnlyGap = 16; // matches the fix's panel_style.cpp constant
 
@@ -114,12 +117,28 @@ FooterPlan planFooter(const vector<HintItem> &hints, int room) {
             fontPx = Font20;
             if (widthAt(hints, fontPx, gap, false) > room) {
                 fontPx = Font15;
-                if (widthAt(hints, fontPx, gap, false) > room)
-                    return FooterPlan{0, IconOnlyGap, true};
+                if (widthAt(hints, fontPx, gap, false) > room) {
+                    // the shortening step, then icons only - as footer() does
+                    vector<string> labels;
+                    for (const HintItem &h : hints)
+                        labels.push_back(h.label);
+                    auto measure = [&](const vector<string> &l) {
+                        vector<HintItem> cut = hints;
+                        for (size_t i = 0; i < cut.size(); i++)
+                            cut[i].label = l[i];
+                        return widthAt(cut, Font15, gap, false);
+                    };
+                    if (ableem::shortenFooterLabels(labels, room, measure))
+                        return FooterPlan{Font15, gap, false, labels};
+                    return FooterPlan{0, IconOnlyGap, true, {}};
+                }
             }
         }
     }
-    return FooterPlan{fontPx, gap, false};
+    FooterPlan plan{fontPx, gap, false, {}};
+    for (const HintItem &h : hints)
+        plan.labels.push_back(h.label);
+    return plan;
 }
 
 // GuiMemcards::getStatusLine()'s hints, sorted the way footer() sorts them (X, O, T, S, then L2/R2 - the
@@ -187,12 +206,16 @@ TEST_CASE("German Memory Cards footer: even FONT_15_BOLD, the smallest step, sti
 // it carries no h.label term, only the fixed icon/chip widths)
 //*******************************
 
-TEST_CASE("German Memory Cards footer: planFooter() falls through to icons-only") {
+TEST_CASE("German Memory Cards footer: planFooter() shortens the labels rather than dropping them") {
     const vector<HintItem> hints = germanMemCardsHints();
     const int room = germanMemCardsRoom();
     const FooterPlan plan = planFooter(hints, room);
-    CHECK(plan.iconsOnly);
-    CHECK(plan.fontPx == 0);
+    CHECK_FALSE(plan.iconsOnly);
+    CHECK(plan.fontPx == Font15);
+    bool anyCut = false;
+    for (const string &l : plan.labels)
+        anyCut = anyCut || (l.size() >= 2 && l.compare(l.size() - 2, 2, "..") == 0);
+    CHECK(anyCut);
 }
 
 TEST_CASE("German Memory Cards footer: icons-only fits in the same room the labelled passes overflowed") {
@@ -232,7 +255,78 @@ TEST_CASE("Pathological case: too many hints for even icons-only in a tiny room 
         hints.push_back(HintItem{{"X"}, "Some Fairly Long Label " + std::to_string(i)});
     const int room = 50; // far too small for 20 hints under any fallback
     const FooterPlan plan = planFooter(hints, room);
-    CHECK(plan.iconsOnly); // every earlier step also failed first
+    CHECK(plan.iconsOnly); // shortening failed too
     const int w = widthAt(hints, Font15, IconOnlyGap, true);
     CHECK(w > room); // still overflows - out of this task's scope (UIREV-3 step 3), left to clip as before
+}
+
+//*******************************
+// shortenFooterLabels(): the label cutting itself, over an injectable measure (1 px per code point + 10 px
+// per label, so the numbers are easy to follow)
+//*******************************
+
+namespace {
+int simpleMeasure(const vector<string> &labels) {
+    int w = 0;
+    for (const string &l : labels)
+        w += static_cast<int>(utf8Length(l)) + 10;
+    return w;
+}
+} // namespace
+
+TEST_CASE("shortenFooterLabels: fits -> unchanged") {
+    vector<string> labels = {"Play", "Back"};
+    CHECK(ableem::shortenFooterLabels(labels, 100, simpleMeasure));
+    CHECK(labels == vector<string>{"Play", "Back"});
+}
+
+TEST_CASE("shortenFooterLabels: slightly too wide -> only the longest label is cut, ending in ..") {
+    vector<string> labels = {"Play", "Delete game"}; // 14 + 21 = 35
+    CHECK(ableem::shortenFooterLabels(labels, 34, simpleMeasure));
+    CHECK(labels[0] == "Play");
+    CHECK(labels[1] == "Delete g.."); // one cut: 8 letters + 2 dots = 10 (was 11)
+    CHECK(simpleMeasure(labels) == 34);
+}
+
+TEST_CASE("shortenFooterLabels: cuts go to the longest as it is now, and stop at once when it fits") {
+    vector<string> labels = {"Rename", "Delete game"}; // 16 + 21 = 37
+    CHECK(ableem::shortenFooterLabels(labels, 33, simpleMeasure));
+    CHECK(labels[0] == "Rename");
+    CHECK(labels[1] == "Delet.."); // Delete g.. -> Delete.. (trailing space dropped) -> Delet..
+    CHECK(simpleMeasure(labels) == 33);
+}
+
+TEST_CASE("shortenFooterLabels: UTF-8 is cut on code points") {
+    vector<string> labels = {"Zmień", "Wstecz"}; // 15 + 16 = 31
+    CHECK(ableem::shortenFooterLabels(labels, 29, simpleMeasure));
+    CHECK(labels[0] == "Zmień");
+    CHECK(labels[1] == "Ws..");
+    labels = {"Zmień się"}; // 19; the cuts run through the multibyte "ń" and "ę"
+    CHECK(ableem::shortenFooterLabels(labels, 17, simpleMeasure));
+    CHECK(labels[0] == "Zmień..");
+    labels = {"Zmień się"};
+    CHECK(ableem::shortenFooterLabels(labels, 16, simpleMeasure));
+    CHECK(labels[0] == "Zmie..");
+    labels = {"Łódź"};
+    CHECK_FALSE(ableem::shortenFooterLabels(labels, 5, simpleMeasure)); // 4 letters cannot gain
+    CHECK(labels[0] == "Łódź");
+}
+
+TEST_CASE("shortenFooterLabels: a label never goes below two letters plus the dots") {
+    vector<string> labels = {"Wstecz", "Zapisz"};
+    CHECK_FALSE(ableem::shortenFooterLabels(labels, 10, simpleMeasure)); // needs icons only
+    CHECK(labels[0] == "Ws..");
+    CHECK(labels[1] == "Za..");
+}
+
+TEST_CASE("shortenFooterLabels: a trailing space is dropped before the dots") {
+    vector<string> labels = {"Play in RetroArch"};
+    CHECK(ableem::shortenFooterLabels(labels, 16, simpleMeasure));
+    CHECK(labels[0] == "Play..");
+}
+
+TEST_CASE("shortenFooterLabels: short labels are left alone (a cut would not gain)") {
+    vector<string> labels = {"Esc", "Back"};
+    CHECK_FALSE(ableem::shortenFooterLabels(labels, 5, simpleMeasure));
+    CHECK(labels == vector<string>{"Esc", "Back"});
 }
