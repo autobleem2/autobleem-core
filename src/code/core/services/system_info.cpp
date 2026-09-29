@@ -446,7 +446,8 @@ string SystemInfoService::formatUtcOffset(long seconds) {
         return "UTC";
     char sign = seconds < 0 ? '-' : '+';
     long minutes = labs(seconds) / 60;
-    char text[16];
+    // wide enough for any long's worst case (gcc's -Wformat-truncation counts digits, not real-world offsets)
+    char text[64];
     snprintf(text, sizeof(text), "UTC%c%02ld:%02ld", sign, minutes / 60, minutes % 60);
     return text;
 }
