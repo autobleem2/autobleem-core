@@ -41,6 +41,8 @@ if (AB_CORE_UI)
     ab_add_test(test_pad_script classic/test_pad_script.cpp LIBS ableem)
     # the virtual pads and SIGTERM through a real GuiBase (skips itself without a renderer or on SDL < 2.24)
     ab_add_test(test_virtual_pads classic/test_virtual_pads.cpp LIBS ableem)
+    # Image::pixel over a small hand-built PNG - no window/renderer needed, IMG_Load decodes from the file
+    ab_add_test(test_image classic/test_image.cpp LIBS ableem)
     # Platform's AB_HEADLESS policy - pure, no display needed
     ab_add_test(test_headless classic/test_headless.cpp LIBS ableem)
     # the Display row's list from a display's modes - pure, no display needed
