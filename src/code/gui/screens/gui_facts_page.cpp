@@ -103,7 +103,7 @@ void GuiFactsPage::render() {
         status += extra + "   ";
     status += "|@O| " + _("Back");
     if (count > rowsThatFit)
-        status += "   |@L2|/|@R2| " + _("Page");
+        status += "   |@L1|/|@R1| " + _("First/last") + "   |@L2|/|@R2| " + _("Page");
     gui->renderStatus(status);
     renderer.present();
 }
@@ -138,7 +138,11 @@ void GuiFactsPage::loop() {
                     scrollBy(rowsThatFit);
                 break;
             case Event::Type::ButtonDown:
-                if (e.button == Button::L2) {
+                if (e.button == Button::L1) {
+                    scrollBy(-static_cast<int>(lines.size())); // the first row
+                } else if (e.button == Button::R1) {
+                    scrollBy(static_cast<int>(lines.size())); // the last (scrollBy clamps)
+                } else if (e.button == Button::L2) {
                     scrollBy(-rowsThatFit);
                 } else if (e.button == Button::R2) {
                     scrollBy(rowsThatFit);
