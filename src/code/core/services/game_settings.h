@@ -9,26 +9,31 @@
 #include <ableem/engine/ini_file.h>
 
 #include <string>
+#include <vector>
 
 //******************
 // PcsxSettings
 //******************
 // The per-game emulator values the editor shows, as read back from the game's pcsx.cfg. They are ints
 // because the editor steps them with the d-pad; how each one is encoded in the file is the service's
-// business (see the setters below).
+// business (see the setters below). The Display rows are pcsx-abnxt's in-game menu's Picture rows, with
+// its keys and values.
 struct PcsxSettings {
-    int highres = 0;
+    int highres = 0; // pcsx.cfg gpu_neon.enhancement_enable, the Resolution row: 0 1x, 1 2x
+    int noSeams = 1; // pcsx.cfg gpu_neon.enhancement_no_seams, Remove seams (with 2x only); no line = on
     int speedhack = 0;
     int clock = 0;
     int frameskip = 0;
-    int dither = 0; // read like the others but never shown or written; kept as it was
-    int scanlines = 0;
+    int dither = 1;    // pcsx.cfg dithering2, pcsx-abnxt's Dithering: 0 off, 1 where the game asks (no line), 2 always
+    int scanlines = 0; // pcsx.cfg scanlines: 0 off, 1..3 how thick (the classic pcsx-ab: anything but 0 is on)
     int scanlineLevel = 0;
     int interpolation = 0;
     int bootLogo = 1;  // pcsx.cfg SlowBoot: the BIOS boot logo shown before the game; no line = shown
     int smoothing = 0; // pcsx.cfg soft_filter, pcsx-abnxt's Smoothing: 0 none, 1 scale2x, 2 eagle2x, 3 hq2x, 4 hq3x
     int sonyHacks = 0; // pcsx.cfg sonyhacks, pcsx-abnxt only: Sony's per-title overrides for the disc's serial
-    int filter = 0;    // pcsx.cfg plat_target.hwfilter, pcsx-abnxt's own numbering: 0 Off, 1 Linear, 2 Sharp
+    // pcsx.cfg plat_target.hwfilter, pcsx-abnxt's own numbering (ab_filter_names): 0 Nearest, 1 Linear, 2 Sharp,
+    // 3 Sharp (simple), 4 Quilez, 5 CRT (fast), 6 CRT-Pi
+    int filter = 0;
     std::string gpu;
 };
 
@@ -100,9 +105,17 @@ public:
     // says (nothing, if the game has no pcsx.cfg). The 0/1 flags are written in decimal, the levels in
     // hex - that is what PCSX reads. Levels are clamped to their ranges here. All of them do nothing while
     // the game has its own config (`custom`): the emulator's file speaks for it until unlock().
+    // gpu_neon.enhancement_enable, the Resolution row (1x/2x): the built-in NEON GPU only (neonGpuFor)
     void setHighres(GameSettings &s, bool on); // also remembered in the Game.ini as Highres
+    // gpu_neon.enhancement_no_seams: no 1-pixel gaps between the parts of a picture at 2x
+    void setNoSeams(GameSettings &s, bool on);
+    // dithering2 (pcsx-abnxt's pl_rearmed_cbs.dithering, upstream's versioned key): 0 off, 1 where the game
+    // asks, 2 always; clamped. The classic pcsx-ab has its own (gpu_peops.iUseDither) and ignores it;
+    // RetroArch gets it as pcsx_rearmed_dithering (LaunchService)
+    void setDithering(GameSettings &s, int mode);
     void setSpeedhack(GameSettings &s, bool on);
-    void setScanlines(GameSettings &s, bool on);
+    // scanlines: 0 off, 1..3 how thick (pcsx-abnxt); clamped. A 1 from before is the thinnest
+    void setScanlines(GameSettings &s, int mode);
     void setScanlineLevel(GameSettings &s, int level); // 0..100
     void setClock(GameSettings &s, int clock);         // 0..100
     void setFrameskip(GameSettings &s, int frames);    // 0..3
@@ -110,21 +123,40 @@ public:
     // SlowBoot: off skips the BIOS shell (a homebrew's custom logo can crash pcsx-ab's boot); RetroArch
     // gets it as pcsx_rearmed_show_bios_bootlogo (LaunchService)
     void setBootLogo(GameSettings &s, bool on);
-    // soft_filter: pcsx-abnxt's software scaler on the PSX frame (its menu's "Smoothing"); the classic
-    // pcsx-ab ignores the key, so the editor shows the row only with pcsx-abnxt selected
-    void setSmoothing(GameSettings &s, int mode); // 0..4, see SmoothingNames
+    // soft_filter: pcsx-abnxt's software scaler on the PSX frame (its menu's "Smoothing"); the values a
+    // platform offers are smoothingsFor(). The editor greys the row with the classic pcsx-ab selected
+    void setSmoothing(GameSettings &s, int mode); // 0..SmoothingCount-1, see SmoothingNames
     // sonyhacks: pcsx-abnxt applies Sony's per-title configuration overrides (the ones the console's
     // emulator had, by the disc's serial) over the cfg; a lever for a game that misbehaves, off by default
     void setSonyHacks(GameSettings &s, bool on);
     // plat_target.hwfilter: how the picture is scaled to the screen - the key pcsx-abnxt saves from its own
     // menu, so a change made in the emulator shows here and the next launch keeps it. LaunchService passes
-    // it as -filter; the classic pcsx-ab has no Sharp and gets Off for it (LaunchService::pcsxAbFilter).
-    void setFilter(GameSettings &s, int mode); // 0 Off, 1 Linear, 2 Sharp; clamped
+    // it as -filter; the classic pcsx-ab knows only nearest and bilinear, and everything but Linear is
+    // nearest there (LaunchService::pcsxAbFilter). The values a platform offers are filtersFor().
+    void setFilter(GameSettings &s, int mode);                     // 0..FilterCount-1 (PcsxSettings::filter); clamped
     void setGpuPlugin(GameSettings &s, const std::string &plugin); // USB only: "builtin_gpu" or "gpu_peops.so"
+
+    // --- what a platform offers (Env::platformName(): psc, rpi, pcusb, win, pc) ---
+    // The Filter row's values, in order: pcsx-abnxt's ab_filter_names, all seven on every target today (its
+    // GL pipeline has the same passes everywhere; on the console at 1080p CRT-Pi stays, the emulator's help
+    // says it is too heavy there)
+    static std::vector<int> filtersFor(const std::string &platform);
+    // The Smoothing row's values: None/Scale2x/Eagle2x on the console, HQ2x/HQ3x (CPU scalers, 30 fps on
+    // the console) too everywhere else - pcsx-abnxt's men_ab_smooth_psc / men_ab_smooth
+    static std::vector<int> smoothingsFor(const std::string &platform);
+    // whether the built-in NEON GPU is there, for the Resolution and Remove seams rows: the ARM targets
+    static bool neonGpuFor(const std::string &platform);
+    // the value `step` places from `current` in `values`, held at the ends; a current value not in the list
+    // moves to the first
+    static int stepIn(const std::vector<int> &values, int current, int step);
 
     static const char *const BuiltinGpu;
     static const char *const PeopsGpu;
-    static const char *const SmoothingNames[5]; // "None", "Scale2x", "Eagle2x", "HQ2x", "HQ3x"
+    static const int SmoothingCount = 5;
+    static const char *const SmoothingNames[SmoothingCount]; // "None", "Scale2x", "Eagle2x", "HQ2x", "HQ3x"
+    static const int FilterCount = 7;                        // pcsx-abnxt's AB_FILTER_COUNT
+    static const int DitheringCount = 3;
+    static const int ScanlineModes = 4; // off, 1, 2, 3
 
 private:
     // where the pcsx.cfg is: the game's folder, or the !SaveStates folder for an internal game

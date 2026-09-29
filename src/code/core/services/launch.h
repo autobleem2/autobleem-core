@@ -73,16 +73,18 @@ public:
     // bios and plugins as links next to the working directory): <System>/runpcsx, made with directory
     // links before the run and cleared after. pcsx-abnxt takes -dotdir/-biosdir instead and needs none.
     static std::string pcsxRunDir();
-    // the classic pcsx-ab's -filter for a filter mode (0 Off, 1 Linear, 2 Sharp): its numbering is the
-    // other way round - 0 is bilinear, 1 nearest - and it has no Sharp, so Sharp is Off
+    // the classic pcsx-ab's -filter for a filter mode (pcsx-abnxt's numbering, PcsxSettings::filter): its
+    // numbering is the other way round - 0 is bilinear, 1 nearest - and it has nothing else, so Linear is
+    // its bilinear and every other filter (Sharp and on) its nearest
     static std::string pcsxAbFilter(int mode);
     // the game's filter mode from its pcsx.cfg (the game folder's; the save-state folder's for an internal
-    // game): 0 Off, 1 Linear, 2 Sharp, 0 when the cfg has no line
+    // game): 0 Nearest, 1 Linear, 2 Sharp, 3 Sharp (simple), 4 Quilez, 5 CRT (fast), 6 CRT-Pi; 0 when the
+    // cfg has no line or a value past those
     static int filterModeFor(const PsGame &game);
 
     // what a launch runs, for either mode. The pcsx plan: the save-state folder, the disc image, the
     // language id, the resume slot (-1 = none), config.ini's aspect flag as "0"/"1" and the game's filter
-    // (its pcsx.cfg plat_target.hwfilter) as "0"/"1"/"2" - Off/Linear/Sharp, pcsx-abnxt's -filter as is.
+    // (its pcsx.cfg plat_target.hwfilter) as "0".."6" - pcsx-abnxt's -filter as is.
     // launch.sh converts it for the classic pcsx-ab itself (it may fall back to that emulator); a direct
     // launch of pcsx-ab gets pcsxAbFilter()'s value.
     // The RetroArch plan: the file and the core - "NEON"/"PEOPS" for one of our PS1 games (the platform's

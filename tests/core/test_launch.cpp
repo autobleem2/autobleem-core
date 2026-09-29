@@ -174,13 +174,13 @@ TEST_CASE("a launch before the clock is set leaves an earlier last-played time a
     CHECK(lib.usbGame()->last_played > 0);
 }
 
-TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg as Off/Linear/Sharp 0/1/2") {
+TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg as pcsx-abnxt's 0..6") {
     Launching lib;
     lib.configure("Aspect=true\n");
     PsGamePtr game = lib.usbGame();
 
     // launch.sh gets pcsx-abnxt's numbering as is and converts it for the classic pcsx-ab itself
-    for (const char *mode : {"0", "1", "2"}) {
+    for (const char *mode : {"0", "1", "2", "3", "4", "5", "6"}) {
         lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", string("plat_target.hwfilter = ") + mode + "\n");
         lib.runner.calls.clear();
         lib.service->launch(game, EmuMode::Pcsx, -1);
@@ -195,10 +195,11 @@ TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg
     CHECK(lib.runner.only().args[7] == "0");
 }
 
-TEST_CASE("the classic pcsx-ab's -filter is the other way round and has no Sharp") {
-    CHECK(LaunchService::pcsxAbFilter(0) == "1"); // Off -> nearest
+TEST_CASE("the classic pcsx-ab's -filter is the other way round and has only nearest and bilinear") {
+    CHECK(LaunchService::pcsxAbFilter(0) == "1"); // Nearest -> nearest
     CHECK(LaunchService::pcsxAbFilter(1) == "0"); // Linear -> bilinear
-    CHECK(LaunchService::pcsxAbFilter(2) == "1"); // Sharp -> nearest
+    for (int mode = 2; mode <= 6; mode++)         // Sharp .. CRT-Pi -> nearest
+        CHECK(LaunchService::pcsxAbFilter(mode) == "1");
 }
 
 TEST_CASE("the emulator argument is config.ini's choice between pcsx-ab and pcsx-abnxt") {
@@ -405,7 +406,7 @@ TEST_CASE("with raconfig on, the game's pcsx.cfg settings are RetroArch's for th
                       "gpu_neon.enhancement_enable = 1\n"
                       "gpu_neon.enhancement_no_main = 0\n"
                       "psx_clock = 39\n" // 0x39 = 57
-                      "gpu_peops.iUseDither = 1\n"
+                      "dithering2 = 2\n" // always: the core option is on
                       "spu_config.iUseInterpolation = 2\n"
                       "scanlines = 1\n"
                       "scanline_level = 32\n" // 0x32 = 50 -> opacity 0.5
@@ -705,9 +706,9 @@ TEST_CASE("direct mode: the PS1 emulator itself - pcsx-ab in launch.sh's run dir
                                           "-cdfile", lib.tmp.at("Games/Tekken 3/Tekken 3.cue")});
         CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("System/runpcsx")));
     }
-    SUBCASE("the game's filter: pcsx-abnxt gets it as is, pcsx-ab in its own numbering, Sharp as Off") {
-        const char *const expectAb[] = {"1", "0", "1"};
-        for (int mode = 0; mode <= 2; mode++) {
+    SUBCASE("the game's filter: pcsx-abnxt gets it as is, pcsx-ab in its own numbering, Sharp and on as nearest") {
+        const char *const expectAb[] = {"1", "0", "1", "1", "1", "1", "1"};
+        for (int mode = 0; mode <= 6; mode++) {
             lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "plat_target.hwfilter = " + std::to_string(mode) + "\n");
             for (const char *emu : {"pcsx-abnxt", "pcsx-ab"}) {
                 lib.configure(string("Emulator=") + emu + "\n");

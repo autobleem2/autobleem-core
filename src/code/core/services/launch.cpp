@@ -7,6 +7,7 @@
 #include "environment.h"
 #include "../main.h"
 #include "system.h"
+#include "game_settings.h"
 #include "pcsx_config.h"
 
 #include <ableem/engine/config_file_editor.h>
@@ -224,14 +225,15 @@ string LaunchService::pcsxRunDir() {
 // LaunchService::pcsxAbFilter / filterModeFor
 //*******************************
 string LaunchService::pcsxAbFilter(int mode) {
+    // Linear is its bilinear; Nearest, and every filter it does not have (Sharp and on), its nearest
     return mode == 1 ? "0" : "1";
 }
 
 int LaunchService::filterModeFor(const PsGame &game) {
     // the game's own config's filter when it has one: pcsx-abnxt would keep that one over -filter anyway,
-    // the classic pcsx-ab only knows -filter
-    int mode = atoi(PcsxConfig::value(game, "plat_target.hwfilter").c_str());
-    return mode < 0 || mode > 2 ? 0 : mode;
+    // the classic pcsx-ab only knows -filter. Hex in the file, as pcsx-abnxt writes it
+    int mode = strtol(PcsxConfig::value(game, "plat_target.hwfilter").c_str(), nullptr, 16);
+    return mode < 0 || mode >= GameSettingsService::FilterCount ? 0 : mode;
 }
 
 //*******************************
@@ -440,7 +442,8 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
         // display to its own; a change the player makes in its menu comes back in <runtime>/outputmode, which
         // AutoBleem::runOutside takes into config.ini after the game
         if (has("outputmode")) {
-            env.emplace_back("AB_OUTPUT_MODE", OutputMode::parse(config_.inifile.values[OutputMode::ConfigKey]).token());
+            env.emplace_back("AB_OUTPUT_MODE",
+                             OutputMode::parse(config_.inifile.values[OutputMode::ConfigKey]).token());
             DirEntry::removeFile(OutputMode::emulatorFile()); // nothing left over from an earlier game
         }
         // Options -> Diagnostics -> "Show performance": the emulator's HUD shows its FPS and CPU as well, for
@@ -806,10 +809,14 @@ void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raCo
         int highres = atoi(value("gpu_neon.enhancement_enable").c_str());
         int speedhack = atoi(value("gpu_neon.enhancement_no_main").c_str());
         int clock = strtol(value("psx_clock").c_str(), nullptr, 16);
-        int dither = atoi(value("gpu_peops.iUseDither").c_str());
+        // the game editor's Dithering row, pcsx-abnxt's key (no line = on where the game asks, its default);
+        // the core option is on or off, so "always" is on
+        string ditherLine = value("dithering2");
+        int dither = ditherLine.empty() ? 1 : strtol(ditherLine.c_str(), nullptr, 16);
         int interpolation = strtol(value("spu_config.iUseInterpolation").c_str(), nullptr, 16);
 
-        int scanlines = atoi(value("scanlines").c_str());
+        // 0 off, 1..3 how thick in pcsx-abnxt: RetroArch's overlay is one thickness
+        int scanlines = strtol(value("scanlines").c_str(), nullptr, 16);
         int scanline_level = strtol(value("scanline_level").c_str(), nullptr, 16);
         int frameskip = atoi(value("frameskip3").c_str());
         string slowBoot = value("SlowBoot");
@@ -827,7 +834,7 @@ void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raCo
             set(coreOptions, "pcsx_rearmed_spu_interpolation", interpolations[interpolation]);
         set(coreOptions, "pcsx_rearmed_frameskip", to_string(frameskip));
 
-        if (scanlines == 1) {
+        if (scanlines != 0) {
             float opacity = scanline_level / 100.0f;
             set(raConfig, "input_overlay", ":/overlay/scanlines.cfg");
             set(raConfig, "input_overlay_enable", "true");
@@ -843,8 +850,9 @@ void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raCo
     set(raConfig, "custom_viewport_y", "0");
     set(raConfig, "aspect_ratio_index", wide ? "23" : "0");
 
-    // a PS1 game's own filter (its pcsx.cfg): RetroArch smooths or it does not - Sharp is Off here, as in the
-    // classic pcsx-ab. A foreign game has no pcsx.cfg and keeps RetroArch's own video_smooth.
+    // a PS1 game's own filter (its pcsx.cfg): RetroArch smooths or it does not - only Linear smooths, Sharp
+    // and the rest are nearest here, as in the classic pcsx-ab. A foreign game has no pcsx.cfg and keeps
+    // RetroArch's own video_smooth.
     if (!game.foreign)
         set(raConfig, "video_smooth", filterModeFor(game) == 1 ? "true" : "false");
 }
