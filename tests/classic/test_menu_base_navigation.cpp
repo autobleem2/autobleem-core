@@ -18,6 +18,7 @@
 //
 #include "doctest/doctest.h"
 
+#include <cstddef>
 #include <vector>
 
 namespace {
