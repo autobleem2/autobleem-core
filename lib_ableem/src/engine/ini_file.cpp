@@ -75,7 +75,7 @@ void IniFile::mergeFrom(const string &_path) {
 // IniFile::save
 //*******************************
 void IniFile::save(const string &_path) {
-    // a plain "\n": ini/cfg files stay LF (CLAUDE.md), and Game.ini's values feed pcsx.cfg / are read by the
+    // a plain "\n": ini/cfg files stay LF (docs/developer-guide.md), and Game.ini's values feed pcsx.cfg / are read by the
     // emulator, which must see no trailing '\r'. Written only when the text differs from what the file
     // holds, through .tmp + rename (DirEntry::writeFileIfChanged): a start, a scan or an Options close that
     // changed nothing leaves the file - and the stick - alone.
