@@ -37,6 +37,10 @@ if (AB_CORE_UI)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)
+    # padsim's words for the driver's virtual pads - pure
+    ab_add_test(test_pad_script classic/test_pad_script.cpp LIBS ableem)
+    # the virtual pads and SIGTERM through a real GuiBase (skips itself without a renderer or on SDL < 2.24)
+    ab_add_test(test_virtual_pads classic/test_virtual_pads.cpp LIBS ableem)
     # Platform's AB_HEADLESS policy - pure, no display needed
     ab_add_test(test_headless classic/test_headless.cpp LIBS ableem)
     # the Display row's list from a display's modes - pure, no display needed

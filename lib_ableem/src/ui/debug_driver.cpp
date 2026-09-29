@@ -3,13 +3,19 @@
 //
 #include "ableem/ui/debug_driver.h"
 #include "ableem/ui/input.h"
+#include "ableem/ui/pad_script.h"
 #include "ableem/ui/platform.h"
 #include "ableem/ui/renderer.h"
 
+#include <ableem/engine/filesystem.h>
 #include <ableem/engine/log.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <cctype>
@@ -23,6 +29,7 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <direct.h>
 typedef SOCKET sock_t;
 #define CLOSESOCK closesocket
 #define AB_SEND_FLAGS 0
@@ -30,6 +37,7 @@ typedef SOCKET sock_t;
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
 typedef int sock_t;
@@ -37,6 +45,8 @@ typedef int sock_t;
 #define CLOSESOCK close
 #define AB_SEND_FLAGS MSG_NOSIGNAL
 #endif
+
+#include "sdl_common.h" // the clip's PNGs (SDL_image) - after winsock2.h, which must come before windows.h
 
 using namespace std;
 
@@ -48,9 +58,27 @@ const int DebugDriver::AuthTimeoutMs;
 const size_t DebugDriver::MaxAuthLine;
 
 namespace {
+
+// the driver's output folders (shots, clips, batteries): open as the umask allows, not DirEntry's 0775 - a test
+// sandbox writes through a share where a folder it made counts as someone else's
+bool makeOutputDirs(const std::string &dir) {
+#ifdef _WIN32
+    return DirEntry::createDirs(dir);
+#else
+    if (dir.empty() || DirEntry::isDirectory(dir))
+        return true;
+    const size_t slash = dir.find_last_of('/');
+    if (slash != std::string::npos && slash > 0 && !makeOutputDirs(dir.substr(0, slash)))
+        return false;
+    return mkdir(dir.c_str(), 0777) == 0 || DirEntry::isDirectory(dir);
+#endif
+}
+
 std::mutex screenMutex;
 std::vector<std::string> screenStack;
 std::vector<std::string> screenItems; // under screenMutex too
+
+typedef chrono::steady_clock Clock;
 
 // "11GuiLauncher" (gcc) / "class GuiLauncher" (msvc) -> "GuiLauncher"
 std::string plainName(const char *typeName) {
@@ -146,14 +174,167 @@ void splitModifiers(string &name, unsigned &mods) {
     }
 }
 
+// padsim's modifier key names -> the KeyMod bit (0: not a modifier)
+unsigned modifierFor(const string &name) {
+    if (name == "shift" || name == "rshift")
+        return KeyMod::Shift;
+    if (name == "ctrl" || name == "rctrl")
+        return KeyMod::Ctrl;
+    if (name == "alt" || name == "altgr")
+        return KeyMod::Alt;
+    if (name == "meta")
+        return KeyMod::Gui;
+    return 0;
+}
+
+// a key by the driver's names or padsim's (enter, esc, space, minus, ...) as a KeyDown event; false when unknown
+bool keyEventFor(const string &name, Event &e) {
+    static const struct {
+        const char *name;
+        char c;
+    } chars[] = {{"space", ' '},      {"minus", '-'},      {"equal", '='},     {"leftbrace", '['},
+                 {"rightbrace", ']'}, {"backslash", '\\'}, {"semicolon", ';'}, {"apostrophe", '\''},
+                 {"grave", '`'},      {"comma", ','},      {"dot", '.'},       {"slash", '/'}};
+    e = Event();
+    e.type = Event::Type::KeyDown;
+    string n = name == "esc" ? "escape" : name;
+    if (keyFor(n, e.key))
+        return true;
+    for (const auto &c : chars) {
+        if (n == c.name) {
+            e.code = c.c;
+            return true;
+        }
+    }
+    if (n.size() == 1 && n[0] > 32 && n[0] < 127) {
+        e.code = tolower(static_cast<unsigned char>(n[0]));
+        return true;
+    }
+    return modifierFor(n) != 0; // a modifier alone: a key with nothing on it
+}
+
 void sleepMs(int ms) {
     this_thread::sleep_for(chrono::milliseconds(ms));
 }
 
+unsigned msSince(Clock::time_point t0) {
+    return static_cast<unsigned>(chrono::duration_cast<chrono::milliseconds>(Clock::now() - t0).count());
+}
+
+// FNV-1a over the frame, 8 bytes at a time: "did the picture change"
+uint64_t frameHash(const vector<unsigned char> &pixels) {
+    uint64_t h = 1469598103934665603ULL;
+    const size_t words = pixels.size() / 8;
+    const unsigned char *p = pixels.data();
+    for (size_t i = 0; i < words; i++) {
+        uint64_t w;
+        memcpy(&w, p + i * 8, 8);
+        h = (h ^ w) * 1099511628211ULL;
+    }
+    for (size_t i = words * 8; i < pixels.size(); i++)
+        h = (h ^ p[i]) * 1099511628211ULL;
+    return h;
+}
+
+bool savePng(vector<unsigned char> &pixels, int w, int h, int pitch, const string &path) {
+    SDL_Surface *s = SDL_CreateRGBSurfaceWithFormatFrom(pixels.data(), w, h, 32, pitch, SDL_PIXELFORMAT_ARGB8888);
+    if (!s)
+        return false;
+    const int rc = IMG_SavePNG(s, path.c_str());
+    SDL_FreeSurface(s);
+    return rc == 0;
+}
+
+string parentDir(const string &path) {
+    const size_t slash = path.find_last_of("/\\");
+    return slash == string::npos ? string() : path.substr(0, slash);
+}
+
+//*******************************
+// ClipRecorder
+//*******************************
+// `clip start`: a thread of its own asks the renderer for a copy of a frame every 40 ms, and writes it as the next
+// PNG when the picture changed since the last one written - so a resting screen costs a readback, not a file, per
+// sample. Each file's time is kept for clip.ffconcat (DebugDriver::clipConcat).
+class ClipRecorder {
+public:
+    enum : unsigned { SampleMs = 40 };          // 25 a second
+    enum : unsigned { MaxMs = 10 * 60 * 1000 }; // a clip nobody stopped ends by itself
+
+    ClipRecorder(Renderer &renderer, string dir) : renderer_(renderer), dir_(std::move(dir)) {
+        thread_ = thread([this]() { run(); });
+    }
+    ~ClipRecorder() { finish(); }
+
+    const string &dir() const { return dir_; }
+
+    // the reply to `clip stop`
+    string finish() {
+        if (!finished_) {
+            finished_ = true;
+            stop_ = true;
+            if (thread_.joinable())
+                thread_.join();
+            ofstream out(dir_ + "/clip.ffconcat", ios::binary);
+            out << DebugDriver::clipConcat(frames_, endMs_);
+        }
+        char seconds[32];
+        snprintf(seconds, sizeof(seconds), "%.1f", endMs_ / 1000.0);
+        return "ok " + dir_ + " " + to_string(frames_.size()) + " frames " + seconds + " s" +
+               (error_.empty() ? "" : " (" + error_ + ")");
+    }
+
+private:
+    void run() {
+        const Clock::time_point t0 = Clock::now();
+        Clock::time_point next = t0;
+        unsigned long lastCopied = 0;
+        uint64_t lastHash = 0;
+        vector<unsigned char> pixels;
+        while (!stop_ && msSince(t0) < MaxMs) {
+            renderer_.requestFrameCopy();
+            next += chrono::milliseconds(static_cast<unsigned>(SampleMs));
+            if (next < Clock::now())
+                next = Clock::now(); // behind (a slow encode): the timing stays honest, a sample is skipped
+            this_thread::sleep_until(next);
+            int w = 0, h = 0, pitch = 0;
+            const unsigned long copied = renderer_.copyLastFrame(pixels, w, h, pitch);
+            if (copied == 0 || copied == lastCopied)
+                continue;
+            lastCopied = copied;
+            const uint64_t hash = frameHash(pixels);
+            if (!frames_.empty() && hash == lastHash)
+                continue;
+            lastHash = hash;
+            char name[32];
+            snprintf(name, sizeof(name), "f%06u.png", static_cast<unsigned>(frames_.size()));
+            const unsigned at = msSince(t0);
+            if (!savePng(pixels, w, h, pitch, dir_ + "/" + name)) {
+                error_ = string("cannot write ") + name + ": " + SDL_GetError();
+                break;
+            }
+            frames_.push_back(make_pair(at, string(name)));
+        }
+        endMs_ = msSince(t0);
+    }
+
+    Renderer &renderer_;
+    string dir_;
+    thread thread_;
+    atomic<bool> stop_{false};
+    bool finished_ = false;
+    vector<pair<unsigned, string>> frames_;
+    unsigned endMs_ = 0;
+    string error_;
+};
+
 class Server {
 public:
     Server(GuiBase &gui, int port, string bindAddress, string token)
-        : gui_(gui), port_(port), bindAddress_(std::move(bindAddress)), token_(std::move(token)) {}
+        : gui_(gui), port_(port), bindAddress_(std::move(bindAddress)), token_(std::move(token)) {
+        const char *out = getenv("AB_DEBUG_OUT");
+        outDir_ = out ? out : "";
+    }
 
     bool listen() {
 #ifdef _WIN32
@@ -189,6 +370,7 @@ public:
     }
 
     void run() {
+        // the renderer reads a frame back only when a shot, a grab, a clip or a wait asks for one
         gui_.renderer().setFrameCache(true);
         for (;;) {
             sock_t client = accept(listener_, nullptr, nullptr);
@@ -196,6 +378,11 @@ public:
                 continue;
             serve(client);
             CLOSESOCK(client);
+            // a clip this connection left running ends with it
+            if (clip_) {
+                PLOG_INFO << "DebugDriver: " << clip_->finish() << " (the connection closed)";
+                clip_.reset();
+            }
         }
     }
 
@@ -302,28 +489,33 @@ private:
         }
     }
 
-    // false: the peer is gone, `serve()` should stop (close, back to accept) rather than keep going.
-    // shot and grab: the renderer copies a frame only when asked (it costs a readback), so ask, and wait for a
-    // copy of a frame newer than the last input - up to 600 ms; a screen with nothing to animate still
-    // redraws a few times a second. Past that the newest copy there is serves.
-    void awaitFreshFrame() {
+    // shot and grab: a copy of a frame whose drawing began after this request and after the last input - the
+    // renderer copies a frame only when asked (it costs a readback), so ask, and wait for it. Never an older
+    // copy: false when no such frame came within 5 s (a screen that presents nothing - a hung job). A resting
+    // screen still presents a few frames a second (the frame pacer), so this is quick.
+    bool awaitFreshFrame() {
         Renderer &r = gui_.renderer();
-        const unsigned long after = std::max(lastInputFrame_, r.requestFrameCopy());
-        for (int i = 0; i < 60 && r.copiedFrame() <= after; i++) {
-            r.requestFrameCopy(); // again, in case a frame before the input's took the first request
+        const unsigned long after = std::max(lastInputFrame_, r.requestFrameCopy()) + 1;
+        const Clock::time_point t0 = Clock::now();
+        while (r.copiedFrame() <= after) {
+            if (msSince(t0) > 5000)
+                return false;
+            r.requestFrameCopy(); // again, in case an earlier frame took the request
             sleepMs(10);
         }
+        return true;
     }
 
     bool handleGrab(sock_t client) {
-        awaitFreshFrame();
         vector<unsigned char> png;
-        if (!gui_.renderer().encodeLastFramePng(png))
+        if (!awaitFreshFrame() || !gui_.renderer().encodeLastFramePng(png))
             return sendLine(client, "err no frame");
         if (!sendLine(client, DebugDriver::grabHeader(png.size())))
             return false;
         return sendAll(client, reinterpret_cast<const char *>(png.data()), png.size());
     }
+
+    void noteInput() { lastInputFrame_ = gui_.renderer().frameCount(); }
 
     void injectButton(Button button, bool dpad, bool down) {
         Event e;
@@ -333,7 +525,399 @@ private:
         else
             e.type = down ? Event::Type::ButtonDown : Event::Type::ButtonUp;
         gui_.input().inject(e);
-        lastInputFrame_ = gui_.renderer().frameCount();
+        noteInput();
+    }
+
+    void injectKey(Event e, bool down) {
+        e.type = down ? Event::Type::KeyDown : Event::Type::KeyUp;
+        gui_.input().inject(e);
+        noteInput();
+    }
+
+    //*******************************
+    // virtual pads
+    //*******************************
+    struct PadState {
+        string profile = "x360";
+        bool bluetooth = false;
+        bool plugged = false;
+        bool touched = false; // a command has been sent to it (pad 1 is plugged in by its first one)
+        int level = -1;       // battery percent, -1: no battery node
+        bool cable = false;
+    };
+    PadState pads_[Input::VirtualPadSlots];
+
+    PadScript::Profile profileOf(const PadState &p) {
+        PadScript::Profile profile;
+        PadScript::findProfile(p.profile, profile);
+        return profile;
+    }
+
+    bool plugPad(int slot) {
+        PadState &p = pads_[slot];
+        if (!gui_.input().plugVirtualPad(slot, PadScript::specFor(profileOf(p))))
+            return false;
+        p.plugged = true;
+        // the program registers the new pad when it next polls: a press sent before that would be lost
+        sleepMs(100);
+        gui_.input().virtualPadPlugged(slot); // a round trip through the polling thread
+        noteInput();
+        return true;
+    }
+
+    void unplugPad(int slot) {
+        gui_.input().unplugVirtualPad(slot);
+        pads_[slot].plugged = false;
+        noteInput();
+    }
+
+    // the pad's battery node under AB_PAD_BATTERY_DIR, as its level, cable and plug say - gone when it has no
+    // battery or is unplugged (padsim's rule)
+    string syncBattery(int slot) {
+        const PadState &p = pads_[slot];
+        const char *root = getenv("AB_PAD_BATTERY_DIR");
+        const bool present = p.level >= 0 && p.plugged;
+        if (!root || !*root)
+            return present ? "err AB_PAD_BATTERY_DIR is not set - nowhere for the battery" : "ok";
+        const string dir = string(root) + "/" + PadScript::batteryNode(slot);
+        static const char *const files[] = {"capacity", "status", "type", "scope"};
+        if (!present) {
+            for (const char *f : files)
+                remove((dir + "/" + f).c_str());
+#ifdef _WIN32
+            _rmdir(dir.c_str());
+#else
+            rmdir(dir.c_str());
+#endif
+            return "ok";
+        }
+        makeOutputDirs(dir);
+        const string values[] = {to_string(p.level), PadScript::batteryStatus(p.level, p.cable), "Battery", "Device"};
+        for (size_t i = 0; i < 4; i++) {
+            ofstream out(dir + "/" + files[i], ios::binary);
+            out << values[i] << "\n";
+            if (!out)
+                return "err cannot write " + dir;
+        }
+        return "ok";
+    }
+
+    // a game controller's controls go through its mapping (Input::setVirtualPadControl*), the generic pad's raw
+    bool setButton(int slot, bool gc, int button, bool down) {
+        Input &in = gui_.input();
+        return gc ? in.setVirtualPadControl(slot, button, down) : in.setVirtualPadButton(slot, button, down);
+    }
+    bool setAxis(int slot, bool gc, int axis, int value) {
+        Input &in = gui_.input();
+        return gc ? in.setVirtualPadControlAxis(slot, axis, value) : in.setVirtualPadAxis(slot, axis, value);
+    }
+
+    bool setTarget(int slot, bool gc, const PadScript::Target &t, bool down) {
+        bool ok = true;
+        if (t.button >= 0)
+            ok = setButton(slot, gc, t.button, down) && ok;
+        if (t.axis >= 0)
+            ok = setAxis(slot, gc, t.axis, down ? 32767 : -32768) && ok;
+        noteInput();
+        return ok;
+    }
+
+    string padCommand(const PadScript::Step &s) {
+        if (!Input::virtualPadsSupported())
+            return "err virtual pads need SDL 2.24 or newer";
+        Input &in = gui_.input();
+        PadState &p = pads_[s.pad];
+        auto arg = [&s](size_t i) { return i < s.args.size() ? s.args[i] : string(); };
+        const string &v = s.verb;
+
+        if (v == "profile") {
+            PadScript::Profile profile;
+            const string bus = arg(1);
+            if (!PadScript::findProfile(arg(0), profile) || (!bus.empty() && bus != "usb" && bus != "bt"))
+                return "err profile x360|ds4|generic [usb|bt]";
+            if (bus == "bt" && !profile.bluetooth)
+                return "err no such pad over Bluetooth";
+            p.profile = profile.name;
+            p.bluetooth = bus == "bt";
+            if (!profile.hasBattery)
+                p.level = -1;
+            p.touched = true;
+            unplugPad(s.pad);
+            if (!plugPad(s.pad))
+                return "err cannot plug in the pad";
+            return syncBattery(s.pad);
+        }
+        if (v == "plug") {
+            p.touched = true;
+            if (!p.plugged && !plugPad(s.pad))
+                return "err cannot plug in the pad";
+            return syncBattery(s.pad);
+        }
+        if (v == "unplug") {
+            p.touched = true;
+            unplugPad(s.pad);
+            return syncBattery(s.pad);
+        }
+        if (v == "battery") {
+            if (arg(0) == "off") {
+                p.level = -1;
+            } else if (!profileOf(p).hasBattery) {
+                return "err this pad is wired, it has no battery";
+            } else if (arg(0).empty() || !isdigit(static_cast<unsigned char>(arg(0)[0]))) {
+                return "err battery <0..100>|off";
+            } else {
+                p.level = std::max(0, std::min(100, atoi(arg(0).c_str())));
+            }
+            return syncBattery(s.pad);
+        }
+        if (v == "cable") {
+            if (arg(0) != "in" && arg(0) != "out")
+                return "err cable in|out";
+            p.cable = arg(0) == "in";
+            if (!p.bluetooth) {
+                // a USB pad lives on its cable
+                if (p.cable && !p.plugged && !plugPad(s.pad))
+                    return "err cannot plug in the pad";
+                if (!p.cable)
+                    unplugPad(s.pad);
+            }
+            p.touched = true;
+            return syncBattery(s.pad);
+        }
+
+        // the rest moves the pad: pad 1 comes plugged in as an x360 (as padsim's does)
+        if (s.pad == 0 && !p.touched && !p.plugged && !plugPad(s.pad))
+            return "err cannot plug in the pad";
+        p.touched = true;
+        if (!p.plugged)
+            return "err the pad is unplugged";
+        const PadScript::Profile profile = profileOf(p);
+        const bool gc = profile.gameController;
+        const VirtualPadSpec spec = PadScript::specFor(profile);
+
+        if (v == "reset") {
+            if (gc) {
+                for (int b = 0; b < 15; b++)
+                    setButton(s.pad, true, b, false);
+                for (int a = 0; a < 6; a++)
+                    setAxis(s.pad, true, a, a < 4 ? 0 : -32768); // the sticks centred, the triggers released
+            } else {
+                for (int b = 0; b < spec.buttons; b++)
+                    in.setVirtualPadButton(s.pad, b, false);
+                for (int a = 0; a < spec.axes; a++)
+                    in.setVirtualPadAxis(s.pad, a, 0);
+                for (int a : spec.triggerAxes) {
+                    if (a >= 0)
+                        in.setVirtualPadAxis(s.pad, a, -32768);
+                }
+                if (spec.hats > 0)
+                    in.setVirtualPadHat(s.pad, 0);
+            }
+            noteInput();
+            return "ok";
+        }
+        if (v == "press" || v == "release" || v == "hold" || v == "tap") {
+            PadScript::Target t;
+            if (!PadScript::buttonTarget(gc, arg(0), t))
+                return "err unknown button " + arg(0);
+            if (v == "press" || v == "release")
+                return setTarget(s.pad, gc, t, v == "press") ? "ok" : "err the pad is gone";
+            if (v == "hold" && arg(1).empty())
+                return "err hold <btn> <ms>";
+            const int ms = arg(1).empty() ? 120 : std::max(0, std::min(60000, atoi(arg(1).c_str())));
+            if (!setTarget(s.pad, gc, t, true))
+                return "err the pad is gone";
+            sleepMs(ms);
+            setTarget(s.pad, gc, t, false);
+            return "ok";
+        }
+        if (v == "stick") {
+            int ax = 0, ay = 0;
+            if (!PadScript::stickAxes(gc, arg(0), ax, ay) || arg(2).empty())
+                return "err stick left|right <x> <y>";
+            setAxis(s.pad, gc, ax, atoi(arg(1).c_str()));
+            setAxis(s.pad, gc, ay, atoi(arg(2).c_str()));
+            noteInput();
+            return "ok";
+        }
+        if (v == "trigger") {
+            PadScript::Target t;
+            if (!PadScript::triggerTarget(gc, arg(0), t) || arg(1).empty())
+                return "err trigger l2|r2 <0..255>";
+            const int value = atoi(arg(1).c_str());
+            setAxis(s.pad, gc, t.axis, PadScript::triggerValue(value));
+            if (t.button >= 0)
+                in.setVirtualPadButton(s.pad, t.button, value > 0);
+            noteInput();
+            return "ok";
+        }
+        if (v == "dpad") {
+            int hat = 0;
+            if (!PadScript::dpadHat(arg(0), hat))
+                return "err dpad up|down|left|right|up-left|...|center";
+            if (gc) {
+                bool down[4];
+                PadScript::dpadButtons(hat, down);
+                for (int i = 0; i < 4; i++)
+                    setButton(s.pad, true, 11 + i, down[i]);
+            } else {
+                in.setVirtualPadHat(s.pad, hat);
+            }
+            noteInput();
+            return "ok";
+        }
+        return "err unknown pad command " + v;
+    }
+
+    //*******************************
+    // padsim's keyboard words
+    //*******************************
+    string kbdCommand(istringstream &in) {
+        string sub;
+        in >> sub;
+        if (sub == "plug" || sub == "unplug" || sub == "reset")
+            return "ok"; // the driver's keyboard is always there, and holds no key between commands
+        if (sub == "type") {
+            string text;
+            getline(in, text);
+            if (!text.empty() && text[0] == ' ')
+                text.erase(0, 1);
+            Event e;
+            e.type = Event::Type::TextInput;
+            e.text = text;
+            gui_.input().inject(e);
+            noteInput();
+            return "ok";
+        }
+        string name;
+        in >> name;
+        if (sub == "combo") {
+            // ctrl+alt+delete: the modifiers held with the last key
+            unsigned mods = 0;
+            string key;
+            size_t start = 0;
+            while (start <= name.size()) {
+                const size_t plus = name.find('+', start);
+                const string part = name.substr(start, plus == string::npos ? string::npos : plus - start);
+                if (plus == string::npos) {
+                    key = part;
+                    break;
+                }
+                const unsigned m = modifierFor(part);
+                if (!m)
+                    return "err combo: <modifier>+...+<key> (shift ctrl alt meta)";
+                mods |= m;
+                start = plus + 1;
+            }
+            Event e;
+            if (!keyEventFor(key, e))
+                return "err unknown key " + key;
+            e.mods = mods;
+            injectKey(e, true);
+            sleepMs(60);
+            injectKey(e, false);
+            return "ok";
+        }
+        Event e;
+        if (!keyEventFor(name, e))
+            return "err unknown key " + name;
+        if (sub == "press" || sub == "release") {
+            injectKey(e, sub == "press");
+            return "ok";
+        }
+        if (sub == "tap") {
+            int ms = 60;
+            in >> ms;
+            injectKey(e, true);
+            sleepMs(std::max(0, std::min(60000, ms)));
+            injectKey(e, false);
+            return "ok";
+        }
+        return "err kbd plug|unplug|press|release <key>|tap <key> [ms]|combo <k>+<k>|type <text>|reset";
+    }
+
+    //*******************************
+    // the waits
+    //*******************************
+    string waitScreen(const string &name, double seconds) {
+        const Clock::time_point t0 = Clock::now();
+        string now;
+        for (;;) {
+            now = DebugDriver::currentScreen();
+            if (now == name)
+                return "ok " + name;
+            if (msSince(t0) > seconds * 1000)
+                return "err screen " + name + " did not show (now: " + now + ")";
+            sleepMs(20);
+        }
+    }
+
+    string waitIdle(int ms, double seconds) {
+        Renderer &r = gui_.renderer();
+        const Clock::time_point t0 = Clock::now();
+        Clock::time_point since = t0;
+        bool haveHash = false;
+        uint64_t lastHash = 0;
+        vector<unsigned char> pixels;
+        for (;;) {
+            bool still;
+            if (gui_.input().frameNeed() != Input::FrameNeed::Active) {
+                still = true; // the screen itself says only ambient motion is left
+                haveHash = false;
+                sleepMs(20);
+            } else {
+                r.requestFrameCopy();
+                sleepMs(40);
+                int w = 0, h = 0, pitch = 0;
+                const bool got = r.copyLastFrame(pixels, w, h, pitch) != 0;
+                const uint64_t hash = got ? frameHash(pixels) : 0;
+                still = got && haveHash && hash == lastHash;
+                haveHash = got;
+                lastHash = hash;
+            }
+            if (!still)
+                since = Clock::now();
+            else if (msSince(since) >= static_cast<unsigned>(ms))
+                return "ok";
+            if (msSince(t0) > seconds * 1000)
+                return "err the screen did not rest for " + to_string(ms) + " ms";
+        }
+    }
+
+    //*******************************
+    // clips
+    //*******************************
+    string clipCommand(istringstream &in) {
+        string sub, name;
+        in >> sub;
+        if (sub == "stop") {
+            if (!clip_)
+                return "err no clip is running";
+            const string reply = clip_->finish();
+            clip_.reset();
+            return reply;
+        }
+        if (sub != "start")
+            return "err clip start <name> | clip stop";
+        getline(in, name);
+        while (!name.empty() && name[0] == ' ')
+            name.erase(0, 1);
+        if (name.size() > 4 && name.compare(name.size() - 4, 4, ".mp4") == 0)
+            name.erase(name.size() - 4);
+        if (name.empty())
+            return "err clip start <name>";
+        if (clip_)
+            return "err a clip is running (" + clip_->dir() + ")";
+        const string dir = DebugDriver::outputPath(outDir_, name);
+        if (!makeOutputDirs(dir))
+            return "err cannot make " + dir;
+        // a folder from an earlier clip of the same name: its frames go, the new ones are numbered from 0
+        for (const string &f : DirEntry::listNames(dir)) {
+            if ((f.size() > 5 && f[0] == 'f' && f.compare(f.size() - 4, 4, ".png") == 0) || f == "clip.ffconcat")
+                DirEntry::removeFile(dir + "/" + f);
+        }
+        clip_.reset(new ClipRecorder(gui_.renderer(), dir));
+        return "ok " + dir;
     }
 
     string handle(const string &line) {
@@ -342,6 +926,12 @@ private:
         in >> cmd;
         if (cmd.empty() || cmd == "ping")
             return "ok";
+        {
+            PadScript::Step step;
+            string error;
+            if (PadScript::parse(line, step, error))
+                return error.empty() ? padCommand(step) : "err " + error;
+        }
         if (cmd == "press" || cmd == "down" || cmd == "up") {
             string name;
             in >> name;
@@ -372,16 +962,15 @@ private:
             else if (!keyFor(name, key))
                 return "err unknown key " + name;
             Event e;
-            e.type = Event::Type::KeyDown;
             e.key = key;
             e.mods = mods;
             e.code = code;
-            gui_.input().inject(e);
-            e.type = Event::Type::KeyUp;
-            gui_.input().inject(e);
-            lastInputFrame_ = gui_.renderer().frameCount();
+            injectKey(e, true);
+            injectKey(e, false);
             return "ok";
         }
+        if (cmd == "kbd")
+            return kbdCommand(in);
         if (cmd == "text") {
             string text;
             getline(in, text);
@@ -391,7 +980,7 @@ private:
             e.type = Event::Type::TextInput;
             e.text = text;
             gui_.input().inject(e);
-            lastInputFrame_ = gui_.renderer().frameCount();
+            noteInput();
             return "ok";
         }
         if (cmd == "wait") {
@@ -400,6 +989,24 @@ private:
             sleepMs(ms);
             return "ok";
         }
+        if (cmd == "wait_screen") {
+            string name;
+            double seconds = 15;
+            in >> name >> seconds;
+            if (name.empty())
+                return "err wait_screen <Name> [seconds]";
+            return waitScreen(name, seconds);
+        }
+        if (cmd == "wait_idle") {
+            int ms = -1;
+            double seconds = 10;
+            in >> ms >> seconds;
+            if (ms < 0)
+                return "err wait_idle <ms> [seconds]";
+            return waitIdle(ms, seconds);
+        }
+        if (cmd == "clip")
+            return clipCommand(in);
         if (cmd == "frames")
             return "ok " + to_string(gui_.renderer().frameCount());
         if (cmd == "screen")
@@ -418,8 +1025,13 @@ private:
                 path.erase(0, 1);
             if (path.empty())
                 return "err no path";
-            awaitFreshFrame();
-            return gui_.renderer().saveLastFrame(path) ? "ok " + path : "err no frame";
+            path = DebugDriver::outputPath(outDir_, path);
+            const string dir = parentDir(path);
+            if (!dir.empty())
+                makeOutputDirs(dir);
+            if (!awaitFreshFrame())
+                return "err no frame";
+            return gui_.renderer().saveLastFrame(path) ? "ok " + path : "err cannot write " + path;
         }
         if (cmd == "window") {
             string what;
@@ -456,8 +1068,10 @@ private:
     int port_;
     string bindAddress_;
     string token_;
+    string outDir_; // AB_DEBUG_OUT
     sock_t listener_ = INVALID_SOCKET;
     unsigned long lastInputFrame_ = 0;
+    unique_ptr<ClipRecorder> clip_;
 };
 
 } // namespace
@@ -525,6 +1139,35 @@ bool DebugDriver::tokensMatch(const string &configured, const string &attempt) {
 //*******************************
 string DebugDriver::grabHeader(size_t byteCount) {
     return "ok " + to_string(byteCount);
+}
+
+//*******************************
+// DebugDriver::outputPath
+//*******************************
+string DebugDriver::outputPath(const string &outDir, const string &path) {
+    const bool absolute = (!path.empty() && (path[0] == '/' || path[0] == '\\')) ||
+                          (path.size() > 1 && path[1] == ':'); // C:\... or C:/...
+    if (outDir.empty() || absolute)
+        return path;
+    const char last = outDir[outDir.size() - 1];
+    return outDir + (last == '/' || last == '\\' ? "" : "/") + path;
+}
+
+//*******************************
+// DebugDriver::clipConcat
+//*******************************
+string DebugDriver::clipConcat(const vector<pair<unsigned, string>> &frames, unsigned endMs) {
+    string out = "ffconcat version 1.0\n";
+    for (size_t i = 0; i < frames.size(); i++) {
+        const unsigned until = i + 1 < frames.size() ? frames[i + 1].first : std::max(endMs, frames[i].first);
+        const unsigned ms = until > frames[i].first ? until - frames[i].first : 0;
+        char duration[32];
+        snprintf(duration, sizeof(duration), "%u.%03u", ms / 1000, ms % 1000);
+        out += "file '" + frames[i].second + "'\nduration " + duration + "\n";
+    }
+    if (!frames.empty())
+        out += "file '" + frames.back().second + "'\n";
+    return out;
 }
 
 //*******************************

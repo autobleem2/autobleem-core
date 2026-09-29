@@ -47,3 +47,24 @@ TEST_CASE("headlessRequested: reads AB_HEADLESS from the environment") {
     unsetenv("AB_HEADLESS");
 #endif
 }
+
+TEST_CASE("parseWindowSize: AB_WINDOW_SIZE is <width>x<height>, nothing else") {
+    int w = -1, h = -1;
+    REQUIRE(Platform::parseWindowSize("1280x720", w, h));
+    CHECK(w == 1280);
+    CHECK(h == 720);
+    REQUIRE(Platform::parseWindowSize("1920X1080", w, h));
+    CHECK(w == 1920);
+    CHECK(h == 1080);
+    w = h = -1;
+    CHECK_FALSE(Platform::parseWindowSize("", w, h));
+    CHECK_FALSE(Platform::parseWindowSize("1280", w, h));
+    CHECK_FALSE(Platform::parseWindowSize("1280x", w, h));
+    CHECK_FALSE(Platform::parseWindowSize("x720", w, h));
+    CHECK_FALSE(Platform::parseWindowSize("1280x720x2", w, h));
+    CHECK_FALSE(Platform::parseWindowSize(" 1280x720", w, h));
+    CHECK_FALSE(Platform::parseWindowSize("8x8", w, h));       // too small to be a window
+    CHECK_FALSE(Platform::parseWindowSize("99999x720", w, h)); // too big
+    CHECK(w == -1);                                            // a refusal leaves them alone
+    CHECK(h == -1);
+}

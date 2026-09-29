@@ -47,6 +47,12 @@ public:
     // cache, filled before SDL_RenderPresent). Read fresh each call - cheap, and lets a test toggle it.
     static bool headlessRequested();
 
+    // AB_WINDOW_SIZE=<w>x<h> in the environment: the window is made that size and never full screen, whatever
+    // the target would choose - a headless sandbox (SDL's offscreen driver says its "desktop" is 1024x768) runs
+    // at 1280x720 like the VM's screen. This is its parser, pure: "1280x720" -> true, 1280, 720; anything but
+    // two whole numbers (16..16384) around an 'x' is false and leaves w/h alone.
+    static bool parseWindowSize(const std::string &text, int &w, int &h);
+
     // pure policy, exposed for testing without SDL: does a headless run start its window hidden?
     static bool startsHidden(bool headless);
     // pure policy, exposed for testing without SDL: the SDL_AUDIODRIVER to force for a headless run

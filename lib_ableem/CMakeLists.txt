@@ -143,6 +143,7 @@ add_library(ableem ${ABLEEM_LIB_KIND}
         src/ui/gui_base.cpp
         src/ui/gui_screen.cpp
         src/ui/debug_driver.cpp
+        src/ui/pad_script.cpp
         src/ui/perf_overlay.cpp
         src/ui/perf_overlay.h
         src/ui/SDL_FontCache.c

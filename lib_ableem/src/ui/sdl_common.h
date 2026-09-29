@@ -15,6 +15,13 @@
 #define ABLEEM_DEV_HOST 1
 #endif
 
+namespace ableem {
+// The joystick device indices the program sees (input.cpp): SDL's own, or - with AB_INPUT_ISOLATED - only the
+// virtual pads', numbered from 0. sdlJoystickIndex() turns one into SDL's (-1 when there is no such device).
+int visibleJoystickCount();
+int sdlJoystickIndex(int visibleIndex);
+} // namespace ableem
+
 // BlendMode::Premultiplied: colour = src + dst * (1 - srcA), alpha the same - "over" for premultiplied
 // colours. SDL before 2.0.6 has no custom blend modes; plain blending is the nearest it offers.
 inline SDL_BlendMode premultipliedBlendMode() {

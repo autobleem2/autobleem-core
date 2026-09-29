@@ -6,6 +6,10 @@
 
 #include "ableem/ui/debug_driver.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 using namespace std;
 using ableem::DebugDriver;
 
@@ -58,6 +62,26 @@ TEST_CASE("grabHeader: the byte count in the header is what a client should expe
     REQUIRE(space != string::npos);
     CHECK(header.substr(0, space) == "ok");
     CHECK(stoul(header.substr(space + 1)) == 57u);
+}
+
+TEST_CASE("outputPath: a relative shot or clip goes under AB_DEBUG_OUT, anything else stays as given") {
+    CHECK(DebugDriver::outputPath("", "a.png") == "a.png");
+    CHECK(DebugDriver::outputPath("/mnt/abvm/sb/.abvm/out", "run1/a.png") == "/mnt/abvm/sb/.abvm/out/run1/a.png");
+    CHECK(DebugDriver::outputPath("/out/", "a.png") == "/out/a.png");
+    CHECK(DebugDriver::outputPath("/out", "/tmp/a.png") == "/tmp/a.png");
+    CHECK(DebugDriver::outputPath("C:/out", "D:/a.png") == "D:/a.png");
+}
+
+TEST_CASE("clipConcat: each frame shows until the next, the last until the clip ended, and is named twice") {
+    vector<pair<unsigned, string>> frames = {{0, "f000000.png"}, {120, "f000001.png"}, {1120, "f000002.png"}};
+    const string text = DebugDriver::clipConcat(frames, 2000);
+    CHECK(text == "ffconcat version 1.0\n"
+                  "file 'f000000.png'\nduration 0.120\n"
+                  "file 'f000001.png'\nduration 1.000\n"
+                  "file 'f000002.png'\nduration 0.880\n"
+                  "file 'f000002.png'\n");
+    // no frames at all: only the header
+    CHECK(DebugDriver::clipConcat({}, 500) == "ffconcat version 1.0\n");
 }
 
 #ifndef _WIN32
