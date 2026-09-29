@@ -1,20 +1,19 @@
 //
-// GuiMenuBase<LineDataType>::doHome()/doEnd() (gui_menu_base.h) - UIREV-2: L1/R1 must not land the cursor on
-// a row skipSelectingThisLineWhenMovingByOne() marks unselectable (a heading, as GuiOptions' CFG_HEADING rows
-// are), the same way doKeyDown()/doKeyUp() already skip past one after a normal one-step move. Before this
-// fix doHome()/doEnd() set `selected` straight to 0 / getVerticalSize()-1 with no such check, which is what
-// UIREV-1 exposed once GuiOptionsMenuBase stopped overriding them: L1 on Options lands exactly on its
-// "Interface" heading at row 0 - no selection box drawn, looking like nothing happened (Harriet's QA fail,
-// !autobleem\out\ui-review\qa-report.md, shots 08/11/12).
+// GuiMenuBase<LineDataType>'s cursor movement (gui_menu_base.h): Up/Down, L2/R2 (a page) and L1/R1 (first/last
+// row) must never leave the cursor on a row skipSelectingThisLineWhenMovingByOne() marks unselectable (a
+// heading, as GuiOptions' CFG_HEADING rows are) - no selection box is drawn there, so it looks like nothing
+// happened. UIREV-2 fixed doHome()/doEnd(), BUG-25 doKeyUp()'s skip loop; UIREV-1's console pass then found L2
+// at the top of Options still landing on the "Interface" heading at row 0, so every move now ends in one
+// landOnSelectable(step): on in the move's direction, back the other way when that runs off the list, the
+// page scrolled just enough to show the row.
 //
 // GuiMenuBase is header-only but its constructor chain (GuiScreen -> AppBase::get()/Gui::getInstance())
 // needs a live AppBase built over a real theme/resources tree, which this repository does not ship (it is
 // the launcher's) and no existing test in tests/classic/ constructs one for this reason (test_busy_input.cpp
 // and test_input_flush.cpp use a bare ableem::GuiBase, never a GuiScreen subclass). So this suite drives a
-// small local model, TestMenu, that reproduces doKeyDown()/doKeyUp()/doHome()/doEnd()'s selection math line
-// for line (the audio/page-scroll side effects aside - they don't affect which row ends up selected for a
-// list that fits on one page, which is all every case here uses) instead of an instance of the real class.
-// Keep it in step with gui_menu_base.h if that logic changes again.
+// small local model, TestMenu, that reproduces the selection and page math of adjustPageBy(),
+// landOnSelectable(), computePagePosition() and doKeyDown/Up/PageDown/PageUp/Home/End() line for line (the
+// sounds aside) instead of an instance of the real class. Keep it in step with gui_menu_base.h.
 //
 #include "doctest/doctest.h"
 
@@ -24,58 +23,141 @@
 
 namespace {
 
-// mirrors GuiMenuBase<LineDataType> for a list that fits on one page (firstVisibleIndex == 0,
-// lastVisibleIndex == size()-1 always, so the "== firstVisibleIndex/lastVisibleIndex" scroll branches in the
-// real doKeyDown()/doKeyUp() never fire and are left out here - they don't change which row is selected).
+// mirrors GuiMenuBase<LineDataType>'s navigation with labelsOnly == false
 struct TestMenu {
     std::vector<bool> heading; // true = a row skipSelectingThisLineWhenMovingByOne() would return true for
     int selected = 0;
+    int firstVisibleIndex = 0;
+    int lastVisibleIndex = 19; // the first page of maxVisible rows, as computePagePosition() leaves it
+    int maxVisible = 20; // every list fits on one page unless a case says otherwise
 
     int size() const { return static_cast<int>(heading.size()); }
     bool skip(int i) const { return heading[static_cast<size_t>(i)]; }
+    bool onHeading() const { return skip(selected); }
+    bool selectedVisible() const { return selected >= firstVisibleIndex && selected <= lastVisibleIndex; }
 
-    // gui_menu_base.h ~207-221, unchanged by this fix
+    // what render() does on its first frame
+    void start(int sel) {
+        selected = sel;
+        computePagePosition();
+    }
+
+    void adjustPageBy(int moveBy) {
+        selected += moveBy;
+        firstVisibleIndex += moveBy;
+        lastVisibleIndex += moveBy;
+    }
+
+    void landOnSelectable(int step) {
+        int i = selected;
+        while (i >= 0 && i < size() && skip(i))
+            i += step;
+        if (i < 0 || i >= size()) {
+            i = selected;
+            while (i >= 0 && i < size() && skip(i))
+                i -= step;
+        }
+        if (i < 0 || i >= size())
+            return;
+        selected = i;
+        if (selected < firstVisibleIndex) {
+            firstVisibleIndex = selected;
+            lastVisibleIndex = selected + maxVisible - 1;
+        } else if (selected > lastVisibleIndex) {
+            lastVisibleIndex = selected;
+            firstVisibleIndex = selected - maxVisible + 1;
+        }
+    }
+
+    void computePagePosition() {
+        if (size() == 0) {
+            selected = 0;
+            firstVisibleIndex = 0;
+            lastVisibleIndex = 0;
+        } else {
+            if (size() <= maxVisible || selected < maxVisible)
+                firstVisibleIndex = 0;
+            else if (selected >= size() - maxVisible)
+                firstVisibleIndex = size() - maxVisible;
+            else
+                firstVisibleIndex = selected - (maxVisible / 2);
+            lastVisibleIndex = firstVisibleIndex + maxVisible - 1;
+        }
+    }
+
     void doKeyDown() {
         if (size() > 1) {
-            if (selected >= size() - 1) {
-                selected = 0;
-            } else {
-                ++selected;
-                while (skip(selected) && selected < size() - 1)
+            int before = selected;
+            if (selected < size() - 1) {
+                if (selected == lastVisibleIndex)
+                    adjustPageBy(1);
+                else
                     ++selected;
+                landOnSelectable(1);
+            }
+            if (selected == before) {
+                selected = 0;
+                computePagePosition();
+                landOnSelectable(1);
             }
         }
     }
 
-    // gui_menu_base.h ~226-240, fixed by BUG-25: the skip loop's bound was `selected > 1`, which could never
-    // land on row 0 - now `selected > 0`, mirroring doKeyDown()'s `selected < size() - 1`
     void doKeyUp() {
         if (size() > 1) {
-            if (selected <= 0) {
-                selected = size() - 1;
-            } else {
-                --selected;
-                while (skip(selected) && selected > 0)
+            int before = selected;
+            if (selected > 0) {
+                if (selected == firstVisibleIndex)
+                    adjustPageBy(-1);
+                else
                     --selected;
+                landOnSelectable(-1);
+            }
+            if (selected == before) {
+                selected = size() - 1;
+                computePagePosition();
+                landOnSelectable(-1);
             }
         }
     }
 
-    // gui_menu_base.h doHome(), fixed by UIREV-2
+    void doPageDown() {
+        if (size() > 1) {
+            if (lastVisibleIndex + maxVisible >= size()) {
+                selected = size() - 1;
+                computePagePosition();
+            } else {
+                adjustPageBy(maxVisible);
+            }
+            landOnSelectable(1);
+        }
+    }
+
+    void doPageUp() {
+        if (size() > 1) {
+            if (firstVisibleIndex - maxVisible < 0) {
+                selected = 0;
+                computePagePosition();
+            } else {
+                adjustPageBy(-maxVisible);
+            }
+            landOnSelectable(-1);
+        }
+    }
+
     void doHome() {
         if (size() > 1) {
             selected = 0;
-            while (skip(selected) && selected < size() - 1)
-                ++selected;
+            computePagePosition();
+            landOnSelectable(1);
         }
     }
 
-    // gui_menu_base.h doEnd(), fixed by UIREV-2
     void doEnd() {
         if (size() > 1) {
             selected = size() - 1;
-            while (skip(selected) && selected > 0)
-                --selected;
+            computePagePosition();
+            landOnSelectable(-1);
         }
     }
 };
@@ -137,19 +219,26 @@ TEST_CASE("doHome/doEnd: a single-row list is a no-op (the getVerticalSize() > 1
 }
 
 TEST_CASE("doHome/doEnd: every row a heading terminates instead of looping forever") {
-    // not reachable through a real GuiOptions list (a heading always has real rows under it), but the bound
-    // in the fix (`selected < getVerticalSize() - 1` / `selected > 0`) must still terminate on its own if it
-    // ever happened, rather than relying on that being impossible - this is exactly that: the loop stops at
-    // the opposite end and leaves the cursor there, nothing crashes or spins.
+    // not reachable through a real GuiOptions list (a heading always has real rows under it), but
+    // landOnSelectable() must still terminate on its own if it ever happened: with no selectable row it leaves
+    // the cursor where the move put it, nothing crashes or spins.
     TestMenu m;
     m.heading = {true, true, true};
-    m.selected = 1;
+    m.start(1);
     m.doHome();
-    CHECK(m.selected == 2); // ran out of rows to skip forward through, stopped at the last one
+    CHECK(m.selected == 0);
 
-    m.selected = 1;
+    m.start(1);
     m.doEnd();
-    CHECK(m.selected == 0); // same, running backward
+    CHECK(m.selected == 2);
+
+    m.start(1);
+    m.doKeyDown();
+    m.doKeyUp();
+    m.doPageDown();
+    m.doPageUp();
+    CHECK(m.selected >= 0);
+    CHECK(m.selected < 3);
 }
 
 //*******************************
@@ -211,6 +300,91 @@ TEST_CASE("doKeyUp/doKeyDown: a single heading not at the very top or bottom - u
     m.selected = 0;
     m.doKeyDown();
     CHECK(m.selected == 2);
+}
+
+//*******************************
+// UIREV-1's console pass: L2/R2 and the wrap of Up/Down land on a real row too, and the page follows
+//*******************************
+
+TEST_CASE("doPageUp: L2 at the top of Options (a heading at row 0) lands on row 1, not the heading") {
+    TestMenu m;
+    m.heading = {true, false, false, false, true, false}; // "Interface" at row 0, like GuiOptions
+    m.start(3);
+    m.doPageUp();
+    CHECK(m.selected == 1);
+    m.doPageUp(); // again, already at the top
+    CHECK(m.selected == 1);
+}
+
+TEST_CASE("doPageDown: R2 at the end with a heading last lands on the last real row") {
+    TestMenu m;
+    m.heading = {true, false, false, true};
+    m.start(1);
+    m.doPageDown();
+    CHECK(m.selected == 2);
+}
+
+TEST_CASE("doKeyUp: from the first real row under a heading at row 0 wraps to the last real row") {
+    TestMenu m;
+    m.heading = {true, false, false, false, true};
+    m.start(1);
+    m.doKeyUp();
+    CHECK(m.selected == 3);
+}
+
+TEST_CASE("doKeyDown: from the last real row above a trailing heading wraps to the first real row") {
+    TestMenu m;
+    m.heading = {true, false, false, false, true};
+    m.start(3);
+    m.doKeyDown();
+    CHECK(m.selected == 1);
+}
+
+TEST_CASE("doPageDown/doPageUp: a page landing on a heading moves on and keeps the row on screen") {
+    TestMenu m; // 12 rows, 4 a page, headings at 0, 4 and 8
+    m.heading = {true, false, false, false, true, false, false, false, true, false, false, false};
+    m.maxVisible = 4;
+    m.start(0);
+    m.doPageDown(); // 0 -> 4 (a heading) -> 5
+    CHECK(m.selected == 5);
+    CHECK(m.selectedVisible());
+
+    m.doPageDown(); // 5 -> 9
+    CHECK(m.selected == 9);
+    CHECK(m.selectedVisible());
+
+    m.doPageDown(); // the last page: the last row
+    CHECK(m.selected == 11);
+    CHECK(m.selectedVisible());
+
+    m.doPageUp(); // 11 -> 7
+    CHECK(m.selected == 7);
+    CHECK(m.selectedVisible());
+
+    m.doPageUp(); // 7 -> 3
+    CHECK(m.selected == 3);
+    CHECK(m.selectedVisible());
+
+    m.doPageUp(); // the first page: row 0 is a heading -> row 1
+    CHECK(m.selected == 1);
+    CHECK(m.selectedVisible());
+}
+
+TEST_CASE("doKeyDown/doKeyUp: a row at a time through a paged list never rests on a heading or off screen") {
+    TestMenu m;
+    m.heading = {true, false, false, false, true, false, false, false, true, false, false, false};
+    m.maxVisible = 4;
+    m.start(1);
+    for (int i = 0; i < 20; ++i) {
+        m.doKeyDown();
+        CHECK_FALSE(m.onHeading());
+        CHECK(m.selectedVisible());
+    }
+    for (int i = 0; i < 20; ++i) {
+        m.doKeyUp();
+        CHECK_FALSE(m.onHeading());
+        CHECK(m.selectedVisible());
+    }
 }
 
 //*******************************

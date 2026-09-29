@@ -73,6 +73,7 @@ public:
 
     void adjustPageBy(int moveBy); // move the page up or down by an amount
     void computePagePosition();    // complete recompute of positions based on the selected value
+    void landOnSelectable(int step); // off a heading: on in step's direction, else back; the page follows
 
     bool changes = false;
     bool cancelled = false;
@@ -103,6 +104,34 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::adjustPageBy(in
     selected += moveBy;
     firstVisibleIndex += moveBy;
     lastVisibleIndex += moveBy;
+}
+
+//*******************************
+// GuiMenuBase<T>::landOnSelectable
+//*******************************
+// the cursor never rests on a row skipSelectingThisLineWhenMovingByOne() marks (a heading): from `selected` it
+// walks on in step's direction (+1/-1), back the other way when that runs off the list, and the page scrolls
+// just enough to show it; with no selectable row at all it stays put
+template <typename LineDataType> void GuiMenuBase<LineDataType>::landOnSelectable(int step) {
+    int size = getVerticalSize();
+    int i = selected;
+    while (i >= 0 && i < size && skipSelectingThisLineWhenMovingByOne(i))
+        i += step;
+    if (i < 0 || i >= size) {
+        i = selected;
+        while (i >= 0 && i < size && skipSelectingThisLineWhenMovingByOne(i))
+            i -= step;
+    }
+    if (i < 0 || i >= size)
+        return;
+    selected = i;
+    if (selected < firstVisibleIndex) {
+        firstVisibleIndex = selected;
+        lastVisibleIndex = selected + maxVisible - 1;
+    } else if (selected > lastVisibleIndex) {
+        lastVisibleIndex = selected;
+        firstVisibleIndex = selected - maxVisible + 1;
+    }
 }
 
 //*******************************
@@ -207,15 +236,18 @@ template <typename LineDataType> std::string GuiMenuBase<LineDataType>::getStatu
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyDown() {
     app.audio().cursor.play();
     if (!labelsOnly && getVerticalSize() > 1) {
-        if (selected >= getVerticalSize() - 1) {
+        int before = selected;
+        if (selected < getVerticalSize() - 1) {
+            if (selected == lastVisibleIndex)
+                adjustPageBy(1);
+            else
+                ++selected;
+            landOnSelectable(1);
+        }
+        if (selected == before) { // the last selectable row: wrap to the first
             selected = 0;
             computePagePosition();
-        } else if (selected == lastVisibleIndex) {
-            adjustPageBy(1);
-        } else {
-            ++selected;
-            while (skipSelectingThisLineWhenMovingByOne(selected) && selected < getVerticalSize() - 1)
-                ++selected;
+            landOnSelectable(1);
         }
     }
 }
@@ -226,15 +258,18 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyDown() {
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyUp() {
     app.audio().cursor.play();
     if (!labelsOnly && getVerticalSize() > 1) {
-        if (selected <= 0) {
+        int before = selected;
+        if (selected > 0) {
+            if (selected == firstVisibleIndex)
+                adjustPageBy(-1);
+            else
+                --selected;
+            landOnSelectable(-1);
+        }
+        if (selected == before) { // the first selectable row: wrap to the last
             selected = getVerticalSize() - 1;
             computePagePosition();
-        } else if (selected == firstVisibleIndex) {
-            adjustPageBy(-1);
-        } else {
-            --selected;
-            while (skipSelectingThisLineWhenMovingByOne(selected) && selected > 0)
-                --selected;
+            landOnSelectable(-1);
         }
     }
 }
@@ -271,6 +306,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageDown() {
         } else {
             adjustPageBy(maxVisible);
         }
+        landOnSelectable(1);
     }
 }
 
@@ -286,6 +322,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageUp() {
         } else {
             adjustPageBy(-maxVisible);
         }
+        landOnSelectable(-1);
     }
 }
 
@@ -296,9 +333,8 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doHome() {
     app.audio().home_down.play();
     if (!labelsOnly && getVerticalSize() > 1) {
         selected = 0;
-        while (skipSelectingThisLineWhenMovingByOne(selected) && selected < getVerticalSize() - 1)
-            ++selected;
         computePagePosition();
+        landOnSelectable(1);
     }
 }
 
@@ -309,9 +345,8 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doEnd() {
     app.audio().home_down.play();
     if (!labelsOnly && getVerticalSize() > 1) {
         selected = getVerticalSize() - 1;
-        while (skipSelectingThisLineWhenMovingByOne(selected) && selected > 0)
-            --selected;
         computePagePosition();
+        landOnSelectable(-1);
     }
 }
 
