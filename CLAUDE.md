@@ -249,6 +249,20 @@ Every screen but the launcher's own carousel frame draws in **one look**, and ne
   `FONT_28_BOLD` at `RowInset` (24) + 18 from the top, a rule 8 px above the header's 74 px end), rows,
   and a **footer** band (`FooterHeight` 54). Colours come from `launcher.colors` (`text`, `secondary`,
   `hint`) - never hard-coded. `Gui::panelStyle()` resolves it for the current theme.
+- **Style roles** (UIREV-29, the owner's "like CSS": one block, change it once and every window follows).
+  Every row, heading, value and description draws in a `PanelStyle` role resolved from `launcher.colors`:
+  `row` (an unselected row), `rowSelected` (the selected row, label and value), `heading` (text on a
+  heading band), `value` (an unselected row's right-hand value), `description` (second lines, subtitles,
+  the strip, the footer counter), `footer` (member `footerText`: the footer's hint labels), `selectionBand`
+  (the band and bar), `edge` (the sheet's edge, rules, the heading band). A role is `#rrggbb` or the name
+  of another colour in the block (`"row": "secondary"`), resolved after the merge over the default theme;
+  unset falls back (row/heading/description/edge -> secondary, rowSelected/footer/selectionBand -> text,
+  value -> row). The look: unselected rows dim, the selected row bright (the Quick menu's). Compact panels
+  use `style.rowColor(selected)`/`valueColor(selected)`/`description`; the classic rows get it through
+  `TextRenderer::setRowRole` (`Row`/`Selected`/`Heading`/`FactRow`, `RowRoleScope`) - `GuiMenuBase::renderLines`
+  sets it per row for every menu built on it, a screen with its own row loop sets it itself, and `Plain`
+  (the font's own colour) is what everything else keeps. A facts page (no cursor) draws labels in `row`,
+  values in `rowSelected`. The table is the launcher's `docs/theme-format.md`.
 - **Two panel shapes.** A *full* panel (the classic screens: Options, the editors, Game Manager, Memory
   Cards, Hardware Information, the keyboard, pages): `Gui::renderTextBar()` + `renderHeader(title)` +
   rows + `renderStatus(hints)`; its rect is the theme's `classic.menuPanel` down to the status line
@@ -261,7 +275,7 @@ Every screen but the launcher's own carousel frame draws in **one look**, and ne
   screens' rows use the theme's classic font at its own line height, one under the other, **as many as
   fit** (`Gui::classicRowsThatFit(font)`), scrolling a row at a time with **markers**
   (`Gui::renderScrollMarkers` - triangles at the content's right edge). The selected row is
-  `renderSelectionBox`: a band in the text colour at alpha 38 with a 5 px bar at the panel's left edge
+  `renderSelectionBox`: a band in the `selectionBand` colour at alpha 38 with a 5 px bar at the panel's left edge
   (`PanelStyle::selection`); a heading between rows is `renderLabelBox` (a faint band). A row that cannot be changed is drawn, then greyed over
   with `renderDisabledBox` (`PanelStyle::disabled`, black at alpha 150) - still selectable, so the cursor
   can pass it. Compact panels

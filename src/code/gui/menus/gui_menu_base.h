@@ -71,8 +71,8 @@ public:
     // cursor keys, paging and L1/R1 do not move anything
     bool labelsOnly = false;
 
-    void adjustPageBy(int moveBy); // move the page up or down by an amount
-    void computePagePosition();    // complete recompute of positions based on the selected value
+    void adjustPageBy(int moveBy);   // move the page up or down by an amount
+    void computePagePosition();      // complete recompute of positions based on the selected value
     void landOnSelectable(int step); // off a heading: on in step's direction, else back; the page follows
 
     bool changes = false;
@@ -166,14 +166,21 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::computePagePosi
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::renderLines() {
     if (selected >= 0 && getVerticalSize() > 0) {
+        // every row in the theme's row colour, the selected one in rowSelected (UIREV-29) - a subclass's
+        // renderLineIndexOnRow draws through renderTextLine/renderRowValue, which take it from here
+        TextRenderer &text = gui->text();
+        const TextRenderer::RowRole before = text.rowRole();
         int row = firstRow;
         for (int i = firstVisibleIndex; i <= lastVisibleIndex; i++) {
             if (i < 0 || i >= getVerticalSize()) {
                 break;
             }
+            text.setRowRole(!labelsOnly && i == selected ? TextRenderer::RowRole::Selected
+                                                         : TextRenderer::RowRole::Row);
             renderLineIndexOnRow(i, row); // call virtual that knows how to display the data
             row++;
         }
+        text.setRowRole(before);
     }
 }
 

@@ -61,15 +61,15 @@ void GuiActionMenu::render() {
         const int y = panel.y + 18 + (fonts[FONT_28_BOLD].lineHeight() - font.lineHeight()) / 2;
         gui->text().renderText_WithColor(font, subtitle,
                                          panel.x + panel.w - RowInset - gui->text().textWidth(font, subtitle), y,
-                                         style.secondary, XALIGN_LEFT);
+                                         style.description, XALIGN_LEFT);
     }
     for (int i = firstVisible; i < firstVisible + rows && i < static_cast<int>(items.size()); i++) {
         if (i == selected)
             style.selection(renderer, ableem::Rect(panel.x + 1, rowY, panel.w - 2, RowHeight));
         gui->text().renderText_WithColor(fonts[FONT_22_MED], items[i].title, panel.x + RowInset + 8, rowY + 7,
-                                         i == selected ? style.text : style.secondary, XALIGN_LEFT);
+                                         style.rowColor(i == selected), XALIGN_LEFT);
         gui->text().renderText_WithColor(fonts[FONT_15_BOLD], items[i].description, panel.x + RowInset + 8, rowY + 35,
-                                         style.secondary, XALIGN_LEFT);
+                                         style.description, XALIGN_LEFT);
         rowY += RowHeight;
     }
     // scroll markers: a small triangle at the top or bottom edge of the rows when more are that way

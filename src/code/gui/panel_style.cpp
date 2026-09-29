@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <functional>
 #include <vector>
 
 using namespace std;
@@ -62,6 +63,60 @@ PanelStyle PanelStyle::fromTheme(const ableem::LauncherTheme &theme) {
         s.secondary = TextRenderer::toColor(theme.colors.secondary, 255);
     s.hint = theme.colors.hint.set ? TextRenderer::toColor(theme.colors.hint, 255) : s.secondary;
     s.textShadow = !theme.textShadow.set || theme.textShadow;
+
+    // the roles: each one's colour, or the colour it names, or its fallback - resolved by name so a role may
+    // name another role ("value": "row"); a chain longer than the roles themselves is a loop, cut to text
+    using Field = ableem::ThemeColorRole ableem::LauncherTheme::Colors::*;
+    struct Def {
+        const char *key;
+        Field field;
+        const char *fallback;
+        Color PanelStyle::*out;
+    };
+    static const Def defs[] = {
+        {"row", &ableem::LauncherTheme::Colors::row, "secondary", &PanelStyle::row},
+        {"rowSelected", &ableem::LauncherTheme::Colors::rowSelected, "text", &PanelStyle::rowSelected},
+        {"heading", &ableem::LauncherTheme::Colors::heading, "secondary", &PanelStyle::heading},
+        {"value", &ableem::LauncherTheme::Colors::value, "row", &PanelStyle::value},
+        {"description", &ableem::LauncherTheme::Colors::description, "secondary", &PanelStyle::description},
+        {"footer", &ableem::LauncherTheme::Colors::footer, "text", &PanelStyle::footerText},
+        {"selectionBand", &ableem::LauncherTheme::Colors::selectionBand, "text", &PanelStyle::selectionBand},
+        {"edge", &ableem::LauncherTheme::Colors::edge, "secondary", &PanelStyle::edge},
+    };
+    const int count = static_cast<int>(sizeof(defs) / sizeof(defs[0]));
+    auto known = [&](const string &name) {
+        if (name == "text" || name == "secondary" || name == "hint" || name == "selection")
+            return true;
+        for (const Def &d : defs)
+            if (name == d.key)
+                return true;
+        return false;
+    };
+    std::function<Color(const string &, int)> byName = [&](const string &name, int depth) -> Color {
+        if (depth > count)
+            return s.text;
+        if (name == "text")
+            return s.text;
+        if (name == "secondary")
+            return s.secondary;
+        if (name == "hint")
+            return s.hint;
+        if (name == "selection")
+            return theme.colors.selection.set ? TextRenderer::toColor(theme.colors.selection, 255) : s.text;
+        for (const Def &d : defs) {
+            if (name != d.key)
+                continue;
+            const ableem::ThemeColorRole &role = theme.colors.*(d.field);
+            if (role.color.set)
+                return TextRenderer::toColor(role.color, 255);
+            if (!role.ref.empty() && role.ref != name && known(role.ref)) // a misspelt name counts as unset
+                return byName(role.ref, depth + 1);
+            return byName(d.fallback, depth + 1);
+        }
+        return s.text;
+    };
+    for (const Def &d : defs)
+        s.*(d.out) = byName(d.key, 0);
     return s;
 }
 
@@ -81,7 +136,7 @@ void PanelStyle::sheet(ableem::Renderer &renderer, const Rect &panel) const {
     renderer.setBlendMode(ableem::BlendMode::Blend);
     renderer.setDrawColor(Color(0, 0, 0, 200));
     renderer.fillRect(panel);
-    renderer.setDrawColor(Color(secondary.r, secondary.g, secondary.b, 160));
+    renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 160));
     renderer.drawRect(panel);
 }
 
@@ -90,7 +145,7 @@ void PanelStyle::sheet(ableem::Renderer &renderer, const Rect &panel) const {
 //*******************************
 void PanelStyle::rule(ableem::Renderer &renderer, const Rect &panel, int y) const {
     renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(secondary.r, secondary.g, secondary.b, 160));
+    renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 160));
     renderer.fillRect(Rect(panel.x + RowInset, y, panel.w - 2 * RowInset, 1));
 }
 
@@ -109,9 +164,9 @@ int PanelStyle::header(Gui &gui, const Rect &panel, const string &title) const {
 //*******************************
 void PanelStyle::selection(ableem::Renderer &renderer, const Rect &rect) const {
     renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(text.r, text.g, text.b, 38));
+    renderer.setDrawColor(Color(selectionBand.r, selectionBand.g, selectionBand.b, 38));
     renderer.fillRect(rect);
-    renderer.setDrawColor(text);
+    renderer.setDrawColor(selectionBand);
     renderer.fillRect(Rect(rect.x, rect.y, SelectionBar, rect.h));
 }
 
@@ -120,7 +175,7 @@ void PanelStyle::selection(ableem::Renderer &renderer, const Rect &rect) const {
 //*******************************
 void PanelStyle::label(ableem::Renderer &renderer, const Rect &rect) const {
     renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(secondary.r, secondary.g, secondary.b, 70));
+    renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 70));
     renderer.fillRect(rect);
 }
 
@@ -249,7 +304,7 @@ int PanelStyle::button(Gui &gui, const string &key, int x, int y, int height) co
     renderer.setBlendMode(ableem::BlendMode::Blend);
     renderer.setDrawColor(Color(255, 255, 255, 24));
     renderer.fillRect(chip);
-    renderer.setDrawColor(Color(secondary.r, secondary.g, secondary.b, 200));
+    renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 200));
     renderer.drawRect(chip);
     gui.text().renderText_WithColor(font, name, chip.x + 7, chip.y + (chipH - font.lineHeight()) / 2, text,
                                     XALIGN_LEFT);
@@ -349,7 +404,7 @@ void PanelStyle::footer(Gui &gui, const Rect &footer, const vector<HintItem> &gi
     const ableem::Font &statusFont = assets.themeFonts[FONT_22_MED];
     if (!status.empty()) {
         const int w = text.textWidth(statusFont, status);
-        text.renderText_WithColor(statusFont, status, right - w, y, secondary, XALIGN_LEFT);
+        text.renderText_WithColor(statusFont, status, right - w, y, description, XALIGN_LEFT);
         right -= w + 36;
     }
     // the largest font the hints fit in, then the gap between them; `iconsOnly` drops every hint's own label
@@ -393,7 +448,7 @@ void PanelStyle::footer(Gui &gui, const Rect &footer, const vector<HintItem> &gi
             x += gap;
         } else {
             x += 2;
-            text.renderText_WithColor(font, h.label, x, y + (iconH - fontH) / 2, this->text, XALIGN_LEFT);
+            text.renderText_WithColor(font, h.label, x, y + (iconH - fontH) / 2, footerText, XALIGN_LEFT);
             x += text.textWidth(font, h.label) + gap;
         }
     }

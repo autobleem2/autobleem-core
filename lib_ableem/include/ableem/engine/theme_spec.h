@@ -45,6 +45,20 @@ struct ThemeColor {
 };
 
 //******************
+// ThemeColorRole
+//******************
+// A style role's colour in launcher.colors (UIREV-29): "#rrggbb", or the name of another colour in the same
+// block ("secondary", "text", "row", ...) that it takes its value from, like a CSS variable - so the default
+// theme can say "rows are the secondary colour", and a theme that sets only `secondary` moves every row with
+// it. Neither set means the role's own fallback (PanelStyle::fromTheme resolves them).
+struct ThemeColorRole {
+    ThemeColor color;
+    std::string ref;
+
+    bool isSet() const { return color.set || !ref.empty(); }
+};
+
+//******************
 // ThemePoint / ThemeRect
 //******************
 struct ThemePoint {
@@ -169,8 +183,16 @@ struct LauncherTheme {
     // (UIREV-7) - hint stayed too close to the panel's own dim background there.
     // selection: the resume-slot picker's colour for the selected slot (a halo around its tile, the others
     // dimmed); unset means the original red tint of the slot's tile, invisible on a tile that is not white
+    // The style roles (UIREV-29, appended after the four above - SDK layout): the one place every menu, list
+    // and dialog takes its colours from (PanelStyle). row: an unselected row's text; rowSelected: the
+    // selected row's text and value; heading: the text on a heading band; value: an unselected row's
+    // right-hand value; description: a row's second line, a subtitle, the description strip, the footer's
+    // counter; footer: the footer's hint labels; selectionBand: the selected row's band and bar; edge: the
+    // panel's edge, its rules, the heading band. Fallbacks: row, heading, description, edge -> secondary;
+    // rowSelected, footer, selectionBand -> text; value -> row. docs/theme-format.md has the table.
     struct Colors {
         ThemeColor text, secondary, hint, selection;
+        ThemeColorRole row, rowSelected, heading, value, description, footer, selectionBand, edge;
     } colors;
 };
 

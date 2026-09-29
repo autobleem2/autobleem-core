@@ -42,6 +42,8 @@ if (AB_CORE_UI)
     # a local model of widthAt() - the real class needs a live Gui/ThemeAssets over a theme/resources tree
     # this repo does not ship (see the file's opening comment), the same reason as the suite above
     ab_add_test(test_panel_style_footer classic/test_panel_style_footer.cpp)
+    # UIREV-29: the theme's style roles as PanelStyle::fromTheme resolves them (static - no Gui needed)
+    ab_add_test(test_panel_style_roles classic/test_panel_style_roles.cpp LIBS ab_classic)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

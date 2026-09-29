@@ -332,6 +332,32 @@ TEST_CASE("a file that is not valid JSON, or not there, is reported and leaves t
     CHECK(spec.classic.background == "keep.png");
 }
 
+TEST_CASE("a style role is a colour or the name of another colour, and round-trips as written (UIREV-29)") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("theme.json", "{ \"launcher\": { \"colors\": { \"row\": \"secondary\", \"value\": \"#0a141e\","
+                                " \"edge\": \"not a name\", \"heading\": 5 } } }");
+    ThemeSpec spec;
+    REQUIRE(spec.load(tmp.at("theme.json")));
+    CHECK(spec.launcher.colors.row.ref == "secondary");
+    CHECK_FALSE(spec.launcher.colors.row.color.set);
+    CHECK(spec.launcher.colors.value.color.toHex() == "#0a141e");
+    CHECK_FALSE(spec.launcher.colors.edge.isSet());    // spaces: neither a colour nor a name
+    CHECK_FALSE(spec.launcher.colors.heading.isSet()); // a number
+    CHECK_FALSE(spec.launcher.colors.footer.isSet());
+
+    REQUIRE(spec.save(tmp.at("out.json")));
+    ThemeSpec back;
+    REQUIRE(back.load(tmp.at("out.json")));
+    CHECK(back.launcher.colors.row.ref == "secondary");
+    CHECK(back.launcher.colors.value.color.toHex() == "#0a141e");
+
+    ThemeSpec partial;
+    partial.launcher.colors.value.color = ThemeColor(1, 2, 3);
+    partial.mergeOver(spec);
+    CHECK(partial.launcher.colors.row.ref == "secondary");           // the base's name, still a name
+    CHECK(partial.launcher.colors.value.color.toHex() == "#010203"); // its own
+}
+
 TEST_CASE("a key of the wrong type is ignored, not an error") {
     TempDir tmp("theme_spec");
     tmp.writeFile("theme.json", "{ \"classic\": { \"background\": 7, \"menuLines\": \"twelve\", \"textColor\": \"red\","

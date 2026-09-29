@@ -39,6 +39,23 @@ public:
     ableem::Color hint{100, 100, 100, 255};
     bool textShadow = true; // the launcher's halo under every text on the panel
 
+    // The style roles (UIREV-29), launcher.colors' role keys resolved (a colour, a name of another colour in
+    // the block, else the fallback). Every row, heading, value and description of every menu, list and
+    // dialog draws in one of these - change one in theme.json and every window follows. Appended after
+    // the members above on purpose: an extension holds a PanelStyle by value (AB_SDK_ABI 6).
+    ableem::Color row{100, 100, 100, 255};           // an unselected row's text (secondary)
+    ableem::Color rowSelected{255, 255, 255, 255};   // the selected row's text and value (text)
+    ableem::Color heading{100, 100, 100, 255};       // the text on a heading band (secondary)
+    ableem::Color value{100, 100, 100, 255};         // an unselected row's right-hand value (row)
+    ableem::Color description{100, 100, 100, 255};   // second lines, subtitles, the strip, counters (secondary)
+    ableem::Color footerText{255, 255, 255, 255};    // the footer's hint labels, key `footer` (text)
+    ableem::Color selectionBand{255, 255, 255, 255}; // the selected row's band and bar (text)
+    ableem::Color edge{100, 100, 100, 255};          // the sheet's edge, rules, the heading band (secondary)
+
+    // a row's text / its value, selected or not
+    const ableem::Color &rowColor(bool selected) const { return selected ? rowSelected : row; }
+    const ableem::Color &valueColor(bool selected) const { return selected ? rowSelected : value; }
+
     // the screen behind the panel, darkened
     void dim(ableem::Renderer &renderer) const;
     // the sheet and its edge

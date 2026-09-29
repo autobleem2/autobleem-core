@@ -69,6 +69,22 @@ void readColor(const json &j, const char *key, ThemeColor &out) {
         ThemeColor::parseHex(v->get<string>(), out);
 }
 
+// a style role: "#rrggbb", or a bare name (letters only) of another colour in the block
+void readRole(const json &j, const char *key, ThemeColorRole &out) {
+    const json *v = child(j, key);
+    if (!v || !v->is_string())
+        return;
+    const string s = v->get<string>();
+    if (ThemeColor::parseHex(s, out.color))
+        return;
+    if (s.empty())
+        return;
+    for (char c : s)
+        if (!isalpha(static_cast<unsigned char>(c)))
+            return;
+    out.ref = s;
+}
+
 // x/y/w/h (set when x is there), colour and alpha, each optional on its own
 void readRect(const json &j, int &x, int &y, int &w, int &h, bool &set) {
     readInt(j, "x", x, set);
@@ -103,6 +119,13 @@ void putStr(ordered_json &o, const char *key, const string &s) {
 void putColor(ordered_json &o, const char *key, const ThemeColor &c) {
     if (c.set)
         o[key] = c.toHex();
+}
+
+void putRole(ordered_json &o, const char *key, const ThemeColorRole &r) {
+    if (r.color.set)
+        o[key] = r.color.toHex();
+    else if (!r.ref.empty())
+        o[key] = r.ref;
 }
 
 void putOptInt(ordered_json &o, const char *key, const Opt<int> &v) {
@@ -144,6 +167,11 @@ void mergeStr(string &mine, const string &base) {
 
 void mergeColor(ThemeColor &mine, const ThemeColor &base) {
     if (!mine.set)
+        mine = base;
+}
+
+void mergeRole(ThemeColorRole &mine, const ThemeColorRole &base) {
+    if (!mine.isSet())
         mine = base;
 }
 
@@ -338,6 +366,15 @@ bool ThemeSpec::load(const string &path) {
             readColor(*c, "secondary", launcher.colors.secondary);
             readColor(*c, "hint", launcher.colors.hint);
             readColor(*c, "selection", launcher.colors.selection);
+            auto &cl = launcher.colors;
+            readRole(*c, "row", cl.row);
+            readRole(*c, "rowSelected", cl.rowSelected);
+            readRole(*c, "heading", cl.heading);
+            readRole(*c, "value", cl.value);
+            readRole(*c, "description", cl.description);
+            readRole(*c, "footer", cl.footer);
+            readRole(*c, "selectionBand", cl.selectionBand);
+            readRole(*c, "edge", cl.edge);
         }
     }
 
@@ -502,6 +539,15 @@ bool ThemeSpec::save(const string &path) const {
             putColor(c, "secondary", launcher.colors.secondary);
             putColor(c, "hint", launcher.colors.hint);
             putColor(c, "selection", launcher.colors.selection);
+            const auto &cl = launcher.colors;
+            putRole(c, "row", cl.row);
+            putRole(c, "rowSelected", cl.rowSelected);
+            putRole(c, "heading", cl.heading);
+            putRole(c, "value", cl.value);
+            putRole(c, "description", cl.description);
+            putRole(c, "footer", cl.footer);
+            putRole(c, "selectionBand", cl.selectionBand);
+            putRole(c, "edge", cl.edge);
             putObject(l, "colors", c);
         }
         putObject(j, "launcher", l);
@@ -562,6 +608,16 @@ void ThemeSpec::mergeOver(const ThemeSpec &base) {
     mergeColor(launcher.colors.secondary, base.launcher.colors.secondary);
     mergeColor(launcher.colors.hint, base.launcher.colors.hint);
     mergeColor(launcher.colors.selection, base.launcher.colors.selection);
+    // a role inherits the default's as it is written - a name stays a name, resolved against this theme's
+    // own colours (PanelStyle::fromTheme), so a theme that sets only `secondary` moves every role naming it
+    mergeRole(launcher.colors.row, base.launcher.colors.row);
+    mergeRole(launcher.colors.rowSelected, base.launcher.colors.rowSelected);
+    mergeRole(launcher.colors.heading, base.launcher.colors.heading);
+    mergeRole(launcher.colors.value, base.launcher.colors.value);
+    mergeRole(launcher.colors.description, base.launcher.colors.description);
+    mergeRole(launcher.colors.footer, base.launcher.colors.footer);
+    mergeRole(launcher.colors.selectionBand, base.launcher.colors.selectionBand);
+    mergeRole(launcher.colors.edge, base.launcher.colors.edge);
 
     // every file field, in one go
     vector<string *> mine = fileFields();

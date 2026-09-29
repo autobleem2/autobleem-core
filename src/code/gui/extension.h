@@ -30,7 +30,9 @@ class AppBase;
 // 2: ableem::Event gained mods and code; 3: GuiKeyboard rebuilt, Input::keyboardAsPad()/rawKeyboard() (2026-09-24);
 // 4: Extension::runEntry(), extension.ini's Provides=, GuiActionMenu::background (2026-09-26, one unreleased ABI);
 // 5: ThemeAssets gained the four d-pad outline textures, UIREV-2 (2026-09-29): an extension built for 4 is refused
-#define AB_SDK_ABI 5
+// 6: the theme's style roles, UIREV-29 (2026-09-29): LauncherTheme::Colors, PanelStyle and TextRenderer gained
+//    members (the roles, the row role) - an extension built for 5 is refused
+#define AB_SDK_ABI 6
 
 #define AB_SDK_STR2(x) #x
 #define AB_SDK_STR(x) AB_SDK_STR2(x)

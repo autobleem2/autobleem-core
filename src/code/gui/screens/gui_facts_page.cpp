@@ -80,10 +80,14 @@ void GuiFactsPage::render() {
     for (int i = firstVisible, row = 0; i < count && row < rowsThatFit; i++, row++) {
         const int y = yoffset + fontHeight * row;
         const Line &line = lines[i];
+        // the theme's roles (UIREV-29): headings in heading, labels in row, values bright (rowSelected) - a
+        // page with no cursor must not read as a dimmed list
         if (line.heading) {
             gui->text().renderLabelBox(0, y);
+            TextRenderer::RowRoleScope role(gui->text(), TextRenderer::RowRole::Heading);
             gui->text().renderTextLine(line.label, -y, 0, XALIGN_LEFT, 0, font);
         } else {
+            TextRenderer::RowRoleScope role(gui->text(), TextRenderer::RowRole::FactRow);
             gui->text().renderTextLine(line.label, -y, 0, XALIGN_LEFT, 0, font);
             gui->text().renderRowValue(gui->text().elide(font, line.value, valueWidth), -y, 0, valueRight, font);
         }

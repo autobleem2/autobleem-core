@@ -82,6 +82,26 @@ public:
     // and puts it back to 255 - applied at the copy, so the cached runs are not composed again per alpha
     void setAlpha(unsigned char alpha) { alpha_ = alpha; }
 
+    // The role the classic rows are drawn in (UIREV-29): renderTextLine (and the ...ToColumns/...Options
+    // forms) and renderRowValue colour their text from it - PanelStyle's row / rowSelected / heading, the
+    // value in value / rowSelected / heading; FactRow is a facts page's line (the label in row, the value in
+    // rowSelected, so a page with no cursor does not read as a dimmed list). A list sets it per row
+    // (GuiMenuBase::renderLines does for every menu built on it) and puts Plain back after its rows - Plain
+    // is the font's own colour, how every classic line was drawn before. RowRoleScope does both.
+    enum class RowRole { Plain, Row, Selected, Heading, FactRow };
+    void setRowRole(RowRole role) { rowRole_ = role; }
+    RowRole rowRole() const { return rowRole_; }
+    struct RowRoleScope {
+        RowRoleScope(TextRenderer &text, RowRole role) : text_(text), saved_(text.rowRole()) { text.setRowRole(role); }
+        ~RowRoleScope() { text_.setRowRole(saved_); }
+        RowRoleScope(const RowRoleScope &) = delete;
+        RowRoleScope &operator=(const RowRoleScope &) = delete;
+
+    private:
+        TextRenderer &text_;
+        RowRole saved_;
+    };
+
     // Every run of text drawn through here is kept as a texture (the halo and the text composed once) and
     // copied thereafter, so a frame costs one copy per label instead of ten passes of one copy per glyph.
     // Gui drops the cache whenever the fonts go - a theme or language load, the display given up for an
@@ -219,4 +239,7 @@ private:
     unsigned char alpha_ = 255;
     int checkIconRightMargin_ = 0;
     const ableem::Rect *panelOverride_ = nullptr;
+    // the colour of the current row role (setRowRole), or null for Plain; `value` for the right-hand value
+    bool rowRoleColor(bool value, ableem::Color &out);
+    RowRole rowRole_ = RowRole::Plain; // appended last: SDK layout (AB_SDK_ABI 6)
 };

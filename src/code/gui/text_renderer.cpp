@@ -395,7 +395,32 @@ int TextRenderer::renderTextLine(const string &text, int line, int yoffset, XAli
         y = line;
     }
 
-    return renderText(font, text, x, y, xAlign);
+    Color color;
+    return renderText(font, text, x, y, xAlign, rowRoleColor(false, color) ? &color : nullptr);
+}
+
+//*******************************
+// TextRenderer::rowRoleColor
+//*******************************
+bool TextRenderer::rowRoleColor(bool value, Color &out) {
+    if (rowRole_ == RowRole::Plain)
+        return false;
+    const PanelStyle style = PanelStyle::fromTheme(theme_.launcher());
+    switch (rowRole_) {
+    case RowRole::Selected:
+        out = style.rowSelected;
+        break;
+    case RowRole::Heading:
+        out = style.heading;
+        break;
+    case RowRole::FactRow:
+        out = value ? style.rowSelected : style.row;
+        break;
+    default:
+        out = value ? style.value : style.row;
+        break;
+    }
+    return true;
 }
 
 //*******************************
@@ -452,7 +477,9 @@ void TextRenderer::renderRowValue(const string &value, int line, int yoffset, in
     int y = (font.lineHeight() * line) + yoffset;
     if (line < 0)
         y = -line;
-    renderText(font, value, ableem::GuiBase::ScreenWidth - right, y, XALIGN_RIGHT);
+    Color color;
+    renderText(font, value, ableem::GuiBase::ScreenWidth - right, y, XALIGN_RIGHT,
+               rowRoleColor(true, color) ? &color : nullptr);
 }
 
 //*******************************
