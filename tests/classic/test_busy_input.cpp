@@ -358,6 +358,31 @@ TEST_CASE("busy rule: a repeat loop that runs until another pad event is pending
     CHECK(mg.input().padEventPending()); // the loop ends here, not whenever the player lets go
 }
 
+TEST_CASE("a held arrow key's repeats do not end a repeat loop; its release does") {
+    MaybeGui mg;
+    if (!mg.available())
+        return;
+    // the keyboard is the pad (keyboardAsPad, every platform): GuiMenuBase::doJoyDown's fastForwardUntilAnotherEvent
+    // waits on padEventPending() while the key is down, and the system's key repeat (a KeyDown with repeat set,
+    // ~30 a second after half a second) is not another event - counted, it stopped the list scrolling
+    REQUIRE(mg.input().keyboardAsPad());
+    pushKey(true, SDL_SCANCODE_DOWN, SDLK_DOWN);
+    REQUIRE(count(drain(mg.input()), Event::Type::DpadDown) == 1);
+    CHECK_FALSE(mg.input().padEventPending());
+
+    for (int i = 0; i < 5; i++)
+        pushKey(true, SDL_SCANCODE_DOWN, SDLK_DOWN, true);
+    CHECK_FALSE(mg.input().padEventPending()); // held, only repeats: the loop goes on
+    CHECK(mg.input().dpadDown());
+
+    pushKey(false, SDL_SCANCODE_DOWN, SDLK_DOWN);
+    CHECK(mg.input().padEventPending()); // the release ends it
+    vector<Event> seen = drain(mg.input());
+    CHECK(count(seen, Event::Type::DpadUp) == 1);
+    CHECK(count(seen, Event::Type::DpadDown) == 0); // the repeats never reach a screen
+    CHECK(mg.input().dpadCentered());
+}
+
 TEST_CASE("busy rule: a hold that reads the live d-pad state each frame stops after the job") {
     MaybeGui mg;
     if (!mg.available())

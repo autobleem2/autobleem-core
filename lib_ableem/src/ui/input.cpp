@@ -1267,6 +1267,11 @@ bool Input::quitRequested() const {
     return impl->quitRequested;
 }
 
+// SDL_FilterEvents' callback: 0 removes the event from the queue - a key's own repeat, nothing else
+static int dropKeyRepeat(void *, SDL_Event *e) {
+    return e->type == SDL_KEYDOWN && e->key.repeat != 0 ? 0 : 1;
+}
+
 bool Input::padEventPending() const {
     if (impl->injectedPending())
         return true;
@@ -1276,7 +1281,11 @@ bool Input::padEventPending() const {
     n += SDL_PeepEvents(&e, 1, SDL_PEEKEVENT, SDL_CONTROLLERHATMOTIONUP, SDL_CONTROLLERHATMOTIONDOWN);
     if (impl->keyboardAsPad) {
         // on a dev host the pad is the keyboard, so a key going up is the "another event" a screen's
-        // fast-forward loop is waiting for; without this the loop never sees the release and repeats forever
+        // fast-forward loop is waiting for; without this the loop never sees the release and repeats forever.
+        // A held key's own repeats are not "another event" (poll() swallows them for a mapped key): counted, they
+        // ended the loop ~0.5 s into every hold on a keyboard, and the list stopped scrolling - so they leave
+        // the queue here, before it is looked at
+        SDL_FilterEvents(dropKeyRepeat, nullptr);
         n += SDL_PeepEvents(&e, 1, SDL_PEEKEVENT, SDL_KEYDOWN, SDL_KEYUP);
     }
     return n > 0;
