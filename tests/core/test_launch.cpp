@@ -902,3 +902,43 @@ TEST_CASE("C11: padorder supported, but the swap is off - nothing is sent, and n
     for (const auto &e : call.env)
         CHECK(e.first != "AB_PAD_ORDER");
 }
+
+TEST_CASE("Show performance on, and the emulator declares perfoverlay - AB_PERF_OVERLAY=1 is sent") {
+    Launching lib;
+    lib.configure("Emulator=pcsx-abnxt\nPerfoverlay=true\n");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "exitdir\nperfoverlay\n");
+    PsGamePtr game = lib.usbGame();
+
+    lib.service->launch(game, EmuMode::Pcsx, 0);
+
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    string value = "-";
+    for (const auto &e : call.env)
+        if (e.first == "AB_PERF_OVERLAY")
+            value = e.second;
+    CHECK(value == "1");
+}
+
+TEST_CASE("Show performance: off, or an emulator without perfoverlay - AB_PERF_OVERLAY is not sent") {
+    SUBCASE("the setting is off") {
+        Launching lib;
+        lib.configure("Emulator=pcsx-abnxt\nPerfoverlay=false\n");
+        lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+        lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "perfoverlay\n");
+        PsGamePtr game = lib.usbGame();
+        lib.service->launch(game, EmuMode::Pcsx, 0);
+        for (const auto &e : lib.runner.only().env)
+            CHECK(e.first != "AB_PERF_OVERLAY");
+    }
+    SUBCASE("an older emulator") {
+        Launching lib;
+        lib.configure("Emulator=pcsx-abnxt\nPerfoverlay=true\n");
+        lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+        lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "exitdir\nmemcarddir\nloadstate\n");
+        PsGamePtr game = lib.usbGame();
+        lib.service->launch(game, EmuMode::Pcsx, 0);
+        for (const auto &e : lib.runner.only().env)
+            CHECK(e.first != "AB_PERF_OVERLAY");
+    }
+}
