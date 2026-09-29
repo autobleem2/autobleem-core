@@ -23,7 +23,7 @@ struct PcsxSettings {
     int noSeams = 1; // pcsx.cfg gpu_neon.enhancement_no_seams, Remove seams (with 2x only); no line = on
     int speedhack = 0;
     int clock = 0;
-    int frameskip = 0;
+    int frameskip = 0; // pcsx.cfg frameskip3, the emulators' setting: 0 Auto, 1 Off, 2..4 skip 1..3 frames
     int dither = 1;    // pcsx.cfg dithering2, pcsx-abnxt's Dithering: 0 off, 1 where the game asks (no line), 2 always
     int scanlines = 0; // pcsx.cfg scanlines: 0 off, 1..3 how thick (the classic pcsx-ab: anything but 0 is on)
     int scanlineLevel = 0;
@@ -118,7 +118,7 @@ public:
     void setScanlines(GameSettings &s, int mode);
     void setScanlineLevel(GameSettings &s, int level); // 0..100
     void setClock(GameSettings &s, int clock);         // 0..100
-    void setFrameskip(GameSettings &s, int frames);    // 0..3
+    void setFrameskip(GameSettings &s, int frames);    // 0..FrameskipCount-1 (PcsxSettings::frameskip); clamped
     void setInterpolation(GameSettings &s, int mode);  // 0..3
     // SlowBoot: off skips the BIOS shell (a homebrew's custom logo can crash pcsx-ab's boot); RetroArch
     // gets it as pcsx_rearmed_show_bios_bootlogo (LaunchService)
@@ -155,7 +155,9 @@ public:
     static const char *const PeopsGpu;
     static const int SmoothingCount = 5;
     static const char *const SmoothingNames[SmoothingCount]; // "None", "Scale2x", "Eagle2x", "HQ2x", "HQ3x"
-    static const int FilterCount = 7;                        // pcsx-abnxt's AB_FILTER_COUNT
+    static const int FrameskipCount = 5; // the emulators' men_frameskip: Auto, Off, 1, 2, 3
+    static const int FrameskipOff = 1;
+    static const int FilterCount = 7;                      // pcsx-abnxt's AB_FILTER_COUNT
     static const int DitheringCount = 3;
     static const int ScanlineModes = 4; // off, 1, 2, 3
 

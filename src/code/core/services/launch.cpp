@@ -818,7 +818,9 @@ void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raCo
         // 0 off, 1..3 how thick in pcsx-abnxt: RetroArch's overlay is one thickness
         int scanlines = strtol(value("scanlines").c_str(), nullptr, 16);
         int scanline_level = strtol(value("scanline_level").c_str(), nullptr, 16);
-        int frameskip = atoi(value("frameskip3").c_str());
+        // the emulators' setting (0 Auto, 1 Off, 2..4 skip 1..3; no line = Off), as the core's type + interval
+        string skipLine = value("frameskip3");
+        int frameskip = skipLine.empty() ? 1 : strtol(skipLine.c_str(), nullptr, 16);
         string slowBoot = value("SlowBoot");
         bool bootLogo = slowBoot.empty() || atoi(slowBoot.c_str()) != 0;
 
@@ -832,7 +834,10 @@ void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raCo
         static const char *const interpolations[] = {"off", "simple", "gaussian", "cubic"};
         if (interpolation >= 0 && interpolation <= 3)
             set(coreOptions, "pcsx_rearmed_spu_interpolation", interpolations[interpolation]);
-        set(coreOptions, "pcsx_rearmed_frameskip", to_string(frameskip));
+        set(coreOptions, "pcsx_rearmed_frameskip_type",
+            frameskip == 0 ? "auto" : frameskip >= 2 && frameskip <= 4 ? "fixed_interval" : "disabled");
+        if (frameskip >= 2 && frameskip <= 4)
+            set(coreOptions, "pcsx_rearmed_frameskip_interval", to_string(frameskip - 1));
 
         if (scanlines != 0) {
             float opacity = scanline_level / 100.0f;

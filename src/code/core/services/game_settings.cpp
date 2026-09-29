@@ -141,8 +141,6 @@ GameSettings GameSettingsService::open(PsGamePtr game) const {
 // GameSettingsService::refreshPcsx
 //*******************************
 // The values as the emulator will see them: the game's own config over pcsx.cfg (PcsxConfig::value).
-// frameskip3 is written in hex like the other levels but read in decimal; with a range of 0..3 the two
-// agree, so it has never mattered. Left as it was.
 void GameSettingsService::refreshPcsx(GameSettings &s) const {
     const PsGame &game = *s.game;
     auto value = [&game](const char *key) { return PcsxConfig::value(game, key); };
@@ -158,7 +156,10 @@ void GameSettingsService::refreshPcsx(GameSettings &s) const {
     p.speedhack = atoi(value("gpu_neon.enhancement_no_main").c_str());
     p.clock = strtol(value("psx_clock").c_str(), nullptr, 16);
     p.gpu = value("gpu3");
-    p.frameskip = atoi(value("frameskip3").c_str());
+    // the emulators' frameskip setting, not a frame count: 0 Auto, 1 Off, 2..4 skip 1..3 (no line = Off, their
+    // default; the shipped pcsx.cfg says 0, Auto)
+    string skip = value("frameskip3");
+    p.frameskip = skip.empty() ? FrameskipOff : clampTo(strtol(skip.c_str(), nullptr, 16), 0, FrameskipCount - 1);
     // pcsx-abnxt's menu shows anything past "always" as "on"; no line = on, the emulator's default
     int dither = hexValue("dithering2", 1);
     p.dither = dither < 0 || dither >= DitheringCount ? 1 : dither;
@@ -349,7 +350,7 @@ void GameSettingsService::setClock(GameSettings &s, int clock) {
 // GameSettingsService::setFrameskip
 //*******************************
 void GameSettingsService::setFrameskip(GameSettings &s, int frames) {
-    replaceCfgLine(s, "frameskip3", toHex(clampTo(frames, 0, 3)));
+    replaceCfgLine(s, "frameskip3", toHex(clampTo(frames, 0, FrameskipCount - 1)));
 }
 
 //*******************************

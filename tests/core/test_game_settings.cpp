@@ -265,10 +265,13 @@ TEST_CASE("the levels are written in hex and clamped to their ranges") {
     lib.service->setScanlineLevel(s, 200);
     CHECK(s.pcsx.scanlineLevel == 100);
 
-    lib.service->setFrameskip(s, 3);
-    CHECK(s.pcsx.frameskip == 3);
+    // the emulators' setting: 0 Auto, 1 Off, 2..4 skip 1..3
     lib.service->setFrameskip(s, 4);
-    CHECK(s.pcsx.frameskip == 3);
+    CHECK(s.pcsx.frameskip == 4);
+    lib.service->setFrameskip(s, 5);
+    CHECK(s.pcsx.frameskip == 4);
+    lib.service->setFrameskip(s, 0);
+    CHECK(s.pcsx.frameskip == 0);
 
     lib.service->setInterpolation(s, 2);
     CHECK(s.pcsx.interpolation == 2);
