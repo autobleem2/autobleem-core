@@ -233,7 +233,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyUp() {
             adjustPageBy(-1);
         } else {
             --selected;
-            while (skipSelectingThisLineWhenMovingByOne(selected) && selected > 1)
+            while (skipSelectingThisLineWhenMovingByOne(selected) && selected > 0)
                 --selected;
         }
     }

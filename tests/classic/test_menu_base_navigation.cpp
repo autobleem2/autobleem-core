@@ -46,14 +46,15 @@ struct TestMenu {
         }
     }
 
-    // gui_menu_base.h ~226-240, unchanged by this fix - note the `selected > 1` bound (not `> 0`)
+    // gui_menu_base.h ~226-240, fixed by BUG-25: the skip loop's bound was `selected > 1`, which could never
+    // land on row 0 - now `selected > 0`, mirroring doKeyDown()'s `selected < size() - 1`
     void doKeyUp() {
         if (size() > 1) {
             if (selected <= 0) {
                 selected = size() - 1;
             } else {
                 --selected;
-                while (skip(selected) && selected > 1)
+                while (skip(selected) && selected > 0)
                     --selected;
             }
         }
@@ -151,11 +152,16 @@ TEST_CASE("doHome/doEnd: every row a heading terminates instead of looping forev
 }
 
 //*******************************
-// doKeyUp()/doKeyDown(): BUG-25 ("Options d-pad sometimes skips 2-3 rows", hub docs\todo.md - record only,
-// not approved for a fix - hard rule 4: reproduce on current develop, don't fix speculatively)
+// doKeyUp()/doKeyDown(): BUG-25 ("Options d-pad sometimes skips 2-3 rows", hub docs\bugs.md) - fix approved by
+// the owner 2026-09-29, in the UIREV series (commit 72e4763). Root cause confirmed: doKeyUp()'s skip loop was
+// bounded by `selected > 1`, so with two (or more) consecutive skippable rows it stopped one row short of row
+// 0 - a heading left selected, no selection box drawn - instead of skipping all the way through to the first
+// real row, the way doKeyDown()'s correctly-bounded mirror (`selected < getVerticalSize() - 1`) always could.
+// A player near the top of a list with adjacent headings would see the cursor stop on a row that draws
+// nothing, then jump past it on the very next Up - reading as an inconsistent multi-row skip.
 //*******************************
 
-TEST_CASE("doKeyDown: two consecutive headings mid-list are skipped cleanly (its bound is not suspect)") {
+TEST_CASE("doKeyDown: two consecutive headings mid-list are skipped cleanly (its bound was never suspect)") {
     TestMenu m;
     m.heading = {false, true, true, false, false}; // row 0 and 3/4 real, 1/2 headings
     m.selected = 0;
@@ -163,32 +169,45 @@ TEST_CASE("doKeyDown: two consecutive headings mid-list are skipped cleanly (its
     CHECK(m.selected == 3); // straight past both headings to the next real row
 }
 
-TEST_CASE("doKeyUp: two consecutive headings mid-list - the `selected > 1` bound stops one short of row 0"
-          " (BUG-25-shaped - reported, not fixed here)") {
-    // Same layout as the doKeyDown case above, driven from the other end. doKeyUp's skip loop is bounded by
-    // `selected > 1`, not `selected > 0` like doKeyDown's mirror-image bound (`selected < getVerticalSize()
-    // - 1`, which correctly reaches the last valid index) - so unlike doKeyDown, doKeyUp can never land the
-    // cursor on index 0 through this loop.
+TEST_CASE("doKeyUp: two consecutive headings mid-list - now skips all the way to row 0 in one call (BUG-25)") {
+    // Same layout as the doKeyDown case above, driven from the other end. Before this fix, doKeyUp()'s skip
+    // loop was bounded by `selected > 1` and would have stopped at row 1 (a heading, CHECK(m.selected == 1))
+    // - one row short of the real row 0 - because the bound forbade decrementing selected past 1 even while
+    // still sitting on a skippable row. With the bound now `selected > 0`, matching doKeyDown()'s symmetry,
+    // it reaches row 0 directly, the same way doKeyDown reaches the last real row directly above.
     TestMenu m;
     m.heading = {false, true, true, false, false};
     m.selected = 3;
     m.doKeyUp();
-    // reproduced: the cursor stops resting on row 1 - a heading, no selection box - one heading short of
-    // the real row 0, instead of skipping through to it the way doKeyDown skips through to the last real row.
-    CHECK(m.selected == 1);
-    CHECK(m.heading[static_cast<size_t>(m.selected)]); // confirms it is indeed left sitting on a heading
-
-    // one more Up recovers - it is not a permanent stall, just one call short each time this shape occurs
-    m.doKeyUp();
-    CHECK(m.selected == 0);
+    CHECK(m.selected == 0); // skips both headings in the one call - was row 1 (a heading) before the fix
+    CHECK_FALSE(m.heading[static_cast<size_t>(m.selected)]);
 }
 
-TEST_CASE("doKeyUp: three consecutive headings mid-list - the same one-short landing, not a growing skip") {
+TEST_CASE("doKeyUp: three consecutive headings mid-list - also reaches row 0 in one call") {
     TestMenu m;
     m.heading = {false, true, true, true, false};
     m.selected = 4;
     m.doKeyUp();
-    CHECK(m.selected == 1); // stops on the heading nearest row 0, same as with two headings
+    CHECK(m.selected == 0); // was row 1 before the fix (three headings made the old bound's shortfall worse)
+}
+
+TEST_CASE("doKeyUp/doKeyDown: no headings - unaffected by the fix") {
+    TestMenu m;
+    m.heading = {false, false, false, false};
+    m.selected = 2;
     m.doKeyUp();
-    CHECK(m.selected == 0);
+    CHECK(m.selected == 1);
+    m.doKeyDown();
+    CHECK(m.selected == 2);
+}
+
+TEST_CASE("doKeyUp/doKeyDown: a single heading not at the very top or bottom - unaffected by the fix") {
+    TestMenu m;
+    m.heading = {false, true, false, false}; // one heading at row 1, same shape doHome/doEnd already cover
+    m.selected = 2;
+    m.doKeyUp();
+    CHECK(m.selected == 0); // skips the lone heading at row 1, same as before this fix
+    m.selected = 0;
+    m.doKeyDown();
+    CHECK(m.selected == 2);
 }
