@@ -51,7 +51,8 @@ public:
     unsigned long frameCount() const;
 
     // the next present() keeps its frame as a texture (output pixels, drawn over the whole target with
-    // copy(tex)) - the backdrop a busy overlay draws on while a long job runs
+    // copy(tex)) - the backdrop a busy overlay draws on while a long job runs. A frame that starts with
+    // clear() is drawn straight into a target on the GPU (no read-back); one that does not is read back
     void captureNextFrame();
     Texture lastCapture() const;
 
