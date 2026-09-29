@@ -98,6 +98,12 @@ struct Renderer::Impl {
     // the one-off capture (see Renderer::captureNextFrame)
     bool captureRequested = false;
     Texture capture;
+    // the frame being captured is drawn into this target instead of the screen (clear() switches to it,
+    // present() copies it to the screen): no read-back of the frame from the GPU, which on the console's
+    // GLES took ~350 ms (SDL converts and flips the pixels on the CPU)
+    Texture captureTarget;
+    bool capturing = false;
+    SDL_Texture *screenTarget() { return capturing ? static_cast<SDL_Texture *>(captureTarget.native()) : nullptr; }
 
     // the frame cache (see Renderer::setFrameCache)
     struct FrameCache {
@@ -296,6 +302,14 @@ Renderer::~Renderer() {
 }
 
 void Renderer::clear() {
+    // a capture asked for: this frame (it starts here, on the screen) goes into a target of the canvas's size
+    if (impl->captureRequested && !impl->capturing && SDL_GetRenderTarget(impl->renderer) == nullptr) {
+        Texture t = Texture::createTarget(*this, impl->width, impl->height);
+        if (t.valid() && SDL_SetRenderTarget(impl->renderer, static_cast<SDL_Texture *>(t.native())) == 0) {
+            impl->captureTarget = t;
+            impl->capturing = true;
+        }
+    }
     SDL_RenderClear(impl->renderer);
 }
 //*******************************
@@ -422,7 +436,23 @@ Texture Renderer::lastCapture() const {
 
 void Renderer::present() {
     debugShot(impl->renderer);
-    if (impl->captureRequested) {
+    if (impl->capturing) {
+        // the frame is in the target: it is the capture, and what the screen shows
+        impl->capturing = false;
+        impl->captureRequested = false;
+        SDL_SetRenderTarget(impl->renderer, nullptr);
+        SDL_Texture *frame = static_cast<SDL_Texture *>(impl->captureTarget.native());
+        SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE); // opaque, as a read-back frame was
+        Uint8 r = 0, g = 0, b = 0, a = 0;
+        SDL_GetRenderDrawColor(impl->renderer, &r, &g, &b, &a);
+        SDL_SetRenderDrawColor(impl->renderer, 0, 0, 0, 255);
+        SDL_RenderClear(impl->renderer);
+        SDL_SetRenderDrawColor(impl->renderer, r, g, b, a);
+        SDL_RenderCopy(impl->renderer, frame, nullptr, nullptr);
+        impl->capture = impl->captureTarget;
+        impl->captureTarget = Texture();
+    } else if (impl->captureRequested) {
+        // a frame that never called clear(): read it back
         impl->captureRequested = false;
         int w = 0, h = 0;
         if (SDL_GetRendererOutputSize(impl->renderer, &w, &h) == 0) {
@@ -731,7 +761,8 @@ void Renderer::copyTrapezoidFaded(const Texture &tex, const Rect *src, VerticalE
 }
 
 void Renderer::setTarget(Texture *target) {
-    SDL_SetRenderTarget(impl->renderer, target ? static_cast<SDL_Texture *>(target->native()) : nullptr);
+    // "the screen" is the capture's target while a frame is being captured
+    SDL_SetRenderTarget(impl->renderer, target ? static_cast<SDL_Texture *>(target->native()) : impl->screenTarget());
 }
 
 void Renderer::pushTarget(Texture *target) {
@@ -747,7 +778,7 @@ void Renderer::popTarget() {
     } else {
         PLOG_WARNING << "Renderer::popTarget without a pushTarget - back to the screen";
     }
-    SDL_SetRenderTarget(impl->renderer, previous);
+    SDL_SetRenderTarget(impl->renderer, previous ? previous : impl->screenTarget());
 }
 
 unsigned long Renderer::targetsLost() const {

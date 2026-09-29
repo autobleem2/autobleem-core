@@ -88,13 +88,14 @@ Config::Config() {
     if (updates == "") {
         updates = Version::isBetweenTags() ? "nightly" : Version::isPreRelease() ? "testing" : "release";
     }
-    // the classic screens' font: the theme's, unless "themefont" is off and "font" names a .ttf/.otf from
-    // retroarch/fonts, resources/fonts or the theme's own folder (Options -> Font; "--" is the theme's)
+    // the classic screens' font: the default (Open Sans - Fonts::DefaultClassicFont) on every theme, unless
+    // "themefont" ("Use Default Font") is off and "font" names a .ttf/.otf from retroarch/fonts or
+    // resources/fonts. A theme's own classic font is not read since 2026-09-29; "--" (it) became the default.
     if (inifile.values["themefont"] == "") {
         inifile.values["themefont"] = "true";
     }
-    if (inifile.values["font"] == "") {
-        inifile.values["font"] = "--";
+    if (inifile.values["font"] == "" || inifile.values["font"] == "--") {
+        inifile.values["font"] = "OpenSans-Medium.ttf";
     }
 
     if (inifile.values["surprisehighscore"] == "") {

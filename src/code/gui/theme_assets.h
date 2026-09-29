@@ -16,7 +16,7 @@
 // ThemeAssets
 //********************
 // Was the asset half of Gui: the background, logo and jewel-case textures, the button-marker textures the
-// text renderer draws for "|@X|", the theme's font at the theme's size, and the two font sets (the theme's
+// text renderer draws for "|@X|", the classic screens' font, and the two font sets (the theme's
 // and the console's own). load() reads them for whichever theme config.ini names, falling back to
 // themes/default for anything missing, and is what an Options-menu theme change calls. Screens reach it as
 // gui->assets().
@@ -30,10 +30,19 @@ public:
     // destroys it. load() brings them back once the display is acquired again.
     void unload();
 
+    // the UI's font set (titles, rows, footers, the menus, the extensions' screens): the launcher's pair (the
+    // theme's launcher.fonts, else Open Sans Medium/Bold) - or, with "Use Default Font" off, the user's font for
+    // both (2026-09-29, the owner)
     Fonts themeFonts;
+    // the launcher's pair whatever Options say: the parts with a fixed look draw with it - About and its game,
+    // the launcher's game details, game menu and hints. A static on purpose: a new member here would move
+    // Gui's layout, which the extensions are built against (AB_SDK_ABI)
+    static Fonts &fixedFonts();
+    // the classic screens' font - the name is historic: Open Sans (or the user's own font, or the CJK one) at
+    // Fonts::ClassicFontSize on every theme; a theme's classic.font is not read (2026-09-29)
     ableem::Font themeFont;
-    // the classic font (the file themeFont was opened from - theme, user or CJK) at another size, for a screen
-    // whose rows will not fit at the theme's
+    // the classic font (the file themeFont was opened from - default, user or CJK) at another size, for a screen
+    // whose rows will not fit at the usual size
     ableem::Font classicFontAtSize(int size);
 
     ableem::Rect backgroundRect;

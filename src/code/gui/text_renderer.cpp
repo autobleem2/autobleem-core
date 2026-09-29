@@ -429,21 +429,9 @@ int TextRenderer::renderTextLineOptions(const string &_text, int line, int yoffs
         return h; // there is no check/uncheck emoji on this line
     }
 
-    // render the check/uncheck icon on the right side of opscreen
-    Rect opscreen = getOpscreenRectOfTheme();
-    int fontHeight = themeFont_.lineHeight();
-
-    const int right = rightEdge > 0 ? rightEdge : opscreen.x + opscreen.w - PanelStyle::RowInset - 8;
-    int x = right - getCheckIconWidth() + checkIconRightMargin_;
-    int y = (fontHeight * line) + yoffset;
-    if (line < 0)
-        y = -line; // an absolute y, as renderTextLine takes it
-    if (button == 1) {
-        renderText(themeFont_, "|@Check|", x, y);
-    } else if (button == 0) {
-        renderText(themeFont_, "|@Uncheck|", x, y);
-    }
-
+    // the value as text at the row's right edge, like any other option's value (the theme's switch images
+    // were drawn here until 2026-09-29 - the owner: a plain OFF/ON choice)
+    renderRowValue(button == 1 ? _("ON") : _("OFF"), line, yoffset, rightEdge);
     return h;
 }
 

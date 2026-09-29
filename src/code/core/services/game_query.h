@@ -24,6 +24,12 @@ struct RetroArchGames {
     virtual std::string historyPlaylistName() = 0;
     // every game in every playlist except Favorites and History (they repeat the others'), one per image
     virtual PsGames allGames() = 0;
+    // for counting only - what the set picker needs: no database lookup of publisher/year/players (reading a
+    // console's .rdb files is most of the cost). By default the full answers, which a stub gives cheaply.
+    virtual int playlistSize(const std::string &playlistName) {
+        return static_cast<int>(gamesInPlaylist(playlistName).size());
+    }
+    virtual PsGames allGamesWithoutMetadata() { return allGames(); }
 };
 
 class LightgunService;
@@ -74,6 +80,20 @@ public:
         int count;
     };
     std::vector<AppCategoryCount> appCategories();
+
+    // every count the set picker shows, worked out in one go: the PS1 library read once (not once per row),
+    // the Apps folder scanned once, the playlists counted without their metadata. The caller keeps it until
+    // the library changes (a scan, an edit, a game played).
+    struct SetCounts {
+        ableem::SubDirRowInfos rows; // the /Games folder rows, each with its count
+        size_t usb = 0;              // every USB game (row 0)
+        size_t internal = 0;         // the internal games, when shown
+        size_t favorites = 0, history = 0, lightgun = 0;
+        std::vector<int> playlists; // by the names passed in, in that order
+        size_t apps = 0;
+        std::vector<AppCategoryCount> appCategories;
+    };
+    SetCounts setCounts(const std::vector<std::string> &playlistNames);
 
     bool showInternalGames() const; // config.ini "origames"
 

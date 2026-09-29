@@ -20,6 +20,7 @@ ThemeAssets::ThemeAssets(ableem::Renderer &renderer, Theme &theme, Config &confi
 //*******************************
 void ThemeAssets::unload() {
     themeFonts.closeAll();
+    fixedFonts().closeAll();
     themeFont = ableem::Font();
     backgroundImg = Texture();
     logo = Texture();
@@ -100,12 +101,10 @@ void ThemeAssets::load() {
 
     // a theme without launcher fonts (and a default theme without them either) gets the shipped pair -
     // Open Sans Medium/Bold (OFL), the stand-in for the console's SST since 2026-09-21
-    string classicFont = classic.font.file;
-    // ...the user's own font for the classic screens, when Options says so (the launcher's fonts stay)
-    string userFont =
-        Fonts::userFontPath(theme_.path(), config_.inifile.values["themefont"], config_.inifile.values["font"]);
-    if (!userFont.empty())
-        classicFont = userFont;
+    // the classic screens' font is the same on every theme - the launcher's Open Sans, or the user's own when Options
+    // says so; a theme's classic.font is not read (2026-09-29, the owner) - so it is never opened either
+    string classicFont =
+        Fonts::classicFontPath(config_.inifile.values["themefont"], config_.inifile.values["font"]);
     string medium =
         launcher.fonts.medium.empty() ? Env::getPathToFontsDir() + sep + "OpenSans-Medium.ttf" : launcher.fonts.medium;
     string bold =
@@ -117,10 +116,31 @@ void ThemeAssets::load() {
         classicFont = medium = bold = cjk;
     }
     classicFontFile_ = classicFont;
+    PLOG_INFO << "Classic font: " << classicFont;
     Gui::tickBusy();
-    themeFont = Fonts::openNewSharedCachedFont(classicFont, classic.font.size, renderer_);
-    themeFonts.openAllFonts(medium, bold, renderer_);
+    themeFont = Fonts::openNewSharedCachedFont(classicFont, Fonts::ClassicFontSize, renderer_);
+    if (!themeFont.valid() && classicFont != Fonts::defaultClassicFontPath()) {
+        // a file that is no font (an empty one crashed every screen drawing with it) - the default instead
+        PLOG_WARNING << "Cannot open the font " << classicFont << ", using the default";
+        classicFont = classicFontFile_ = Fonts::defaultClassicFontPath();
+        themeFont = Fonts::openNewSharedCachedFont(classicFont, Fonts::ClassicFontSize, renderer_);
+    }
+    fixedFonts().openAllFonts(medium, bold, renderer_);
+    if (cjk.empty() && classicFont != Fonts::defaultClassicFontPath()) {
+        PLOG_INFO << "UI font: " << classicFont;
+        themeFonts.openAllFonts(classicFont, classicFont, renderer_); // a user's font has no bold of its own
+    } else {
+        themeFonts = fixedFonts(); // the same pair: shared handles, nothing opened twice
+    }
     Gui::tickBusy();
+}
+
+//*******************************
+// ThemeAssets::fixedFonts
+//*******************************
+Fonts &ThemeAssets::fixedFonts() {
+    static Fonts fonts; // closed by unload() before the renderer goes
+    return fonts;
 }
 
 //*******************************

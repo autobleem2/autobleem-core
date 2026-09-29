@@ -46,12 +46,17 @@ public:
     ableem::Font &atSize(FontType type, int fontSize);
     ableem::Font &boldAtSize(int fontSize) { return atSize(FONT_BOLD, fontSize); }
 
+    // the classic screens' font when nothing else is chosen - the same on every theme (2026-09-29: a theme's
+    // classic.font in theme.json is no longer read): Open Sans Medium, the launcher's own, in resources/fonts
+    static const char *const DefaultClassicFont; // "OpenSans-Medium.ttf"
+    static const int ClassicFontSize = 20;
+    static std::string defaultClassicFontPath();
     // the folders a user-chosen font (config.ini "font") is looked for in, in order: retroarch/fonts, the
-    // resources' fonts, the theme's own folder
-    static std::vector<std::string> userFontDirs(const std::string &themeDir);
-    // the full path of the font named in config.ini when "themefont" is off and one is named and found;
-    // "" otherwise (the theme's font is used then)
-    static std::string userFontPath(const std::string &themeDir, const std::string &themeFont, const std::string &font);
+    // resources' fonts
+    static std::vector<std::string> userFontDirs();
+    // the classic screens' font file: the default (Open Sans) when config.ini "themefont" - Options' "Use Default
+    // Font" - is on, or the "font" it names is not found; else that font
+    static std::string classicFontPath(const std::string &useDefault, const std::string &font);
     // A language the theme's fonts cannot draw (Chinese) gets resources/fonts/NotoSansSC-Regular.otf for
     // everything, medium and bold alike; "" for any other language, or when the font is not shipped.
     static std::string cjkFontFor(const std::string &language);
