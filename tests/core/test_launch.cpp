@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 using std::string;
@@ -489,6 +490,27 @@ TEST_CASE("a foreign game with raconfig on still gets the viewport, but no core 
     CHECK_FALSE(contains(raConfigInPlay, "video_smooth")); // RetroArch's own - no pcsx.cfg to read
 }
 
+TEST_CASE("Emulator screen scaling: RetroArch's aspect_ratio_index is the wide one only for scaler=full") {
+    for (const char *value : {"1x1", "2x", "4:3", "4:3i"}) {
+        Launching lib;
+        lib.configure(string("Raconfig=true\nScaler=") + value + "\n");
+        PsGamePtr game = lib.foreignGame(false);
+        lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "aspect_ratio_index = \"7\"\n"); // a stray prior value
+        string raConfigInPlay;
+        lib.runner.whileRunning = [&] { raConfigInPlay = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+        lib.service->launch(game, EmuMode::RetroArch, -1);
+        CHECK_MESSAGE(contains(raConfigInPlay, "aspect_ratio_index = \"0\""), "scaler=" << value);
+    }
+    Launching lib;
+    lib.configure("Raconfig=true\nScaler=full\n");
+    PsGamePtr game = lib.foreignGame(false);
+    lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "aspect_ratio_index = \"0\"\n");
+    string raConfigInPlay;
+    lib.runner.whileRunning = [&] { raConfigInPlay = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK(contains(raConfigInPlay, "aspect_ratio_index = \"23\""));
+}
+
 TEST_CASE("RetroArch saving its config keeps what the player changed and puts back what the launcher appended") {
     Launching lib;
     lib.configure("Raconfig=true\nAspect=true\n");
@@ -941,4 +963,104 @@ TEST_CASE("Show performance: off, or an emulator without perfoverlay - AB_PERF_O
         for (const auto &e : lib.runner.only().env)
             CHECK(e.first != "AB_PERF_OVERLAY");
     }
+}
+
+// Emulator screen scaling (config.ini "scaler", Options -> "Emulator screen scaling"): scalerIndex() maps
+// the five pcsx-abnxt values to its Scaler enum's order (0..4), and AB_SCALER is only ever sent when this
+// emulator's own abfeatures lists "scaler" - an emulator without the feature (the classic pcsx-ab) is left
+// untouched and gets its scaling from the plain -ratio full/4:3 argument instead (see below).
+TEST_CASE("Emulator screen scaling: AB_SCALER is scalerIndex()'s order, one env line per value") {
+    // 1x1=0, 2x=1, 4:3=2, 4:3i=3, full=4 - pcsx-abnxt's own SCALE_* enum order
+    const std::vector<std::pair<string, string>> cases = {
+        {"1x1", "0"}, {"2x", "1"}, {"4:3", "2"}, {"4:3i", "3"}, {"full", "4"},
+    };
+    for (const auto &c : cases) {
+        Launching lib;
+        lib.configure("Emulator=pcsx-abnxt\nScaler=" + c.first + "\n");
+        lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+        lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "exitdir\nscaler\n");
+        PsGamePtr game = lib.usbGame();
+        lib.service->launch(game, EmuMode::Pcsx, 0);
+
+        string value = "-";
+        for (const auto &e : lib.runner.only().env)
+            if (e.first == "AB_SCALER")
+                value = e.second;
+        CHECK_MESSAGE(value == c.second, "scaler=" << c.first);
+    }
+}
+
+TEST_CASE("Emulator screen scaling: an emulator whose abfeatures has no scaler line gets nothing") {
+    Launching lib;
+    lib.configure("Emulator=pcsx-abnxt\nScaler=full\n");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+    // an older emulator's abfeatures - no "scaler" token at all (the classic pcsx-ab has none either)
+    lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "exitdir\nmemcarddir\nloadstate\n");
+    PsGamePtr game = lib.usbGame();
+
+    lib.service->launch(game, EmuMode::Pcsx, 0);
+
+    for (const auto &e : lib.runner.only().env)
+        CHECK(e.first != "AB_SCALER");
+}
+
+TEST_CASE("Emulator screen scaling: a garbage or unknown scaler value sends nothing, even when supported") {
+    Launching lib;
+    // a hand-edited or from-the-future config.ini - scalerIndex() returns -1 for anything not one of the
+    // five known tokens, and that must not become AB_SCALER=-1 or some other stray value
+    lib.configure("Emulator=pcsx-abnxt\nScaler=widescreen\n");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "exitdir\nscaler\n");
+    PsGamePtr game = lib.usbGame();
+
+    lib.service->launch(game, EmuMode::Pcsx, 0);
+
+    for (const auto &e : lib.runner.only().env)
+        CHECK(e.first != "AB_SCALER");
+}
+
+TEST_CASE("Emulator screen scaling: an old config.ini with no scaler key at all still sends the migrated default") {
+    Launching lib;
+    // Config's own migration fills scaler=4:3 in from the (absent) old Aspect switch before LaunchService
+    // ever sees it - scalerIndex("4:3") is 2
+    lib.configure("Emulator=pcsx-abnxt\n"); // no Scaler=, no Aspect= line
+    lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "exitdir\nscaler\n");
+    PsGamePtr game = lib.usbGame();
+
+    CHECK(lib.config->inifile.values["scaler"] == "4:3");
+    lib.service->launch(game, EmuMode::Pcsx, 0);
+
+    string value = "-";
+    for (const auto &e : lib.runner.only().env)
+        if (e.first == "AB_SCALER")
+            value = e.second;
+    CHECK(value == "2");
+}
+
+// planPcsx's script mode (what rc/launch.sh reads - the Launching fixture is not a direct/Windows launch)
+// passes it positionally: ssFolder, cdfile, lang, region, gameFolder, resume, aspect, filter, pad, ...
+static const size_t PcsxScriptAspectArgIndex = 6;
+
+TEST_CASE("Emulator screen scaling: launch.sh's aspect arg is 1 only for \"full\", 0 for every other scaler value") {
+    for (const char *value : {"1x1", "2x", "4:3", "4:3i"}) {
+        Launching lib;
+        lib.configure(string("Emulator=pcsx-abnxt\nScaler=") + value + "\n");
+        lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+        lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "exitdir\n"); // no scaler feature - irrelevant here
+        PsGamePtr game = lib.usbGame();
+        lib.service->launch(game, EmuMode::Pcsx, 0);
+        const FakeProcessRunner::Call &call = lib.runner.only();
+        REQUIRE(call.args.size() > PcsxScriptAspectArgIndex);
+        CHECK_MESSAGE(call.args[PcsxScriptAspectArgIndex] == "0", "scaler=" << value);
+    }
+    Launching lib;
+    lib.configure("Emulator=pcsx-abnxt\nScaler=full\n");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/pcsx-ab", "binary");
+    lib.tmp.writeFile("Autobleem/bin/emunxt/abfeatures", "exitdir\n");
+    PsGamePtr game = lib.usbGame();
+    lib.service->launch(game, EmuMode::Pcsx, 0);
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    REQUIRE(call.args.size() > PcsxScriptAspectArgIndex);
+    CHECK(call.args[PcsxScriptAspectArgIndex] == "1");
 }

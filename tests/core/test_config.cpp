@@ -217,6 +217,79 @@ TEST_CASE("Config writes config.ini into the working path, not the current direc
     CHECK(ableem::DirEntry::exists(tmp.at("config.ini")));
 }
 
+TEST_CASE("Config: scaler migrates from the old aspect switch, only when scaler itself is absent") {
+    // a file from before 2026-09-29: Aspect=true meant "fill the screen" (Options -> Widescreen)
+    {
+        TempDir tmp("config_scaler_migrate_true");
+        EnvFixture env;
+        env.setWorkingPath(tmp.path());
+        tmp.writeFile("config.ini", "[General]\nAspect=true\n");
+        CHECK(Config().inifile.values["scaler"] == "full");
+    }
+    // Aspect=false (or absent) meant the letterboxed 4:3 the emulator always drew
+    {
+        TempDir tmp("config_scaler_migrate_false");
+        EnvFixture env;
+        env.setWorkingPath(tmp.path());
+        tmp.writeFile("config.ini", "[General]\nAspect=false\n");
+        CHECK(Config().inifile.values["scaler"] == "4:3");
+    }
+    {
+        TempDir tmp("config_scaler_migrate_none");
+        EnvFixture env;
+        env.setWorkingPath(tmp.path());
+        tmp.writeFile("config.ini", "[General]\nLanguage=English\n"); // no Aspect key at all - an old install
+        CHECK(Config().inifile.values["scaler"] == "4:3");
+        CHECK(Config().inifile.values["aspect"] == "false"); // aspect still gets its own default too
+    }
+    // a file that already has a scaler value (this build, or a hand edit) keeps it - aspect is not consulted,
+    // even when the two disagree
+    {
+        TempDir tmp("config_scaler_kept");
+        EnvFixture env;
+        env.setWorkingPath(tmp.path());
+        tmp.writeFile("config.ini", "[General]\nAspect=true\nScaler=1x1\n");
+        CHECK(Config().inifile.values["scaler"] == "1x1");
+    }
+    for (const char *value : {"1x1", "2x", "4:3", "4:3i", "full"}) {
+        TempDir tmp(string("config_scaler_roundtrip_") + value);
+        EnvFixture env;
+        env.setWorkingPath(tmp.path());
+        {
+            Config config;
+            config.inifile.values["scaler"] = value;
+            config.save();
+        }
+        CHECK(Config().inifile.values["scaler"] == value); // survives a reload unmigrated
+    }
+}
+
+TEST_CASE("Config: splash timeout defaults to 2s and keeps 0 (Skip) rather than treating it as unset") {
+    TempDir tmp("config_showingtimeout_zero");
+    EnvFixture env;
+    env.setWorkingPath(tmp.path());
+
+    // the default, nothing in the file
+    CHECK(Config().inifile.values["showingtimeout"] == "2");
+
+    // 0 ("Skip" in the Options row) used to mean "forever" and must not be filled back in with the default -
+    // it is a real, saved value like any other 1..20
+    tmp.writeFile("config.ini", "[General]\nShowingtimeout=0\n");
+    Config config;
+    CHECK(config.inifile.values["showingtimeout"] == "0");
+    config.save();
+    CHECK(reloadFromDisk(tmp).values["showingtimeout"] == "0");
+
+    // and the whole 1..20 range round-trips too
+    for (int seconds = 1; seconds <= 20; ++seconds) {
+        TempDir t2(string("config_showingtimeout_") + std::to_string(seconds));
+        EnvFixture e2;
+        e2.setWorkingPath(t2.path());
+        t2.writeFile("config.ini", "[General]\nShowingtimeout=" + std::to_string(seconds) + "\n");
+        CHECK(Config().inifile.values["showingtimeout"] == std::to_string(seconds));
+    }
+}
+
 TEST_CASE("Config writes config.ini into the state dir when one is set apart from the working path") {
     TempDir tmp("config_state_dir");
     EnvFixture env;
