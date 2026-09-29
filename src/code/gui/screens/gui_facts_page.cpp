@@ -70,9 +70,12 @@ void GuiFactsPage::render() {
     rowsThatFit = gui->classicRowsThatFit(font);
     firstVisible = min(firstVisible, maxFirstVisible());
 
-    // the values start a third of the way across; a long one (a path) is cut to what fits
+    // the values end at the rows' right edge, a little short of the scroll markers (they sit at the panel's
+    // edge minus RowInset and would draw over a long value); one that is too long for the space right of the
+    // labels (a path) is cut to what fits
     const int valueX = panel.w * 35 / 100;
-    const int valueWidth = panel.w - valueX - PanelStyle::RowInset - 8;
+    const int valueRight = panel.x + panel.w - PanelStyle::RowInset - 8 - 12;
+    const int valueWidth = valueRight - panel.x - valueX;
     const int count = static_cast<int>(lines.size());
     for (int i = firstVisible, row = 0; i < count && row < rowsThatFit; i++, row++) {
         const int y = yoffset + fontHeight * row;
@@ -81,22 +84,26 @@ void GuiFactsPage::render() {
             gui->text().renderLabelBox(0, y);
             gui->text().renderTextLine(line.label, -y, 0, XALIGN_LEFT, 0, font);
         } else {
-            gui->text().renderTextLineToColumns(line.label, gui->text().elide(font, line.value, valueWidth), 0, valueX,
-                                                -y, 0, font);
+            gui->text().renderTextLine(line.label, -y, 0, XALIGN_LEFT, 0, font);
+            gui->text().renderRowValue(gui->text().elide(font, line.value, valueWidth), -y, 0, valueRight, font);
         }
     }
 
     gui->renderScrollMarkers(firstVisible > 0, firstVisible + rowsThatFit < count);
 
-    string status = extraHints();
-    if (!status.empty())
-        status += "   ";
-    status += "|@O| " + _("Back");
+    // the text before the first hint is the footer's counter, drawn at its right edge
+    string status;
     if (count > rowsThatFit) {
         const int page = firstVisible / rowsThatFit + 1;
         const int pages = (count + rowsThatFit - 1) / rowsThatFit;
-        status += "   |@L2|/|@R2| " + _("Page") + " " + to_string(page) + "/" + to_string(pages);
+        status = _("Page") + " " + to_string(page) + "/" + to_string(pages) + "   ";
     }
+    const string extra = extraHints();
+    if (!extra.empty())
+        status += extra + "   ";
+    status += "|@O| " + _("Back");
+    if (count > rowsThatFit)
+        status += "   |@L2|/|@R2| " + _("Page");
     gui->renderStatus(status);
     renderer.present();
 }
