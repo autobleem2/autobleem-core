@@ -121,7 +121,7 @@ void GuiAbout::render() {
     rect.h = 141;
     renderer.copy(logo, nullptr, &rect);
     PanelStyle style = gui->panelStyle();
-    Fonts &fonts = gui->assets().themeFonts;
+    Fonts &fonts = ThemeAssets::fixedFonts();
     auto centred = [&](const ableem::Font &f, const string &text, int y, const ableem::Color &color) {
         gui->text().renderText_WithColor(f, text, SCREEN_WIDTH / 2 - gui->text().textWidth(f, text) / 2, y, color,
                                          XALIGN_LEFT);

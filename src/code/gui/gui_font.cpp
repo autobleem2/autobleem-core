@@ -25,9 +25,8 @@ Fonts::Fonts() = default;
 //********************
 ableem::Font Fonts::openNewSharedCachedFont(const string &filename, int fontSize, ableem::Renderer &renderer) {
     ableem::Font font = ableem::Font::load(renderer, filename, fontSize);
-    if (!font.valid()) {
-        assert(false);
-    }
+    if (!font.valid()) // the caller decides what stands in (ThemeAssets: the default font)
+        PLOG_WARNING << "Cannot open the font " << filename << " at " << fontSize;
     return font;
 }
 
@@ -81,21 +80,27 @@ void Fonts::openAllFonts(const std::string &mediumTtf, const std::string &boldTt
 //*******************************
 // Fonts::userFontDirs
 //*******************************
-vector<string> Fonts::userFontDirs(const string &themeDir) {
-    return {Env::getPathToRetroarchDir() + sep + "fonts", Env::getPathToFontsDir(), themeDir};
+vector<string> Fonts::userFontDirs() {
+    return {Env::getPathToRetroarchDir() + sep + "fonts", Env::getPathToFontsDir()};
 }
 
 //*******************************
-// Fonts::userFontPath
+// Fonts::defaultClassicFontPath / classicFontPath
 //*******************************
-string Fonts::userFontPath(const string &themeDir, const string &themeFont, const string &font) {
-    if (themeFont == "true" || font.empty() || font == "--")
-        return "";
-    for (const string &dir : userFontDirs(themeDir)) {
+const char *const Fonts::DefaultClassicFont = "OpenSans-Medium.ttf";
+
+string Fonts::defaultClassicFontPath() {
+    return Env::getPathToFontsDir() + sep + DefaultClassicFont;
+}
+
+string Fonts::classicFontPath(const string &useDefault, const string &font) {
+    if (useDefault == "true" || font.empty() || font == "--")
+        return defaultClassicFontPath();
+    for (const string &dir : userFontDirs()) {
         string path = dir + sep + font;
         if (DirEntry::exists(path))
             return path;
     }
-    PLOG_WARNING << "Font " << font << " from config.ini is in none of the font folders - using the theme's";
-    return "";
+    PLOG_WARNING << "Font " << font << " from config.ini is in none of the font folders - using the default";
+    return defaultClassicFontPath();
 }
