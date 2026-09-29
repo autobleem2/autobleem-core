@@ -393,7 +393,7 @@ void PanelStyle::footer(Gui &gui, const Rect &footer, const vector<HintItem> &gi
             x += gap;
         } else {
             x += 2;
-            text.renderText_WithColor(font, h.label, x, y + (iconH - fontH) / 2, hint, XALIGN_LEFT);
+            text.renderText_WithColor(font, h.label, x, y + (iconH - fontH) / 2, this->text, XALIGN_LEFT);
             x += text.textWidth(font, h.label) + gap;
         }
     }

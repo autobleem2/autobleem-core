@@ -163,8 +163,10 @@ struct LauncherTheme {
     struct Fonts {
         std::string medium, bold;
     } fonts;
-    // hint: the footer's "Enter" / "Cancel" / "Button Guide" labels next to the button icons; unset means
-    // they take the secondary colour (light hint text gets the dark halo like every other light text).
+    // hint: the launcher's own footer labels (evoui_launcher_screen.cpp, next to the button icons) and its
+    // low-battery pad fill; unset means they take the secondary colour. PanelStyle's classic-screen footer
+    // (Options, Game Manager, the system menu, ...) draws its hint labels in the theme's text colour instead
+    // (UIREV-7) - hint stayed too close to the panel's own dim background there.
     // selection: the resume-slot picker's colour for the selected slot (a halo around its tile, the others
     // dimmed); unset means the original red tint of the slot's tile, invisible on a tile that is not white
     struct Colors {
