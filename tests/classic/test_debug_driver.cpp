@@ -1,6 +1,7 @@
 //
 // DebugDriver: the LAN-safety gate (allowedToStart), the auth token compare (tokensMatch) and the `grab`
-// framing (grabHeader) - the pure parts, with no socket and no Gui, so no display is needed to run them.
+// framing (grabHeader), the busy counter and the items/cursor a screen publishes - the pure parts, with no
+// socket and no Gui, so no display is needed to run them.
 //
 #include "doctest/doctest.h"
 
@@ -82,6 +83,60 @@ TEST_CASE("clipConcat: each frame shows until the next, the last until the clip 
                   "file 'f000002.png'\n");
     // no frames at all: only the header
     CHECK(DebugDriver::clipConcat({}, 500) == "ffconcat version 1.0\n");
+}
+
+TEST_CASE("busy: a depth counter - nested jobs, and an extra end never takes it below zero") {
+    while (DebugDriver::busyLevel() > 0) // whatever an earlier case left
+        DebugDriver::setBusy(false);
+    CHECK_FALSE(DebugDriver::busy());
+    DebugDriver::setBusy(true);
+    CHECK(DebugDriver::busy());
+    DebugDriver::setBusy(true); // nested
+    CHECK(DebugDriver::busyLevel() == 2);
+    DebugDriver::setBusy(false);
+    CHECK(DebugDriver::busy()); // the outer job still runs
+    DebugDriver::setBusy(false);
+    CHECK_FALSE(DebugDriver::busy());
+    DebugDriver::setBusy(false); // underflow: ignored
+    DebugDriver::setBusy(false);
+    CHECK(DebugDriver::busyLevel() == 0);
+    DebugDriver::setBusy(true); // and the counter still works after it
+    CHECK(DebugDriver::busy());
+    DebugDriver::setBusy(false);
+    CHECK_FALSE(DebugDriver::busy());
+}
+
+TEST_CASE("selectedReply: index and name, an empty name past the list, -1 when nothing is published") {
+    const vector<string> items = {"#Leave", "Extensions", "Power off"};
+    CHECK(DebugDriver::selectedReply(items, 1) == "ok 1|Extensions");
+    CHECK(DebugDriver::selectedReply(items, 2) == "ok 2|Power off");
+    CHECK(DebugDriver::selectedReply(items, 0) == "ok 0|#Leave"); // a heading keeps its marker
+    CHECK(DebugDriver::selectedReply(items, 3) == "ok 3|");
+    CHECK(DebugDriver::selectedReply(items, -1) == "ok -1|");
+    CHECK(DebugDriver::selectedReply({}, 0) == "ok -1|");
+    CHECK(DebugDriver::selectedReply({}, -1) == "ok -1|");
+}
+
+TEST_CASE("publish: items and cursor reach only the screen showing, and a screen's own come back when it is on top") {
+    DebugDriver::pushScreen("8GuiLower"); // the typeid names carry a length prefix (gcc)
+    CHECK(DebugDriver::publish("8GuiLower", {"a", "b"}, 1));
+    CHECK(DebugDriver::items() == vector<string>({"a", "b"}));
+    CHECK(DebugDriver::selected() == 1);
+
+    DebugDriver::pushScreen("8GuiUpper");
+    CHECK(DebugDriver::items().empty()); // a new screen starts with none
+    CHECK(DebugDriver::selected() == -1);
+    CHECK_FALSE(DebugDriver::publish("8GuiLower", {"x"}, 0)); // a backdrop redraw must not publish
+    CHECK(DebugDriver::items().empty());
+    CHECK(DebugDriver::publish("8GuiUpper", {"#Heading", "row"}, 1));
+    CHECK(DebugDriver::selectedReply(DebugDriver::items(), DebugDriver::selected()) == "ok 1|row");
+
+    DebugDriver::popScreen(); // the lower screen's rows and cursor are back
+    CHECK(DebugDriver::items() == vector<string>({"a", "b"}));
+    CHECK(DebugDriver::selected() == 1);
+    DebugDriver::popScreen();
+    CHECK(DebugDriver::items().empty());
+    CHECK(DebugDriver::selected() == -1);
 }
 
 #ifndef _WIN32

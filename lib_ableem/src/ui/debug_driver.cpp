@@ -24,6 +24,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -77,6 +78,11 @@ bool makeOutputDirs(const std::string &dir) {
 std::mutex screenMutex;
 std::vector<std::string> screenStack;
 std::vector<std::string> screenItems; // under screenMutex too
+int screenSelected = -1;              // the cursor in screenItems (-1 = none), under screenMutex too
+// the items and cursor of the screens below the showing one: pushScreen saves them and starts the new screen
+// with none, popScreen brings them back - a picker over a picker never leaves the lower one's rows behind
+std::vector<std::pair<std::vector<std::string>, int>> savedItems;
+int busyDepth = 0; // Gui::beginBusy/endBusy nesting, under screenMutex too
 
 typedef chrono::steady_clock Clock;
 
@@ -884,6 +890,26 @@ private:
         }
     }
 
+    // until no busy spinner shows and the picture has rested RestMs: a job that starts meanwhile (Options closing
+    // starts "Applying settings...") is waited out too, so the next press is never one the launcher would drop
+    string waitReady(double seconds) {
+        static const int RestMs = 300;
+        const Clock::time_point t0 = Clock::now();
+        for (;;) {
+            const double left = seconds - msSince(t0) / 1000.0;
+            if (!DebugDriver::busy()) {
+                const string rested = waitIdle(RestMs, std::max(left, 0.1));
+                if (rested == "ok" && !DebugDriver::busy())
+                    return "ok";
+            } else {
+                sleepMs(20);
+            }
+            if (msSince(t0) > seconds * 1000)
+                return "err not ready after " + to_string(static_cast<int>(seconds)) + " s (screen " +
+                       DebugDriver::currentScreen() + ", busy " + (DebugDriver::busy() ? "1" : "0") + ")";
+        }
+    }
+
     //*******************************
     // clips
     //*******************************
@@ -1005,6 +1031,13 @@ private:
                 return "err wait_idle <ms> [seconds]";
             return waitIdle(ms, seconds);
         }
+        if (cmd == "wait_ready") {
+            double seconds = 10;
+            in >> seconds;
+            return waitReady(seconds);
+        }
+        if (cmd == "busy")
+            return string("ok ") + (DebugDriver::busy() ? "1" : "0");
         if (cmd == "clip")
             return clipCommand(in);
         if (cmd == "frames")
@@ -1018,6 +1051,8 @@ private:
                 reply += (i > 0 ? "|" : "") + names[i];
             return reply;
         }
+        if (cmd == "selected")
+            return DebugDriver::selectedReply(DebugDriver::items(), DebugDriver::selected());
         if (cmd == "shot") {
             string path;
             getline(in, path);
@@ -1082,12 +1117,23 @@ private:
 void DebugDriver::pushScreen(const char *typeName) {
     lock_guard<mutex> lock(screenMutex);
     screenStack.push_back(plainName(typeName));
+    savedItems.emplace_back(std::move(screenItems), screenSelected);
+    screenItems.clear();
+    screenSelected = -1;
 }
 
 void DebugDriver::popScreen() {
     lock_guard<mutex> lock(screenMutex);
     if (!screenStack.empty())
         screenStack.pop_back();
+    if (!savedItems.empty()) {
+        screenItems = std::move(savedItems.back().first);
+        screenSelected = savedItems.back().second;
+        savedItems.pop_back();
+    } else {
+        screenItems.clear();
+        screenSelected = -1;
+    }
 }
 
 string DebugDriver::currentScreen() {
@@ -1106,6 +1152,57 @@ void DebugDriver::setItems(const vector<string> &names) {
 vector<string> DebugDriver::items() {
     lock_guard<mutex> lock(screenMutex);
     return screenItems;
+}
+
+//*******************************
+// DebugDriver::setSelected / selected / selectedReply
+//*******************************
+void DebugDriver::setSelected(int index) {
+    lock_guard<mutex> lock(screenMutex);
+    screenSelected = index;
+}
+
+int DebugDriver::selected() {
+    lock_guard<mutex> lock(screenMutex);
+    return screenSelected;
+}
+
+bool DebugDriver::publish(const char *typeName, const vector<string> &names, int index) {
+    lock_guard<mutex> lock(screenMutex);
+    if (screenStack.empty() || screenStack.back() != plainName(typeName))
+        return false;
+    if (screenItems != names)
+        screenItems = names;
+    screenSelected = index;
+    return true;
+}
+
+string DebugDriver::selectedReply(const vector<string> &items, int index) {
+    if (items.empty())
+        return "ok -1|";
+    const bool known = index >= 0 && index < static_cast<int>(items.size());
+    return "ok " + to_string(index) + "|" + (known ? items[index] : string());
+}
+
+//*******************************
+// DebugDriver::setBusy / busy / busyDepth
+//*******************************
+void DebugDriver::setBusy(bool on) {
+    lock_guard<mutex> lock(screenMutex);
+    if (on)
+        busyDepth++;
+    else if (busyDepth > 0)
+        busyDepth--;
+}
+
+bool DebugDriver::busy() {
+    lock_guard<mutex> lock(screenMutex);
+    return busyDepth > 0;
+}
+
+int DebugDriver::busyLevel() {
+    lock_guard<mutex> lock(screenMutex);
+    return busyDepth;
 }
 
 //*******************************

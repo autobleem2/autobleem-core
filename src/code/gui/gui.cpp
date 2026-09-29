@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cassert>
 #include <ableem/engine/log.h>
+#include <ableem/ui/debug_driver.h>
 
 using namespace std;
 using ableem::Button;
@@ -215,6 +216,8 @@ void Gui::beginBusy(const string &message, const std::function<void()> &redraw) 
     renderer().captureNextFrame();
     redraw(); // presents, and the capture is that frame
     busyBackdrop_ = renderer().lastCapture();
+    if (!busy_)
+        ableem::DebugDriver::setBusy(true); // the driver's `busy` / `wait_ready`: input is dropped meanwhile
     busy_ = true;
     busyStarted_ = platform().ticks();
     busyLastFrame_ = 0;
@@ -236,8 +239,10 @@ void Gui::endBusy() {
     // queued and handled as a real press the moment the next poll() ran - on the console, Options' ~12 s
     // reload started a game the player never meant to start. Flush only on the busy -> not busy transition
     // (render() calls endBusy() every frame, including every idle one where nothing is queued to lose).
-    if (busy_)
+    if (busy_) {
         input().flushInputEvents();
+        ableem::DebugDriver::setBusy(false);
+    }
     busy_ = false;
     busyBackdrop_ = Texture();
 }

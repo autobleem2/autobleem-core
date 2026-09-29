@@ -45,9 +45,26 @@
 //   wait_idle <ms> [s]       until the picture has rested for ms: the screen says only ambient motion is
 //                            left (Input's frame need is not Active), or two frames that far apart are the
 //                            same; 10 s by default
+//   wait_ready [s]           until no busy spinner shows (`busy` is 0) AND the picture has rested ~300 ms
+//                            (wait_idle's test); 10 s by default. A job that starts meanwhile is waited out
+//                            too. "err not ready after <s> s (screen <Name>, busy 0|1)" on timeout. Use it
+//                            where `screen` already says GuiLauncher but the launcher is still applying
+//                            something (Options closing) and would drop the next press
+//   busy                     "ok 1" while Gui::beginBusy's spinner shows (or several nested), else "ok 0"
 //   items                    the item names the showing screen published (setItems), '|'-separated -
 //                            a picker's rows by a language-neutral name, so a client can pick one by name
-//                            ("ok Re-Scan Games|Extensions|..."; "ok " when the screen published none)
+//                            ("ok Re-Scan Games|Extensions|..."; "ok " when the screen published none).
+//                            The System/Quick menu and the launcher's own pickers (set picker, Extensions,
+//                            Scanner processors) publish English keys; the classic lists (Options, Game
+//                            Manager, game editors, Memory Cards, ...) publish the row text as displayed, so
+//                            translated. A heading row is published too, so an index matches what is drawn,
+//                            with a leading '#' in its name ("#Leave"); it never holds the cursor. A
+//                            screen's items are its own: a screen shown over another has none until it
+//                            publishes, and the lower one's come back when it closes
+//   selected                 "ok <index>|<name>": where the cursor is in `items` (0-based, headings counted
+//                            where the screen publishes them) and the name there ("ok 2|Extensions"); the
+//                            name is empty past the list's end, and "ok -1|" when the screen published no
+//                            items
 //   ping                     ok
 //   quit                     the program leaves, as by a power off (Input::requestQuit)
 //
@@ -119,6 +136,21 @@ public:
     // closes. Kept whether or not the driver runs, like the screen stack.
     static void setItems(const std::vector<std::string> &items);
     static std::vector<std::string> items();
+    // the cursor in items() (-1 = none): published with the items and updated whenever it moves
+    static void setSelected(int index);
+    static int selected();
+    // items and cursor in one step, for the screen whose typeid name is typeName - and only while that screen is
+    // the one showing (a screen redrawn as a backdrop under another must not publish into it). true when taken.
+    static bool publish(const char *typeName, const std::vector<std::string> &items, int selected);
+    // the `selected` reply, pure (unit-tested): "ok <index>|<name>", "ok -1|" when there are no items, the name
+    // empty when index is outside them
+    static std::string selectedReply(const std::vector<std::string> &items, int index);
+    // Gui::beginBusy() calls setBusy(true), Gui::endBusy() setBusy(false) when it ends a job: a depth counter
+    // (nested jobs), never below 0 - an extra false is ignored. Kept whether or not the driver runs.
+    // busy() = depth > 0 (the `busy` command), busyLevel() the depth itself.
+    static void setBusy(bool on);
+    static bool busy();
+    static int busyLevel();
 };
 
 } // namespace ableem

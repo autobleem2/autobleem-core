@@ -3,8 +3,24 @@
 #include "../gui_screen.h"
 #include "../gui.h"
 #include "../hold_repeat.h"
+#include <ableem/ui/debug_driver.h>
+#include <algorithm>
+#include <typeinfo>
 #include <vector>
 #include <string>
+
+//*******************************
+// driverRowName
+//*******************************
+// a row's name for the DebugDriver's `items`/`selected` (the text as displayed, translated): a line type that
+// has a text says it by an overload next to its definition (found by argument-dependent lookup - see
+// GuiTwoColumnStringMenu, OptionsInfo); one without gives an empty name and its rows still count
+inline std::string driverRowName(const std::string &line) {
+    return line;
+}
+template <typename LineDataType> std::string driverRowName(const LineDataType & /*line*/) {
+    return std::string();
+}
 
 //*******************************
 // GuiMenuBase template class
@@ -76,6 +92,7 @@ public:
     void adjustPageBy(int moveBy);   // move the page up or down by an amount
     void computePagePosition();      // complete recompute of positions based on the selected value
     void landOnSelectable(int step); // off a heading: on in step's direction, else back; the page follows
+    void publishToDriver();          // the rows and the cursor for the DebugDriver (render() calls it)
 
     bool changes = false;
     bool cancelled = false;
@@ -164,6 +181,28 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::computePagePosi
 }
 
 //*******************************
+// GuiMenuBase<LineDataType>::publishToDriver
+//*******************************
+// the DebugDriver's `items` and `selected`: every row by the text it shows (a heading with a leading '#', so an
+// index matches what is drawn), the cursor's row. Called from render() so it follows the lines however a
+// subclass fills them; the driver keeps the rows per screen and drops them when the screen closes. A '|' in a
+// row's text (an icon mark) becomes '/', the reply's separator being '|'. Skipped once the menu is closing:
+// Gui::beginBusy redraws a closed Options panel as its backdrop, and that must not publish into the screen below.
+template <typename LineDataType> void GuiMenuBase<LineDataType>::publishToDriver() {
+    if (!menuVisible)
+        return;
+    std::vector<std::string> names;
+    const int size = getVerticalSize();
+    names.reserve(size > 0 ? size : 0);
+    for (int i = 0; i < size; i++) {
+        std::string name = i < static_cast<int>(lines.size()) ? driverRowName(lines[i]) : std::string();
+        std::replace(name.begin(), name.end(), '|', '/');
+        names.push_back((skipSelectingThisLineWhenMovingByOne(i) ? "#" : "") + name);
+    }
+    ableem::DebugDriver::publish(typeid(*this).name(), names, labelsOnly || size == 0 ? -1 : selected);
+}
+
+//*******************************
 // GuiMenuBase<LineDataType>::renderLines
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::renderLines() {
@@ -200,6 +239,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::renderSelection
 // GuiMenuBase<LineDataType>::render
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::render() {
+    publishToDriver();
     renderer.clear();
     gui->renderBackground();
     // a short list without a pane beside it draws as a compact panel centred on the screen
