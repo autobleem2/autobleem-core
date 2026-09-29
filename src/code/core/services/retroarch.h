@@ -51,6 +51,8 @@ public:
     PsGames gamesInPlaylist(const std::string &playlistName) override;
     std::string historyPlaylistName() override { return historyDisplayName_; }
     PsGames allGames() override;
+    int playlistSize(const std::string &playlistName) override { return gameCount(playlistName); }
+    PsGames allGamesWithoutMetadata() override { return allGames(false); }
 
     std::string favoritesPlaylistName() const { return favoritesDisplayName_; }
 
@@ -75,6 +77,7 @@ public:
     static std::string mapPlaylistPath(const std::string &path, const std::string &usbRoot);
 
 private:
+    PsGames allGames(bool withMetadata);
     void ensureLoaded();
     void loadCores();
     void loadPlaylists();

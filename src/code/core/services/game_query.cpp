@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <ableem/engine/log.h>
 
 using namespace std;
@@ -221,6 +222,61 @@ vector<GameQueryService::AppCategoryCount> GameQueryService::appCategories() {
             result.push_back({static_cast<AppCategory>(i), counts[i]});
     }
     return result;
+}
+
+//*******************************
+// GameQueryService::setCounts
+//*******************************
+// the same numbers the individual queries give (ps1GamesInSubDirRow(0), internalGames(), favorites(),
+// history(), lightgunGames(), the playlists, apps(), appCategories()), each source read once
+GameQueryService::SetCounts GameQueryService::setCounts(const vector<string> &playlistNames) {
+    SetCounts c;
+
+    // the USB games: row 0 of the folder tree is /Games itself, i.e. every game on it
+    library_.usbGames().loadSubDirRows(&c.rows);
+    PsGames ps1;
+    if (!c.rows.empty()) {
+        vector<int> idsInRow;
+        library_.usbGames().loadGameIdsInSubDirRow(&idsInRow, 0);
+        const std::set<int> ids(idsInRow.begin(), idsInRow.end());
+        for (auto &game : PsGame::fromRecords(library_.usbGames().loadUsbGames())) {
+            if (ids.count(game->gameId) != 0)
+                ps1.emplace_back(game);
+        }
+    }
+    c.usb = ps1.size();
+    if (showInternalGames()) {
+        PsGames internal = internalGames();
+        c.internal = internal.size();
+        ps1 += internal;
+    }
+
+    for (const auto &game : ps1) {
+        if (game->favorite)
+            c.favorites++;
+        if (game->history > 0)
+            c.history++;
+        if (lightguns_ != nullptr && lightguns_->isLightgun(*game))
+            c.lightgun++;
+    }
+    if (retroArch_ != nullptr) {
+        if (lightguns_ != nullptr) {
+            for (const auto &game : retroArch_->allGamesWithoutMetadata()) {
+                if (lightguns_->isLightgun(*game))
+                    c.lightgun++;
+            }
+        }
+        for (const string &name : playlistNames)
+            c.playlists.push_back(retroArch_->playlistSize(name));
+    } else {
+        c.playlists.assign(playlistNames.size(), 0);
+    }
+
+    // every runnable App is in exactly one category (unset or unrecognised = Other), so the total is the sum
+    c.appCategories = appCategories();
+    for (const auto &cat : c.appCategories)
+        c.apps += static_cast<size_t>(cat.count);
+    return c;
 }
 
 //*******************************

@@ -90,13 +90,19 @@ void RetroArchService::ensureMetadata(RAPlaylistInfo &info) {
 // every playlist but Favorites and History (those repeat games the platform playlists hold), one entry
 // per image path
 PsGames RetroArchService::allGames() {
+    return allGames(true);
+}
+
+// withMetadata false: the playlists' own entries, no .rdb read (a count, a light-gun check by image path)
+PsGames RetroArchService::allGames(bool withMetadata) {
     ensureLoaded();
     PsGames games;
     std::set<string> seen;
     for (auto &info : playlistInfos_) {
         if (info.displayName == favoritesDisplayName_ || info.displayName == historyDisplayName_)
             continue;
-        ensureMetadata(info);
+        if (withMetadata)
+            ensureMetadata(info);
         for (auto &game : info.psGames) {
             if (seen.insert(game->image_path).second)
                 games.push_back(game);
