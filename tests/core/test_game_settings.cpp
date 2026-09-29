@@ -27,7 +27,7 @@ const char *const PcsxCfg = "gpu_neon.enhancement_enable = 0\n"
                             "psx_clock = 39\n"
                             "Gpu3 = builtin_gpu\n"
                             "frameskip3 = 0\n"
-                            "gpu_peops.iUseDither = 1\n"
+                            "dithering2 = 2\n"
                             "scanlines = 0\n"
                             "scanline_level = 46\n"
                             "spu_config.iUseInterpolation = 1\n";
@@ -91,7 +91,7 @@ TEST_CASE("open reads a USB game's Game.ini and its pcsx.cfg") {
     CHECK(s.pcsx.clock == 57);
     CHECK(s.pcsx.scanlineLevel == 70);
     CHECK(s.pcsx.interpolation == 1);
-    CHECK(s.pcsx.dither == 1);
+    CHECK(s.pcsx.dither == 2);
     CHECK(s.pcsx.gpu == "builtin_gpu");
 }
 
@@ -265,10 +265,13 @@ TEST_CASE("the levels are written in hex and clamped to their ranges") {
     lib.service->setScanlineLevel(s, 200);
     CHECK(s.pcsx.scanlineLevel == 100);
 
-    lib.service->setFrameskip(s, 3);
-    CHECK(s.pcsx.frameskip == 3);
+    // the emulators' setting: 0 Auto, 1 Off, 2..4 skip 1..3
     lib.service->setFrameskip(s, 4);
-    CHECK(s.pcsx.frameskip == 3);
+    CHECK(s.pcsx.frameskip == 4);
+    lib.service->setFrameskip(s, 5);
+    CHECK(s.pcsx.frameskip == 4);
+    lib.service->setFrameskip(s, 0);
+    CHECK(s.pcsx.frameskip == 0);
 
     lib.service->setInterpolation(s, 2);
     CHECK(s.pcsx.interpolation == 2);
@@ -276,7 +279,7 @@ TEST_CASE("the levels are written in hex and clamped to their ranges") {
     lib.service->setInterpolation(s, 4);
     CHECK(s.pcsx.interpolation == 3);
 
-    lib.service->setScanlines(s, true);
+    lib.service->setScanlines(s, 1);
     CHECK(s.pcsx.scanlines == 1);
     CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "scanlines = 1"));
 }
@@ -319,7 +322,7 @@ TEST_CASE("the smoothing is soft_filter, none when the cfg has no line, clamped 
     CHECK(std::string(GameSettingsService::SmoothingNames[4]) == "HQ3x");
 }
 
-TEST_CASE("the filter is plat_target.hwfilter - Off/Linear/Sharp, off when the cfg has no line, clamped") {
+TEST_CASE("the filter is plat_target.hwfilter - pcsx-abnxt's seven, Nearest when the cfg has no line, clamped") {
     Editing lib;
     lib.writeAllUsbCfgs(); // no hwfilter line
     GameSettings s = lib.service->open(lib.usbGame());
@@ -330,11 +333,77 @@ TEST_CASE("the filter is plat_target.hwfilter - Off/Linear/Sharp, off when the c
     CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "plat_target.hwfilter = 2"));
     CHECK(contains(lib.tmp.readFile("Games/!SaveStates/Driver 2/pcsx.cfg"), "plat_target.hwfilter = 2"));
 
-    lib.service->setFilter(s, 3); // past Sharp stays Sharp, below Off stays Off
-    CHECK(s.pcsx.filter == 2);
+    lib.service->setFilter(s, 6); // CRT-Pi
+    CHECK(s.pcsx.filter == 6);
+    lib.service->setFilter(s, 7); // past CRT-Pi stays CRT-Pi, below Nearest stays Nearest
+    CHECK(s.pcsx.filter == 6);
     lib.service->setFilter(s, -1);
     CHECK(s.pcsx.filter == 0);
     CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "plat_target.hwfilter = 0"));
+}
+
+TEST_CASE("dithering is pcsx-abnxt's dithering2 - on where the game asks when the cfg has no line, clamped") {
+    Editing lib;
+    lib.writeAllUsbCfgs("psx_clock = 39\n"); // no dithering2 line, like every cfg from before
+    GameSettings s = lib.service->open(lib.usbGame());
+    CHECK(s.pcsx.dither == 1);
+
+    lib.service->setDithering(s, 0);
+    CHECK(s.pcsx.dither == 0);
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "dithering2 = 0"));
+    CHECK(contains(lib.tmp.readFile("Games/!SaveStates/Driver 2/pcsx.cfg"), "dithering2 = 0"));
+    lib.service->setDithering(s, 3); // past always stays always
+    CHECK(s.pcsx.dither == 2);
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "dithering2 = 2"));
+}
+
+TEST_CASE("remove seams is gpu_neon.enhancement_no_seams, on when the cfg has no line") {
+    Editing lib;
+    lib.writeAllUsbCfgs();
+    GameSettings s = lib.service->open(lib.usbGame());
+    CHECK(s.pcsx.noSeams == 1);
+
+    lib.service->setNoSeams(s, false);
+    CHECK(s.pcsx.noSeams == 0);
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "gpu_neon.enhancement_no_seams = 0"));
+}
+
+TEST_CASE("scanlines are off or 1..3, a 1 from before is the thinnest, and pcsx-abnxt's hex reads back") {
+    Editing lib;
+    lib.writeAllUsbCfgs("scanlines = 1\nscanline_level = 0x50\n"); // as pcsx-abnxt's menu writes a level
+    GameSettings s = lib.service->open(lib.usbGame());
+    CHECK(s.pcsx.scanlines == 1);
+    CHECK(s.pcsx.scanlineLevel == 80);
+
+    lib.service->setScanlines(s, 3);
+    CHECK(s.pcsx.scanlines == 3);
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "scanlines = 3"));
+    lib.service->setScanlines(s, 4);
+    CHECK(s.pcsx.scanlines == 3);
+}
+
+TEST_CASE("each platform's lists are pcsx-abnxt's") {
+    const std::vector<int> all7 = {0, 1, 2, 3, 4, 5, 6};
+    for (const char *platform : {"psc", "rpi", "pcusb", "win", "pc"})
+        CHECK(GameSettingsService::filtersFor(platform) == all7);
+
+    CHECK(GameSettingsService::smoothingsFor("psc") == std::vector<int>{0, 1, 2}); // no HQ2x/HQ3x on the console
+    for (const char *platform : {"rpi", "pcusb", "win", "pc"})
+        CHECK(GameSettingsService::smoothingsFor(platform) == std::vector<int>{0, 1, 2, 3, 4});
+
+    for (const char *platform : {"psc", "rpi", "pcusb", "win", "pc"})
+        CHECK(GameSettingsService::neonGpuFor(platform, true)); // pcsx-abnxt: everywhere
+    CHECK(GameSettingsService::neonGpuFor("psc", false));
+    CHECK(GameSettingsService::neonGpuFor("rpi", false));
+    CHECK_FALSE(GameSettingsService::neonGpuFor("pcusb", false)); // the classic pcsx-ab: ARM only
+    CHECK_FALSE(GameSettingsService::neonGpuFor("win", false));
+    CHECK_FALSE(GameSettingsService::neonGpuFor("pc", false));
+
+    const std::vector<int> psc = {0, 1, 2};
+    CHECK(GameSettingsService::stepIn(psc, 1, 1) == 2);
+    CHECK(GameSettingsService::stepIn(psc, 2, 1) == 2); // held at the ends
+    CHECK(GameSettingsService::stepIn(psc, 0, -1) == 0);
+    CHECK(GameSettingsService::stepIn(psc, 4, -1) == 0); // not in the list: the first
 }
 
 TEST_CASE("Sony's hacks are the sonyhacks flag, off when the cfg has no line") {
@@ -393,7 +462,7 @@ TEST_CASE("a pcsx.cfg without the key gets the line appended") {
     lib.writeAllUsbCfgs("psx_clock = 39\n");
     GameSettings s = lib.service->open(lib.usbGame());
 
-    lib.service->setScanlines(s, true);
+    lib.service->setScanlines(s, 1);
 
     // ConfigFileEditor used to replace lines only and never add one, so a cfg from an older default
     // could not take a newer option; since 2026-09-20 a missing key is appended

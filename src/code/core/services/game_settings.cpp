@@ -8,14 +8,20 @@
 
 #include <ableem/engine/config_file_editor.h>
 
+#include <algorithm>
 #include <cstdlib>
+#include <map>
 #include <sstream>
 
 using namespace std;
 
 const char *const GameSettingsService::BuiltinGpu = "builtin_gpu";
 const char *const GameSettingsService::PeopsGpu = "gpu_peops.so";
-const char *const GameSettingsService::SmoothingNames[5] = {"None", "Scale2x", "Eagle2x", "HQ2x", "HQ3x"};
+const int GameSettingsService::SmoothingCount;
+const char *const GameSettingsService::SmoothingNames[SmoothingCount] = {"None", "Scale2x", "Eagle2x", "HQ2x", "HQ3x"};
+const int GameSettingsService::FilterCount;
+const int GameSettingsService::DitheringCount;
+const int GameSettingsService::ScanlineModes;
 
 namespace {
 
@@ -30,7 +36,58 @@ int clampTo(int value, int lo, int hi) {
     return value < lo ? lo : (value > hi ? hi : value);
 }
 
+// 0, 1, ... n-1
+vector<int> firstValues(int n) {
+    vector<int> values;
+    for (int i = 0; i < n; i++)
+        values.push_back(i);
+    return values;
+}
+
+bool listed(const vector<int> &values, int value) {
+    return std::find(values.begin(), values.end(), value) != values.end();
+}
+
 } // namespace
+
+//*******************************
+// GameSettingsService::filtersFor / smoothingsFor / neonGpuFor / stepIn
+//*******************************
+vector<int> GameSettingsService::filtersFor(const string &platform) {
+    // pcsx-abnxt's hwfilters per target: its GL pipeline (plat_autobleem.c, hwfilters = ab_filter_names) has
+    // every pass on every one today. 0 Nearest, 1 Linear, 2 Sharp, 3 Sharp (simple), 4 Quilez, 5 CRT (fast),
+    // 6 CRT-Pi. A target that loses a pass drops it from its own line.
+    static const map<string, vector<int>> perPlatform = {
+        {"psc", {0, 1, 2, 3, 4, 5, 6}}, {"rpi", {0, 1, 2, 3, 4, 5, 6}}, {"pcusb", {0, 1, 2, 3, 4, 5, 6}},
+        {"win", {0, 1, 2, 3, 4, 5, 6}}, {"pc", {0, 1, 2, 3, 4, 5, 6}},
+    };
+    auto it = perPlatform.find(platform);
+    return it != perPlatform.end() ? it->second : firstValues(FilterCount);
+}
+
+vector<int> GameSettingsService::smoothingsFor(const string &platform) {
+    // pcsx-abnxt's men_ab_smooth_psc on the console (it takes hq2x/hq3x for none there), men_ab_smooth elsewhere
+    static const map<string, vector<int>> perPlatform = {
+        {"psc", {0, 1, 2}},       {"rpi", {0, 1, 2, 3, 4}}, {"pcusb", {0, 1, 2, 3, 4}},
+        {"win", {0, 1, 2, 3, 4}}, {"pc", {0, 1, 2, 3, 4}},
+    };
+    auto it = perPlatform.find(platform);
+    return it != perPlatform.end() ? it->second : firstValues(SmoothingCount);
+}
+
+bool GameSettingsService::neonGpuFor(const string &platform, bool nxtEmulator) {
+    return nxtEmulator || platform == "psc" || platform == "rpi";
+}
+
+int GameSettingsService::stepIn(const vector<int> &values, int current, int step) {
+    if (values.empty())
+        return current;
+    auto it = std::find(values.begin(), values.end(), current);
+    if (it == values.end())
+        return values.front();
+    int at = clampTo(static_cast<int>(it - values.begin()) + step, 0, static_cast<int>(values.size()) - 1);
+    return values[at];
+}
 
 //*******************************
 // GameSettingsService::cfgFolder
@@ -84,27 +141,40 @@ GameSettings GameSettingsService::open(PsGamePtr game) const {
 // GameSettingsService::refreshPcsx
 //*******************************
 // The values as the emulator will see them: the game's own config over pcsx.cfg (PcsxConfig::value).
-// frameskip3 is written in hex like the other levels but read in decimal; with a range of 0..3 the two
-// agree, so it has never mattered. Left as it was.
 void GameSettingsService::refreshPcsx(GameSettings &s) const {
     const PsGame &game = *s.game;
     auto value = [&game](const char *key) { return PcsxConfig::value(game, key); };
+    // what pcsx-abnxt writes back from its own menu is hex, "0x" and all past 7 (menu.c's write_u32_value)
+    auto hexValue = [&value](const char *key, int fallback) {
+        string v = value(key);
+        return v.empty() ? fallback : static_cast<int>(strtol(v.c_str(), nullptr, 16));
+    };
+    const string platform = Env::platformName();
     PcsxSettings &p = s.pcsx;
     p.highres = atoi(value("gpu_neon.enhancement_enable").c_str());
+    p.noSeams = hexValue("gpu_neon.enhancement_no_seams", 1) != 0; // no line = on, the emulator's default
     p.speedhack = atoi(value("gpu_neon.enhancement_no_main").c_str());
     p.clock = strtol(value("psx_clock").c_str(), nullptr, 16);
     p.gpu = value("gpu3");
-    p.frameskip = atoi(value("frameskip3").c_str());
-    p.dither = atoi(value("gpu_peops.iUseDither").c_str());
-    p.scanlines = atoi(value("scanlines").c_str());
-    string level = value("scanline_level");
-    p.scanlineLevel = level.empty() ? 80 : strtol(level.c_str(), nullptr, 16); // hex in the file; 80% by default
+    // the emulators' frameskip setting, not a frame count: 0 Auto, 1 Off, 2..4 skip 1..3 (no line = Off, their
+    // default; the shipped pcsx.cfg says 0, Auto)
+    string skip = value("frameskip3");
+    p.frameskip = skip.empty() ? FrameskipOff : clampTo(strtol(skip.c_str(), nullptr, 16), 0, FrameskipCount - 1);
+    // pcsx-abnxt's menu shows anything past "always" as "on"; no line = on, the emulator's default
+    int dither = hexValue("dithering2", 1);
+    p.dither = dither < 0 || dither >= DitheringCount ? 1 : dither;
+    p.scanlines = clampTo(hexValue("scanlines", 0), 0, ScanlineModes - 1); // the emulator draws past 3 as 3
+    p.scanlineLevel = hexValue("scanline_level", 80);                      // 80% by default
     p.interpolation = strtol(value("spu_config.iUseInterpolation").c_str(), nullptr, 16);
     string slowBoot = value("SlowBoot");
-    p.bootLogo = slowBoot.empty() ? 1 : atoi(slowBoot.c_str());                     // pcsx-ab's own default is 1
-    p.smoothing = clampTo(strtol(value("soft_filter").c_str(), nullptr, 16), 0, 4); // no line = none
-    p.sonyHacks = atoi(value("sonyhacks").c_str()) != 0;                            // no line = off
-    p.filter = clampTo(atoi(value("plat_target.hwfilter").c_str()), 0, 2);          // no line = off
+    p.bootLogo = slowBoot.empty() ? 1 : atoi(slowBoot.c_str()); // pcsx-ab's own default is 1
+    // no line = none; a scaler this platform does not offer is none, as the emulator takes it (the console)
+    int smoothing = hexValue("soft_filter", 0);
+    p.smoothing = listed(smoothingsFor(platform), smoothing) ? smoothing : 0;
+    p.sonyHacks = atoi(value("sonyhacks").c_str()) != 0; // no line = off
+    // no line = Nearest; a value the platform does not list is Nearest too, as LaunchService passes it
+    int filter = hexValue("plat_target.hwfilter", 0);
+    p.filter = listed(filtersFor(platform), filter) ? filter : 0;
 }
 
 //*******************************
@@ -233,6 +303,22 @@ void GameSettingsService::setHighres(GameSettings &s, bool on) {
 }
 
 //*******************************
+// GameSettingsService::setNoSeams
+//*******************************
+void GameSettingsService::setNoSeams(GameSettings &s, bool on) {
+    replaceCfgLine(s, "gpu_neon.enhancement_no_seams", to_string(on ? 1 : 0));
+}
+
+//*******************************
+// GameSettingsService::setDithering
+//*******************************
+// pcsx-abnxt's CE_INTVAL_PV(dithering, 2): "dithering2", read in hex and written as write_u32_value does -
+// 0..2 is the same either way
+void GameSettingsService::setDithering(GameSettings &s, int mode) {
+    replaceCfgLine(s, "dithering2", toHex(clampTo(mode, 0, DitheringCount - 1)));
+}
+
+//*******************************
 // GameSettingsService::setSpeedhack
 //*******************************
 void GameSettingsService::setSpeedhack(GameSettings &s, bool on) {
@@ -242,8 +328,8 @@ void GameSettingsService::setSpeedhack(GameSettings &s, bool on) {
 //*******************************
 // GameSettingsService::setScanlines
 //*******************************
-void GameSettingsService::setScanlines(GameSettings &s, bool on) {
-    replaceCfgLine(s, "scanlines", to_string(on ? 1 : 0));
+void GameSettingsService::setScanlines(GameSettings &s, int mode) {
+    replaceCfgLine(s, "scanlines", toHex(clampTo(mode, 0, ScanlineModes - 1)));
 }
 
 //*******************************
@@ -264,7 +350,7 @@ void GameSettingsService::setClock(GameSettings &s, int clock) {
 // GameSettingsService::setFrameskip
 //*******************************
 void GameSettingsService::setFrameskip(GameSettings &s, int frames) {
-    replaceCfgLine(s, "frameskip3", toHex(clampTo(frames, 0, 3)));
+    replaceCfgLine(s, "frameskip3", toHex(clampTo(frames, 0, FrameskipCount - 1)));
 }
 
 //*******************************
@@ -285,7 +371,7 @@ void GameSettingsService::setBootLogo(GameSettings &s, bool on) {
 // GameSettingsService::setSmoothing
 //*******************************
 void GameSettingsService::setSmoothing(GameSettings &s, int mode) {
-    replaceCfgLine(s, "soft_filter", toHex(clampTo(mode, 0, 4)));
+    replaceCfgLine(s, "soft_filter", toHex(clampTo(mode, 0, SmoothingCount - 1)));
 }
 
 //*******************************
@@ -299,7 +385,7 @@ void GameSettingsService::setSonyHacks(GameSettings &s, bool on) {
 // GameSettingsService::setFilter
 //*******************************
 void GameSettingsService::setFilter(GameSettings &s, int mode) {
-    replaceCfgLine(s, "plat_target.hwfilter", to_string(clampTo(mode, 0, 2)));
+    replaceCfgLine(s, "plat_target.hwfilter", toHex(clampTo(mode, 0, FilterCount - 1)));
 }
 
 //*******************************

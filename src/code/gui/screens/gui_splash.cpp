@@ -42,7 +42,9 @@ void GuiSplash::render() {
 
     int y = bar.textY;
     string splashText = _("AutoBleem") + " " + Env::productVersion();
+    gui->text().setAlpha(static_cast<unsigned char>(alpha)); // fades with the background and the logo
     gui->text().renderText(gui->assets().themeFont, splashText, 0, y, XALIGN_CENTER);
+    gui->text().setAlpha(255);
 
     renderer.present();
 }
