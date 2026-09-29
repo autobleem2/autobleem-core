@@ -2,6 +2,7 @@
 
 #include "../gui_screen.h"
 #include "../gui.h"
+#include "../hold_repeat.h"
 #include <vector>
 #include <string>
 
@@ -27,6 +28,7 @@ public:
     // controller dpad/joystick pressed
     void doJoyDown() override; // move down one line, may fast forwward
     void doJoyUp() override;   // move up one line, may fast forwward
+    void holdRows(int step);   // a step per row while the key is held, at HoldRepeat's pace
 
     // controller button pressed
     void doCircle_Pressed() override; // default = leave menu.  cancel = true.
@@ -285,20 +287,35 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyUp() {
 // GuiMenuBase<LineDataType>::doJoyDown
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doJoyDown() {
-    do {
-        doKeyDown();
-        render();
-    } while (fastForwardUntilAnotherEvent());
+    holdRows(1);
 }
 
 //*******************************
 // GuiMenuBase<LineDataType>::doJoyUp
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doJoyUp() {
-    do {
-        doKeyUp();
-        render();
-    } while (fastForwardUntilAnotherEvent());
+    holdRows(-1);
+}
+
+//*******************************
+// GuiMenuBase<LineDataType>::holdRows
+//*******************************
+// one step at the press, then - while nothing else comes from the pad or the keyboard - the same step again at
+// HoldRepeat's pace (the one every screen's held key uses): its delay first, then its interval, faster when
+// held long
+template <typename LineDataType> void GuiMenuBase<LineDataType>::holdRows(int step) {
+    HoldRepeat hold;
+    hold.press(step, gui->platform().ticks());
+    step > 0 ? doKeyDown() : doKeyUp();
+    render();
+    while (!gui->input().padEventPending()) {
+        if (hold.due(gui->platform().ticks()) != 0) {
+            step > 0 ? doKeyDown() : doKeyUp();
+            render();
+        } else {
+            gui->platform().delay(2); // a few ms of repeat timing, not a core spinning on the queue
+        }
+    }
 }
 
 //*******************************

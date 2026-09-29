@@ -9,10 +9,19 @@
 //   once a frame:    if (int steps = hold.due(now)) moveSelection(steps);
 //   on the release:  hold.release();
 //
+#include <ableem/ui/input.h>
+
 #include <cstdint>
 
 class HoldRepeat {
 public:
+    // THE autorepeat of every screen - a classic list, a panel, the Options and the editor's values: one pair,
+    // so a held key steps the same on old windows and new ones
+    static const uint32_t RepeatDelayMs = 350;       // from the press to the first repeat
+    static const uint32_t RepeatIntervalMs = 80;     // between repeats
+    static const uint32_t RepeatFastAfterMs = 1200;  // held this long, they speed up...
+    static const uint32_t RepeatFastIntervalMs = 30; // ...to this
+
     struct Timing {
         uint32_t delay;        // ms from the press to the first repeat
         uint32_t interval;     // ms between repeats
@@ -20,7 +29,7 @@ public:
         uint32_t fastInterval; // ...they come this often
     };
     // a row at a time: ~12 rows a second, ~33 once held for over a second
-    static Timing rows() { return Timing{350, 80, 1200, 30}; }
+    static Timing rows() { return Timing{RepeatDelayMs, RepeatIntervalMs, RepeatFastAfterMs, RepeatFastIntervalMs}; }
     // a page at a time (L2/R2): slower, since each step is a whole screen
     static Timing pages() { return Timing{400, 220, 1500, 110}; }
 
@@ -56,4 +65,44 @@ private:
     uint32_t start_ = 0;
     uint32_t next_ = 0;
     Timing timing_ = rows();
+};
+
+// A panel's loop (Up/Down held down a list): the screen keeps its own single step at the press and adds
+//   on Dpad events:   hold.track(input, now);
+//   once a pass:      hold.tick(input, now, [&](int dir) { move(dir); });
+// The pass then runs at the full frame rate while a direction is held (the loop rests between presses otherwise)
+// and every step is one row, at HoldRepeat's pace. Nothing held any more (a release lost during a dialog, a
+// busy job) ends it at the next pass.
+class DpadHold {
+public:
+    void track(ableem::Input &input, uint32_t now) {
+        const int dir = input.dpadDown() ? 1 : (input.dpadUp() ? -1 : 0);
+        if (dir == hold_.step())
+            return;
+        if (dir == 0) {
+            stop(input);
+            return;
+        }
+        hold_.press(dir, now);
+        input.setFrameNeed(ableem::Input::FrameNeed::Active);
+    }
+
+    template <class Step> void tick(ableem::Input &input, uint32_t now, Step step) {
+        if (!hold_.held())
+            return;
+        const int dir = hold_.step();
+        if (dir > 0 ? !input.dpadDown() : !input.dpadUp()) {
+            stop(input);
+            return;
+        }
+        for (int n = hold_.due(now); n != 0; n -= dir)
+            step(dir);
+    }
+
+private:
+    void stop(ableem::Input &input) {
+        hold_.release();
+        input.setFrameNeed(ableem::Input::FrameNeed::Idle);
+    }
+    HoldRepeat hold_;
 };
