@@ -395,7 +395,10 @@ int TextRenderer::renderTextLine(const string &text, int line, int yoffset, XAli
         y = line;
     }
 
-    return renderText(font, text, x, y, xAlign);
+    // the launcher theme's text colour, the one the compact panels draw their rows in (white where a theme
+    // sets none)
+    const Color ink = PanelStyle::fromTheme(theme_.launcher()).text;
+    return renderText(font, text, x, y, xAlign, &ink);
 }
 
 //*******************************
@@ -452,7 +455,8 @@ void TextRenderer::renderRowValue(const string &value, int line, int yoffset, in
     int y = (font.lineHeight() * line) + yoffset;
     if (line < 0)
         y = -line;
-    renderText(font, value, ableem::GuiBase::ScreenWidth - right, y, XALIGN_RIGHT);
+    const Color ink = PanelStyle::fromTheme(theme_.launcher()).text;
+    renderText(font, value, ableem::GuiBase::ScreenWidth - right, y, XALIGN_RIGHT, &ink);
 }
 
 //*******************************
