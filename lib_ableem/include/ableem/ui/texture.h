@@ -48,6 +48,8 @@ public:
     static Image loadFile(const std::string &path);
     bool valid() const { return surface != nullptr; }
     Size size() const;
+    // one pixel as RGBA, transparent black outside the image - for measuring a picture once (not per frame)
+    Color pixel(int x, int y) const;
 
 private:
     friend class Texture;

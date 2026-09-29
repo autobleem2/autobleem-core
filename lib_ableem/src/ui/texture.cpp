@@ -115,6 +115,37 @@ Size Image::size() const {
     return s;
 }
 
+Color Image::pixel(int x, int y) const {
+    auto *s = static_cast<SDL_Surface *>(surface.get());
+    if (!s || x < 0 || y < 0 || x >= s->w || y >= s->h)
+        return Color(0, 0, 0, 0);
+    const bool lock = SDL_MUSTLOCK(s);
+    if (lock && SDL_LockSurface(s) != 0)
+        return Color(0, 0, 0, 0);
+    const int bpp = s->format->BytesPerPixel;
+    const Uint8 *p = static_cast<const Uint8 *>(s->pixels) + y * s->pitch + x * bpp;
+    Uint32 raw = 0;
+    switch (bpp) {
+    case 1:
+        raw = *p;
+        break;
+    case 2:
+        raw = *reinterpret_cast<const Uint16 *>(p);
+        break;
+    case 3:
+        raw = SDL_BYTEORDER == SDL_BIG_ENDIAN ? (p[0] << 16 | p[1] << 8 | p[2]) : (p[0] | p[1] << 8 | p[2] << 16);
+        break;
+    default:
+        raw = *reinterpret_cast<const Uint32 *>(p);
+        break;
+    }
+    if (lock)
+        SDL_UnlockSurface(s);
+    Uint8 r, g, b, a;
+    SDL_GetRGBA(raw, s->format, &r, &g, &b, &a);
+    return Color(r, g, b, a);
+}
+
 Texture Texture::fromImage(Renderer &renderer, const Image &image) {
     if (!image.valid())
         return Texture();
