@@ -296,6 +296,8 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doHome() {
     app.audio().home_down.play();
     if (!labelsOnly && getVerticalSize() > 1) {
         selected = 0;
+        while (skipSelectingThisLineWhenMovingByOne(selected) && selected < getVerticalSize() - 1)
+            ++selected;
         computePagePosition();
     }
 }
@@ -307,6 +309,8 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doEnd() {
     app.audio().home_down.play();
     if (!labelsOnly && getVerticalSize() > 1) {
         selected = getVerticalSize() - 1;
+        while (skipSelectingThisLineWhenMovingByOne(selected) && selected > 0)
+            --selected;
         computePagePosition();
     }
 }
