@@ -39,6 +39,38 @@ TEST_CASE("HoldRepeat moves by its step, a page's too, and never bursts after a 
     CHECK(hold.due(10730) == -7); // held long enough for the fast pace (110 ms)
 }
 
+TEST_CASE("HoldRepeat with the Options value row's own timing (400/120/1500/60): a tap is one step, a hold "
+          "scrolls without loading the value on every step") {
+    // GuiOptions/GuiGameEditor's value rows (Theme, Music, Language, the font) use this exact Timing -
+    // Left/Right steps the value once on ButtonDown (the caller's own moveSelection(), not due()) and then
+    // starts the hold; only the release actually loads/applies the landed-on value, so due() itself must
+    // stay quiet until the delay is up and then repeat at the slower, then faster, pace.
+    const HoldRepeat::Timing valueHoldTiming{400, 120, 1500, 60};
+    HoldRepeat hold;
+    hold.press(1, 1000, valueHoldTiming);
+    CHECK(hold.held());
+    // nothing more due until the 400 ms delay elapses - a tap (press then release well inside it) never
+    // gets a second step out of due()
+    CHECK(hold.due(1000) == 0);
+    CHECK(hold.due(1200) == 0);
+    CHECK(hold.due(1399) == 0);
+    CHECK(hold.due(1400) == 1); // the first repeat, exactly at the delay
+    CHECK(hold.due(1450) == 0);
+    CHECK(hold.due(1520) == 1); // then every 120 ms, short of the 1500 ms fast-pace mark
+
+    // held on past the 1000 + 1500 ms fast-pace mark: called every 10 ms, as a real frame loop would, the
+    // repeats keep coming and speed up - never a burst bigger than a stall deserves
+    int moved = 0;
+    for (uint32_t t = 1530; t <= 2600; t += 10)
+        moved += hold.due(t);
+    CHECK(moved > 0);
+
+    hold.release();
+    CHECK_FALSE(hold.held());
+    // a release mid-hold stops the repeats for good until the next press - no leftover step sneaks in
+    CHECK(hold.due(3000) == 0);
+}
+
 TEST_CASE("HoldRepeat copes with the tick counter wrapping") {
     HoldRepeat hold;
     const uint32_t nearEnd = 0xFFFFFF00u;
