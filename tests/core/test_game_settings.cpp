@@ -388,11 +388,13 @@ TEST_CASE("each platform's lists are pcsx-abnxt's") {
     for (const char *platform : {"rpi", "pcusb", "win", "pc"})
         CHECK(GameSettingsService::smoothingsFor(platform) == std::vector<int>{0, 1, 2, 3, 4});
 
-    CHECK(GameSettingsService::neonGpuFor("psc"));
-    CHECK(GameSettingsService::neonGpuFor("rpi"));
-    CHECK_FALSE(GameSettingsService::neonGpuFor("pcusb"));
-    CHECK_FALSE(GameSettingsService::neonGpuFor("win"));
-    CHECK_FALSE(GameSettingsService::neonGpuFor("pc"));
+    for (const char *platform : {"psc", "rpi", "pcusb", "win", "pc"})
+        CHECK(GameSettingsService::neonGpuFor(platform, true)); // pcsx-abnxt: everywhere
+    CHECK(GameSettingsService::neonGpuFor("psc", false));
+    CHECK(GameSettingsService::neonGpuFor("rpi", false));
+    CHECK_FALSE(GameSettingsService::neonGpuFor("pcusb", false)); // the classic pcsx-ab: ARM only
+    CHECK_FALSE(GameSettingsService::neonGpuFor("win", false));
+    CHECK_FALSE(GameSettingsService::neonGpuFor("pc", false));
 
     const std::vector<int> psc = {0, 1, 2};
     CHECK(GameSettingsService::stepIn(psc, 1, 1) == 2);

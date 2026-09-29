@@ -144,8 +144,9 @@ public:
     // The Smoothing row's values: None/Scale2x/Eagle2x on the console, HQ2x/HQ3x (CPU scalers, 30 fps on
     // the console) too everywhere else - pcsx-abnxt's men_ab_smooth_psc / men_ab_smooth
     static std::vector<int> smoothingsFor(const std::string &platform);
-    // whether the built-in NEON GPU is there, for the Resolution and Remove seams rows: the ARM targets
-    static bool neonGpuFor(const std::string &platform);
+    // whether the built-in NEON GPU is there, for the Resolution and Remove seams rows: pcsx-abnxt builds it on
+    // every target (C SIMD off ARM); the classic pcsx-ab only on the ARM ones
+    static bool neonGpuFor(const std::string &platform, bool nxtEmulator);
     // the value `step` places from `current` in `values`, held at the ends; a current value not in the list
     // moves to the first
     static int stepIn(const std::vector<int> &values, int current, int step);

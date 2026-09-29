@@ -75,8 +75,8 @@ vector<int> GameSettingsService::smoothingsFor(const string &platform) {
     return it != perPlatform.end() ? it->second : firstValues(SmoothingCount);
 }
 
-bool GameSettingsService::neonGpuFor(const string &platform) {
-    return platform == "psc" || platform == "rpi";
+bool GameSettingsService::neonGpuFor(const string &platform, bool nxtEmulator) {
+    return nxtEmulator || platform == "psc" || platform == "rpi";
 }
 
 int GameSettingsService::stepIn(const vector<int> &values, int current, int step) {
