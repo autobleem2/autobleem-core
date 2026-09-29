@@ -84,7 +84,7 @@ void ConfigFileEditor::replaceProperties(const string &fullCfgFilePath, const Cf
     }
 
     // a plain "\n": pcsx-ab/pcsx-abnxt reject a CRLF pcsx.cfg (fread != ftell in text mode, and a trailing
-    // '\r' spoils "Bios = SET_BY_PCSX"). CLAUDE.md: cfg files stay LF.
+    // '\r' spoils "Bios = SET_BY_PCSX"). docs/developer-guide.md: cfg files stay LF.
     string out;
     for (const auto &line : lines)
         out += line + "\n";

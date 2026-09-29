@@ -40,7 +40,7 @@
 // GuiLauncher: how long an assignment has to stay empty (no pads at all) before "Controllers: None" is
 // shown (checkPadAssignmentEmptyNotice(), C16) - milliseconds. Long enough to ride out a re-enumeration
 // blip (SDL re-registering a pad after a display release/reacquire around a game launch, or a multi-mode
-// pad's own mode-switch dance - see the ab2 pad note in CLAUDE.md, 1-3s on a Pi 400) without also being
+// pad's own mode-switch dance - see the ab2 pad note in the launcher's docs/developer-guide.md, 1-3s on a Pi 400) without also being
 // so long that a genuine unplug feels unacknowledged. 1.5s split the difference: comfortably past a
 // same-frame or next-frame replug, short enough that the notice still reads as "just happened".
 #define PadEmptyNoticeDelay (TicksPerSecond + TicksPerSecond / 2)
