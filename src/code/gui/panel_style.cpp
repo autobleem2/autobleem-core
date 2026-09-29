@@ -334,6 +334,7 @@ void PanelStyle::footer(Gui &gui, const Rect &footer, const vector<HintItem> &gi
     TextRenderer &text = gui.text();
     const int iconH = 30;
     const int y = footer.y + 14;
+    const int IconOnlyGap = 16; // between hints once labels are dropped (C1: no fallback after FONT_15_BOLD)
     // what a button takes: a face button its 30 px image, a named one its chip
     auto buttonWidth = [&](const string &key) {
         if (key == "X" || key == "O" || key == "T" || key == "S")
@@ -351,25 +352,36 @@ void PanelStyle::footer(Gui &gui, const Rect &footer, const vector<HintItem> &gi
         text.renderText_WithColor(statusFont, status, right - w, y, secondary, XALIGN_LEFT);
         right -= w + 36;
     }
-    // the largest font the hints fit in, then the gap between them
+    // the largest font the hints fit in, then the gap between them; `iconsOnly` drops every hint's own label
+    // (not the button chip's own text, e.g. "L2" - only h.label) once even the smallest font does not fit,
+    // so a hint is never drawn past `room` - see the fallback below
     const int room = right - (footer.x + RowInset);
-    auto widthAt = [&](const ableem::Font &font, int gap) {
+    auto widthAt = [&](const ableem::Font &font, int gap, bool iconsOnly) {
         int w = 0;
         for (const HintItem &h : hints) {
             for (const string &icon : h.icons)
                 w += buttonWidth(icon) + 6;
-            w += 2 + text.textWidth(font, h.label) + gap;
+            w += iconsOnly ? gap : 2 + text.textWidth(font, h.label) + gap;
         }
         return w - gap;
     };
     ableem::Font font = assets.themeFonts[FONT_22_MED];
     int gap = 36;
-    if (widthAt(font, gap) > room) {
+    bool iconsOnly = false;
+    if (widthAt(font, gap, false) > room) {
         gap = 22;
-        if (widthAt(font, gap) > room) {
+        if (widthAt(font, gap, false) > room) {
             font = assets.themeFonts[FONT_20_BOLD];
-            if (widthAt(font, gap) > room)
+            if (widthAt(font, gap, false) > room) {
                 font = assets.themeFonts[FONT_15_BOLD];
+                if (widthAt(font, gap, false) > room) {
+                    // even the smallest font's labels do not fit: icons only from here - they are fixed
+                    // width, so this always fits unless there are too many hints for even bare icons, which
+                    // is outside this fallback's job (UIREV-3) and is left to clip as before
+                    iconsOnly = true;
+                    gap = IconOnlyGap;
+                }
+            }
         }
     }
     const int fontH = font.lineHeight();
@@ -377,9 +389,13 @@ void PanelStyle::footer(Gui &gui, const Rect &footer, const vector<HintItem> &gi
     for (const HintItem &h : hints) {
         for (const string &key : h.icons)
             x += button(gui, key, x, y, iconH) + 6;
-        x += 2;
-        text.renderText_WithColor(font, h.label, x, y + (iconH - fontH) / 2, hint, XALIGN_LEFT);
-        x += text.textWidth(font, h.label) + gap;
+        if (iconsOnly) {
+            x += gap;
+        } else {
+            x += 2;
+            text.renderText_WithColor(font, h.label, x, y + (iconH - fontH) / 2, hint, XALIGN_LEFT);
+            x += text.textWidth(font, h.label) + gap;
+        }
     }
 }
 
