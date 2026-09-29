@@ -315,7 +315,7 @@ void Gui::renderFreeSpace() {
         space = System::getAvailableSpace();
         spaceAt = now;
     }
-    const string line = _("Free space") + " : " + space;
+    const string line = _("Free space") + ": " + space;
     const ableem::Font &font = assets_.themeFonts[FONT_22_MED];
     const int y = panel.y + 18 + (assets_.themeFonts[FONT_28_BOLD].lineHeight() - font.lineHeight()) / 2;
     text_.renderText_WithColor(font, line, panel.x + panel.w - PanelStyle::RowInset - text_.textWidth(font, line), y,
