@@ -433,6 +433,10 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
             env.emplace_back("AB_OUTPUT_MODE", OutputMode::parse(config_.inifile.values[OutputMode::ConfigKey]).token());
             DirEntry::removeFile(OutputMode::emulatorFile()); // nothing left over from an earlier game
         }
+        // Options -> Diagnostics -> "Show performance": the emulator's HUD shows its FPS and CPU as well, for
+        // this run only (it keeps them out of the game's saved config)
+        if (has("perfoverlay") && config_.inifile.values["perfoverlay"] == "true")
+            env.emplace_back("AB_PERF_OVERLAY", "1");
         PcsxConfig::migrateLegacy(*game); // what an older build left becomes the game's own config
         launchPcsx(*game, resumePoint, env);
         PcsxConfig::migrateLegacy(*game); // ...and what an older emulator left just now
