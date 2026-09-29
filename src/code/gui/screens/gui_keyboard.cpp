@@ -95,6 +95,21 @@ string GuiKeyboard::pageKeyLabel(int page) {
     return next[max(0, min(Pages - 1, page))];
 }
 
+// the same "what R1 leads to" as pageKeyLabel(), in words - the footer's R1 hint (K2, UIREV-21) used to read
+// "Symbols" no matter which page was showing; this names the page that follows the current one.
+string GuiKeyboard::pageName(int page) {
+    switch (max(0, min(Pages - 1, page))) {
+    case 0:
+        return _("Symbols");
+    case 1:
+        return _("Accented letters");
+    case 2:
+        return _("More accents");
+    default:
+        return _("Letters");
+    }
+}
+
 //*******************************
 // GuiKeyboard::previousChar / nextChar
 //*******************************
@@ -228,8 +243,10 @@ void GuiKeyboard::drawKey(const ableem::Rect &key, const KeyCap &cap, bool selec
         renderer.setDrawColor(ableem::Color(style.secondary.r, style.secondary.g, style.secondary.b, 110));
         renderer.drawRect(key);
     }
-    // the letters in the text colour (readable at a glance), the function keys' words in the secondary one
-    const ableem::Color ink = selected || lit || cap.kind == KeyKind::Char ? style.text : style.secondary;
+    // every key's label in the theme's text colour (K1, UIREV-21): the function row's words used to draw in
+    // the dimmer secondary colour and read as barely-there next to the letters - only the key's own tile
+    // (above) stays a shade darker, as on a phone's keyboard
+    const ableem::Color ink = style.text;
     const int cx = key.x + key.w / 2, cy = key.y + key.h / 2;
     Fonts &fonts = gui->assets().themeFonts;
     // drawn as it is: "|" and "@" are keys here, not the text renderer's markers
@@ -334,7 +351,7 @@ void GuiKeyboard::render() {
         }
 
     gui->renderStatus("|@X| " + _("Select") + "  |@T| " + _("Backspace") + "  |@S| " + _("Space") + "  |@L1| " +
-                      _("Shift") + "  |@R1| " + _("Symbols") + "  |@L2|/|@R2| " + _("Move cursor") + "  |@Start| " +
+                      _("Shift") + "  |@R1| " + pageName(page) + "  |@L2|/|@R2| " + _("Move cursor") + "  |@Start| " +
                       _("Confirm") + "  |@O| " + _("Cancel") + " |");
     renderer.present();
 }

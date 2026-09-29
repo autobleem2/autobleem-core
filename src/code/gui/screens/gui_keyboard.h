@@ -54,6 +54,7 @@ public:
     };
     static KeyCap keyAt(int page, int row, int column, bool shifted);
     static std::string pageKeyLabel(int page); // the page key names the page it leads to
+    static std::string pageName(int page);     // the same, in words - the footer's R1 hint
 
     // UTF-8 editing, by whole characters (the cursor is a byte offset on a character's start)
     static size_t previousChar(const std::string &text, size_t at);
