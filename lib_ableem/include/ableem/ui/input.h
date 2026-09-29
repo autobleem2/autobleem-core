@@ -156,7 +156,8 @@ public:
     Input &operator=(const Input &) = delete;
 
     // pulls one event off the queue, translating it and updating internal dpad/pad state as a side effect.
-    // returns false when the queue is empty.
+    // returns false when the queue is empty. A true with out.type None is an event consumed here (see
+    // flushInputEvents for what the busy rule keeps back that way).
     bool poll(Event &out);
     // The frame pacer (the render plan's B2). A screen says what its picture needs - Active: a frame every pass
     // (anything animating; the default, so a forgotten case costs CPU, never a stale picture), Ambient: only
@@ -201,6 +202,15 @@ public:
     // direction half-pressed before the flush does not keep reading as held afterwards. This is
     // distinct from flushEvents() above, which discards everything unconditionally and keeps its existing
     // behaviour - other screens rely on that.
+    // CONSOLE-13, the busy rule (autobleem-main docs/decisions.md, 2026-09-27): when a job ends the input starts
+    // clean - nothing held, no hold-repeat carried over. So this also releases every press poll() has handed
+    // out and not yet the release of (a ButtonUp/DpadUp/KeyUp each, the first things poll() hands out next,
+    // padEventPending() true until they are read), whether or not the player has let go: every screen's hold,
+    // however it tracks it - on the release event, until another pad event is pending, or on the live d-pad
+    // state - ends there. From then on poll() never hands out a release of a press it did not hand out (so
+    // neither the release kept above nor the player's own later release of such a press reaches a screen
+    // again), nor a key repeat, or the text it types, of a key a screen does not hold. A press after the job
+    // is a press, as always.
     void flushInputEvents();
 
     // from now on poll() hands out a Quit event on every other call (and "nothing queued" in between, so
@@ -298,6 +308,7 @@ public:
     bool setVirtualPadControlAxis(int slot, int controllerAxis, int value);
 
 private:
+    bool pollEvent(Event &out); // what poll() reads, before the busy rule decides whether a screen sees it
     struct Impl;
     Impl *impl;
 };
