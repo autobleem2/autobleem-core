@@ -41,6 +41,10 @@ struct FrameSpec {
     Insets bleed;
     bool fill = true;
     std::string tint; // a Style colour's name (Style::colorByName); "" the image's own colours
+    // the tint as the program resolved it, for a name that is not a Style colour (`selection`, a launcher.colors
+    // colour Style has no role for - G5k): used when Style::colorByName does not know `tint`
+    bool tintResolved = false;
+    ableem::Color tintColor = ableem::Color(255, 255, 255, 255);
 };
 
 // a frame ready to draw; invalid (no texture) when there is none or its image could not be used
@@ -51,6 +55,8 @@ struct Frame {
     Insets bleed;
     bool fill = true;
     std::string tint;
+    bool tintResolved = false;
+    ableem::Color tintColor = ableem::Color(255, 255, 255, 255);
 
     bool valid() const { return texture.valid(); }
 };
@@ -76,6 +82,11 @@ void drawFrame(ableem::Renderer &renderer, const Frame &frame, const ableem::Rec
 // the frame, so every draw sets its alpha (the one above 255)
 void drawFrame(ableem::Renderer &renderer, const Frame &frame, const ableem::Rect &box, const ableem::Color &tint,
                unsigned char alpha);
+
+// `frame` with its slices and bleed scaled by `factor` (G5k: the cover glow follows the cover, size / 222): the same
+// image cut at the same pixels, drawn into a box whose corners and glow are `factor` times as big. Logical lengths are
+// rounded; a factor of 1 (or less than or equal to 0) gives `frame` as it is.
+Frame scaledFrame(const Frame &frame, float factor);
 
 // which of an image's two files to load at `outputScale` - what FrameSet and IconSet (icon.h) both pick by: the @2x one
 // above scale 1 when there is one, else the 1x one, else the @2x one (the GPU scales it down); `scale` gets its image

@@ -269,7 +269,7 @@ static abgui::SpinnerSpec themeSpinner(const string &dir) {
 //*******************************
 // the frames of the theme in `dir` as the FrameSet takes them: only that theme's own - never the default theme's, so a
 // theme without launcher.frames draws exactly as before
-static map<string, abgui::FrameSpec> themeFrames(const string &dir) {
+static map<string, abgui::FrameSpec> themeFrames(const string &dir, const ableem::LauncherTheme &launcher) {
     map<string, abgui::FrameSpec> specs;
     for (const ableem::ThemeFrame &f : ableem::loadThemeFrames(dir)) {
         abgui::FrameSpec spec;
@@ -279,6 +279,8 @@ static map<string, abgui::FrameSpec> themeFrames(const string &dir) {
         spec.bleed = abgui::Insets(f.bleed.left, f.bleed.top, f.bleed.right, f.bleed.bottom);
         spec.fill = f.fill;
         spec.tint = f.tint;
+        // a tint that is a launcher.colors colour with no Style role (`selection`, the cover glow's): resolved here
+        spec.tintResolved = PanelStyle::frameTintColor(launcher, f.tint, spec.tintColor);
         specs[f.name] = spec;
     }
     if (!specs.empty()) {
@@ -309,7 +311,7 @@ void Gui::splash(const string &message) {
 void Gui::loadAssets(bool reloadMusic) {
     text_.clearTextCache(); // keyed on the font handles about to be replaced
     assets_.load();
-    frames_.assign(themeFrames(AppBase::get().theme().loadedPath())); // the textures load when first drawn
+    frames_.assign(themeFrames(AppBase::get().theme().loadedPath(), AppBase::get().theme().launcher())); // the textures load when first drawn
     icons_.assign(ThemeAssets::iconSpecs(AppBase::get().theme()), ThemeAssets::iconHalo(AppBase::get().theme()));
     // the theme's own launcher logo and resume picture mask (G5q, G5s): nothing when it sets none
     const ableem::ThemeLauncherLogo logo = ableem::loadThemeLogo(AppBase::get().theme().loadedPath());

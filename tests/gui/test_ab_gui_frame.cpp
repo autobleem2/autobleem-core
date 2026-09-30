@@ -854,3 +854,58 @@ TEST_CASE("the menu tiles and the picker's band (G5i): the test theme's three fr
     CHECK_FALSE(style.drawFrame(ctx, "tileSelected", box));
     CHECK(style.drawFrame(ctx, "tile", box));
 }
+
+TEST_CASE("scaledFrame (G5k): the slices and bleed follow the factor, the cut stays on the same image pixels") {
+    abgui::Frame glow;
+    glow.imageScale = 1.0f;
+    glow.slice = Insets::all(64);
+    glow.bleed = Insets::all(48);
+    glow.fill = false;
+    const Size image = sizeOf(160, 160);
+
+    // a factor of 1 (and a factor that makes no sense) leaves the frame as it is
+    for (float factor : {1.0f, 0.0f, -2.0f}) {
+        const abgui::Frame same1 = abgui::scaledFrame(glow, factor);
+        CHECK(same1.slice.left == 64);
+        CHECK(same1.bleed.top == 48);
+        CHECK(same1.imageScale == 1.0f);
+    }
+
+    // a cover at half size: 32 / 24 logical, the image cut where it always was (64 px corners)
+    const abgui::Frame half = abgui::scaledFrame(glow, 0.5f);
+    CHECK(half.slice.left == 32);
+    CHECK(half.slice.bottom == 32);
+    CHECK(half.bleed.right == 24);
+    CHECK(half.imageScale == doctest::Approx(2.0f));
+    CHECK_FALSE(half.fill);
+    const vector<FramePiece> small =
+        abgui::framePieces(image, half.imageScale, half.slice, half.bleed, half.fill, Rect(100, 100, 111, 111));
+    REQUIRE(small.size() == 8); // no centre
+    CHECK(same(small[0].src, 0, 0, 64, 64));
+    CHECK(same(small[0].dst, 76, 76, 32, 32)); // the box grown by 24
+    CHECK(same(small[7].src, 96, 96, 64, 64));
+
+    // the full size draws the frame as it is: the same pieces as the unscaled one
+    const vector<FramePiece> a =
+        abgui::framePieces(image, glow.imageScale, glow.slice, glow.bleed, glow.fill, Rect(100, 100, 222, 222));
+    const abgui::Frame full = abgui::scaledFrame(glow, 222.0f / 222.0f);
+    const vector<FramePiece> b =
+        abgui::framePieces(image, full.imageScale, full.slice, full.bleed, full.fill, Rect(100, 100, 222, 222));
+    REQUIRE(a.size() == b.size());
+    for (size_t i = 0; i < a.size(); i++)
+        CHECK(same(b[i].dst, a[i].dst.x, a[i].dst.y, a[i].dst.w, a[i].dst.h));
+
+    // a cover 1.2 times as big: the lengths are rounded, never negative
+    const abgui::Frame big = abgui::scaledFrame(glow, 1.2f);
+    CHECK(big.slice.left == 77); // 76.8
+    CHECK(big.bleed.left == 58); // 57.6
+
+    // the tint and its resolved colour travel with the copy
+    glow.tint = "selection";
+    glow.tintResolved = true;
+    glow.tintColor = Color(10, 20, 30, 255);
+    const abgui::Frame copy = abgui::scaledFrame(glow, 0.7f);
+    CHECK(copy.tint == "selection");
+    CHECK(copy.tintResolved);
+    CHECK(copy.tintColor.g == 20);
+}

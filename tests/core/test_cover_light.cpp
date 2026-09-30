@@ -7,6 +7,7 @@
 
 using CoverLight::Box;
 using CoverLight::glowBox;
+using CoverLight::glowFrameScale;
 using CoverLight::shineSlice;
 using CoverLight::ShineSlice;
 
@@ -122,4 +123,13 @@ TEST_CASE("shineSlice: nothing for an empty face or texture") {
     CHECK_FALSE(shineSlice(box(0, 0, 0, 222), 0.5f, TexSide).visible);
     CHECK_FALSE(shineSlice(box(0, 0, 222, 0), 0.5f, TexSide).visible);
     CHECK_FALSE(shineSlice(Square, 0.5f, 0).visible);
+}
+
+TEST_CASE("glowFrameScale: the cover glow frame's slices and bleed follow the face's longer side over 222") {
+    CHECK(glowFrameScale(box(0, 0, 222, 222)) == doctest::Approx(1.0f));
+    CHECK(glowFrameScale(box(0, 0, 111, 111)) == doctest::Approx(0.5f));
+    CHECK(glowFrameScale(box(0, 0, 150, 222)) == doctest::Approx(1.0f)); // a tall box: the height
+    CHECK(glowFrameScale(box(0, 0, 222, 120)) == doctest::Approx(1.0f)); // a wide one: the width
+    CHECK(glowFrameScale(box(0, 0, 180, 120)) == doctest::Approx(180.0f / 222.0f));
+    CHECK(glowFrameScale(box(0, 0, 0, 0)) == doctest::Approx(1.0f));
 }

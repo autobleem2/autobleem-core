@@ -83,3 +83,19 @@ TEST_CASE("a name inherited from the default theme resolves against the theme's 
     const PanelStyle s = PanelStyle::fromTheme(theme.launcher);
     CHECK(same(s.row, 40, 50, 60));
 }
+
+TEST_CASE("frameTintColor (G5k): `selection` is the theme's selection colour, white when it sets none") {
+    Color c(1, 2, 3, 4);
+    LauncherTheme t;
+    REQUIRE(PanelStyle::frameTintColor(t, "selection", c));
+    CHECK(same(c, 255, 255, 255));
+    t.colors.selection = ThemeColor(10, 200, 30);
+    REQUIRE(PanelStyle::frameTintColor(t, "selection", c));
+    CHECK(same(c, 10, 200, 30));
+    CHECK(c.a == 255);
+    // any other name is the Style's own (Style::colorByName) or none: untouched here
+    c = Color(1, 2, 3, 4);
+    CHECK_FALSE(PanelStyle::frameTintColor(t, "edge", c));
+    CHECK_FALSE(PanelStyle::frameTintColor(t, "", c));
+    CHECK(same(c, 1, 2, 3));
+}

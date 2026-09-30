@@ -99,6 +99,22 @@ void drawFrame(ableem::Renderer &renderer, const Frame &frame, const Rect &box, 
 }
 
 //*******************************
+// scaledFrame
+//*******************************
+Frame scaledFrame(const Frame &frame, float factor) {
+    if (factor <= 0.0f || factor == 1.0f)
+        return frame;
+    const auto scaled = [factor](int n) { return static_cast<int>(lround(n * factor)); };
+    Frame out = frame;
+    out.slice = Insets(scaled(frame.slice.left), scaled(frame.slice.top), scaled(frame.slice.right),
+                       scaled(frame.slice.bottom));
+    out.bleed = Insets(scaled(frame.bleed.left), scaled(frame.bleed.top), scaled(frame.bleed.right),
+                       scaled(frame.bleed.bottom));
+    out.imageScale = frame.imageScale / factor; // the cut stays on the same image pixels
+    return out;
+}
+
+//*******************************
 // pickImageFile
 //*******************************
 string pickImageFile(const string &file, const string &file2x, float outputScale, float &scale) {
@@ -158,6 +174,8 @@ Frame FrameSet::frame(ableem::Renderer &renderer, const string &name) {
             e.loaded.bleed = e.spec.bleed;
             e.loaded.fill = e.spec.fill;
             e.loaded.tint = e.spec.tint;
+            e.loaded.tintResolved = e.spec.tintResolved;
+            e.loaded.tintColor = e.spec.tintColor;
         } else if (texture.valid()) {
             PLOG_WARNING << "Frame '" << name << "': " << file << " is smaller than its slices - drawn by the code";
         }
