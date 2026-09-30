@@ -152,6 +152,8 @@ public:
     static bool busy();
     // true once start() listens - a screen builds its `items` only then (they are rebuilt every frame)
     static bool active();
+    // pretends the driver runs (or not) without a server, so a test can see what a screen publishes
+    static void setActiveForTest(bool on);
     static int busyLevel();
 };
 

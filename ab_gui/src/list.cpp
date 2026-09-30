@@ -265,44 +265,52 @@ struct Skipper {
 };
 } // namespace
 
+// every move publishes at once (not only in the next frame), so the DebugDriver's `selected` never lags the cursor
 void List::stepDown() {
     ctx.play(UiSound::Cursor);
     if (!labelsOnly)
         ListModel::stepDown(view(), Skipper{*this});
+    publish();
 }
 
 void List::stepUp() {
     ctx.play(UiSound::Cursor);
     if (!labelsOnly)
         ListModel::stepUp(view(), Skipper{*this});
+    publish();
 }
 
 void List::pageDown() {
     ctx.play(UiSound::HomeUp);
     if (!labelsOnly)
         ListModel::pageDown(view(), Skipper{*this});
+    publish();
 }
 
 void List::pageUp() {
     ctx.play(UiSound::HomeDown);
     if (!labelsOnly)
         ListModel::pageUp(view(), Skipper{*this});
+    publish();
 }
 
 void List::first() {
     ctx.play(UiSound::HomeDown);
     if (!labelsOnly)
         ListModel::home(view(), Skipper{*this});
+    publish();
 }
 
 void List::last() {
     ctx.play(UiSound::HomeDown);
     if (!labelsOnly)
         ListModel::end(view(), Skipper{*this});
+    publish();
 }
 
 void List::confirm() {
     ctx.play(UiSound::Cursor);
+    publish(); // the row this press takes, before the list closes
     cancelled = false;
     if (!isEmpty())
         visible = false;

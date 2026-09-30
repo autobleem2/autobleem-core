@@ -13,6 +13,7 @@
 #include <ab_gui/list.h>
 #include <ab_gui/panel.h>
 
+#include <ableem/ui/debug_driver.h>
 #include <ableem/ui/gui_base.h>
 
 #include <cstdlib>
@@ -20,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <typeinfo>
 #include <vector>
 
 using namespace std;
@@ -414,6 +416,39 @@ TEST_CASE("List::driverItems / driverSelected: every row as shown, a heading mar
     list.rows.clear();
     CHECK(list.driverItems().empty());
     CHECK(list.driverSelected() == -1);
+}
+
+TEST_CASE("List: every move publishes the cursor at once, and a pick publishes the row it takes before it closes") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    Side side(*g.gui);
+    Quiet list(*g.gui, side.ctx, 20);
+    list.visible = true;
+    ableem::DebugDriver::setActiveForTest(true);
+    ableem::DebugDriver::pushScreen(typeid(list).name());
+    // no draw() anywhere in this test: only the moves publish
+    feed(*g.gui, list, button(Button::R2));
+    CHECK(ableem::DebugDriver::selected() == 4);
+    CHECK(ableem::DebugDriver::items().size() == 20);
+    feed(*g.gui, list, button(Button::R1));
+    CHECK(ableem::DebugDriver::selected() == 19);
+    feed(*g.gui, list, button(Button::L1));
+    CHECK(ableem::DebugDriver::selected() == 0);
+    tap(*g.gui, list, Button::DpadDown);
+    CHECK(ableem::DebugDriver::selected() == 1);
+    tap(*g.gui, list, Button::DpadUp);
+    CHECK(ableem::DebugDriver::selected() == 0);
+    feed(*g.gui, list, button(Button::R2));
+    CHECK(ableem::DebugDriver::selected() == 4);
+    feed(*g.gui, list, button(Button::L2));
+    CHECK(ableem::DebugDriver::selected() == 0);
+    list.selected = 7; // moved by the caller, not by a press: the pick still tells the driver
+    feed(*g.gui, list, button(Button::Cross));
+    CHECK_FALSE(list.visible);
+    CHECK(ableem::DebugDriver::selected() == 7);
+    ableem::DebugDriver::popScreen();
+    ableem::DebugDriver::setActiveForTest(false);
 }
 
 //*******************************

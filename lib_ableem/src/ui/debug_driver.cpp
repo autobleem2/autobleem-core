@@ -1095,6 +1095,7 @@ private:
             // the real Power button uses (Input::poll() keeps handing back Quit on every call from then on),
             // so every nested screen's own event loop sees it in turn and closes, the way a physical
             // power-off already does.
+            PLOG_INFO << "Quit: the DebugDriver's `quit` command";
             gui_.input().requestQuit();
             return "ok";
         }
@@ -1299,6 +1300,10 @@ bool DebugDriver::start(GuiBase &gui, int port, const string &bindAddress, const
 //*******************************
 bool DebugDriver::active() {
     return driverActive;
+}
+
+void DebugDriver::setActiveForTest(bool on) {
+    driverActive = on;
 }
 
 } // namespace ableem

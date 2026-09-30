@@ -993,6 +993,7 @@ bool Input::pollEvent(Event &out) {
     }
 
     if (e.type == SDL_QUIT) {
+        PLOG_INFO << "Quit: SDL_QUIT (the window's close request)";
         out.type = Event::Type::Quit;
         return true;
     }
