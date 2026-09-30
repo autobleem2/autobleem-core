@@ -391,7 +391,8 @@ TEST_CASE("List::draw: with a selection frame it is drawn before the rows (under
         list.selected = 1;
         list.maxVisible = 5;
         list.draw();
-        CHECK(order(side.calls) == vector<string>{"frame selection", "row 0@0", "row 1@1*", "row 2@2", "frame selection"});
+        CHECK(order(side.calls) ==
+              vector<string>{"frame selection", "row 0@0", "row 1@1*", "row 2@2", "frame selection"});
     }
 
     // the same list on a context with no provider at all draws exactly the old call order
@@ -424,7 +425,8 @@ TEST_CASE("List::draw: with a selection frame it is drawn before the rows (under
         list.selected = 1;
         list.maxVisible = 5;
         list.draw();
-        CHECK(order(side.calls) == vector<string>{"frame selection", "frame selection", "row 0@0", "row 1@1*", "row 2@2"});
+        CHECK(order(side.calls) ==
+              vector<string>{"frame selection", "frame selection", "row 0@0", "row 1@1*", "row 2@2"});
         set.release();
     }
 }
