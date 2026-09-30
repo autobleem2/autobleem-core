@@ -535,8 +535,8 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
     // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip
-    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h), toast (G5f), progressTrack/progressFill (G5g), tile/tileSelected/band (G5i), coverGlow (G5k)
-    REQUIRE(frames.size() == 20);
+    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h), toast (G5f), progressTrack/progressFill (G5g), tile/tileSelected/band (G5i), coverGlow (G5k), play (G5j)
+    REQUIRE(frames.size() == 21);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
     const ableem::ThemeFrame *heading = nullptr;
@@ -933,7 +933,7 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
         CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
     }
     CHECK(ableem::resolveThemeIconHalo(dir, dir));    // the halo stays on: it shows under the test colours
-    CHECK(ableem::loadThemeFrames(dir).size() == 20); // the frames are untouched by the block
+    CHECK(ableem::loadThemeFrames(dir).size() == 21); // the frames are untouched by the block
 }
 
 TEST_CASE("readThemeLogo: launcher.logo {file, x, y, w, h}, set only with a file and a positive size (G5q)") {
