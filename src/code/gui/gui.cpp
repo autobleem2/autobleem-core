@@ -163,6 +163,11 @@ void Gui::wireUiContext() {
     uiContext_.textDrawer = [this](const ableem::Font &font, const string &line, int x, int y, const Color &color) {
         text_.renderText_WithColor(font, line, x, y, color, XALIGN_LEFT);
     };
+    // a plain line in the font's own colour (a text page's blank and centred lines): the renderer's renderText
+    uiContext_.lineDrawer = [this](const ableem::Font &font, const string &line, int x, int y,
+                                   abgui::Context::LineAlign align) {
+        text_.renderText(font, line, x, y, align == abgui::Context::LineAlign::Centre ? XALIGN_CENTER : XALIGN_LEFT);
+    };
     uiContext_.textMeasurer = [this](const ableem::Font &font, const string &line) {
         return text_.textWidth(font, line);
     };

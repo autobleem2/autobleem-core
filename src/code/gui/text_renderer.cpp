@@ -3,6 +3,7 @@
 //
 #include "text_renderer.h"
 #include "panel_style.h"
+#include <ab_gui/text_page.h>
 #include "../core/services/system.h"
 
 #include <algorithm>
@@ -582,49 +583,7 @@ int TextRenderer::renderFittedText_WithColor(FontType type, int maxSize, int min
 // TextRenderer::renderWrappedText
 //*******************************
 vector<string> TextRenderer::wrapLines(const ableem::Font &font, const string &text, int width) {
-    vector<string> lines;
-    // the words, a tab a space; a word wider than the column is cut into pieces that fit
-    vector<string> words;
-    string word;
-    auto flushWord = [&]() {
-        if (word.empty())
-            return;
-        while (width > 0 && font.width(word) > width && word.size() > 1) {
-            size_t cut = word.size();
-            do {
-                cut--;
-                while (cut > 0 && (static_cast<unsigned char>(word[cut]) & 0xC0) == 0x80)
-                    cut--; // a whole UTF-8 char
-            } while (cut > 1 && font.width(word.substr(0, cut)) > width);
-            if (cut == 0)
-                break;
-            words.push_back(word.substr(0, cut));
-            word = word.substr(cut);
-        }
-        words.push_back(word);
-        word.clear();
-    };
-    for (char c : text) {
-        if (c == ' ' || c == '\t')
-            flushWord();
-        else
-            word += c;
-    }
-    flushWord();
-
-    string line;
-    for (const string &w : words) {
-        string candidate = line.empty() ? w : line + " " + w;
-        if (!line.empty() && font.width(candidate) > width) {
-            lines.push_back(line);
-            line = w;
-        } else {
-            line = candidate;
-        }
-    }
-    if (!line.empty() || lines.empty())
-        lines.push_back(line);
-    return lines;
+    return abgui::wrapText(text, width, [&font](const string &s) { return font.width(s); });
 }
 
 int TextRenderer::wrappedHeight(const ableem::Font &font, const string &text, int width) {

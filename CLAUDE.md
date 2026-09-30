@@ -299,6 +299,20 @@ include path to the extensions.
   `loop()` calls too. **Nothing derives from it yet**: the classic `GuiScreen` shim moves onto it in G3z (a base
   change is a layout change - ABI 7). Tests: `tests/gui/test_ab_gui_screen.cpp` (the old loop and the new one, hook
   for hook, over the same events).
+- **`abgui::TextPage`** (`text_page.h`, G3h) - the first widget on `abgui::Screen` and the pattern for the rest: a
+  titled page of `lines` (wrapped to the panel at the rows' inset, a numbered item hangs - `splitItem`; a blank or, with
+  `centred`, every line is one row through the Context's `lineDrawer`), scrolling a line (d-pad, arrows) or a page
+  (L2/R2, Page Up/Down), Back (Circle, Escape) closes. `draw()` is the old drawing on `Panel::full(ctx)` and the
+  Context (`drawText`, `textWidth`, `font(Classic)`, `translate`, `play(UiSound)`); `loop()` is the old page's loop
+  (frame need Idle, a frame when due, then each event to `handle()`); `onAction` reads the pad by its action (Back,
+  PageUp, PageDown - the d-pad by its live state, keys as keys), `onUnmapped` the keys nobody bound. The pure parts
+  are static/free and tested: `abgui::wrapText(text, width, measure)` (`TextRenderer::wrapLines` forwards to it),
+  `TextPage::splitItem/canScroll/scrolled`. The line colour is `TextPage::color` (the classic theme's text colour,
+  set by `GuiTextPage`; unset: the style's text). **`GuiTextPage`'s header is untouched** (ABI 6): its `render()` and
+  `loop()` build an `abgui::TextPage` from `title`/`lines`/`centred` and forward, so `show()` (and the DebugDriver's
+  screen name, `typeid(*this)`) stays the old class. Context gained `lineDrawer`/`drawLine` (appended). Tests:
+  `tests/gui/test_ab_gui_text_page.cpp` (events on a headless GuiBase, skips without a renderer), `tests/classic/
+  test_text_page.cpp` (the old class's `splitItem`).
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to

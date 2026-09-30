@@ -137,6 +137,14 @@ private:
     // Options row holds on every screen.
 public:
     ActionMap actions;
+
+    // Appended (step G3h): a plain line of text in the font's own colour, left aligned at x or centred on the canvas
+    // (x is then not used) - what a page's blank and centred lines are drawn with. AutoBleem's is the text renderer's
+    // renderText without a colour; unset, the style's text colour through the text drawer.
+    enum class LineAlign { Left, Centre };
+    using LineDrawer = std::function<void(const ableem::Font &, const std::string &, int x, int y, LineAlign)>;
+    LineDrawer lineDrawer;
+    void drawLine(const ableem::Font &font, const std::string &text, int x, int y, LineAlign align) const;
 };
 
 } // namespace abgui

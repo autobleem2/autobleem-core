@@ -96,4 +96,14 @@ ableem::Rect Context::panelRect() const {
     return ableem::Rect(margin, margin, renderer_->width() - 2 * margin, renderer_->height() - 2 * margin);
 }
 
+void Context::drawLine(const ableem::Font &font, const string &text, int x, int y, LineAlign align) const {
+    if (lineDrawer) {
+        lineDrawer(font, text, x, y, align);
+        return;
+    }
+    if (align == LineAlign::Centre)
+        x = (renderer_->width() - textWidth(font, text)) / 2;
+    drawText(font, text, x, y, style().text);
+}
+
 } // namespace abgui
