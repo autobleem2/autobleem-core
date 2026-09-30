@@ -92,7 +92,8 @@ public:
     // rowSelected, so a page with no cursor does not read as a dimmed list). A list sets it per row
     // (GuiMenuBase::renderLines does for every menu built on it) and puts Plain back after its rows - Plain
     // is the font's own colour, how every classic line was drawn before. RowRoleScope does both.
-    enum class RowRole { Plain, Row, Selected, Heading, FactRow };
+    // Disabled (G5t) is a row that cannot be changed under a theme with a `disabled` role: the description colour
+    enum class RowRole { Plain, Row, Selected, Heading, FactRow, Disabled };
     void setRowRole(RowRole role) { rowRole_ = role; }
     RowRole rowRole() const { return rowRole_; }
     struct RowRoleScope {
@@ -224,6 +225,8 @@ public:
     void renderLabelBox(abgui::Context &ctx, int line, int yoffset, int rightEdge = 0);
     // a row that cannot be changed, over the row once it is drawn: PanelStyle::disabled, same extent
     void renderDisabledBox(int line, int yoffset, int rightEdge = 0);
+    // the same through the Context (G5t): the theme's `disabled` role - its colour and alpha - when it has one
+    void renderDisabledBox(abgui::Context &ctx, int line, int yoffset, int rightEdge = 0);
 
     void renderTextChar(const std::string &text, int line, int yoffset, int posx);
 

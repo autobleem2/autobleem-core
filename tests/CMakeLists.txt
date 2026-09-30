@@ -105,6 +105,9 @@ if (AB_CORE_UI)
     # Context's provider (pure), and on a headless GuiBase the test theme's strip loading and Style::spinner drawing it
     # (those cases skip themselves without a renderer)
     ab_add_test(test_ab_gui_spinner gui/test_ab_gui_spinner.cpp LIBS ab_gui)
+    # ab_gui's row-badge and centred-box rects, the `disabled` role's veil and the colour a disabled row's text takes
+    # (G5t; the rects pure, the Context cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_layout gui/test_ab_gui_layout.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

@@ -240,6 +240,8 @@ void Gui::wireUiContext() {
     uiContext_.iconHaloProvider = [this](const string &name) { return icons_.halo(renderer(), name); };
     // the theme's own busy spinner strip (step G5p): none unless its theme.json has launcher.spinner - the ring of dots
     uiContext_.spinnerProvider = [this]() { return spinner_.anim(renderer()); };
+    // the theme's own `disabled` role (step G5t): unset unless its theme.json has launcher.colors.disabled
+    uiContext_.veilProvider = [this]() { return disabledVeil_; };
 }
 
 //*******************************
@@ -313,6 +315,14 @@ void Gui::loadAssets(bool reloadMusic) {
     launcherLogoRect_ = launcherLogo_.valid() ? Rect(logo.x, logo.y, logo.w, logo.h) : Rect();
     resumeMask_ = ThemeAssets::loadImage(renderer(), ableem::loadThemeResumeMask(AppBase::get().theme().loadedPath()));
     spinner_.assign(themeSpinner(AppBase::get().theme().loadedPath())); // the strip loads when first drawn
+    // the theme's own `disabled` role (G5t): the veil's colour and alpha - nothing when it sets none
+    const ableem::ThemeDisabledVeil veil = ableem::loadThemeDisabledVeil(AppBase::get().theme().loadedPath());
+    disabledVeil_ = abgui::DisabledVeil();
+    if (veil.set) {
+        disabledVeil_.set = true;
+        disabledVeil_.color = Color(veil.color.r, veil.color.g, veil.color.b, 255);
+        disabledVeil_.alpha = static_cast<unsigned char>(veil.alpha);
+    }
     AppBase::get().audio().loadTheme(reloadMusic);
 
     // the classic screens' text halo, on unless the theme says otherwise; the launcher sets its own
@@ -444,7 +454,7 @@ void Gui::releaseDisplay() {
     icons_.release();          // and the icons' textures and halos
     launcherLogo_ = Texture(); // and the logo and the resume mask
     resumeMask_ = Texture();
-    spinner_.release();        // and the spinner strip's
+    spinner_.release(); // and the spinner strip's
     GuiBase::releaseDisplay();
 }
 

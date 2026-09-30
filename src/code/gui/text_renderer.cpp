@@ -419,6 +419,9 @@ bool TextRenderer::rowRoleColor(bool value, Color &out) {
     case RowRole::FactRow:
         out = value ? style.rowSelected : style.row;
         break;
+    case RowRole::Disabled:
+        out = style.description;
+        break;
     default:
         out = value ? style.value : style.row;
         break;
@@ -526,6 +529,13 @@ void TextRenderer::renderDisabledBox(int line, int yoffset, int rightEdge) {
     const Rect rect =
         abgui::List::band(getOpscreenRectOfTheme(), yoffset + fontHeight * line, fontHeight, 0, rightEdge);
     PanelStyle::fromTheme(theme_.launcher()).disabled(renderer_, rect);
+}
+
+void TextRenderer::renderDisabledBox(abgui::Context &ctx, int line, int yoffset, int rightEdge) {
+    int fontHeight = themeFont_.lineHeight();
+    const Rect rect =
+        abgui::List::band(getOpscreenRectOfTheme(), yoffset + fontHeight * line, fontHeight, 0, rightEdge);
+    PanelStyle::fromTheme(theme_.launcher()).disabled(ctx, rect);
 }
 
 //*******************************

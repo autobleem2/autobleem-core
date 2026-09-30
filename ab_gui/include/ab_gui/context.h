@@ -208,6 +208,14 @@ public:
     using SpinnerProvider = std::function<SpinnerAnim()>;
     SpinnerProvider spinnerProvider;
     SpinnerAnim spinnerAnim() const;
+
+    // Appended (step G5t): the `disabled` role of the current look (style.h, DisabledVeil) - the colour and alpha of
+    // the veil over a row that cannot be changed. AutoBleem's is Gui's, read from the theme's own
+    // launcher.colors.disabled. Unset, or a veil that is not `set`, means no role: Style::disabled draws its black at
+    // disabledAlpha as always.
+    using VeilProvider = std::function<DisabledVeil()>;
+    VeilProvider veilProvider;
+    DisabledVeil disabledVeil() const;
 };
 
 } // namespace abgui

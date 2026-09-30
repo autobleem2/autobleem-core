@@ -287,7 +287,18 @@ void Style::disabled(ableem::Renderer &renderer, const Rect &rect) const {
 }
 
 void Style::disabled(Context &ctx, const Rect &rect) const {
-    disabled(ctx.renderer(), rect);
+    const DisabledVeil veil = ctx.disabledVeil();
+    if (!veil.set) {
+        disabled(ctx.renderer(), rect);
+        return;
+    }
+    ctx.renderer().setBlendMode(ableem::BlendMode::Blend);
+    ctx.renderer().setDrawColor(veil.drawn());
+    ctx.renderer().fillRect(rect);
+}
+
+const ableem::Color &Style::disabledColor(Context &ctx, const ableem::Color &normal) const {
+    return ctx.disabledVeil().set ? description : normal;
 }
 
 //*******************************
@@ -438,8 +449,8 @@ void Style::caret(Context &ctx, int x, int y, int height) const {
 //*******************************
 // Style::progress
 //*******************************
-void Style::progress(ableem::Renderer &renderer, const Rect &track, unsigned long long done,
-                     unsigned long long total, Tone trackTone, int trackAlpha, Tone fillTone, int fillAlpha) const {
+void Style::progress(ableem::Renderer &renderer, const Rect &track, unsigned long long done, unsigned long long total,
+                     Tone trackTone, int trackAlpha, Tone fillTone, int fillAlpha) const {
     renderer.setBlendMode(ableem::BlendMode::Blend);
     renderer.setDrawColor(tone(trackTone, trackAlpha == StyleAlpha ? progressTrackAlpha : trackAlpha));
     renderer.fillRect(track);
@@ -451,8 +462,8 @@ void Style::progress(ableem::Renderer &renderer, const Rect &track, unsigned lon
     renderer.fillRect(Rect(track.x, track.y, width, track.h));
 }
 
-void Style::progress(Context &ctx, const Rect &track, unsigned long long done, unsigned long long total,
-                     Tone trackTone, int trackAlpha, Tone fillTone, int fillAlpha) const {
+void Style::progress(Context &ctx, const Rect &track, unsigned long long done, unsigned long long total, Tone trackTone,
+                     int trackAlpha, Tone fillTone, int fillAlpha) const {
     progress(ctx.renderer(), track, done, total, trackTone, trackAlpha, fillTone, fillAlpha);
 }
 

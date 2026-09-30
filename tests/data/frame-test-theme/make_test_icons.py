@@ -5,7 +5,7 @@
 # drawn: the 1x files are ORANGE (255, 110, 0), the @2x files SKY BLUE (60, 170, 255) - neither is a frame colour of
 # this theme. The d-pad arrows are triangles pointing their way; the switches a pill with the knob on the right (on)
 # or the left (off); the battery an outline with a nub; the covers and the big box a square with a 7 px rim; every
-# other icon a disc. Each shape keeps 1 px clear all round (the halo needs it), and theme.json leaves "iconHalo" at its
+# other icon a disc (the Store's installed badge: a tile with a check cut out). Each shape keeps 1 px clear all round (the halo needs it), and theme.json leaves "iconHalo" at its
 # default, so the code's dark halo shows under the 1x/@2x colours.
 #
 # Standard library only; writes icons/<name>.png and icons/<name>@2x.png next to this script.
@@ -46,7 +46,15 @@ ICONS = {
     "play": ("play", 28, 28, "right"),
     "switchOn": ("switch_on", 60, 30, "on"),
     "switchOff": ("switch_off", 60, 30, "off"),
+    "storeInstalled": ("store_installed", 32, 32, "tick"),
 }
+
+
+def _segment(px, py, ax, ay, bx, by):
+    """The distance from (px, py) to the segment a-b."""
+    dx, dy = bx - ax, by - ay
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
 
 
 def inside(shape, x, y, w, h):
@@ -69,6 +77,12 @@ def inside(shape, x, y, w, h):
         return abs(v - 0.5) <= (1 - u) / 2
     if shape == "box":
         return x0 <= x <= x1 and y0 <= y <= y1
+    if shape == "tick":
+        # a square tile with a check mark cut out of it (the Store's "Installed" badge)
+        if not (x0 <= x <= x1 and y0 <= y <= y1):
+            return False
+        u, v = (x - x0) / (x1 - x0), (y - y0) / (y1 - y0)
+        return min(_segment(u, v, 0.22, 0.52, 0.42, 0.72), _segment(u, v, 0.42, 0.72, 0.80, 0.30)) > 0.07
     if shape == "rim":
         return x0 <= x <= x1 and y0 <= y <= y1 and not (7 <= x <= w - 7 and 7 <= y <= h - 7)
     if shape == "battery":

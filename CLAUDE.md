@@ -482,6 +482,22 @@ include path to the extensions.
   no picture returns the picture itself. `core/model/picture_mask.h` is the pure part (`multiplyAlpha`, `composeSize`).
   The test theme's logo (orange / sky blue) and mask (corners cut 16 px): `tests/data/frame-test-theme/images/`
   (`make_test_logo_mask.py`). Tests: `tests/core/test_theme_spec.cpp`, `tests/core/test_picture_mask.cpp`.
+- **The disabled veil and the Store's badge** (G5t; plan decision 16) - `Style::disabled`'s black at `disabledAlpha` (150)
+  became a theme role, `launcher.colors.disabled` (`"#rrggbb"`, or `{ "color", "alpha" }`; the theme's own theme.json
+  only, `ableem::readThemeDisabledVeil(path)`/`loadThemeDisabledVeil(dir)` -> `ThemeDisabledVeil`, unset when absent
+  or malformed). **Not a `Style`/`ColorRoles`/`ThemeSpec` member** (their layouts are the SDK's - no `AB_SDK_ABI` bump):
+  `abgui::DisabledVeil` (style.h: `set`, `color`, `alpha`, `drawn()`) is handed out by the Context (`veilProvider`,
+  `disabledVeil()`, appended), `Gui::disabledVeil_` (appended after `spinner_`) fills it in `loadAssets()`. Unset =
+  today's veil and today's text colour, call for call; set, `Style::disabled(ctx, rect)` fills the theme's colour at
+  its alpha and `Style::disabledColor(ctx, normal)` gives the `description` role for a disabled row's text -
+  `abgui::List::drawRow` (label and value), `ActionMenu` (the title) and, in the launcher, the System menu,
+  Extensions, Scanner processors and the game editor (`TextRenderer::RowRole::Disabled`, and
+  `renderDisabledBox(ctx, ...)`, both appended) use them. The **`storeInstalled`** icon is a plain
+  `launcher.icons` name (the Store's "Installed" badge; no built-in file, so the theme's own only). `layout.h` holds
+  two pure rect rules the Store shares with the tests: `trailingBadgeRect(innerRight, rowTop, rowHeight, w, h, inset =
+  BadgeInset 24)` and `centredIn(outer, w, h)` (the letter-jump box). Test theme: a `storeInstalled` icon (a tile with
+  a check cut out; orange 1x, sky blue @2x) and `"colors": { "disabled": { "color": "#7828c8", "alpha": 130 } }` (a
+  purple veil). Tests: `tests/gui/test_ab_gui_layout.cpp`, `tests/core/test_theme_spec.cpp`.
 - **`PanelStyle` is an `abgui::Style`** (since G3z; an adapter holding its own colours until then): the colour roles,
   metrics and every primitive on a Renderer or a Context are the Style's; PanelStyle adds the old constants
   (`HeaderHeight`...), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, `style()`/`fromStyle()`, and the

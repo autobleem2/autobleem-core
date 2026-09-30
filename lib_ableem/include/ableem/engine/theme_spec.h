@@ -323,6 +323,26 @@ std::string readThemeResumeMask(const std::string &path);
 std::string loadThemeResumeMask(const std::string &dir);
 
 //******************
+// The disabled-row veil (launcher.colors.disabled, ab_gui G5t)
+//******************
+// The colour and the alpha laid over a row that cannot be changed (abgui::Style::disabled): `"disabled": "#rrggbb"`
+// (the alpha stays DefaultAlpha) or `"disabled": { "color": "#rrggbb", "alpha": 0..255 }` (a missing alpha is
+// DefaultAlpha, a missing colour black). Kept out of ThemeSpec for ThemeFrame's reason and read from the theme's own
+// theme.json only; unset = the code's black at 150, as before.
+struct ThemeDisabledVeil {
+    static constexpr int DefaultAlpha = 150;
+    ThemeColor color = ThemeColor(0, 0, 0);
+    int alpha = DefaultAlpha; // 0..255
+    bool set = false;
+};
+
+// the veil of the theme.json at `path`; unset (set false) for no block, a bad colour, a value of the wrong type or a
+// bad file. An alpha out of range is clamped to 0..255. Never throws.
+ThemeDisabledVeil readThemeDisabledVeil(const std::string &path);
+// the veil of the theme in `dir` (its own theme.json only)
+ThemeDisabledVeil loadThemeDisabledVeil(const std::string &dir);
+
+//******************
 // High-resolution theme images (ab_gui G4f)
 //******************
 // Which file to load for the theme image `file` (a resolved path) at `outputScale`, and its pixels per logical pixel
@@ -339,10 +359,10 @@ std::string themeImageFile(const std::string &file, float outputScale, float &pi
 // code-drawn ring of dots is (abgui::Busy, Style::spinner). Kept out of ThemeSpec for ThemeFrame's reason, and - like
 // frames - the theme's own key only: never merged over the default theme's, so a theme without it keeps the ring.
 struct ThemeSpinner {
-    std::string image;   // the 1x strip (frames * frame width wide)
-    std::string image2x; // the @2x strip ("" none)
-    int frames = 0;      // how many frames the strip holds; 0 = no spinner
-    int fps = 0;         // frames per second
+    std::string image;                    // the 1x strip (frames * frame width wide)
+    std::string image2x;                  // the @2x strip ("" none)
+    int frames = 0;                       // how many frames the strip holds; 0 = no spinner
+    int fps = 0;                          // frames per second
     static constexpr int DefaultFps = 24; // when the theme gives none (or a number below 1)
 };
 

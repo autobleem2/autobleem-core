@@ -53,6 +53,19 @@ struct ColorRoles {
     RoleColor row, rowSelected, heading, value, description, footer, selectionBand, edge;
 };
 
+// The `disabled` role (G5t): the colour and the alpha laid over a row that cannot be changed. A theme's own - it is
+// not a Style member (Style's layout is the SDK's), the Context hands it out (Context::disabledVeil). Unset = the
+// code's black at Style::disabledAlpha, and a disabled row's text keeps its usual colour; set, the veil is this and the
+// row's text is drawn in the `description` role (Style::disabledColor).
+struct DisabledVeil {
+    bool set = false;
+    ableem::Color color{0, 0, 0, 255};
+    unsigned char alpha = 150;
+
+    // the colour as it is filled, the alpha in place
+    ableem::Color drawn() const { return ableem::Color(color.r, color.g, color.b, alpha); }
+};
+
 // a colour of the style by its role, for the primitives that draw in "the text colour" or "the edge colour"
 // with an alpha of the caller's choosing
 enum class Tone {
@@ -194,7 +207,11 @@ public:
     // a row that cannot be changed (a locked setting): drawn over the row once it is drawn, the sheet's black
     // laid over it again so label, value and switch all fall back behind the rows around it
     void disabled(ableem::Renderer &renderer, const ableem::Rect &rect) const;
+    // through the Context, the theme's `disabled` role (G5t: its colour and alpha) when it has one, else the above
     void disabled(Context &ctx, const ableem::Rect &rect) const;
+    // the colour a disabled row's text is drawn in: `normal` (what the row would have) - or, when the theme has a
+    // `disabled` role, the `description` role (G5t)
+    const ableem::Color &disabledColor(Context &ctx, const ableem::Color &normal) const;
     // a heading row (a label between the rows): a faint band in the edge colour
     void label(ableem::Renderer &renderer, const ableem::Rect &rect) const;
     // the theme's `heading` frame (G4d) in the box when it has one, else the faint band
@@ -212,8 +229,8 @@ public:
 
     // a box: the fill in `fill` at `fillAlpha` under a one-pixel edge in `edgeTone` at `edgeAlpha`; Tone::None
     // leaves that part out. The defaults are the plain frame: an edge in the edge colour, no fill
-    void box(ableem::Renderer &renderer, const ableem::Rect &rect, Tone fill = Tone::None,
-             int fillAlpha = OwnAlpha, Tone edgeTone = Tone::Edge, int edgeAlpha = OwnAlpha) const;
+    void box(ableem::Renderer &renderer, const ableem::Rect &rect, Tone fill = Tone::None, int fillAlpha = OwnAlpha,
+             Tone edgeTone = Tone::Edge, int edgeAlpha = OwnAlpha) const;
     void box(Context &ctx, const ableem::Rect &rect, Tone fill = Tone::None, int fillAlpha = OwnAlpha,
              Tone edgeTone = Tone::Edge, int edgeAlpha = OwnAlpha) const;
     // a flat translucent plate in the caller's own colour (alpha included) - a theme's status bar, whose colour
@@ -235,14 +252,14 @@ public:
                   unsigned long long total, Tone trackTone = Tone::Secondary, int trackAlpha = StyleAlpha,
                   Tone fillTone = Tone::Text, int fillAlpha = OwnAlpha) const;
     void progress(Context &ctx, const ableem::Rect &track, unsigned long long done, unsigned long long total,
-                  Tone trackTone = Tone::Secondary, int trackAlpha = StyleAlpha,
-                  Tone fillTone = Tone::Text, int fillAlpha = OwnAlpha) const;
+                  Tone trackTone = Tone::Secondary, int trackAlpha = StyleAlpha, Tone fillTone = Tone::Text,
+                  int fillAlpha = OwnAlpha) const;
     // the busy spinner: spinnerDots dots on a ring of `radius` around (cx, cy), `dot` px squares, dot `lead`
     // the brightest and every one behind it spinnerFade alpha dimmer; the program turns `lead` with its clock
     void spinner(ableem::Renderer &renderer, int cx, int cy, int radius, int dot, int lead) const;
     // through the Context, the theme's frame strip (G5p, spinner.h) instead when it has one: its current frame, drawn
-    // centred on (cx, cy) at its own size - radius, dot and lead are then unused, the frame is (Context::ticks() * fps /
-    // 1000) mod frames
+    // centred on (cx, cy) at its own size - radius, dot and lead are then unused, the frame is (Context::ticks() * fps
+    // / 1000) mod frames
     void spinner(Context &ctx, int cx, int cy, int radius, int dot, int lead) const;
     // the same fitted into `box`: the metrics' radius and dot, no bigger than the box allows (a strip: centred in it,
     // at its own size)

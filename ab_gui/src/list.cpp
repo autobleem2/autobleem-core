@@ -136,10 +136,15 @@ void List::drawRow(int index, int line, bool isSelected) {
     string label;
     const int on = switchState(row.label, &label);
     const string value = on == -1 ? row.value : ctx.translate(on == 1 ? "ON" : "OFF");
-    ctx.drawText(f, label, textLeft(panel, style), top, style.rowColor(isSelected));
+    // a disabled row's text is the `description` role when the theme has a `disabled` role (G5t), else as any row's
+    const ableem::Color &labelColor =
+        row.disabled ? style.disabledColor(ctx, style.rowColor(isSelected)) : style.rowColor(isSelected);
+    ctx.drawText(f, label, textLeft(panel, style), top, labelColor);
     if (!value.empty()) {
         const int right = valueRight(panel, style, selectionRightEdge);
-        ctx.drawText(f, value, right - ctx.textWidth(f, value), top, style.valueColor(isSelected));
+        const ableem::Color &valueColor =
+            row.disabled ? style.disabledColor(ctx, style.valueColor(isSelected)) : style.valueColor(isSelected);
+        ctx.drawText(f, value, right - ctx.textWidth(f, value), top, valueColor);
     }
     if (row.disabled)
         style.disabled(ctx, band(panel, top, lineHeight, 0, selectionRightEdge));

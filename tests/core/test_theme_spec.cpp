@@ -534,7 +534,8 @@ TEST_CASE("loadThemeFrames: the images resolved in the theme's folder, the @2x f
 TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a check expects") {
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
-    // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip (G5d)
+    // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip
+    // (G5d)
     REQUIRE(frames.size() == 10);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
@@ -816,18 +817,19 @@ TEST_CASE("resolveThemeIconHalo: the theme's iconHalo, else the default's, else 
 TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of the art spec, each with its @2x") {
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeIcon> icons = ableem::loadThemeIcons(dir);
-    CHECK(icons.size() == 27);
-    for (const char *name :
-         {"players",        "disc",         "usb",      "internal",  "hd",       "sd",       "lock",      "unlock",
-          "favorite",       "retroarch",    "lightgun", "lightgun2", "dpadUp",   "dpadDown", "dpadLeft",  "dpadRight",
-          "tabPlayStation", "tabRetroArch", "tabApps",  "raCover",   "appCover", "bigBox",   "extension", "battery",
-          "play",           "switchOn",     "switchOff"}) {
+    CHECK(icons.size() == 28);
+    for (const char *name : {"players",   "disc",           "usb",           "internal", "hd",
+                             "sd",        "lock",           "unlock",        "favorite", "retroarch",
+                             "lightgun",  "lightgun2",      "dpadUp",        "dpadDown", "dpadLeft",
+                             "dpadRight", "tabPlayStation", "tabRetroArch",  "tabApps",  "raCover",
+                             "appCover",  "bigBox",         "extension",     "battery",  "play",
+                             "switchOn",  "switchOff",      "storeInstalled"}) {
         const ableem::ThemeIcon *icon = iconNamed(icons, name);
         REQUIRE_MESSAGE(icon != nullptr, name);
         CHECK(icon->image.find(dir + "/icons/") == 0);
         CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
     }
-    CHECK(ableem::resolveThemeIconHalo(dir, dir));   // the halo stays on: it shows under the test colours
+    CHECK(ableem::resolveThemeIconHalo(dir, dir));    // the halo stays on: it shows under the test colours
     CHECK(ableem::loadThemeFrames(dir).size() == 10); // the frames are untouched by the block
 }
 
@@ -898,11 +900,84 @@ TEST_CASE("the test theme's logo and resume mask (tests/data/frame-test-theme), 
     CHECK(ableem::DirEntry::exists(dir + "/images/resume_mask@2x.png"));
 }
 
+TEST_CASE("readThemeDisabledVeil: launcher.colors.disabled - a #rrggbb, or { color, alpha } (G5t)") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("hex.json", "{ \"launcher\": { \"colors\": { \"disabled\": \"#102030\" } } }");
+    ableem::ThemeDisabledVeil veil = ableem::readThemeDisabledVeil(tmp.at("hex.json"));
+    CHECK(veil.set);
+    CHECK(veil.color.r == 0x10);
+    CHECK(veil.color.g == 0x20);
+    CHECK(veil.color.b == 0x30);
+    CHECK(veil.alpha == ableem::ThemeDisabledVeil::DefaultAlpha);
+    CHECK(veil.alpha == 150);
+
+    tmp.writeFile("both.json",
+                  "{ \"launcher\": { \"colors\": { \"disabled\": { \"color\": \"#ff8000\", \"alpha\": 90 } } } }");
+    veil = ableem::readThemeDisabledVeil(tmp.at("both.json"));
+    CHECK(veil.set);
+    CHECK(veil.color.r == 255);
+    CHECK(veil.color.g == 128);
+    CHECK(veil.color.b == 0);
+    CHECK(veil.alpha == 90);
+
+    // an object with no colour is black, with no alpha the default; an alpha out of range is clamped
+    tmp.writeFile("alpha.json", "{ \"launcher\": { \"colors\": { \"disabled\": { \"alpha\": 40 } } } }");
+    veil = ableem::readThemeDisabledVeil(tmp.at("alpha.json"));
+    CHECK(veil.set);
+    CHECK(veil.color.r == 0);
+    CHECK(veil.color.g == 0);
+    CHECK(veil.color.b == 0);
+    CHECK(veil.alpha == 40);
+    tmp.writeFile("empty.json", "{ \"launcher\": { \"colors\": { \"disabled\": {} } } }");
+    veil = ableem::readThemeDisabledVeil(tmp.at("empty.json"));
+    CHECK(veil.set);
+    CHECK(veil.alpha == 150);
+    tmp.writeFile("high.json", "{ \"launcher\": { \"colors\": { \"disabled\": { \"alpha\": 999 } } } }");
+    CHECK(ableem::readThemeDisabledVeil(tmp.at("high.json")).alpha == 255);
+    tmp.writeFile("low.json", "{ \"launcher\": { \"colors\": { \"disabled\": { \"alpha\": -5 } } } }");
+    CHECK(ableem::readThemeDisabledVeil(tmp.at("low.json")).alpha == 0);
+
+    // a bad colour, an alpha that is no integer, a name or a number, no role, no block, a bad file, no file: unset
+    tmp.writeFile("badcolor.json", "{ \"launcher\": { \"colors\": { \"disabled\": \"grey\" } } }");
+    tmp.writeFile("badobj.json", "{ \"launcher\": { \"colors\": { \"disabled\": { \"color\": \"#12\" } } } }");
+    tmp.writeFile("badalpha.json", "{ \"launcher\": { \"colors\": { \"disabled\": { \"alpha\": \"x\" } } } }");
+    tmp.writeFile("number.json", "{ \"launcher\": { \"colors\": { \"disabled\": 7 } } }");
+    tmp.writeFile("norole.json", "{ \"launcher\": { \"colors\": { \"text\": \"#ffffff\" } } }");
+    tmp.writeFile("nocolors.json", "{ \"launcher\": {} }");
+    tmp.writeFile("bad.json", "{ \"launcher\": { \"colors\": ");
+    for (const char *name : {"badcolor.json", "badobj.json", "badalpha.json", "number.json", "norole.json",
+                             "nocolors.json", "bad.json", "none.json"})
+        CHECK_FALSE_MESSAGE(ableem::readThemeDisabledVeil(tmp.at(name)).set, name);
+}
+
+TEST_CASE("loadThemeDisabledVeil: the theme's own theme.json, never the default's (G5t)") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("t/theme.json", "{ \"launcher\": { \"colors\": { \"disabled\": \"#010203\" } } }");
+    tmp.writeFile("plain/theme.json", "{ \"launcher\": { \"colors\": { \"text\": \"#ffffff\" } } }");
+    CHECK(ableem::loadThemeDisabledVeil(tmp.at("t")).set);
+    CHECK(ableem::loadThemeDisabledVeil(tmp.at("t")).color.b == 3);
+    CHECK_FALSE(ableem::loadThemeDisabledVeil(tmp.at("plain")).set);
+    CHECK_FALSE(ableem::loadThemeDisabledVeil(tmp.at("nothing")).set);
+}
+
+TEST_CASE("the test theme's disabled role (tests/data/frame-test-theme) is a visible purple veil") {
+    const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
+    const ableem::ThemeDisabledVeil veil = ableem::loadThemeDisabledVeil(dir);
+    REQUIRE(veil.set);
+    CHECK(veil.color.r == 0x78);
+    CHECK(veil.color.g == 0x28);
+    CHECK(veil.color.b == 0xc8);
+    CHECK(veil.alpha == 130);
+    // the block leaves the base palette alone
+    ableem::ThemeSpec spec;
+    CHECK(spec.load(dir + "/theme.json"));
+    CHECK_FALSE(spec.launcher.colors.text.set);
+}
+
 TEST_CASE("readThemeSpinner: launcher.spinner - image, frames, fps; no fps is the default, bad blocks are none") {
     TempDir tmp("theme_spec");
-    tmp.writeFile("full.json",
-                  "{ \"launcher\": { \"spinner\": { \"image\": \"images/spinner.png\", \"frames\": 24,"
-                  " \"fps\": 24 } } }");
+    tmp.writeFile("full.json", "{ \"launcher\": { \"spinner\": { \"image\": \"images/spinner.png\", \"frames\": 24,"
+                               " \"fps\": 24 } } }");
     tmp.writeFile("both.json", "{ \"launcher\": { \"spinner\": { \"image\": \"a.png\", \"image2x\": \"b.png\","
                                " \"frames\": 8, \"fps\": 12 } } }");
     tmp.writeFile("nofps.json", "{ \"launcher\": { \"spinner\": { \"image\": \"a.png\", \"frames\": 4 } } }");

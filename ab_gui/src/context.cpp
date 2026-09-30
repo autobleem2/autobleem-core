@@ -162,4 +162,11 @@ SpinnerAnim Context::spinnerAnim() const {
     return anim.valid() ? anim : SpinnerAnim();
 }
 
+//*******************************
+// Context::disabledVeil
+//*******************************
+DisabledVeil Context::disabledVeil() const {
+    return veilProvider ? veilProvider() : DisabledVeil();
+}
+
 } // namespace abgui

@@ -146,7 +146,9 @@ void ActionMenu::draw() {
         } else {
             if (i == selected)
                 style.selection(ctx, band);
-            ctx.drawText(rowFont, item.title, textX, rowY + 7, style.rowColor(i == selected));
+            const ableem::Color &titleColor =
+                item.disabled ? style.disabledColor(ctx, style.rowColor(i == selected)) : style.rowColor(i == selected);
+            ctx.drawText(rowFont, item.title, textX, rowY + 7, titleColor);
             ctx.drawText(smallFont, item.description, textX, rowY + 35, style.description);
             if (item.disabled)
                 style.disabled(ctx, band);

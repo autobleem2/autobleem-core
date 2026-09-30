@@ -28,8 +28,10 @@
       "tabApps": "icons/tab_apps.png",
       "raCover": "icons/ra_cover.png", "appCover": "icons/app_cover.png", "bigBox": "icons/big_box.png",
       "extension": "icons/extension.png", "battery": "icons/battery.png", "play": "icons/play.png",
-      "switchOn": "icons/switch_on.png", "switchOff": "icons/switch_off.png"
+      "switchOn": "icons/switch_on.png", "switchOff": "icons/switch_off.png",
+      "storeInstalled": "icons/store_installed.png"
     },
+    "colors": { "disabled": { "color": "#7828c8", "alpha": 130 } },
     "spinner": { "image": "spinner/spinner.png", "frames": 8, "fps": 8 }
   }
 }

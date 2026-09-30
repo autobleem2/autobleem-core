@@ -170,6 +170,11 @@ private:
     // Appended last, as icons_ was
     abgui::SpinnerStrip spinner_;
 
+    // the current theme's `disabled` role (ab_gui G5t: launcher.colors.disabled of its own theme.json - unset = the
+    // code's black at 150): refilled by loadAssets(), handed out as the Context's veilProvider. Appended last, as
+    // spinner_ was
+    abgui::DisabledVeil disabledVeil_;
+
 public:
     // the theme's launcher logo and the logical rect it is drawn in; an invalid texture = the theme has none
     const ableem::Texture &launcherLogo() const { return launcherLogo_; }

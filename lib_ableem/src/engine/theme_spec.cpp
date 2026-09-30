@@ -980,6 +980,51 @@ string loadThemeResumeMask(const string &dir) {
     return path;
 }
 
+//*******************************
+// readThemeDisabledVeil / loadThemeDisabledVeil
+//*******************************
+constexpr int ThemeDisabledVeil::DefaultAlpha;
+
+ThemeDisabledVeil readThemeDisabledVeil(const string &path) {
+    ThemeDisabledVeil veil;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return veil;
+    const json *colors = child(launcher, "colors");
+    const json *value = colors ? child(*colors, "disabled") : nullptr;
+    if (!value)
+        return veil;
+    ThemeColor color;
+    if (value->is_string()) {
+        if (!ThemeColor::parseHex(value->get<string>(), color))
+            return veil;
+    } else if (value->is_object()) {
+        const json *c = child(*value, "color");
+        if (c) {
+            if (!c->is_string() || !ThemeColor::parseHex(c->get<string>(), color))
+                return veil;
+        } else {
+            color = ThemeColor(0, 0, 0);
+        }
+        const json *a = child(*value, "alpha");
+        if (a) {
+            if (!a->is_number_integer())
+                return veil;
+            const long long alpha = a->get<long long>();
+            veil.alpha = alpha < 0 ? 0 : alpha > 255 ? 255 : static_cast<int>(alpha);
+        }
+    } else {
+        return veil;
+    }
+    veil.color = color;
+    veil.set = true;
+    return veil;
+}
+
+ThemeDisabledVeil loadThemeDisabledVeil(const string &dir) {
+    return readThemeDisabledVeil(dir + sep + "theme.json");
+}
+
 string themeImageFile(const string &file, float outputScale, float &pixelScale) {
     pixelScale = 1.0f;
     if (outputScale <= 1.0f || file.empty())
