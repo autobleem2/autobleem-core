@@ -925,6 +925,60 @@ bool resolveThemeIconHalo(const string &themeDir, const string &defaultDir) {
     return halo;
 }
 
+//*******************************
+// readThemeLogo / loadThemeLogo / readThemeResumeMask / loadThemeResumeMask
+//*******************************
+ThemeLogo readThemeLogo(const string &path) {
+    ThemeLogo logo;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return logo;
+    const json *block = child(launcher, "logo");
+    if (!block || !block->is_object())
+        return logo;
+    readStr(*block, "file", logo.file);
+    readInt(*block, "x", logo.x);
+    readInt(*block, "y", logo.y);
+    readInt(*block, "w", logo.w);
+    readInt(*block, "h", logo.h);
+    logo.set = !logo.file.empty() && logo.w > 0 && logo.h > 0;
+    return logo;
+}
+
+ThemeLogo loadThemeLogo(const string &dir) {
+    ThemeLogo logo = readThemeLogo(dir + sep + "theme.json");
+    if (!logo.set)
+        return logo;
+    const string file = existing(dir, logo.file);
+    if (file.empty()) {
+        PLOG_WARNING << "Theme logo '" << logo.file << "': not in " << dir << " - no logo drawn";
+        return ThemeLogo();
+    }
+    logo.file = file;
+    return logo;
+}
+
+string readThemeResumeMask(const string &path) {
+    string file;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return file;
+    const json *icons = child(launcher, "menuIcons");
+    if (icons)
+        readStr(*icons, "resumePictureMask", file);
+    return file;
+}
+
+string loadThemeResumeMask(const string &dir) {
+    const string file = readThemeResumeMask(dir + sep + "theme.json");
+    if (file.empty())
+        return file;
+    const string path = existing(dir, file);
+    if (path.empty())
+        PLOG_WARNING << "Theme resume picture mask '" << file << "': not in " << dir << " - a plain rectangle";
+    return path;
+}
+
 string themeImageFile(const string &file, float outputScale, float &pixelScale) {
     pixelScale = 1.0f;
     if (outputScale <= 1.0f || file.empty())

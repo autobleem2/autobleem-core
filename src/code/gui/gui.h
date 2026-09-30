@@ -157,4 +157,22 @@ private:
     // evoimg/ files, ThemeAssets::iconSpecs): refilled by loadAssets(), their textures and halos dropped by
     // releaseDisplay(), handed out as the Context's iconProvider/iconHaloProvider. Appended last, as frames_ was
     abgui::IconSet icons_;
+    // the launcher's logo element (ab_gui G5q: the theme's own launcher.logo, never the default's) and the resume
+    // picture's mask (G5s: launcher.menuIcons.resumePictureMask): loaded by loadAssets(), dropped by releaseDisplay().
+    // Appended last, as icons_ was
+    ableem::Texture launcherLogo_;
+    ableem::Rect launcherLogoRect_;
+    ableem::Texture resumeMask_;
+
+public:
+    // the theme's launcher logo and the logical rect it is drawn in; an invalid texture = the theme has none
+    const ableem::Texture &launcherLogo() const { return launcherLogo_; }
+    const ableem::Rect &launcherLogoRect() const { return launcherLogoRect_; }
+    // where the resume picture goes on the resume icon (and on the slot picker's 2.7x copy), in the icon's pixels: the
+    // theme's launcher.menuIcons.resumePicture, else the original frame's window (25, 33, 68, 52)
+    ableem::Rect resumePictureWindow();
+    // `picture` (a save-state screenshot) with the theme's resume picture mask multiplied into its alpha, composed once
+    // into a target of the window's size x PictureMask::ComposeScale - the picture itself when the theme has no mask
+    // (or `picture` is not valid), so a theme without one draws as before. Call on the render thread
+    ableem::Texture maskedResumePicture(const ableem::Texture &picture);
 };

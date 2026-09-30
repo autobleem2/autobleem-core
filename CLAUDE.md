@@ -457,6 +457,20 @@ include path to the extensions.
   from the table (the same `evoimg/dpad_*.png` on a theme without the block). The test theme's icons: all 27 names,
   orange at 1x, sky blue at @2x (`tests/data/frame-test-theme/make_test_icons.py`). Tests: `tests/gui/test_ab_gui_icon.cpp`,
   `tests/core/test_theme_spec.cpp`.
+- **The launcher logo and the resume picture mask** (G5q, G5s; plan decisions 14, 15) - two single-image elements of the
+  theme's **own** theme.json (never merged over `default`; unset = nothing / a rectangle, call for call), read by
+  `ableem::loadThemeLogo(dir)` (`launcher.logo: {file, x, y, w, h}`, `ThemeLogo`) and `loadThemeResumeMask(dir)`
+  (`launcher.menuIcons.resumePictureMask`), both kept out of `ThemeSpec`. The 1x file is what is named; the `@2x` next
+  to it comes through `ThemeAssets::loadImage` (G4f). `Gui` (`launcherLogo_`, `launcherLogoRect_`, `resumeMask_`,
+  appended after `icons_`, no ABI bump) loads them in `loadAssets()` and drops them in `releaseDisplay()`;
+  `launcherLogo()`/`launcherLogoRect()` are what the launcher draws (over the background, under the carousel).
+  `Gui::maskedResumePicture(picture)` multiplies the mask's alpha into a screenshot **once**, when it is loaded: the
+  picture is copied unblended into a render target of the picture window (`resumePictureWindow()`, default
+  25,33 68x52) x `PictureMask::ComposeScale` (3), then the mask over it in the new `ableem::BlendMode::Mask` (SDL custom
+  blend: colours kept, alpha = dst alpha x src alpha; SDL before 2.0.6 has none and leaves the rectangle). No mask or
+  no picture returns the picture itself. `core/model/picture_mask.h` is the pure part (`multiplyAlpha`, `composeSize`).
+  The test theme's logo (orange / sky blue) and mask (corners cut 16 px): `tests/data/frame-test-theme/images/`
+  (`make_test_logo_mask.py`). Tests: `tests/core/test_theme_spec.cpp`, `tests/core/test_picture_mask.cpp`.
 - **`PanelStyle` is an `abgui::Style`** (since G3z; an adapter holding its own colours until then): the colour roles,
   metrics and every primitive on a Renderer or a Context are the Style's; PanelStyle adds the old constants
   (`HeaderHeight`...), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, `style()`/`fromStyle()`, and the

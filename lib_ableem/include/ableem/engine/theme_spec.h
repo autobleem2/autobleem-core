@@ -299,6 +299,30 @@ std::vector<ThemeIcon> resolveThemeIcons(const std::string &themeDir, const std:
 bool resolveThemeIconHalo(const std::string &themeDir, const std::string &defaultDir);
 
 //******************
+// The launcher's logo and the resume picture's mask (ab_gui G5q, G5s)
+//******************
+// Two single-image elements of the theme's own theme.json, kept out of ThemeSpec for ThemeFrame's reason and never
+// merged over the default theme's: unset = nothing drawn / a plain rectangle, as before. The file is the 1x PNG; its
+// "@2x" twin is found next to it by themeImageFile.
+struct ThemeLogo {
+    std::string file; // the 1x PNG - an absolute path once loaded
+    int x = 0, y = 0; // top-left on the 1280x720 canvas
+    int w = 0, h = 0; // the size it is drawn at (logical px)
+    bool set = false; // launcher.logo is there with a file and a positive size
+};
+
+// launcher.logo {file, x, y, w, h} of the theme.json at `path`, the file name as written; unset (set false) when the
+// block or the file name is missing, or w or h is not positive. Never throws.
+ThemeLogo readThemeLogo(const std::string &path);
+// the logo of the theme in `dir` (its own theme.json only), the file an absolute path; unset when the file is not
+// in the folder (logged)
+ThemeLogo loadThemeLogo(const std::string &dir);
+// launcher.menuIcons.resumePictureMask of the theme.json at `path`: the file name as written, "" when not set
+std::string readThemeResumeMask(const std::string &path);
+// the mask of the theme in `dir` (its own theme.json only) as an absolute path; "" when unset or not in the folder
+std::string loadThemeResumeMask(const std::string &dir);
+
+//******************
 // High-resolution theme images (ab_gui G4f)
 //******************
 // Which file to load for the theme image `file` (a resolved path) at `outputScale`, and its pixels per logical pixel

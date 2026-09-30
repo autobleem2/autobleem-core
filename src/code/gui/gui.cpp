@@ -16,6 +16,7 @@
 #include <ableem/engine/log.h>
 #include <ableem/ui/debug_driver.h>
 #include <ab_gui/panel.h>
+#include "../core/model/picture_mask.h"
 
 using namespace std;
 using ableem::Button;
@@ -286,6 +287,11 @@ void Gui::loadAssets(bool reloadMusic) {
     assets_.load();
     frames_.assign(themeFrames(AppBase::get().theme().loadedPath())); // the textures load when first drawn
     icons_.assign(ThemeAssets::iconSpecs(AppBase::get().theme()), ThemeAssets::iconHalo(AppBase::get().theme()));
+    // the theme's own launcher logo and resume picture mask (G5q, G5s): nothing when it sets none
+    const ableem::ThemeLogo logo = ableem::loadThemeLogo(AppBase::get().theme().loadedPath());
+    launcherLogo_ = logo.set ? ThemeAssets::loadImage(renderer(), logo.file) : Texture();
+    launcherLogoRect_ = launcherLogo_.valid() ? Rect(logo.x, logo.y, logo.w, logo.h) : Rect();
+    resumeMask_ = ThemeAssets::loadImage(renderer(), ableem::loadThemeResumeMask(AppBase::get().theme().loadedPath()));
     AppBase::get().audio().loadTheme(reloadMusic);
 
     // the classic screens' text halo, on unless the theme says otherwise; the launcher sets its own
@@ -296,6 +302,49 @@ void Gui::loadAssets(bool reloadMusic) {
     text_.setShadow(shadow);
     text_.setFonts(&assets_.themeFonts);
     text_.setCheckIconRightMargin(assets_.checkIconRightMargin);
+}
+
+//*******************************
+// Gui::resumePictureWindow
+//*******************************
+Rect Gui::resumePictureWindow() {
+    Rect window(25, 33, 68, 52);
+    const auto &picture = AppBase::get().theme().launcher().menuIcons.resumePicture;
+    if (picture.set)
+        window = Rect(picture.x, picture.y, picture.w, picture.h);
+    return window;
+}
+
+//*******************************
+// Gui::maskedResumePicture
+//*******************************
+// The mask is multiplied in once, here, not per frame: the picture is drawn over the whole target without blending
+// (its colours and an opaque alpha), then the mask over it in BlendMode::Mask (colours kept, alpha = picture alpha x
+// mask alpha). The result is straight-alpha, drawn with the normal blend like any picture.
+Texture Gui::maskedResumePicture(const Texture &picture) {
+    if (!picture.valid() || !resumeMask_.valid())
+        return picture;
+    const Rect window = resumePictureWindow();
+    const PictureMask::Size size = PictureMask::composeSize(window.w, window.h);
+    if (size.w <= 0 || size.h <= 0)
+        return picture;
+    Texture target = Texture::createTarget(renderer(), size.w, size.h);
+    if (!target.valid())
+        return picture;
+    renderer().pushTarget(&target);
+    renderer().setBlendMode(ableem::BlendMode::None);
+    Texture source = picture; // a shared handle: the blend mode is put back below
+    source.setBlendMode(ableem::BlendMode::None);
+    renderer().setDrawColor(Color(0, 0, 0, 0));
+    renderer().fillRect();
+    renderer().copy(source, nullptr, nullptr);
+    source.setBlendMode(ableem::BlendMode::Blend);
+    resumeMask_.setBlendMode(ableem::BlendMode::Mask);
+    renderer().copy(resumeMask_, nullptr, nullptr);
+    renderer().popTarget();
+    renderer().setBlendMode(ableem::BlendMode::Blend);
+    target.setBlendMode(ableem::BlendMode::Blend);
+    return target;
 }
 
 //*******************************
@@ -369,9 +418,11 @@ void Gui::finish() {
 //*******************************
 void Gui::releaseDisplay() {
     text_.clearTextCache();
-    assets_.unload();  // before the renderer goes: SDL frees the textures with it
-    frames_.release(); // the same for the frames' textures (the specs stay; they load again when next drawn)
-    icons_.release();  // and the icons' textures and halos
+    assets_.unload();          // before the renderer goes: SDL frees the textures with it
+    frames_.release();         // the same for the frames' textures (the specs stay; they load again when next drawn)
+    icons_.release();          // and the icons' textures and halos
+    launcherLogo_ = Texture(); // and the logo and the resume mask
+    resumeMask_ = Texture();
     GuiBase::releaseDisplay();
 }
 

@@ -6,6 +6,7 @@
 #include "../support/string_maker.h"
 #include "../support/temp_dir.h"
 
+#include <ableem/engine/filesystem.h>
 #include <ableem/engine/theme_spec.h>
 
 #include <map>
@@ -828,4 +829,71 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
     }
     CHECK(ableem::resolveThemeIconHalo(dir, dir));   // the halo stays on: it shows under the test colours
     CHECK(ableem::loadThemeFrames(dir).size() == 10); // the frames are untouched by the block
+}
+
+TEST_CASE("readThemeLogo: launcher.logo {file, x, y, w, h}, set only with a file and a positive size (G5q)") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("theme.json", "{ \"launcher\": { \"logo\": { \"file\": \"images/logo.png\","
+                                " \"x\": 22, \"y\": 591, \"w\": 317, \"h\": 75 } } }");
+    const ableem::ThemeLogo logo = ableem::readThemeLogo(tmp.at("theme.json"));
+    CHECK(logo.set);
+    CHECK(logo.file == "images/logo.png");
+    CHECK(logo.x == 22);
+    CHECK(logo.y == 591);
+    CHECK(logo.w == 317);
+    CHECK(logo.h == 75);
+
+    // no file name, no size, a block that is not an object, no block, a bad file, no file: unset
+    tmp.writeFile("nofile.json", "{ \"launcher\": { \"logo\": { \"x\": 1, \"y\": 2, \"w\": 3, \"h\": 4 } } }");
+    tmp.writeFile("nosize.json", "{ \"launcher\": { \"logo\": { \"file\": \"a.png\", \"x\": 1, \"y\": 2 } } }");
+    tmp.writeFile("zero.json", "{ \"launcher\": { \"logo\": { \"file\": \"a.png\", \"w\": 0, \"h\": 9 } } }");
+    tmp.writeFile("string.json", "{ \"launcher\": { \"logo\": \"a.png\" } }");
+    tmp.writeFile("plain.json", "{ \"launcher\": { \"colors\": {} } }");
+    tmp.writeFile("bad.json", "{ \"launcher\": { \"logo\": ");
+    for (const char *name :
+         {"nofile.json", "nosize.json", "zero.json", "string.json", "plain.json", "bad.json", "none.json"})
+        CHECK_FALSE_MESSAGE(ableem::readThemeLogo(tmp.at(name)).set, name);
+}
+
+TEST_CASE("loadThemeLogo: the file resolved in the theme's own folder, never the default's (G5q)") {
+    TempDir tmp("theme_spec");
+    const string json = "{ \"launcher\": { \"logo\": { \"file\": \"images/logo.png\", \"x\": 5, \"y\": 6,"
+                        " \"w\": 70, \"h\": 20 } } }";
+    tmp.writeFile("t/theme.json", json);
+    tmp.writeFile("t/images/logo.png", "x");
+    tmp.writeFile("gone/theme.json", json); // the file is not there
+    const ableem::ThemeLogo logo = ableem::loadThemeLogo(tmp.at("t"));
+    CHECK(logo.set);
+    CHECK(logo.file == tmp.at("t") + "/images/logo.png");
+    CHECK(logo.w == 70);
+    CHECK_FALSE(ableem::loadThemeLogo(tmp.at("gone")).set);
+    CHECK_FALSE(ableem::loadThemeLogo(tmp.at("nothing")).set);
+}
+
+TEST_CASE("readThemeResumeMask / loadThemeResumeMask: launcher.menuIcons.resumePictureMask (G5s)") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("t/theme.json", "{ \"launcher\": { \"menuIcons\": { \"resume\": \"r.png\","
+                                  " \"resumePictureMask\": \"images/resume_mask.png\" } } }");
+    tmp.writeFile("t/images/resume_mask.png", "x");
+    CHECK(ableem::readThemeResumeMask(tmp.at("t/theme.json")) == "images/resume_mask.png");
+    CHECK(ableem::loadThemeResumeMask(tmp.at("t")) == tmp.at("t") + "/images/resume_mask.png");
+
+    tmp.writeFile("gone/theme.json", "{ \"launcher\": { \"menuIcons\": { \"resumePictureMask\": \"nope.png\" } } }");
+    tmp.writeFile("plain/theme.json", "{ \"launcher\": { \"menuIcons\": { \"resume\": \"r.png\" } } }");
+    tmp.writeFile("number/theme.json", "{ \"launcher\": { \"menuIcons\": { \"resumePictureMask\": 3 } } }");
+    CHECK(ableem::loadThemeResumeMask(tmp.at("gone")).empty());
+    CHECK(ableem::loadThemeResumeMask(tmp.at("plain")).empty());
+    CHECK(ableem::loadThemeResumeMask(tmp.at("number")).empty());
+    CHECK(ableem::loadThemeResumeMask(tmp.at("nothing")).empty());
+}
+
+TEST_CASE("the test theme's logo and resume mask (tests/data/frame-test-theme), each with its @2x") {
+    const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
+    const ableem::ThemeLogo logo = ableem::loadThemeLogo(dir);
+    REQUIRE(logo.set);
+    CHECK(logo.file == dir + "/images/logo.png");
+    CHECK(ableem::DirEntry::exists(dir + "/images/logo@2x.png"));
+    const string mask = ableem::loadThemeResumeMask(dir);
+    CHECK(mask == dir + "/images/resume_mask.png");
+    CHECK(ableem::DirEntry::exists(dir + "/images/resume_mask@2x.png"));
 }

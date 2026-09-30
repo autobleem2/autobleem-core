@@ -84,6 +84,9 @@ enum class Align { Left, Center, Right };
 // Premultiplied: for a texture whose colours are already multiplied by its alpha - what a render target
 // drawn into with Blend holds (a cached layer). Copying it with Premultiplied gives the same pixels as drawing
 // its contents straight onto the screen; with Blend the see-through parts would come out darker.
-enum class BlendMode { None, Blend, Add, Mod, Premultiplied };
+// Mask: the destination keeps its colours and its alpha is multiplied by the source's alpha - a texture drawn over
+// a picture with it cuts the picture's shape out of the mask's alpha (ab_gui G5s). SDL before 2.0.6 has no custom
+// blend modes: there it leaves the picture as it is.
+enum class BlendMode { None, Blend, Add, Mod, Premultiplied, Mask };
 
 } // namespace ableem

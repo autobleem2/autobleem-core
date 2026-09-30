@@ -15,6 +15,8 @@
       "badge": { "image": "frames/badge.png", "slice": 12, "bleed": 4 },
       "chip": { "image": "frames/chip.png", "slice": 10, "bleed": 2 }
     },
+    "logo": { "file": "images/logo.png", "x": 22, "y": 591, "w": 317, "h": 75 },
+    "menuIcons": { "resumePictureMask": "images/resume_mask.png" },
     "icons": {
       "players": "icons/players.png", "disc": "icons/disc.png",
       "usb": "icons/usb.png", "internal": "icons/internal.png", "hd": "icons/hd.png", "sd": "icons/sd.png",

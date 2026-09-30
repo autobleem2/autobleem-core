@@ -73,6 +73,8 @@ SDL_BlendMode toSDL(BlendMode m) {
         return SDL_BLENDMODE_MOD;
     case BlendMode::Premultiplied:
         return premultipliedBlendMode();
+    case BlendMode::Mask:
+        return maskBlendMode();
     case BlendMode::Blend:
     default:
         return SDL_BLENDMODE_BLEND;

@@ -214,6 +214,9 @@ void Texture::setBlendMode(BlendMode mode) {
     case BlendMode::Premultiplied:
         m = premultipliedBlendMode();
         break;
+    case BlendMode::Mask:
+        m = maskBlendMode();
+        break;
     case BlendMode::Blend:
     default:
         m = SDL_BLENDMODE_BLEND;
