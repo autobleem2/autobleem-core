@@ -97,7 +97,7 @@ TEST_CASE("ease::outCubic is timing.h's easeOutCubic, value for value") {
     float x = 0;
     const Tween tween(x, 0.0f, 1.0f, 110);
     for (unsigned int ms = 0; ms <= 110; ++ms)
-        CHECK(tween.valueAt(ms) == easeOutCubic(static_cast<float>(ms) / 110.0f));
+        CHECK(tween.valueAt(ms) == doctest::Approx(easeOutCubic(static_cast<float>(ms) / 110.0f)).epsilon(1e-5));
 }
 
 TEST_CASE("the other easings follow the textbook curves and start at 0, end at 1") {
@@ -593,7 +593,8 @@ TEST_CASE("the ScreenStack owns the tweens and advances them before each outermo
         float drawn = 1;
         now = 2100;
         stack.frame([&]() { drawn = y; });
-        CHECK(drawn == -720.0f + 720.0f * easeOutCubic(100.0f / 250.0f)); // the frame's value, drawn in it
+        // the frame's value, drawn in it (Approx: the Release build fuses the float operations differently)
+        CHECK(drawn == doctest::Approx(-720.0f + 720.0f * easeOutCubic(100.0f / 250.0f)).epsilon(1e-5));
         CHECK(display.presents == 1);
 
         // a nested frame (a busy tick inside the drawing) does not move them
@@ -605,7 +606,7 @@ TEST_CASE("the ScreenStack owns the tweens and advances them before each outermo
             stack.frame([&]() { inner = y; });
         });
         CHECK(inner == outer);
-        CHECK(outer == -720.0f + 720.0f * easeOutCubic(200.0f / 250.0f));
+        CHECK(outer == doctest::Approx(-720.0f + 720.0f * easeOutCubic(200.0f / 250.0f)).epsilon(1e-5));
 
         now = 2300;
         stack.frame([&]() { drawn = y; });
