@@ -28,6 +28,7 @@ constexpr int Style::DefaultMargin;
 constexpr int Style::DefaultSelectionBar;
 constexpr int Style::OwnAlpha;
 constexpr int Style::StyleAlpha;
+constexpr int InactiveAlphas::Unset;
 
 namespace {
 string upper(const string &key) {
