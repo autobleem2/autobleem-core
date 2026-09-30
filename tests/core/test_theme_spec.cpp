@@ -532,7 +532,8 @@ TEST_CASE("loadThemeFrames: the images resolved in the theme's folder, the @2x f
 TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a check expects") {
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
-    REQUIRE(frames.size() == 3);
+    // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e)
+    REQUIRE(frames.size() == 8);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
     const ableem::ThemeFrame *heading = nullptr;
