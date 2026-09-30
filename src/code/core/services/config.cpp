@@ -106,7 +106,8 @@ Config::Config() {
     if (updates == "") {
         updates = Version::isBetweenTags() ? "nightly" : Version::isPreRelease() ? "testing" : "release";
     }
-    // the classic screens' font: the default (Open Sans - Fonts::DefaultClassicFont) on every theme, unless
+    // the classic screens' font (G5n): the default is the theme's launcher.fonts medium, else Open Sans
+    // (Fonts::DefaultClassicFont), unless
     // "themefont" ("Use Default Font") is off and "font" names a .ttf/.otf from retroarch/fonts or
     // resources/fonts. A theme's own classic font is not read since 2026-09-29; "--" (it) became the default.
     if (inifile.values["themefont"] == "") {
