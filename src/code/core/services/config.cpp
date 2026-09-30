@@ -62,6 +62,19 @@ Config::Config() {
     if (inifile.values["showingtimeout"] == "") {
         inifile.values["showingtimeout"] = DefaultShowingTimeoutText;
     }
+    // "Notification timeout" (Options -> Interface): 0 = the informational bubbles do not show. Until 2026-09-29 a
+    // stored 0 meant "stay up", so a config.ini that never went through this once has its 0 converted to the
+    // default; the marker records it, so a 0 chosen afterwards stays 0
+    if (inifile.values["showingtimeoutmigrated"] != "1") {
+        if (inifile.values["showingtimeout"] == "0") {
+            inifile.values["showingtimeout"] = DefaultShowingTimeoutText;
+        }
+        inifile.values["showingtimeoutmigrated"] = "1";
+    }
+    // "Splash screen" (Options -> Interface): the boot splash, on unless switched off
+    if (inifile.values["splashscreen"] != "false") {
+        inifile.values["splashscreen"] = "true";
+    }
 
     // Options -> Display (OutputMode): auto | 720 | 1080 | <w>x<h>; the console 720 unless 1080 was kept
     if (inifile.values[OutputMode::ConfigKey] == "") {
