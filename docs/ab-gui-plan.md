@@ -435,6 +435,10 @@ screenshots of them stay in `!autobleem\out\` (private).
     (e.g. `launcher.spinner: {image, frames, fps}`); `abgui::Busy` (and every spinner drawn through
     `Style::spinner`) plays it centred where the dots ring is today; a theme without it keeps the code-drawn
     ring of dots, call for call (0-diff). The designer draws ab2.0.0's.
+14. **A launcher logo element** (the owner, 2026-09-30; a G5 sub-step, **G5q**): the EvolutionUI has no logo of its
+    own (ab2 bakes it into its background); a theme may set `launcher.logo: {file, x, y, w, h}` (1x + @2x via
+    G4f) drawn on the launcher screen above the background, under the carousel; unset = nothing drawn (0-diff).
+    ab2.0.0 ships its approved C3 logo there, placed as in the approved mockup.
     **CA1 (done):** the geometry is core's header-only `core/model/cover_light.h` (`CoverLight::glowBox`,
     `shineSlice`; `tests/core/test_cover_light.cpp`), drawn by the launcher's `Carousel::drawGlow/drawShine`. The
     **shine** is the designer's `sheen.png` (+`@2x`, autobleem-design `launcher/covers/out/`) shipped as the
