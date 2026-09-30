@@ -11,7 +11,8 @@
       "keyFunction": { "image": "frames/key_function.png", "slice": 16, "bleed": 4 },
       "keyLit": { "image": "frames/key_lit.png", "slice": 16, "bleed": 4 },
       "keySelected": { "image": "frames/key_selected.png", "slice": 16, "bleed": 4 },
-      "field": { "image": "frames/field.png", "slice": 16, "bleed": 4 }
+      "field": { "image": "frames/field.png", "slice": 16, "bleed": 4 },
+      "badge": { "image": "frames/badge.png", "slice": 12, "bleed": 4 }
     },
     "icons": {
       "players": "icons/players.png", "disc": "icons/disc.png",
