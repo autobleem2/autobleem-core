@@ -564,3 +564,46 @@ TEST_CASE("Style::button and footer through a Context: a named key's chip asks f
     style.footer(ctx, Rect(0, 600, 1280, 54), "|@Start| Menu", false);
     CHECK(asked == vector<string>{"chip"});
 }
+
+TEST_CASE("Style::footer through a Context (G5r8): the footer frame replaces the rule, only with the rule on") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+    const Rect band(0, 600, 1280, 54);
+
+    // no provider (every shipped theme): the rule and the hints as always, nothing asked
+    style.footer(ctx, band, "|@X| Select", true);
+
+    FrameSet set;
+    FrameSpec footer;
+    footer.file = testFrame("footer.png");
+    footer.file2x = testFrame("footer@2x.png");
+    footer.slice = Insets::all(16);
+    footer.bleed = Insets::all(4);
+    map<string, FrameSpec> specs;
+    specs["footer"] = footer;
+    set.assign(specs);
+    REQUIRE(set.frame(renderer, "footer").valid());
+    // 56x54 body + a 4 px bleed: 64 x 62
+    CHECK(set.frame(renderer, "footer").texture.size().w == 64);
+    CHECK(set.frame(renderer, "footer").texture.size().h == 62);
+    vector<string> asked;
+    ctx.frameProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.frame(renderer, name);
+    };
+    style.footer(ctx, band, "|@X| Select", true);
+    CHECK(asked == vector<string>{"footer"});
+    // without the rule (About's surprise game) the band is left alone
+    asked.clear();
+    style.footer(ctx, band, "|@X| Select", false);
+    CHECK(asked.empty());
+    // a theme with no footer frame: asked, not found, the rule is drawn
+    set.assign(map<string, FrameSpec>());
+    asked.clear();
+    style.footer(ctx, band, "|@X| Select", true);
+    CHECK(asked == vector<string>{"footer"});
+}

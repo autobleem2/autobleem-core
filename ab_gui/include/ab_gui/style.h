@@ -301,7 +301,8 @@ public:
     // left inset in the largest of the Row / RowSmall / Small fonts they fit in (then their labels shortened,
     // then icons only), the status at the right edge. The hints are drawn in the one order every screen
     // shares, whatever order they were given in: Cross, Circle, Triangle, Square, Start, Select, L1/R1, L2/R2,
-    // then the keyboard's keys
+    // then the keyboard's keys. G5r8: a theme's optional `footer` frame is drawn over `footer` (the band) instead
+    // of the rule, and only when `withRule` is set; no frame = the rule, call for call
     void footer(Context &ctx, const ableem::Rect &footer, const std::vector<HintItem> &hints,
                 const std::string &status = "", bool withRule = true) const;
     // the same from the protocol string

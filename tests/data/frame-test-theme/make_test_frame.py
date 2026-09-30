@@ -30,6 +30,10 @@
 # chip (G5d): 32x32 - the art spec's 28x28 body (2 px bleed) behind a named-key chip (START, L2+R2, ESC), a 2 px rim, all four
 # corners cut, a faint glow. Mint (120, 255, 190) at 1x, maroon (128, 0, 40) at @2x. theme.json: slice 10, bleed 2.
 #
+# footer (G5r8): 64x62 - the footer band's 56x54 body (4 px bleed) under a panel screen's hints, a 2 px rim, the two bottom
+# corners cut, a faint centre the hints read over. Copper (200, 120, 60) at 1x, steel blue (60, 140, 200) at @2x.
+# theme.json: slice 16, bleed 4 (the band is footerHeight 54 tall and as wide as the panel: the middle stretches).
+#
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
 # selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
 # key_selected.png (48x48 each), field.png (56x56) and the @2x of all of them next to this script.
@@ -123,6 +127,13 @@ def chip_shape():
     return Shape(size, size, bleed, poly, 2, (255, 255, 255, 50), 100)
 
 
+def footer_shape():
+    w, h, bleed, cut = 64, 62, 4, 8
+    x0, y0, x1, y1 = bleed, bleed, w - bleed, h - bleed
+    poly = [(x0, y0), (x1, y0), (x1, y1 - cut), (x1 - cut, y1), (x0 + cut, y1), (x0, y1 - cut)]
+    return Shape(w, h, bleed, poly, 2, (255, 255, 255, 28), 100)
+
+
 def render(shape, scale, rim):
     w, h = shape.width * scale, shape.height * scale
     ss = 4
@@ -178,6 +189,7 @@ def main():
         ("field", field_shape(), (0, 220, 80), (0, 160, 160)),
         ("badge", badge_shape(), (255, 200, 0), (170, 80, 255)),
         ("chip", chip_shape(), (120, 255, 190), (128, 0, 40)),
+        ("footer", footer_shape(), (200, 120, 60), (60, 140, 200)),
     ]
     for name, shape, rim1, rim2 in keys:
         write_png(os.path.join(out, name + ".png"), *render(shape, 1, rim1))

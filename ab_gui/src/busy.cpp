@@ -92,7 +92,7 @@ void Busy::drawFrame() {
         if (backdrop_.valid())
             renderer.copy(backdrop_, nullptr, nullptr);
         const Style style = ctx_->style();
-        style.dim(renderer);
+        style.dim(*ctx_);
         const ableem::Point centre = spinnerCentre(renderer.width(), renderer.height());
         drawSpinner(centre.x, centre.y, message_, ctx_->ticks() - started_);
         if (total_ > 0) {
