@@ -535,8 +535,8 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
     // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip
-    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h), toast (G5f), progressTrack/progressFill (G5g)
-    REQUIRE(frames.size() == 16);
+    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h), toast (G5f), progressTrack/progressFill (G5g), tile/tileSelected/band (G5i)
+    REQUIRE(frames.size() == 19);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
     const ableem::ThemeFrame *heading = nullptr;
@@ -661,6 +661,28 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
         CHECK(bar->bleed.left == 0);
         CHECK(bar->bleed.bottom == 0);
         CHECK(bar->tint.empty());
+    }
+    // G5i: the game menu's tiles (72 x 72, slice 24, bleed 4) and the resume-slot picker's band (64 x 64, slice 24, no bleed)
+    struct Expect {
+        const char *name;
+        const char *file;
+        int slice;
+        int bleed;
+    };
+    for (const Expect &e : {Expect{"tile", "tile", 24, 4}, Expect{"tileSelected", "tile_selected", 24, 4},
+                            Expect{"band", "band", 24, 0}}) {
+        const ableem::ThemeFrame *found = nullptr;
+        for (const ableem::ThemeFrame &f : frames)
+            if (f.name == e.name)
+                found = &f;
+        REQUIRE(found != nullptr);
+        CHECK(found->image == dir + "/frames/" + e.file + ".png");
+        CHECK(found->image2x == dir + "/frames/" + e.file + "@2x.png");
+        CHECK(found->slice.left == e.slice);
+        CHECK(found->slice.bottom == e.slice);
+        CHECK(found->bleed.left == e.bleed);
+        CHECK(found->bleed.right == e.bleed);
+        CHECK(found->tint.empty());
     }
 }
 
@@ -897,7 +919,7 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
         CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
     }
     CHECK(ableem::resolveThemeIconHalo(dir, dir));    // the halo stays on: it shows under the test colours
-    CHECK(ableem::loadThemeFrames(dir).size() == 16); // the frames are untouched by the block
+    CHECK(ableem::loadThemeFrames(dir).size() == 19); // the frames are untouched by the block
 }
 
 TEST_CASE("readThemeLogo: launcher.logo {file, x, y, w, h}, set only with a file and a positive size (G5q)") {

@@ -796,3 +796,61 @@ TEST_CASE(
     CHECK(count("progressTrack") == 1);
     CHECK(count("progressFill") == 2);
 }
+
+TEST_CASE("the menu tiles and the picker's band (G5i): the test theme's three frames load, draw at an alpha, and a theme "
+          "without them draws nothing") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+    const Rect box(200, 100, 177, 177);
+
+    // no provider (every shipped theme): nothing is drawn, the caller keeps its own drawing
+    CHECK_FALSE(style.drawFrame(ctx, "tile", box, 120));
+    CHECK_FALSE(style.drawFrame(ctx, "tileSelected", box));
+    CHECK_FALSE(style.drawFrame(ctx, "band", Rect(0, 100, 1280, 520)));
+
+    // the test theme's frames: tiles 72 x 72 (slice 24, bleed 4), the band 64 x 64 (slice 24, no bleed)
+    FrameSet set;
+    FrameSpec tile;
+    tile.file = testFrame("tile.png");
+    tile.file2x = testFrame("tile@2x.png");
+    tile.slice = Insets::all(24);
+    FrameSpec selected;
+    selected.file = testFrame("tile_selected.png");
+    selected.file2x = testFrame("tile_selected@2x.png");
+    selected.slice = Insets::all(24);
+    FrameSpec band;
+    band.file = testFrame("band.png");
+    band.file2x = testFrame("band@2x.png");
+    band.slice = Insets::all(24);
+    map<string, FrameSpec> specs;
+    specs["tile"] = tile;
+    specs["tileSelected"] = selected;
+    specs["band"] = band;
+    set.assign(specs);
+    REQUIRE(set.frame(renderer, "tile").valid());
+    REQUIRE(set.frame(renderer, "tileSelected").valid());
+    REQUIRE(set.frame(renderer, "band").valid());
+    CHECK(set.frame(renderer, "tile").texture.size().w == 72);
+    CHECK(set.frame(renderer, "tileSelected").texture.size().h == 72);
+    CHECK(set.frame(renderer, "band").texture.size().w == 64);
+
+    vector<string> asked;
+    ctx.frameProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.frame(renderer, name);
+    };
+    CHECK(style.drawFrame(ctx, "tile", box, 120)); // the greyed Resume: the frame at its alpha
+    CHECK(style.drawFrame(ctx, "tileSelected", box));
+    CHECK(style.drawFrame(ctx, "band", Rect(0, 100, 1280, 520)));
+    CHECK(asked == vector<string>{"tile", "tileSelected", "band"});
+
+    // a theme with `tile` only: `tileSelected` is not there, the caller falls back to `tile`
+    specs.erase("tileSelected");
+    set.assign(specs);
+    CHECK_FALSE(style.drawFrame(ctx, "tileSelected", box));
+    CHECK(style.drawFrame(ctx, "tile", box));
+}

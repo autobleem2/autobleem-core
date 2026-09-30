@@ -514,7 +514,7 @@ include path to the extensions.
   on its own to the code-drawn fill; `Busy`'s bar calls this overload now. `Style::progressBox(renderer/ctx, bar,
   fraction)` is the Software Update prompt's outlined bar (`edge` at 120, the `text` fill 2 px in - `progressBoxFillRect`;
   the two frames instead, the fill over the bar's whole height). Test theme: `progressTrack` (hot pink / dark green)
-  and `progressFill` (light blue / burnt orange), 16 x 8, slice 4/2 - its frames are fourteen. A disabled row's text in `description` (G5t's `Style::disabledColor`) was already in every own row
+  and `progressFill` (light blue / burnt orange), 16 x 8, slice 4/2 - its frames are fourteen. G5i adds `tile` (teal / plum, 72 x 72, slice 24, bleed 4), `tileSelected` (amber / crimson, same size) and `band` (lime / navy, 64 x 64, slice 24, no bleed) - nineteen now; the launcher draws them (the game menu row, the resume-slot picker) through `Style::drawFrame(ctx, name, box, alpha)`, no core code. A disabled row's text in `description` (G5t's `Style::disabledColor`) was already in every own row
   loop (System menu, Extensions, Processors, the editor); the Store has no disabled row since G5t. `GuiTextPage`'s lines
   take the theme's `row` role when its `launcher.colors` sets one (a colour or a name), else the classic text colour as
   before (the role is unset on `default`/`ab2`). `text_renderer.cpp`'s back plate builds a default `abgui::Style()` only
