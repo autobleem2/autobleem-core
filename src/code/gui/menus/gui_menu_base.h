@@ -92,7 +92,7 @@ public:
     void adjustPageBy(int moveBy);   // move the page up or down by an amount
     void computePagePosition();      // complete recompute of positions based on the selected value
     void landOnSelectable(int step); // off a heading: on in step's direction, else back; the page follows
-    void publishToDriver();          // the rows and the cursor for the DebugDriver (render() calls it)
+    void publishToDriver();          // the rows and the cursor for the DebugDriver (renderLines() calls it)
 
     bool changes = false;
     bool cancelled = false;
@@ -206,6 +206,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::publishToDriver
 // GuiMenuBase<LineDataType>::renderLines
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::renderLines() {
+    publishToDriver(); // here, not in render(): Options and Game Manager draw with their own render()
     if (selected >= 0 && getVerticalSize() > 0) {
         // every row in the theme's row colour, the selected one in rowSelected (UIREV-29) - a subclass's
         // renderLineIndexOnRow draws through renderTextLine/renderRowValue, which take it from here
@@ -239,7 +240,6 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::renderSelection
 // GuiMenuBase<LineDataType>::render
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::render() {
-    publishToDriver();
     renderer.clear();
     gui->renderBackground();
     // a short list without a pane beside it draws as a compact panel centred on the screen
