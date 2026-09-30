@@ -591,7 +591,9 @@ Every screen but the launcher's own carousel frame draws in **one look**, and ne
   (`Gui::classicPanel()`), rows live in `classicContent()`, the footer in `classicFooter()`. A *compact*
   panel centred on the screen (the system menu, the set picker, the update prompt, Confirm): 800 wide,
   as tall as its rows, `PanelStyle::Margin` (40) from the edges, the launcher's captured frame under it
-  (`renderer.captureNextFrame(); render(); background = renderer.lastCapture()`). A dialog with one
+  (since G5r5 the launcher hands one snapshot of itself to `Gui::setLauncherBackdrop`, and `renderBackground()` /
+  the Context's `backdropDrawer` draw it - `abgui::BackdropSnapshot`, dropped to the theme's background when the render
+  targets were lost; a screen never captures its own). A dialog with one
   question is compact, never full.
 - **Rows.** Text at `RowInset + 8` (32 px) from the panel's edge - the header's text x. The classic
   screens' rows use the theme's classic font at its own line height, one under the other, **as many as

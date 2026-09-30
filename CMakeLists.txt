@@ -195,6 +195,7 @@ add_library(ab_gui STATIC
         ab_gui/include/ab_gui/tween.h
         ab_gui/src/actions.cpp
         ab_gui/src/action_menu.cpp
+        ab_gui/src/backdrop.cpp
         ab_gui/src/busy.cpp
         ab_gui/src/confirm.cpp
         ab_gui/src/context.cpp

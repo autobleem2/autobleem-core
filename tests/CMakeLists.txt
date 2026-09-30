@@ -112,6 +112,9 @@ if (AB_CORE_UI)
     # (G5t; the rects pure, the Context cases skip themselves without a renderer); G5r9: the inactive-state alphas
     # (InactiveAlphas' unset = today rule, pure, and the Context's provider)
     ab_add_test(test_ab_gui_layout gui/test_ab_gui_layout.cpp LIBS ab_gui)
+    # ab_gui's backdrop snapshot (G5r5): the launcher frame the opened screens draw over - kept/lost rules (pure) and
+    # the draw on a headless GuiBase (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_backdrop gui/test_ab_gui_backdrop.cpp LIBS ab_gui)
     # ab_gui's hint bar (G5e): the launcher's two hint lines' layout - the line rects, the font/gap/drop rules and the
     # whole layout against a frozen copy of the old GuiLauncher::layoutHints() (pure)
     ab_add_test(test_ab_gui_hint_bar gui/test_ab_gui_hint_bar.cpp LIBS ab_gui)
