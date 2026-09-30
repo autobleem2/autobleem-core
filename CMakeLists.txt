@@ -172,6 +172,7 @@ if (AB_CORE_UI)
 add_library(ab_gui STATIC
         ab_gui/include/ab_gui/actions.h
         ab_gui/include/ab_gui/action_menu.h
+        ab_gui/include/ab_gui/busy.h
         ab_gui/include/ab_gui/confirm.h
         ab_gui/include/ab_gui/context.h
         ab_gui/include/ab_gui/facts_page.h
@@ -184,6 +185,7 @@ add_library(ab_gui STATIC
         ab_gui/include/ab_gui/text_page.h
         ab_gui/src/actions.cpp
         ab_gui/src/action_menu.cpp
+        ab_gui/src/busy.cpp
         ab_gui/src/confirm.cpp
         ab_gui/src/context.cpp
         ab_gui/src/facts_page.cpp

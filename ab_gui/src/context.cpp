@@ -110,4 +110,8 @@ bool Context::setTextShadow(bool on) const {
     return shadowSwitch ? shadowSwitch(on) : false;
 }
 
+ableem::Rect Context::drawLogo() const {
+    return logoDrawer ? logoDrawer() : ableem::Rect();
+}
+
 } // namespace abgui

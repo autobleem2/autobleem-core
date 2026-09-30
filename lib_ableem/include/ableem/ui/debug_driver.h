@@ -145,8 +145,8 @@ public:
     // the `selected` reply, pure (unit-tested): "ok <index>|<name>", "ok -1|" when there are no items, the name
     // empty when index is outside them
     static std::string selectedReply(const std::vector<std::string> &items, int index);
-    // Gui::beginBusy() calls setBusy(true), Gui::endBusy() setBusy(false) when it ends a job: a depth counter
-    // (nested jobs), never below 0 - an extra false is ignored. Kept whether or not the driver runs.
+    // abgui::Busy::begin() (Gui::beginBusy) calls setBusy(true), Busy::end() setBusy(false) when it ends a job:
+    // a depth counter (nested jobs), never below 0 - an extra false is ignored. Kept whether or not the driver runs.
     // busy() = depth > 0 (the `busy` command), busyLevel() the depth itself.
     static void setBusy(bool on);
     static bool busy();

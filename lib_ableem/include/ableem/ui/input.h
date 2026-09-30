@@ -183,9 +183,9 @@ public:
 
     void flushEvents(); // discard everything currently queued (SDL_PumpEvents + SDL_FlushEvents)
 
-    // CONSOLE-11: called by Gui::endBusy() when a long busy job (Applying settings..., the reload after a
-    // game) that read no input while it ran is actually over. drawBusyFrame() never calls poll() - see its
-    // own comment - so the pads' and keyboard's events pile up for as long as the job takes; on the console
+    // CONSOLE-11: called by abgui::Busy::end() (Gui::endBusy) when a long busy job (Applying settings..., the
+    // reload after a game) that read no input while it ran is actually over. A busy frame never calls poll() -
+    // see abgui::Busy - so the pads' and keyboard's events pile up for as long as the job takes; on the console
     // that reload was ~12 s, long enough that a player pressing Cross because the spinner looked stuck left
     // a queued press that the launcher then handled as "start the selected game" the instant it read input
     // again. This discards every keyboard (KEYDOWN/UP, TEXTEDITING/TEXTINPUT), joystick/game-controller

@@ -35,9 +35,10 @@ private:
 
 } // namespace
 
-ScreenStack::ScreenStack(ableem::Renderer &renderer) : own_(new RendererDisplay(renderer)), display_(own_.get()) {}
+ScreenStack::ScreenStack(ableem::Renderer &renderer)
+    : own_(new RendererDisplay(renderer)), display_(own_.get()), busy_(*this) {}
 
-ScreenStack::ScreenStack(Display &display) : display_(&display) {}
+ScreenStack::ScreenStack(Display &display) : display_(&display), busy_(*this) {}
 
 ScreenStack::~ScreenStack() = default;
 

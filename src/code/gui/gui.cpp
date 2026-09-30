@@ -221,6 +221,11 @@ void Gui::wireUiContext() {
             panel.h = statusFoot - panel.y;
         return panel;
     };
+    // the theme's logo at its place, and that place (the "please wait" picture's spinner goes under it)
+    uiContext_.logoDrawer = [this]() {
+        renderLogo(false);
+        return assets_.logoRect;
+    };
     // every frame through the one stack: clear, draw, present (step G3c)
     uiContext_.setStack(stack_);
 }
@@ -334,85 +339,26 @@ void Gui::releaseDisplay() {
 //*******************************
 // Gui::beginBusy / busyTick / endBusy / tickBusy
 //*******************************
+// ab_gui's abgui::Busy (step G3l), the stack's: the backdrop, the dimmed spinner, the message, the bar, the 40 ms
+// pace and the input flush at the end. Gui's busy members stay, unused, until the ABI step (G3z).
 void Gui::beginBusy(const string &message, const std::function<void()> &redraw) {
-    busyMessage_ = message;
-    busyDone_ = busyTotal_ = 0;
-    renderer().captureNextFrame();
-    redraw(); // presents, and the capture is that frame
-    busyBackdrop_ = renderer().lastCapture();
-    if (!busy_)
-        ableem::DebugDriver::setBusy(true); // the driver's `busy` / `wait_ready`: input is dropped meanwhile
-    busy_ = true;
-    busyStarted_ = platform().ticks();
-    busyLastFrame_ = 0;
-    drawBusyFrame();
+    stack_.busy().begin(message, redraw);
 }
 
 void Gui::busyTick() {
-    if (!busy_)
-        return;
-    const unsigned int now = platform().ticks();
-    if (busyLastFrame_ != 0 && now - busyLastFrame_ < 40)
-        return;
-    drawBusyFrame();
+    stack_.busy().tick();
 }
 
 void Gui::endBusy() {
-    // CONSOLE-11: drawBusyFrame() reads no input while the job runs, so whatever the pads/keyboard queued
-    // meanwhile piled up (see its own comment); a Cross pressed because the spinner looked stuck was left
-    // queued and handled as a real press the moment the next poll() ran - on the console, Options' ~12 s
-    // reload started a game the player never meant to start. Flush only on the busy -> not busy transition
-    // (render() calls endBusy() every frame, including every idle one where nothing is queued to lose).
-    if (busy_) {
-        input().flushInputEvents();
-        ableem::DebugDriver::setBusy(false);
-    }
-    busy_ = false;
-    busyBackdrop_ = Texture();
+    stack_.busy().end();
 }
 
 void Gui::setBusyProgress(int done, int total) {
-    busyDone_ = done;
-    busyTotal_ = total;
-    busyLastFrame_ = 0; // the next tick draws it
+    stack_.busy().setProgress(done, total);
 }
 
 void Gui::tickBusy() {
     getInstance()->busyTick();
-}
-
-void Gui::drawBusyFrame() {
-    busyLastFrame_ = platform().ticks();
-    // the pads' events pile up meanwhile; nothing reads them until the job is done
-    stack_.frame(Color(0, 0, 0, 255), [this]() {
-        if (busyBackdrop_.valid())
-            renderer().copy(busyBackdrop_, nullptr, nullptr);
-        PanelStyle style = panelStyle();
-        style.dim(renderer());
-        drawSpinner(ScreenWidth / 2, ScreenHeight / 2 - 20, busyMessage_);
-        if (busyTotal_ > 0) {
-            // the bar under the message, as the notification bubble draws its own
-            const int width = 400, height = 6;
-            // under the message, which drawSpinner puts 24 px below the ring (radius 30) around ScreenHeight/2 - 20
-            const int messageY = ScreenHeight / 2 - 20 + 30 + 24;
-            ableem::Rect track(ScreenWidth / 2 - width / 2,
-                               messageY + assets_.themeFonts[FONT_22_MED].lineHeight() + 12, width, height);
-            style.progress(renderer(), track,
-                           static_cast<unsigned long long>(std::max(0, std::min(busyDone_, busyTotal_))),
-                           static_cast<unsigned long long>(busyTotal_));
-        }
-    });
-}
-
-void Gui::drawSpinner(int cx, int cy, const string &message) {
-    // twelve dots on a ring, the brightest leading, turning a dot every 70 ms
-    PanelStyle style = panelStyle();
-    const int radius = 30, dot = 8;
-    const int lead = static_cast<int>(platform().ticks() / 70) % 12;
-    style.spinner(renderer(), cx, cy, radius, dot, lead);
-    if (!message.empty())
-        text_.renderText_WithColor(assets_.themeFonts[FONT_22_MED], message, cx, cy + radius + 24, style.text,
-                                   XALIGN_CENTER);
 }
 
 //*******************************
@@ -545,15 +491,5 @@ void Gui::renderStatus(const string &text, int /*posy*/) {
 // Gui::drawText
 //*******************************
 void Gui::drawText(const string &text, const string &topLine) {
-    stack_.frame([&]() {
-        renderBackground();
-        renderLogo(false);
-        // the spinner under the logo (the logo rect is the theme's; below it, or the lower third of the screen)
-        const int below = assets_.logoRect.y + assets_.logoRect.h;
-        const int cy = std::min(ScreenHeight - 90, std::max(below + 60, ScreenHeight * 2 / 3));
-        drawSpinner(ScreenWidth / 2, cy, text);
-        if (!topLine.empty())
-            text_.renderText_WithColor(assets_.themeFonts[FONT_20_BOLD], topLine, ScreenWidth / 2, 12,
-                                       panelStyle().text, XALIGN_CENTER);
-    });
+    stack_.busy().waitScreen(text, topLine);
 }

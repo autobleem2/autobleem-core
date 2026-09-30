@@ -77,6 +77,10 @@ if (AB_CORE_UI)
     # ab_gui's ActionMenu (G3k): the row layout, the cursor over headings and disabled rows, the wrap (pure), and the events
     # through a headless GuiBase (those cases skip themselves without a renderer)
     ab_add_test(test_ab_gui_action_menu gui/test_ab_gui_action_menu.cpp LIBS ab_gui)
+    # ab_gui's Busy (G3l): the pace, the bar and the spinner's places (pure), and begin/tick/end on a recording display -
+    # nesting, the input queued during the job flushed at its end, the DebugDriver's busy flag (a headless GuiBase; those
+    # cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_busy gui/test_ab_gui_busy.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

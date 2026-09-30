@@ -125,7 +125,11 @@ public:
 
     // Appended (step G3c): the screen stack every frame goes through - clear, the screen's drawing, present
     // (ScreenStack::frame). The program owns it (AutoBleem's Gui) and sets it; hasStack() says whether one is set.
-    void setStack(ScreenStack &stack) { stack_ = &stack; }
+    // Setting it binds the stack's busy spinner (stack().busy(), step G3l) to this Context.
+    void setStack(ScreenStack &stack) {
+        stack_ = &stack;
+        stack.busy().bind(*this);
+    }
     bool hasStack() const { return stack_ != nullptr; }
     ScreenStack &stack() const { return *stack_; }
 
@@ -152,6 +156,13 @@ public:
     using ShadowSwitch = std::function<bool(bool)>;
     ShadowSwitch shadowSwitch;
     bool setTextShadow(bool on) const;
+
+    // Appended (step G3l): draws the program's logo at its place and returns that place - what the "please wait"
+    // picture (Busy::waitScreen) puts its spinner under. AutoBleem's is the theme's logo (Gui::renderLogo); unset,
+    // nothing is drawn and an empty rect at (0, 0) comes back.
+    using LogoDrawer = std::function<ableem::Rect()>;
+    LogoDrawer logoDrawer;
+    ableem::Rect drawLogo() const;
 };
 
 } // namespace abgui

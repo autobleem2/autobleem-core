@@ -347,6 +347,20 @@ include path to the extensions.
   copy `selected`/`result`/the scroll back. The launcher's `GuiSystemMenu` (Quick and System menus, the DebugDriver's
   `items`/`selected`) keeps its own class: its 20/14/15 px fonts and description strip are not `FontRole`s yet.
   Tests: `tests/gui/test_ab_gui_action_menu.cpp`.
+- **`abgui::Busy`** (`busy.h`, G3l) - the spinner a long job on the main thread shows, reached as
+  `ctx.stack().busy()` (the `ScreenStack` owns it; `Context::setStack` binds it to that Context): `begin(message,
+  redraw)` presents the screen as it is once and captures it as the backdrop, then draws the first busy frame -
+  black, the backdrop, the style's dim, the ring of dots (12, radius 30, a dot every 70 ms) with the message 24 px
+  under it in `FontRole::Row`, and with `setProgress(done, total)` a 400x6 bar 12 px under the message's line;
+  `tick()` draws one when due (40 ms since the last, or at once after `setProgress`); `end()` drops the backdrop and,
+  on the busy -> not busy step only, calls `Input::flushInputEvents()` (the busy rule stays in `Input`) and
+  `DebugDriver::setBusy(false)` (`begin()` set it true on the first begin of a job; a begin inside a job is the same
+  job). `waitScreen(message, topLine)` is the "please wait" picture: the backdrop, the Context's `logoDrawer`
+  (appended in G3l; Gui wires the theme's logo), the spinner under the logo, the top line in `RowSmall`. Every frame
+  goes through the stack, so a tick from inside a screen's drawing is a frame of its own. `Gui::beginBusy/busyTick/
+  setBusyProgress/endBusy/tickBusy/drawText` keep their signatures and forward; Gui's busy members stay unused until
+  G3z. Pure and tested: `frameDue`, `spinnerLead`, `spinnerCentre`, `messageTop`, `barRect`, `barDone`,
+  `waitSpinnerY`. Tests: `tests/gui/test_ab_gui_busy.cpp` (and `tests/classic/test_busy_input.cpp`, unchanged).
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to

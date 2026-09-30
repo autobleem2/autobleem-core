@@ -11,7 +11,11 @@
 // started) is a frame of its own: cleared, drawn and presented at once, as such a frame always was; the outer one
 // goes on and presents at its own end. depth() tells the two apart.
 //
+// The stack also owns the program's one busy spinner (busy(), step G3l): its frames are the stack's too.
+//
 #pragma once
+
+#include <ab_gui/busy.h>
 
 #include <ableem/ui/renderer.h>
 #include <ableem/ui/types.h>
@@ -58,6 +62,11 @@ public:
     // the frames presented through the stack so far
     unsigned long presented() const { return presented_; }
 
+    // the busy spinner a long job shows (abgui::Busy, step G3l) - bound to the Context this stack is set on
+    // (Context::setStack); its frames go through this stack
+    Busy &busy() { return busy_; }
+    const Busy &busy() const { return busy_; }
+
 private:
     void run(const ableem::Color *clearColor, const Draw &draw);
 
@@ -65,6 +74,7 @@ private:
     Display *display_;
     int depth_ = 0;
     unsigned long presented_ = 0;
+    Busy busy_;
 };
 
 } // namespace abgui

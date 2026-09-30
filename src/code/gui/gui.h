@@ -110,6 +110,7 @@ public:
     // backdrop dimmed with a spinner and the message over it (at most every 40 ms, so a tight loop is not
     // slowed). endBusy drops the backdrop. Gui::tickBusy() is the static form for code without a Gui at
     // hand (the theme loader, the carousel's texture loads) and is a no-op when nothing is busy.
+    // All of it is ab_gui's abgui::Busy (uiContext().stack().busy(), step G3l); these forward to it.
     void beginBusy(const std::string &message, const std::function<void()> &redraw);
     void busyTick();
     // a bar under the spinner's message, done/total (total 0 = no bar); drawn by the next busyTick
@@ -136,17 +137,15 @@ public:
 
     // the "please wait" screen a program shows around a blocking call it cannot tick from (the tools'
     // network scan, the flasher, the exit): the theme's background and logo, the spinner, the message
+    // (abgui::Busy::waitScreen)
     void drawText(const std::string &text, const string &topLine = "");
 
 private:
-    void drawBusyFrame();
-    // the ring of dots turning about (cx, cy) with `message` under it - the busy frames and drawText share it
-    void drawSpinner(int cx, int cy, const std::string &message);
-
     ThemeAssets assets_;
     TextRenderer text_; // after assets_: it holds references to the theme font and the button textures
     bool compact_ = false;
     ableem::Rect compactPanel_;
+    // unused since step G3l (the busy state is abgui::Busy's, stack_.busy()); kept for the layout until G3z
     bool busy_ = false;
     int busyDone_ = 0, busyTotal_ = 0;
     std::string busyMessage_;
