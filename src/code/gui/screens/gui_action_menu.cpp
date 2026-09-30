@@ -1,157 +1,69 @@
 //
-// GuiActionMenu: a compact panel of actions. See the header.
+// GuiActionMenu: a compact panel of actions. The layout, the scrolling, the keys and the loop are ab_gui's
+// abgui::ActionMenu (docs/ab-gui-plan.md, G3k); this class keeps its header - extensions construct it, built for ABI 6
+// - and hands its items and state to one of those for every frame and for the loop.
 //
 #include "gui_action_menu.h"
 #include "../gui.h"
 
-#include <algorithm>
+#include <ab_gui/action_menu.h>
 
 using namespace std;
 
 namespace {
-// the panel: as tall as its rows need, up to the screen less a margin; more rows than fit scroll
-const int PanelWidth = 800;
-const int PanelMargin = PanelStyle::Margin;
-const int HeaderHeight = PanelStyle::HeaderHeight;
-const int FooterHeight = PanelStyle::FooterHeight;
-const int RowHeight = PanelStyle::RowHeight;
-const int RowInset = PanelStyle::RowInset;
+
+// an abgui::ActionMenu holding what the classic menu holds
+void fill(abgui::ActionMenu &menu, const GuiActionMenu &classic, int firstVisible) {
+    for (const GuiActionMenu::Item &item : classic.items) {
+        abgui::ActionMenu::Item row;
+        row.title = item.title;
+        row.description = item.description;
+        menu.items.push_back(row);
+    }
+    menu.title = classic.title;
+    menu.subtitle = classic.subtitle;
+    menu.crossLabel = classic.crossLabel;
+    menu.circleLabel = classic.circleLabel;
+    menu.result = classic.result;
+    menu.selected = classic.selected;
+    menu.background = classic.background;
+    menu.restore(firstVisible);
+}
+
 } // namespace
 
 //*******************************
 // GuiActionMenu::init
 //*******************************
 void GuiActionMenu::init() {
-    selected = max(0, min(selected, static_cast<int>(items.size()) - 1));
-    firstVisible = 0;
-    result = -1;
+    abgui::ActionMenu menu(*gui, gui->uiContext());
+    fill(menu, *this, 0);
+    menu.open(); // clamps the kept selection and scrolls it into view
+    selected = menu.selected;
+    firstVisible = menu.firstVisible();
+    result = menu.result;
     style = gui->panelStyle();
-    moveSelection(0); // scrolls the kept selection into view
-}
-
-//*******************************
-// GuiActionMenu::visibleRows
-//*******************************
-int GuiActionMenu::visibleRows() const {
-    int roomForRows = SCREEN_HEIGHT - 2 * PanelMargin - HeaderHeight - FooterHeight;
-    return max(1, min(static_cast<int>(items.size()), roomForRows / RowHeight));
 }
 
 //*******************************
 // GuiActionMenu::render
 //*******************************
-// the frame through Gui's screen stack: clear, draw(), present (docs/ab-gui-plan.md, G3c)
+// the frame through Gui's screen stack: clear, draw, present (docs/ab-gui-plan.md, G3c)
 void GuiActionMenu::render() {
-    gui->uiContext().stack().frame([this]() { draw(); });
-}
-
-//*******************************
-// GuiActionMenu::draw
-//*******************************
-void GuiActionMenu::draw() {
-    // a frame to draw over (the launcher's, captured when it started an extension - GuiSystemMenu's look),
-    // else the theme's background
-    if (background.valid())
-        renderer.copy(background, nullptr, nullptr);
-    else
-        gui->renderBackground();
-    style.dim(renderer);
-    const int rows = visibleRows();
-    const int panelHeight = HeaderHeight + rows * RowHeight + FooterHeight;
-    ableem::Rect panel{(SCREEN_WIDTH - PanelWidth) / 2, (SCREEN_HEIGHT - panelHeight) / 2, PanelWidth, panelHeight};
-    style.sheet(renderer, panel);
-
-    Fonts &fonts = gui->assets().themeFonts;
-    int rowY = style.header(*gui, panel, title);
-    if (!subtitle.empty()) {
-        const ableem::Font &font = fonts[FONT_22_MED];
-        const int y = panel.y + 18 + (fonts[FONT_28_BOLD].lineHeight() - font.lineHeight()) / 2;
-        gui->text().renderText_WithColor(font, subtitle,
-                                         panel.x + panel.w - RowInset - gui->text().textWidth(font, subtitle), y,
-                                         style.description, XALIGN_LEFT);
-    }
-    for (int i = firstVisible; i < firstVisible + rows && i < static_cast<int>(items.size()); i++) {
-        if (i == selected)
-            style.selection(renderer, ableem::Rect(panel.x + 1, rowY, panel.w - 2, RowHeight));
-        gui->text().renderText_WithColor(fonts[FONT_22_MED], items[i].title, panel.x + RowInset + 8, rowY + 7,
-                                         style.rowColor(i == selected), XALIGN_LEFT);
-        gui->text().renderText_WithColor(fonts[FONT_15_BOLD], items[i].description, panel.x + RowInset + 8, rowY + 35,
-                                         style.description, XALIGN_LEFT);
-        rowY += RowHeight;
-    }
-    // scroll markers: a small triangle at the top or bottom edge of the rows when more are that way
-    const int markerX = panel.x + panel.w - RowInset;
-    if (firstVisible > 0)
-        style.scrollMarker(renderer, markerX, panel.y + HeaderHeight - 4, -1);
-    if (firstVisible + rows < static_cast<int>(items.size()))
-        style.scrollMarker(renderer, markerX, panel.y + HeaderHeight + rows * RowHeight + 2, 1);
-
-    style.footer(*gui, ableem::Rect(panel.x, panel.y + panel.h - FooterHeight, panel.w, FooterHeight),
-                 {{{"X"}, crossLabel.empty() ? _("Select") : crossLabel},
-                  {{"O"}, circleLabel.empty() ? _("Back") : circleLabel}},
-                 "", false);
-}
-
-//*******************************
-// GuiActionMenu::moveSelection
-//*******************************
-void GuiActionMenu::moveSelection(int step) {
-    const int count = static_cast<int>(items.size());
-    if (count == 0)
-        return;
-    selected = (selected + step + count) % count;
-    const int rows = visibleRows();
-    if (selected < firstVisible)
-        firstVisible = selected;
-    else if (selected >= firstVisible + rows)
-        firstVisible = selected - rows + 1;
+    abgui::ActionMenu menu(*gui, gui->uiContext());
+    fill(menu, *this, firstVisible);
+    menu.render();
 }
 
 //*******************************
 // GuiActionMenu::loop
 //*******************************
 void GuiActionMenu::loop() {
-    menuVisible = true;
-    gui->input().setFrameNeed(ableem::Input::FrameNeed::Idle); // nothing moves between presses
-    while (menuVisible) {
-        if (gui->input().frameDue())
-            render();
-        hold.tick(gui->input(), gui->platform().ticks(), [&](int dir) {
-            app.audio().cursor.play();
-            moveSelection(dir);
-        });
-        Event e;
-        while (gui->input().poll(e)) {
-            if (e.type == Event::Type::Quit) {
-                result = -1;
-                menuVisible = false;
-            }
-            switch (e.type) {
-            case Event::Type::DpadDown:
-            case Event::Type::DpadUp:
-                if (gui->input().dpadUp()) {
-                    app.audio().cursor.play();
-                    moveSelection(-1);
-                } else if (gui->input().dpadDown()) {
-                    app.audio().cursor.play();
-                    moveSelection(1);
-                }
-                hold.track(gui->input(), gui->platform().ticks());
-                break;
-            case Event::Type::ButtonDown:
-                if (e.button == Button::Cross && !items.empty()) {
-                    app.audio().cursor.play();
-                    result = selected;
-                    menuVisible = false;
-                } else if (e.button == Button::Circle) {
-                    app.audio().cancel.play();
-                    result = -1;
-                    menuVisible = false;
-                }
-                break;
-            default:
-                break;
-            }
-        }
-    }
+    abgui::ActionMenu menu(*gui, gui->uiContext());
+    fill(menu, *this, firstVisible);
+    menu.loop();
+    result = menu.result;
+    selected = menu.selected;
+    firstVisible = menu.firstVisible();
+    menuVisible = false;
 }

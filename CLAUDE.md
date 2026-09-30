@@ -335,6 +335,18 @@ include path to the extensions.
   sets from its style. **`GuiConfirm`'s header is untouched** (the Store extension constructs it; `GuiKeepDisplay`
   derives from it): `render()`/`loop()` build an `abgui::Confirm` from the header's fields and copy `result`
   back. Tests: `tests/gui/test_ab_gui_confirm.cpp`.
+- **`abgui::ActionMenu`** (`action_menu.h`, G3k) - a compact 800 px panel of actions: `title` and `subtitle`,
+  rows of a name over a description (`Item{title, description, heading, disabled}` - a heading is a thin band the
+  cursor skips, a disabled item is under the disabled veil with its reason as description, skipped and never
+  picked), scrolling with edge markers, footer hints (`crossLabel`/`circleLabel`, else "Select"/"Back"), `selected`,
+  `wrap`, `background` (a texture drawn under the dimmed panel instead of the backdrop), `result`. The `TextPage`
+  pattern: `draw()` on a `Panel`, pure `selectable`/`rowHeight`/`roomForRows`/`visibleCount`/`scrolledTo`/`moved`,
+  its own `loop()` (frame when due, `DpadHold` repeats, events to `handle()`), `onAction` (Confirm picks with the
+  Cursor sound, Back leaves with Cancel, the d-pad by its live state; keys do nothing). **`GuiActionMenu`'s header
+  is untouched** (ABI 6): `init()`/`render()`/`loop()` build an `abgui::ActionMenu` from the header's fields and
+  copy `selected`/`result`/the scroll back. The launcher's `GuiSystemMenu` (Quick and System menus, the DebugDriver's
+  `items`/`selected`) keeps its own class: its 20/14/15 px fonts and description strip are not `FontRole`s yet.
+  Tests: `tests/gui/test_ab_gui_action_menu.cpp`.
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to
