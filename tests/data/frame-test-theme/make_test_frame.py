@@ -38,9 +38,14 @@
 # top-right and bottom-left corners cut, a dark centre at about 70% the hints read over, an 8 px glow. Salmon
 # (250, 128, 114) at 1x, olive (128, 128, 0) at @2x. theme.json: slice 28, bleed 8.
 #
+# progressTrack, progressFill (G5g): 16x8, the whole image is the bar (no bleed), a 1 px rim, square corners, flat up
+# and down as the art spec asks. The track has a faint white centre, hot pink (255, 105, 180) at 1x and dark green
+# (0, 100, 0) at @2x; the fill a strong white centre, light blue (100, 180, 255) at 1x and burnt orange (205, 92, 0) at
+# @2x. theme.json: slice left/right 4, top/bottom 2, bleed 0.
+#
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
 # selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
-# key_selected.png (48x48 each), field.png (56x56), badge.png (40x40), chip.png (32x32), footer.png (64x62), hint_bar.png (80x80) and the
+# key_selected.png (48x48 each), field.png (56x56), badge.png (40x40), chip.png (32x32), footer.png (64x62), hint_bar.png (80x80), progress_track.png and progress_fill.png (16x8) and the
 # @2x of all of them next to this script.
 import math
 import os
@@ -146,6 +151,12 @@ def hint_bar_shape():
     return Shape(size, size, bleed, poly, 2, (24, 20, 30, 180), 110)
 
 
+def progress_shape(centre_alpha):
+    w, h = 16, 8
+    poly = [(0, 0), (w, 0), (w, h), (0, h)]
+    return Shape(w, h, 0, poly, 1, (255, 255, 255, centre_alpha), 0)
+
+
 def render(shape, scale, rim):
     w, h = shape.width * scale, shape.height * scale
     ss = 4
@@ -203,6 +214,8 @@ def main():
         ("chip", chip_shape(), (120, 255, 190), (128, 0, 40)),
         ("footer", footer_shape(), (200, 120, 60), (60, 140, 200)),
         ("hint_bar", hint_bar_shape(), (250, 128, 114), (128, 128, 0)),
+        ("progress_track", progress_shape(40), (255, 105, 180), (0, 100, 0)),
+        ("progress_fill", progress_shape(200), (100, 180, 255), (205, 92, 0)),
     ]
     for name, shape, rim1, rim2 in keys:
         write_png(os.path.join(out, name + ".png"), *render(shape, 1, rim1))

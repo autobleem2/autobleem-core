@@ -262,6 +262,37 @@ TEST_CASE("the keyboard, spinner, progress and tab metrics default to what the c
     CHECK(s.tabHeight == 3);
 }
 
+TEST_CASE("progressFillWidth: the share of the track, done clamped to total, nothing for a total of 0 (G5g)") {
+    CHECK(Style::progressFillWidth(400, 0, 10) == 0);
+    CHECK(Style::progressFillWidth(400, 5, 10) == 200);
+    CHECK(Style::progressFillWidth(400, 10, 10) == 400);
+    CHECK(Style::progressFillWidth(400, 99, 10) == 400);
+    CHECK(Style::progressFillWidth(400, 1, 3) == 133); // cut to whole pixels
+    CHECK(Style::progressFillWidth(400, 5, 0) == 0);
+    // a 64-bit product: a download of several GB does not overflow
+    CHECK(Style::progressFillWidth(700, 3000000000ULL, 6000000000ULL) == 350);
+}
+
+TEST_CASE("progressBoxFillRect: the update prompt's bar - the fill 2 px in from the outline, as it was drawn (G5g)") {
+    const ableem::Rect bar(100, 300, 700, 22);
+    // the old code: Rect(bar.x + 2, bar.y + 2, int((bar.w - 4) * fraction), bar.h - 4)
+    for (double fraction : {0.0, 0.25, 0.3333, 0.5, 0.999, 1.0}) {
+        const ableem::Rect r = Style::progressBoxFillRect(bar, fraction, false);
+        CHECK(r.x == 102);
+        CHECK(r.y == 302);
+        CHECK(r.w == static_cast<int>((700 - 4) * fraction));
+        CHECK(r.h == 18);
+    }
+    CHECK(Style::progressBoxFillRect(bar, 0.5, false).w == 348);
+    CHECK(Style::progressBoxFillRect(bar, 1.0, false).w == 696);
+    // with a frame: from the left edge, the bar's height, the whole width times the fraction, clamped
+    const ableem::Rect f = Style::progressBoxFillRect(bar, 0.5, true);
+    CHECK((f.x == 100 && f.y == 300 && f.w == 350 && f.h == 22));
+    CHECK(Style::progressBoxFillRect(bar, 1.0, true).w == 700);
+    CHECK(Style::progressBoxFillRect(bar, 1.7, true).w == 700);
+    CHECK(Style::progressBoxFillRect(bar, -0.2, true).w == 0);
+}
+
 TEST_CASE("tone: a role's colour, its own alpha unless one is given, nothing for None") {
     Style s;
     s.text = Color(10, 20, 30, 255);

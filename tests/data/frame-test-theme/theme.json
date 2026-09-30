@@ -15,7 +15,11 @@
       "badge": { "image": "frames/badge.png", "slice": 12, "bleed": 4 },
       "chip": { "image": "frames/chip.png", "slice": 10, "bleed": 2 },
       "footer": { "image": "frames/footer.png", "slice": 16, "bleed": 4 },
-      "hintBar": { "image": "frames/hint_bar.png", "slice": 28, "bleed": 8 }
+      "hintBar": { "image": "frames/hint_bar.png", "slice": 28, "bleed": 8 },
+      "progressTrack": { "image": "frames/progress_track.png",
+                         "slice": { "left": 4, "top": 2, "right": 4, "bottom": 2 }, "bleed": 0 },
+      "progressFill": { "image": "frames/progress_fill.png",
+                        "slice": { "left": 4, "top": 2, "right": 4, "bottom": 2 }, "bleed": 0 }
     },
     "logo": { "file": "images/logo.png", "x": 22, "y": 591, "w": 317, "h": 75 },
     "menuIcons": { "resumePictureMask": "images/resume_mask.png" },

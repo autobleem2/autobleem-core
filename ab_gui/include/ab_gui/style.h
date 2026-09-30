@@ -267,9 +267,28 @@ public:
     void progress(ableem::Renderer &renderer, const ableem::Rect &track, unsigned long long done,
                   unsigned long long total, Tone trackTone = Tone::Secondary, int trackAlpha = StyleAlpha,
                   Tone fillTone = Tone::Text, int fillAlpha = OwnAlpha) const;
+    // through the Context (G5g): the theme's `progressTrack` frame is drawn into the whole bar and its `progressFill`
+    // frame into the share done (from the left; nothing while that is 0 px wide) - each one independently, so a theme
+    // with one of them keeps the code-drawn other; the tones and alphas then belong to the frames (their tint) and are
+    // unused. No frame = the Renderer overload's two fills (the track alpha: the theme's `barTrack`, G5r9)
     void progress(Context &ctx, const ableem::Rect &track, unsigned long long done, unsigned long long total,
                   Tone trackTone = Tone::Secondary, int trackAlpha = StyleAlpha, Tone fillTone = Tone::Text,
                   int fillAlpha = OwnAlpha) const;
+    // the width of a progress bar's fill: trackWidth * done / total (done clamped to total), 0 when total is 0
+    static int progressFillWidth(int trackWidth, unsigned long long done, unsigned long long total);
+    // an outlined progress bar, the Software Update prompt's: a one-pixel outline in the edge colour at
+    // ProgressBoxEdgeAlpha, and inside it a fill in the text colour ProgressBoxInset px in from the outline, `fraction`
+    // (0..1) of its width. It draws no blend mode of its own (the caller's, as the prompt always did)
+    static constexpr int ProgressBoxInset = 2;
+    static constexpr int ProgressBoxEdgeAlpha = 120;
+    void progressBox(ableem::Renderer &renderer, const ableem::Rect &bar, double fraction) const;
+    // through the Context (G5g): the `progressTrack` frame in the whole bar and the `progressFill` frame in `fraction`
+    // of it (the outline's inset is for the code-drawn fill only), each one falling back to the code drawing alone
+    void progressBox(Context &ctx, const ableem::Rect &bar, double fraction) const;
+    // the rect of progressBox's fill: inside the outline (`framed` false - what the prompt always drew: the width is
+    // the inner width times the fraction, cut to whole pixels) or from the bar's left edge over its whole height
+    // (`framed` true, for a frame; the fraction clamped to 0..1)
+    static ableem::Rect progressBoxFillRect(const ableem::Rect &bar, double fraction, bool framed);
     // the busy spinner: spinnerDots dots on a ring of `radius` around (cx, cy), `dot` px squares, dot `lead`
     // the brightest and every one behind it spinnerFade alpha dimmer; the program turns `lead` with its clock
     void spinner(ableem::Renderer &renderer, int cx, int cy, int radius, int dot, int lead) const;
