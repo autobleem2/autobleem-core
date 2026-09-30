@@ -512,3 +512,55 @@ TEST_CASE("Style::key and field through a Context: the state's frame, else key, 
         CHECK(asked.size() == 1);
     }
 }
+
+TEST_CASE("Style::button and footer through a Context: a named key's chip asks for the chip frame, the width is the same") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+
+    // no provider: the code-drawn chip
+    const int plain = style.button(ctx, "Start", 20, 20, 30);
+    CHECK(plain == style.buttonWidth(ctx, "Start", 30));
+
+    // a provider with a panel frame only: the chip is asked for, not found, the old box is drawn, the width is as before
+    FrameSet set;
+    FrameSpec panel;
+    panel.file = testFrame("panel.png");
+    panel.slice = TestSlice;
+    panel.bleed = TestBleed;
+    map<string, FrameSpec> specs;
+    specs["panel"] = panel;
+    set.assign(specs);
+    vector<string> asked;
+    ctx.frameProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.frame(renderer, name);
+    };
+    CHECK(style.button(ctx, "Start", 20, 20, 30) == plain);
+    CHECK(asked == vector<string>{"chip"});
+
+    // the test theme's chip (32x32, slice 10, bleed 2): the same width, the frame drawn under the name
+    FrameSpec chip;
+    chip.file = testFrame("chip.png");
+    chip.file2x = testFrame("chip@2x.png");
+    chip.slice = Insets::all(10);
+    chip.bleed = Insets::all(2);
+    specs["chip"] = chip;
+    set.assign(specs);
+    REQUIRE(set.frame(renderer, "chip").valid());
+    CHECK(set.frame(renderer, "chip").texture.size().w == 32);
+    asked.clear();
+    CHECK(style.button(ctx, "Start", 20, 20, 30) == plain);
+    CHECK(asked == vector<string>{"chip"});
+
+    // the buttons line and the footer's hints take the chip too, and their widths do not change
+    asked.clear();
+    style.buttons(ctx, "|@L2|+|@R2|", 20, 20, 30);
+    CHECK(asked == vector<string>{"chip", "chip"});
+    asked.clear();
+    style.footer(ctx, Rect(0, 600, 1280, 54), "|@Start| Menu", false);
+    CHECK(asked == vector<string>{"chip"});
+}

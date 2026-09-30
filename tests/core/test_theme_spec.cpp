@@ -533,8 +533,8 @@ TEST_CASE("loadThemeFrames: the images resolved in the theme's folder, the @2x f
 TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a check expects") {
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
-    // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b)
-    REQUIRE(frames.size() == 9);
+    // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip (G5d)
+    REQUIRE(frames.size() == 10);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
     const ableem::ThemeFrame *heading = nullptr;
@@ -582,6 +582,17 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(badge->slice.left == 12);
     CHECK(badge->slice.bottom == 12);
     CHECK(badge->bleed.top == 4);
+    // G5d: the chip plate - slice 10 all round, a 2 px bleed, drawn under a named-key chip's name
+    const ableem::ThemeFrame *chip = nullptr;
+    for (const ableem::ThemeFrame &f : frames)
+        if (f.name == "chip")
+            chip = &f;
+    REQUIRE(chip != nullptr);
+    CHECK(chip->image == dir + "/frames/chip.png");
+    CHECK(chip->image2x == dir + "/frames/chip@2x.png");
+    CHECK(chip->slice.left == 10);
+    CHECK(chip->slice.bottom == 10);
+    CHECK(chip->bleed.top == 2);
 }
 
 TEST_CASE("themeImageFile: the @2x next to a theme image above scale 1, else the image itself (G4f)") {
@@ -816,5 +827,5 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
         CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
     }
     CHECK(ableem::resolveThemeIconHalo(dir, dir));   // the halo stays on: it shows under the test colours
-    CHECK(ableem::loadThemeFrames(dir).size() == 9); // the frames are untouched by the block
+    CHECK(ableem::loadThemeFrames(dir).size() == 10); // the frames are untouched by the block
 }

@@ -571,11 +571,14 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
     const int chipH = height - 6;
     const int chipW = tw + 14;
     Rect chip(x, y + (height - chipH) / 2, chipW, chipH);
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(255, 255, 255, 24));
-    renderer.fillRect(chip);
-    renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 200));
-    renderer.drawRect(chip);
+    // the `chip` frame is the plate under the name (G5d); a theme with none keeps the box drawn in code
+    if (!drawFrame(ctx, "chip", chip)) {
+        renderer.setBlendMode(ableem::BlendMode::Blend);
+        renderer.setDrawColor(Color(255, 255, 255, 24));
+        renderer.fillRect(chip);
+        renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 200));
+        renderer.drawRect(chip);
+    }
     ctx.drawText(font, name, chip.x + 7, chip.y + (chipH - font.lineHeight()) / 2, text);
     return chipW;
 }

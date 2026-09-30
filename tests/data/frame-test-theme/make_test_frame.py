@@ -27,6 +27,9 @@
 # badge (G5b): 40x40 - the 32x32 plate behind a meta-row badge with a 4 px glow, a 2 px rim, cut corners. Gold at 1x,
 # violet at @2x. theme.json: slice 12, bleed 4.
 #
+# chip (G5d): 32x32 - the art spec's 28x28 body (2 px bleed) behind a named-key chip (START, L2+R2, ESC), a 2 px rim, all four
+# corners cut, a faint glow. Mint (120, 255, 190) at 1x, maroon (128, 0, 40) at @2x. theme.json: slice 10, bleed 2.
+#
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
 # selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
 # key_selected.png (48x48 each), field.png (56x56) and the @2x of all of them next to this script.
@@ -112,6 +115,14 @@ def badge_shape():
     return Shape(size, size, bleed, poly, 2, (255, 255, 255, 70), 120)
 
 
+def chip_shape():
+    size, bleed, cut = 32, 2, 4
+    x0, y0, x1, y1 = bleed, bleed, size - bleed, size - bleed
+    poly = [(x0 + cut, y0), (x1 - cut, y0), (x1, y0 + cut), (x1, y1 - cut), (x1 - cut, y1), (x0 + cut, y1),
+            (x0, y1 - cut), (x0, y0 + cut)]
+    return Shape(size, size, bleed, poly, 2, (255, 255, 255, 50), 100)
+
+
 def render(shape, scale, rim):
     w, h = shape.width * scale, shape.height * scale
     ss = 4
@@ -166,6 +177,7 @@ def main():
         ("key_selected", key_shape(150, 170), (255, 40, 40), (255, 150, 200)),
         ("field", field_shape(), (0, 220, 80), (0, 160, 160)),
         ("badge", badge_shape(), (255, 200, 0), (170, 80, 255)),
+        ("chip", chip_shape(), (120, 255, 190), (128, 0, 40)),
     ]
     for name, shape, rim1, rim2 in keys:
         write_png(os.path.join(out, name + ".png"), *render(shape, 1, rim1))
