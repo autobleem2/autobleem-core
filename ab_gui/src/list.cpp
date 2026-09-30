@@ -74,9 +74,12 @@ int List::switchState(const string &text, string *label) {
 }
 
 bool List::drawSwitch(Context &ctx, bool on, int right, int top, int rowHeight) {
-    const ableem::Texture icon = ctx.icon(on ? "switchOn" : "switchOff");
-    if (!icon.valid())
+    // the images are used only when the theme has both; with one of them the row says ON/OFF in both states
+    const ableem::Texture onIcon = ctx.icon("switchOn");
+    const ableem::Texture offIcon = ctx.icon("switchOff");
+    if (!onIcon.valid() || !offIcon.valid())
         return false;
+    const ableem::Texture icon = on ? onIcon : offIcon;
     const ableem::Size size = icon.size();
     const Rect dst = switchRect(right, top, rowHeight, size.w, size.h);
     ctx.renderer().copy(icon, nullptr, &dst);

@@ -458,7 +458,7 @@ int TextRenderer::renderTextLineOptions(const string &_text, int line, int yoffs
         return h; // there is no check/uncheck emoji on this line
     }
 
-    // the theme's switch image at the row's right edge when it ships `switchOn`/`switchOff` (G5m, UIREV-10), else the
+    // the theme's switch image at the row's right edge when it ships both `switchOn` and `switchOff` (G5m, UIREV-10), else the
     // value as text, like any other option's value (the old check/uncheck images went on 2026-09-29 - the owner: a
     // plain OFF/ON choice)
     if (switchContext_ != nullptr) {

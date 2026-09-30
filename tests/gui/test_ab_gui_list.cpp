@@ -494,7 +494,8 @@ TEST_CASE("List::drawRows: a theme with switchOn/switchOff draws the image, not 
     list.lastVisible = 7;
     list.yoffset = 124;
     list.drawRows();
-    CHECK(asked == vector<string>{"switchOn", "switchOff"});
+    // both icons are asked for on every switch row (the images are used only when the theme has both)
+    CHECK(asked == vector<string>{"switchOn", "switchOff", "switchOn", "switchOff"});
     REQUIRE(side.texts.size() == 4); // the four texts below: no ~ON / ~OFF
     vector<string> said;
     for (const Side::Text &t : side.texts)
@@ -511,6 +512,38 @@ TEST_CASE("List::drawSwitch: no icon of that name - nothing drawn, false (defaul
     CHECK_FALSE(List::drawSwitch(side.ctx, true, 868, 124, 28)); // no provider at all
     side.ctx.iconProvider = [](const string &) { return ableem::Texture(); };
     CHECK_FALSE(List::drawSwitch(side.ctx, false, 868, 124, 28));
+}
+
+TEST_CASE("List::drawSwitch: a theme with only one of switchOn/switchOff draws neither - ON/OFF text in both states") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme/icons/";
+    abgui::IconSet set;
+    map<string, abgui::IconSpec> specs;
+    specs["switchOn"] = {dir + "switch_on.png", dir + "switch_on@2x.png"};
+    set.assign(specs); // no switchOff
+    Side side(*g.gui);
+    side.ctx.iconProvider = [&](const string &name) { return set.icon(g.gui->renderer(), name); };
+    CHECK_FALSE(List::drawSwitch(side.ctx, true, 868, 124, 28));
+    CHECK_FALSE(List::drawSwitch(side.ctx, false, 868, 124, 28));
+
+    specs.clear();
+    specs["switchOff"] = {dir + "switch_off.png", dir + "switch_off@2x.png"};
+    set.assign(specs); // no switchOn
+    CHECK_FALSE(List::drawSwitch(side.ctx, true, 868, 124, 28));
+    CHECK_FALSE(List::drawSwitch(side.ctx, false, 868, 124, 28));
+
+    List list(*g.gui, side.ctx);
+    list.rows = {{"Music|@Check|", "", false, false}, {"Mode|@Uncheck|", "", false, false}};
+    list.maxVisible = 8;
+    list.lastVisible = 7;
+    list.yoffset = 124;
+    list.drawRows();
+    vector<string> said;
+    for (const Side::Text &t : side.texts)
+        said.push_back(t.text);
+    CHECK(said == vector<string>{"Music", "~ON", "Mode", "~OFF"});
 }
 
 TEST_CASE("List::driverItems / driverSelected: every row as shown, a heading marked '#', '|' as '/'") {

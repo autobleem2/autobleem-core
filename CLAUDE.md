@@ -411,7 +411,7 @@ include path to the extensions.
   last` HomeDown, `confirm` Cursor, `back` Cancel); `holdRows` is the blocking held d-pad at HoldRepeat's pace until
   another event is pending (`step()`/`redraw()` virtual); `onAction`/`onUnmapped`: the d-pad by its live state, L1/R1
   first/last, L2/R2 a page, Confirm/Back, keys as keys. Pure: `rowTop`, `textLeft`, `valueRight`, `band`,
-  `switchState`, `drawSwitch` (G5m: the theme's `switchOn`/`switchOff` icon at the value's right edge, else the ON/OFF text), `isCompact`; the DebugDriver's `driverItems()`/`driverSelected()` (`publish()` hands them over under
+  `switchState`, `drawSwitch` (G5m: the theme's `switchOn`/`switchOff` icon at the value's right edge when it has both, else the ON/OFF text), `isCompact`; the DebugDriver's `driverItems()`/`driverSelected()` (`publish()` hands them over under
   `screenName()`). **The compact panel is the Context's** (`setCompactPanel`/`clearCompactPanel`/`currentPanelRect`,
   appended): its `panelSwitch` is how `Gui` points the text renderer's rows at it (and `Gui::classicPanel()` asks
   `currentPanelRect()`), and `Gui::setCompactPanel/clearCompactPanel` forward to the Context. `TextRenderer`'s row
