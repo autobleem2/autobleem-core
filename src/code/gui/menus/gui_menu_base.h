@@ -3,6 +3,7 @@
 #include "../gui_screen.h"
 #include "../gui.h"
 #include "../hold_repeat.h"
+#include <ab_gui/list_model.h>
 #include <ableem/ui/debug_driver.h>
 #include <algorithm>
 #include <typeinfo>
@@ -96,6 +97,14 @@ public:
     void landOnSelectable(int step); // off a heading: on in step's direction, else back; the page follows
     void publishToDriver();          // the rows and the cursor for the DebugDriver (renderLines() calls it)
 
+    // the selection and paging rules are abgui::ListModel's, working in place on the members above
+    abgui::ListModel::View modelView() {
+        return {selected, firstVisibleIndex, lastVisibleIndex, maxVisible, static_cast<int>(getVerticalSize())};
+    }
+    auto skipper() {
+        return [this](int index) { return skipSelectingThisLineWhenMovingByOne(index); };
+    }
+
     bool changes = false;
     bool cancelled = false;
 };
@@ -122,9 +131,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::init() {
 //*******************************
 // move the page up or down by an amount
 template <typename LineDataType> void GuiMenuBase<LineDataType>::adjustPageBy(int moveBy) {
-    selected += moveBy;
-    firstVisibleIndex += moveBy;
-    lastVisibleIndex += moveBy;
+    abgui::ListModel::adjustPageBy(modelView(), moveBy);
 }
 
 //*******************************
@@ -134,25 +141,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::adjustPageBy(in
 // walks on in step's direction (+1/-1), back the other way when that runs off the list, and the page scrolls
 // just enough to show it; with no selectable row at all it stays put
 template <typename LineDataType> void GuiMenuBase<LineDataType>::landOnSelectable(int step) {
-    int size = getVerticalSize();
-    int i = selected;
-    while (i >= 0 && i < size && skipSelectingThisLineWhenMovingByOne(i))
-        i += step;
-    if (i < 0 || i >= size) {
-        i = selected;
-        while (i >= 0 && i < size && skipSelectingThisLineWhenMovingByOne(i))
-            i -= step;
-    }
-    if (i < 0 || i >= size)
-        return;
-    selected = i;
-    if (selected < firstVisibleIndex) {
-        firstVisibleIndex = selected;
-        lastVisibleIndex = selected + maxVisible - 1;
-    } else if (selected > lastVisibleIndex) {
-        lastVisibleIndex = selected;
-        firstVisibleIndex = selected - maxVisible + 1;
-    }
+    abgui::ListModel::landOnSelectable(modelView(), step, skipper());
 }
 
 //*******************************
@@ -160,26 +149,7 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::landOnSelectabl
 //*******************************
 // complete recompute of positions based on the selected value
 template <typename LineDataType> void GuiMenuBase<LineDataType>::computePagePosition() {
-    if (getVerticalSize() == 0) {
-        selected = 0;
-        firstVisibleIndex = 0;
-        lastVisibleIndex = 0;
-    } else {
-        bool AllLinesFitOnOnePage = getVerticalSize() <= maxVisible;
-        bool selectedIsOnTheFirstPage = selected < maxVisible;
-        bool selectedIsOnTheLastPage = selected >= (getVerticalSize() - maxVisible);
-
-        if (AllLinesFitOnOnePage) {
-            firstVisibleIndex = 0;
-        } else if (selectedIsOnTheFirstPage) {
-            firstVisibleIndex = 0;
-        } else if (selectedIsOnTheLastPage) {
-            firstVisibleIndex = getVerticalSize() - maxVisible;
-        } else {
-            firstVisibleIndex = selected - (maxVisible / 2);
-        }
-        lastVisibleIndex = firstVisibleIndex + maxVisible - 1;
-    }
+    abgui::ListModel::computePagePosition(modelView());
 }
 
 //*******************************
@@ -292,21 +262,8 @@ template <typename LineDataType> std::string GuiMenuBase<LineDataType>::getStatu
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyDown() {
     app.audio().cursor.play();
-    if (!labelsOnly && getVerticalSize() > 1) {
-        int before = selected;
-        if (selected < getVerticalSize() - 1) {
-            if (selected == lastVisibleIndex)
-                adjustPageBy(1);
-            else
-                ++selected;
-            landOnSelectable(1);
-        }
-        if (selected == before) { // the last selectable row: wrap to the first
-            selected = 0;
-            computePagePosition();
-            landOnSelectable(1);
-        }
-    }
+    if (!labelsOnly)
+        abgui::ListModel::stepDown(modelView(), skipper());
 }
 
 //*******************************
@@ -314,21 +271,8 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyDown() {
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyUp() {
     app.audio().cursor.play();
-    if (!labelsOnly && getVerticalSize() > 1) {
-        int before = selected;
-        if (selected > 0) {
-            if (selected == firstVisibleIndex)
-                adjustPageBy(-1);
-            else
-                --selected;
-            landOnSelectable(-1);
-        }
-        if (selected == before) { // the first selectable row: wrap to the last
-            selected = getVerticalSize() - 1;
-            computePagePosition();
-            landOnSelectable(-1);
-        }
-    }
+    if (!labelsOnly)
+        abgui::ListModel::stepUp(modelView(), skipper());
 }
 
 //*******************************
@@ -371,15 +315,8 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::holdRows(int st
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageDown() {
     app.audio().home_up.play();
-    if (!labelsOnly && getVerticalSize() > 1) {
-        if (lastVisibleIndex + maxVisible >= getVerticalSize()) {
-            selected = getVerticalSize() - 1;
-            computePagePosition();
-        } else {
-            adjustPageBy(maxVisible);
-        }
-        landOnSelectable(1);
-    }
+    if (!labelsOnly)
+        abgui::ListModel::pageDown(modelView(), skipper());
 }
 
 //*******************************
@@ -387,15 +324,8 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageDown() {
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageUp() {
     app.audio().home_down.play();
-    if (!labelsOnly && getVerticalSize() > 1) {
-        if (firstVisibleIndex - maxVisible < 0) {
-            selected = 0;
-            computePagePosition();
-        } else {
-            adjustPageBy(-maxVisible);
-        }
-        landOnSelectable(-1);
-    }
+    if (!labelsOnly)
+        abgui::ListModel::pageUp(modelView(), skipper());
 }
 
 //*******************************
@@ -403,11 +333,8 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageUp() {
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doHome() {
     app.audio().home_down.play();
-    if (!labelsOnly && getVerticalSize() > 1) {
-        selected = 0;
-        computePagePosition();
-        landOnSelectable(1);
-    }
+    if (!labelsOnly)
+        abgui::ListModel::home(modelView(), skipper());
 }
 
 //*******************************
@@ -415,11 +342,8 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::doHome() {
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doEnd() {
     app.audio().home_down.play();
-    if (!labelsOnly && getVerticalSize() > 1) {
-        selected = getVerticalSize() - 1;
-        computePagePosition();
-        landOnSelectable(-1);
-    }
+    if (!labelsOnly)
+        abgui::ListModel::end(modelView(), skipper());
 }
 
 //*******************************
