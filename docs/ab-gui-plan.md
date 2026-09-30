@@ -425,6 +425,11 @@ screenshots of them stay in `!autobleem\out\` (private).
     the `coverGlow` frame gets the real rect): **CA1** the diagonal shine + the glow on the real rect (the PS1
     carousel shots change - an expected diff, the owner judges it), **CA4** the aspect table (core loader + tests,
     keyed on `PsGame::db_name`), **CA5** the two-layer placeholder, **CA6** docs.
+12. **The start-up transitions** (the owner, 2026-09-30; with the G5o tween steps, on §7a's transitions): the
+    splash **fades in from a black frame** (as today); going from the splash to the launcher, **the EvolutionUI
+    screen drops in from the top** (a slide-down, eased, over the splash's last frame or black); with the new
+    "Splash screen: Off" row the launcher **fades in from a black frame** instead. Every theme; a DebugDriver
+    `busy` while it runs so the walk waits for it.
     **CA1 (done):** the geometry is core's header-only `core/model/cover_light.h` (`CoverLight::glowBox`,
     `shineSlice`; `tests/core/test_cover_light.cpp`), drawn by the launcher's `Carousel::drawGlow/drawShine`. The
     **shine** is the designer's `sheen.png` (+`@2x`, autobleem-design `launcher/covers/out/`) shipped as the
