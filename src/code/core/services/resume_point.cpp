@@ -107,26 +107,19 @@ string ResumePointService::pictureForSlot(const PsGame &game, int slot) const {
 //*******************************
 // ResumePointService::lastPicture
 //*******************************
-// Whichever slot the game last stopped in - the first one that has a filename file of its own, else the
-// shared one. Note it then looks for slot 0's picture name whatever slot it found, which is how this has
-// always worked.
+// The picture of the first slot that has one - slot 0 when it is kept, else the next slot that is. (It used
+// to read slot 0's picture name whatever slot it found a filename file for, so a game saved only in slots
+// 1-2 had no picture: BUG-37.)
 string ResumePointService::lastPicture(const PsGame &game) const {
     if (game.foreign)
         return "";
 
-    string path = keptFilenameFile(game);
     for (int slot = 0; slot < SlotCount; slot++) {
-        if (DirEntry::exists(slotFilenameFile(game, slot))) {
-            path = slotFilenameFile(game, slot);
-            break;
-        }
+        string picture = pictureForSlot(game, slot);
+        if (!picture.empty())
+            return picture;
     }
-
-    string name;
-    if (!readStateName(path, &name))
-        return "";
-    string picture = keptPictureFile(game, name, 0);
-    return DirEntry::exists(picture) ? picture : "";
+    return "";
 }
 
 //*******************************
