@@ -1026,8 +1026,8 @@ bool loadThemeSpinner(const string &dir, ThemeSpinner &out) {
     string image2x;
     if (!s.image2x.empty())
         image2x = existing(dir, s.image2x);
-    else if (!image.empty() && DirEntry::exists(at2x(image)))
-        image2x = at2x(image);
+    else if (DirEntry::exists(at2x(dir + sep + s.image)))
+        image2x = at2x(dir + sep + s.image); // found next to the 1x's name even when the 1x itself is not there
     if (image.empty() && image2x.empty()) {
         PLOG_WARNING << "Theme spinner: no image in " << dir << " - the ring of dots is drawn instead";
         return false;
