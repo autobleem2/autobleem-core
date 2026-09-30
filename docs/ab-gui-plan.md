@@ -393,3 +393,10 @@ screenshots of them stay in `!autobleem\out\` (private).
 3. GlyphSets - **not drawn by us**: button prompts that only show which button to press are descriptive use of the
    pads' marks (as RetroArch and Steam do). Proposed default set: Kenney's "Input Prompts" (CC0 - Xbox,
    PlayStation, Switch, Steam Deck, keyboard, one style); a theme or a program may replace any glyph.
+4. G5j Play - **a frame + the translated label + a ▶ icon** (not the theme's two images) in a theme that sets it.
+5. G5m / UIREV-10 yes/no values - **switch images only in a theme that ships `switchOn`/`switchOff`**; every other
+   theme keeps the ON/OFF text.
+6. G5r3 footer order - the d-pad hints (Left/Right "Choose") **right after the face buttons**, before L1/R1, L2/R2.
+7. G5r1 / BUG-30 (the "Showing: <set>" bubble after a set change) - **the Options row gets its own name** (the set
+   bubble's time, not "Splash timeout"), **0 = don't show**, and a stored old `showingtimeout=0` (which meant "stay
+   up") is converted once to 2 s so the bubble comes back.
