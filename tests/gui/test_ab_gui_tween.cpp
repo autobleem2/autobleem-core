@@ -465,7 +465,7 @@ TEST_CASE("a tween whose owner is gone never writes again and does not call back
     {
         TweenOwner screen;
         id = c.tweens.start(Tween(y, 0, 100, 100).ease(&abgui::ease::linear).onEnd([&]() { called = true; }), screen);
-        c.at(1025);
+        c.at(1030);
         CHECK(y == doctest::Approx(30.0f));
         CHECK(c.tweens.running(id));
     } // the screen is popped and destroyed
