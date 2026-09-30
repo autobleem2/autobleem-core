@@ -207,8 +207,11 @@ void Gui::wireUiContext() {
     };
     // the clock stays unset: the widgets time by the platform's ticks, as the screens do today
 
-    // the theme's background picture over black (what renderBackground draws)
+    // the launcher's snapshot while a screen opened from it runs (G5r5), else the theme's background picture over black
+    // (what renderBackground draws) - also when the snapshot's pixels were lost with the render targets
     uiContext_.backdropDrawer = [this]() {
+        if (backdrop_.draw(renderer()))
+            return;
         renderer().setDrawColor(Color(0x00, 0x00, 0x00, 0x00));
         renderer().clear();
         renderer().copy(assets_.backgroundImg, nullptr, &assets_.backgroundRect);
@@ -225,8 +228,10 @@ void Gui::wireUiContext() {
         return panel;
     };
     // the theme's logo at its place, and that place (the "please wait" picture's spinner goes under it)
+    // (over the launcher's snapshot, which carries its own logo element, none is drawn - the place is still handed out)
     uiContext_.logoDrawer = [this]() {
-        renderLogo(false);
+        if (!backdrop_.held())
+            renderLogo(false);
         return assets_.logoRect;
     };
     // a short list's compact panel (abgui::List, Gui::setCompactPanel): the text renderer's rows follow it while it is
@@ -459,6 +464,7 @@ void Gui::finish() {
 //*******************************
 void Gui::releaseDisplay() {
     text_.clearTextCache();
+    backdrop_.clear();         // the launcher's snapshot is a texture of the renderer that goes
     assets_.unload();          // before the renderer goes: SDL frees the textures with it
     frames_.release();         // the same for the frames' textures (the specs stay; they load again when next drawn)
     icons_.release();          // and the icons' textures and halos
@@ -522,6 +528,21 @@ void Gui::renderFreeSpace() {
 // the Context's backdrop (wireUiContext: the theme's background picture over black)
 void Gui::renderBackground() {
     uiContext_.drawBackdrop();
+}
+
+//*******************************
+// Gui::setLauncherBackdrop / clearLauncherBackdrop / hasLauncherBackdrop
+//*******************************
+void Gui::setLauncherBackdrop(const Texture &frame) {
+    backdrop_.set(frame, renderer().targetsLost());
+}
+
+void Gui::clearLauncherBackdrop() {
+    backdrop_.clear();
+}
+
+bool Gui::hasLauncherBackdrop() const {
+    return backdrop_.held();
 }
 
 //*******************************

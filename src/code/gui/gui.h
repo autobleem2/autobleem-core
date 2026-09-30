@@ -10,6 +10,7 @@
 #include "../core/services/system.h"
 #include "gui_font.h"
 #include "panel_style.h"
+#include <ab_gui/backdrop.h>
 #include <ab_gui/context.h>
 #include <ab_gui/icon.h>
 #include <ab_gui/spinner.h>
@@ -180,7 +181,22 @@ private:
     // inactiveProvider. Appended last, as disabledVeil_ was
     abgui::InactiveAlphas inactiveAlphas_;
 
+    // the launcher snapshot every screen opened from the launcher draws over (ab_gui G5r5): held while such a screen
+    // runs, drawn by the Context's backdropDrawer (renderBackground) in place of the theme's background and logo,
+    // dropped by releaseDisplay(). Appended last, as inactiveAlphas_ was (no SDK layout change, no AB_SDK_ABI bump)
+    abgui::BackdropSnapshot backdrop_;
+
 public:
+    // The launcher hands over its frame (taken without the hint band and the bubbles) before it opens a screen and
+    // takes it back after: every screen started meanwhile - the classic ones through renderBackground(), the ab_gui
+    // ones and the extensions' (the Store, PSC-Bios) through uiContext().drawBackdrop() - draws over it, and the
+    // theme's logo is not drawn over it (logoDrawer). An invalid frame is ignored. If the render targets are lost while
+    // it is held the screens fall back to the theme's background at once (never a black or garbage frame). Out of line:
+    // no ABI change.
+    void setLauncherBackdrop(const ableem::Texture &frame);
+    void clearLauncherBackdrop();
+    bool hasLauncherBackdrop() const;
+
     // the theme's launcher logo and the logical rect it is drawn in; an invalid texture = the theme has none
     const ableem::Texture &launcherLogo() const { return launcherLogo_; }
     const ableem::Rect &launcherLogoRect() const { return launcherLogoRect_; }
