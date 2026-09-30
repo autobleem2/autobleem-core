@@ -535,8 +535,8 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
     // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip
-    // (G5d), footer (G5r8)
-    REQUIRE(frames.size() == 11);
+    // (G5d), footer (G5r8), hintBar (G5e)
+    REQUIRE(frames.size() == 12);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
     const ableem::ThemeFrame *heading = nullptr;
@@ -606,6 +606,19 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(footer->slice.left == 16);
     CHECK(footer->slice.bottom == 16);
     CHECK(footer->bleed.top == 4);
+    // G5e: the hint bar's panel - slice 28 all round, an 8 px bleed (the art spec's 80 x 80 image), drawn behind the
+    // launcher's two hint lines
+    const ableem::ThemeFrame *hintBar = nullptr;
+    for (const ableem::ThemeFrame &f : frames)
+        if (f.name == "hintBar")
+            hintBar = &f;
+    REQUIRE(hintBar != nullptr);
+    CHECK(hintBar->image == dir + "/frames/hint_bar.png");
+    CHECK(hintBar->image2x == dir + "/frames/hint_bar@2x.png");
+    CHECK(hintBar->slice.left == 28);
+    CHECK(hintBar->slice.bottom == 28);
+    CHECK(hintBar->bleed.right == 8);
+    CHECK(hintBar->tint.empty());
 }
 
 TEST_CASE("themeImageFile: the @2x next to a theme image above scale 1, else the image itself (G4f)") {
@@ -841,7 +854,7 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
         CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
     }
     CHECK(ableem::resolveThemeIconHalo(dir, dir));    // the halo stays on: it shows under the test colours
-    CHECK(ableem::loadThemeFrames(dir).size() == 11); // the frames are untouched by the block
+    CHECK(ableem::loadThemeFrames(dir).size() == 12); // the frames are untouched by the block
 }
 
 TEST_CASE("readThemeLogo: launcher.logo {file, x, y, w, h}, set only with a file and a positive size (G5q)") {

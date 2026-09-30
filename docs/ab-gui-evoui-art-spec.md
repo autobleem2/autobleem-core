@@ -76,7 +76,9 @@ rect - `ab2.0.0` today: x 360, y 642, **900 x 68**; the mockup's is about 840 x 
 art). Each line fills half the bar's height.
 
 **Today.** Nothing: the hints are drawn straight onto the theme's footer image (`launcher.footer`, 1280 x 88), whose
-art is the band. With a `hintBar` frame, draw the footer image **without** its band.
+art is the band. With a `hintBar` frame, draw the footer image **without** its band: the frame is drawn in the band's
+place (right after the footer image, under the covers, the game menu and the hints - G5e), into the `launcher.hintBar`
+rect with its bleed outside it, and the footer image itself is still drawn.
 
 **Over it.** Per hint: its button (a 30 px glyph, a d-pad icon or a chip - 2.3) and the label in `hint` (medium 22 down
 to 14 - the largest that fits the language), centred in its line.

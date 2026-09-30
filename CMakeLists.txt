@@ -180,6 +180,7 @@ add_library(ab_gui STATIC
         ab_gui/include/ab_gui/facts_page.h
         ab_gui/include/ab_gui/footer_shorten.h
         ab_gui/include/ab_gui/frame.h
+        ab_gui/include/ab_gui/hint_bar.h
         ab_gui/include/ab_gui/hold_repeat.h
         ab_gui/include/ab_gui/icon.h
         ab_gui/include/ab_gui/list.h
@@ -198,6 +199,7 @@ add_library(ab_gui STATIC
         ab_gui/src/context.cpp
         ab_gui/src/facts_page.cpp
         ab_gui/src/frame.cpp
+        ab_gui/src/hint_bar.cpp
         ab_gui/src/icon.cpp
         ab_gui/src/list.cpp
         ab_gui/src/keyboard.cpp
