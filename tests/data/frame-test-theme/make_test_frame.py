@@ -38,9 +38,9 @@
 # top-right and bottom-left corners cut, a dark centre at about 70% the hints read over, an 8 px glow. Salmon
 # (250, 128, 114) at 1x, olive (128, 128, 0) at @2x. theme.json: slice 28, bleed 8.
 #
-# toast (G5f): 64x64 - the art spec's notification bubble: a 56x56 body with a 4 px glow, a 2 px rim, the two top corners
+# toast (G5f): 64x64 - the art spec's notification bubble: a 48x48 body (8 px bleed), a 2 px rim, the two top corners
 # cut, a dark centre at about 80% the title and detail read over. Hot pink (255, 105, 180) at 1x, dark teal (0, 100, 100)
-# at @2x. theme.json: slice 20, bleed 4.
+# at @2x. theme.json: slice 20, bleed 8.
 #
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
 # selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
@@ -151,7 +151,7 @@ def hint_bar_shape():
 
 
 def toast_shape():
-    size, bleed, cut = 64, 4, 10
+    size, bleed, cut = 64, 8, 10
     x0, y0, x1, y1 = bleed, bleed, size - bleed, size - bleed
     poly = [(x0 + cut, y0), (x1 - cut, y0), (x1, y0 + cut), (x1, y1), (x0, y1), (x0, y0 + cut)]
     return Shape(size, size, bleed, poly, 2, (20, 16, 28, 204), 100)

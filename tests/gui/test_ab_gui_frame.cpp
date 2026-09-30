@@ -641,12 +641,12 @@ TEST_CASE("Style::toast (G5f): the toast frame, else the panel frame, else the c
     style.toast(ctx, box);
     CHECK(asked == vector<string>{"toast", "panel"});
 
-    // the test theme's toast (64x64, slice 20, bleed 4): the first frame there is drawn, the panel not asked
+    // the test theme's toast (64x64, slice 20, bleed 8): the first frame there is drawn, the panel not asked
     FrameSpec toast;
     toast.file = testFrame("toast.png");
     toast.file2x = testFrame("toast@2x.png");
     toast.slice = Insets::all(20);
-    toast.bleed = Insets::all(4);
+    toast.bleed = Insets::all(8);
     specs["toast"] = toast;
     set.assign(specs);
     REQUIRE(set.frame(renderer, "toast").valid());

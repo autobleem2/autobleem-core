@@ -619,7 +619,7 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(hintBar->slice.bottom == 28);
     CHECK(hintBar->bleed.right == 8);
     CHECK(hintBar->tint.empty());
-    // G5f: the notification bubble - slice 20 all round, a 4 px bleed (the art spec's 64 x 64 image)
+    // G5f: the notification bubble - slice 20 all round, an 8 px bleed (the art spec's 64 x 64 image)
     const ableem::ThemeFrame *toast = nullptr;
     for (const ableem::ThemeFrame &f : frames)
         if (f.name == "toast")
@@ -629,7 +629,7 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(toast->image2x == dir + "/frames/toast@2x.png");
     CHECK(toast->slice.left == 20);
     CHECK(toast->slice.bottom == 20);
-    CHECK(toast->bleed.right == 4);
+    CHECK(toast->bleed.right == 8);
     CHECK(toast->tint.empty());
 }
 
