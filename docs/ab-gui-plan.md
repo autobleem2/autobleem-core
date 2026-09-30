@@ -439,6 +439,12 @@ screenshots of them stay in `!autobleem\out\` (private).
     own (ab2 bakes it into its background); a theme may set `launcher.logo: {file, x, y, w, h}` (1x + @2x via
     G4f) drawn on the launcher screen above the background, under the carousel; unset = nothing drawn (0-diff).
     ab2.0.0 ships its approved C3 logo there, placed as in the approved mockup.
+15. **The save-state picture follows the icon's shape** (the owner, 2026-09-30; a G5 sub-step, **G5s**): the
+    resume icon's picture window (`launcher.menuIcons.resumePicture`, the 68x52 rect) and the resume-slot
+    picker's 2.7x copy paste the game's screenshot as a rectangle, which covers a non-rectangular frame's cut
+    corners (ab2.0.0). A theme may set a **mask PNG** for the window (`launcher.menuIcons.resumePictureMask`,
+    1x + @2x; its alpha is multiplied into the screenshot before it is drawn, in both places); no mask = the
+    rectangle as today (0-diff). The designer draws ab2.0.0's mask from its resume tile.
     **CA1 (done):** the geometry is core's header-only `core/model/cover_light.h` (`CoverLight::glowBox`,
     `shineSlice`; `tests/core/test_cover_light.cpp`), drawn by the launcher's `Carousel::drawGlow/drawShine`. The
     **shine** is the designer's `sheen.png` (+`@2x`, autobleem-design `launcher/covers/out/`) shipped as the
