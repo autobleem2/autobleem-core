@@ -337,6 +337,25 @@ TEST_CASE("the Apps set is built from each Apps/<name>/app.ini") {
     CHECK(apps[0]->base == lib.tmp.at("Apps/Wifi"));
 }
 
+TEST_CASE("an App with no Image= key has no art path; one naming an Image= has it in its folder (BUG-36)") {
+    GameLibraryFixture lib;
+    ConfigIn cfg(lib.tmp, "Origames=false\n");
+    GameQueryService query(lib.library, *cfg);
+
+    lib.tmp.writeFile("Apps/Bare/app.ini", "Title=Bare\nStartup=run.sh\n");
+    lib.tmp.writeFile("Apps/Bare/run.sh", "#!/bin/sh\n");
+    lib.tmp.writeFile("Apps/Pic/app.ini", "Title=Pic\nStartup=run.sh\nImage=icon.png\n");
+    lib.tmp.writeFile("Apps/Pic/run.sh", "#!/bin/sh\n");
+
+    PsGames apps = query.apps();
+
+    REQUIRE(apps.size() == 2);
+    CHECK(apps[0]->title == "Bare");
+    CHECK(apps[0]->image_path == ""); // not the folder, which exists and drew an empty cover
+    CHECK(apps[1]->title == "Pic");
+    CHECK(apps[1]->image_path == lib.tmp.at("Apps/Pic") + "/icon.png");
+}
+
 TEST_CASE("a multi-platform App is listed with the binary this machine runs; one with none is left out") {
     GameLibraryFixture lib;
     ConfigIn cfg(lib.tmp, "Origames=false\n");
