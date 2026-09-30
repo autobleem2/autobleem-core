@@ -93,14 +93,35 @@ string Fonts::defaultClassicFontPath() {
     return Env::getPathToFontsDir() + sep + DefaultClassicFont;
 }
 
-string Fonts::classicFontPath(const string &useDefault, const string &font) {
+string Fonts::classicFontPath(const string &useDefault, const string &font, const string &fallback) {
+    const string standIn = fallback.empty() ? defaultClassicFontPath() : fallback;
     if (useDefault == "true" || font.empty() || font == "--")
-        return defaultClassicFontPath();
+        return standIn;
     for (const string &dir : userFontDirs()) {
         string path = dir + sep + font;
         if (DirEntry::exists(path))
             return path;
     }
     PLOG_WARNING << "Font " << font << " from config.ini is in none of the font folders - using the default";
-    return defaultClassicFontPath();
+    return standIn;
+}
+
+//*******************************
+// Fonts::pickFonts
+//*******************************
+Fonts::Pick Fonts::pickFonts(const string &useDefault, const string &font, const string &language,
+                             const string &themeMedium, const string &themeBold) {
+    Pick pick;
+    pick.medium = themeMedium.empty() ? defaultClassicFontPath() : themeMedium;
+    pick.bold = themeBold.empty() ? Env::getPathToFontsDir() + sep + "OpenSans-Bold.ttf" : themeBold;
+    // the theme's medium is what "Use default font" means; a user's font still wins over it
+    pick.classic = classicFontPath(useDefault, font, pick.medium);
+    pick.userFont = pick.classic != pick.medium;
+    // ...unless the language needs glyphs no theme font has: then the one CJK font draws everything
+    const string cjk = cjkFontFor(language);
+    if (!cjk.empty()) {
+        pick.classic = pick.medium = pick.bold = cjk;
+        pick.userFont = false;
+    }
+    return pick;
 }

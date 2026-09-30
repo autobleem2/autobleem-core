@@ -119,32 +119,32 @@ void ThemeAssets::load() {
 
     // a theme without launcher fonts (and a default theme without them either) gets the shipped pair -
     // Open Sans Medium/Bold (OFL), the stand-in for the console's SST since 2026-09-21
-    // the classic screens' font is the same on every theme - the launcher's Open Sans, or the user's own when Options
-    // says so; a theme's classic.font is not read (2026-09-29, the owner) - so it is never opened either
-    string classicFont =
-        Fonts::classicFontPath(config_.inifile.values["themefont"], config_.inifile.values["font"]);
-    string medium =
-        launcher.fonts.medium.empty() ? Env::getPathToFontsDir() + sep + "OpenSans-Medium.ttf" : launcher.fonts.medium;
-    string bold =
-        launcher.fonts.bold.empty() ? Env::getPathToFontsDir() + sep + "OpenSans-Bold.ttf" : launcher.fonts.bold;
-    // ...unless the language needs glyphs no theme font has: then the one CJK font draws everything
-    string cjk = Fonts::cjkFontFor(config_.inifile.values["language"]);
-    if (!cjk.empty()) {
-        PLOG_INFO << "Language " << config_.inifile.values["language"] << ": every font is " << cjk;
-        classicFont = medium = bold = cjk;
-    }
+    // the classic screens' font is one with the launcher's (UIREV-31): the theme's launcher.fonts medium - Open Sans
+    // Medium on a theme that sets none - or the user's own when Options says so, or the CJK font for a language that
+    // needs it; a theme's classic.font is not read (2026-09-29, the owner) - so it is never opened either
+    const Fonts::Pick pick =
+        Fonts::pickFonts(config_.inifile.values["themefont"], config_.inifile.values["font"],
+                         config_.inifile.values["language"], launcher.fonts.medium, launcher.fonts.bold);
+    const string &medium = pick.medium;
+    const string &bold = pick.bold;
+    string classicFont = pick.classic;
+    const bool cjk = Fonts::cjkFontFor(config_.inifile.values["language"]) != "";
+    if (cjk)
+        PLOG_INFO << "Language " << config_.inifile.values["language"] << ": every font is " << classicFont;
     classicFontFile_ = classicFont;
     PLOG_INFO << "Classic font: " << classicFont;
     Gui::tickBusy();
     themeFont = Fonts::openNewSharedCachedFont(classicFont, Fonts::ClassicFontSize, renderer_);
-    if (!themeFont.valid() && classicFont != Fonts::defaultClassicFontPath()) {
+    bool userFont = pick.userFont;
+    if (!themeFont.valid() && classicFont != medium) {
         // a file that is no font (an empty one crashed every screen drawing with it) - the default instead
         PLOG_WARNING << "Cannot open the font " << classicFont << ", using the default";
-        classicFont = classicFontFile_ = Fonts::defaultClassicFontPath();
+        classicFont = classicFontFile_ = medium;
+        userFont = false;
         themeFont = Fonts::openNewSharedCachedFont(classicFont, Fonts::ClassicFontSize, renderer_);
     }
     fixedFonts().openAllFonts(medium, bold, renderer_);
-    if (cjk.empty() && classicFont != Fonts::defaultClassicFontPath()) {
+    if (userFont) {
         PLOG_INFO << "UI font: " << classicFont;
         themeFonts.openAllFonts(classicFont, classicFont, renderer_); // a user's font has no bold of its own
     } else {
