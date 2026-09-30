@@ -343,6 +343,25 @@ ThemeDisabledVeil readThemeDisabledVeil(const std::string &path);
 ThemeDisabledVeil loadThemeDisabledVeil(const std::string &dir);
 
 //******************
+// The inactive-state alphas (launcher.inactive, ab_gui G5r9)
+//******************
+// How faint a thing that is not active draws: `"inactive": { "resume": 0..255, "tab": 0..255, "barTrack": 0..255 }` -
+// the Resume icon without a resume point, a tab that is not the current one, the track under a progress bar's fill.
+// Each key optional (a key not given, or not an integer, stays -1 = the code's own alpha, 120 today); a value out of
+// range is clamped. Kept out of ThemeSpec for ThemeFrame's reason and read from the theme's own theme.json only.
+struct ThemeInactiveAlphas {
+    int resume = -1;
+    int tab = -1;
+    int barTrack = -1;
+};
+
+// the alphas of the theme.json at `path`; every value -1 for no block, a block of the wrong type or a bad file.
+// Never throws.
+ThemeInactiveAlphas readThemeInactiveAlphas(const std::string &path);
+// the alphas of the theme in `dir` (its own theme.json only)
+ThemeInactiveAlphas loadThemeInactiveAlphas(const std::string &dir);
+
+//******************
 // High-resolution theme images (ab_gui G4f)
 //******************
 // Which file to load for the theme image `file` (a resolved path) at `outputScale`, and its pixels per logical pixel

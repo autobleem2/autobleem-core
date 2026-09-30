@@ -31,7 +31,8 @@
       "switchOn": "icons/switch_on.png", "switchOff": "icons/switch_off.png",
       "storeInstalled": "icons/store_installed.png"
     },
-    "colors": { "disabled": { "color": "#7828c8", "alpha": 130 } },
+    "colors": { "row": "#ffe680", "disabled": { "color": "#7828c8", "alpha": 130 } },
+    "inactive": { "resume": 40, "tab": 50, "barTrack": 200 },
     "spinner": { "image": "spinner/spinner.png", "frames": 8, "fps": 8 }
   }
 }

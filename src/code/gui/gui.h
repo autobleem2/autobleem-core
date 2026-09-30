@@ -175,6 +175,11 @@ private:
     // spinner_ was
     abgui::DisabledVeil disabledVeil_;
 
+    // the current theme's inactive-state alphas (ab_gui G5r9: launcher.inactive of its own theme.json - a value it does
+    // not set stays Unset = the code's own alpha): refilled by loadAssets(), handed out as the Context's
+    // inactiveProvider. Appended last, as disabledVeil_ was
+    abgui::InactiveAlphas inactiveAlphas_;
+
 public:
     // the theme's launcher logo and the logical rect it is drawn in; an invalid texture = the theme has none
     const ableem::Texture &launcherLogo() const { return launcherLogo_; }

@@ -1025,6 +1025,34 @@ ThemeDisabledVeil loadThemeDisabledVeil(const string &dir) {
     return readThemeDisabledVeil(dir + sep + "theme.json");
 }
 
+//*******************************
+// readThemeInactiveAlphas / loadThemeInactiveAlphas
+//*******************************
+ThemeInactiveAlphas readThemeInactiveAlphas(const string &path) {
+    ThemeInactiveAlphas alphas;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return alphas;
+    const json *block = child(launcher, "inactive");
+    if (!block || !block->is_object())
+        return alphas;
+    auto alphaOf = [&](const char *key, int &out) {
+        const json *value = child(*block, key);
+        if (!value || !value->is_number_integer())
+            return;
+        const long long alpha = value->get<long long>();
+        out = alpha < 0 ? 0 : alpha > 255 ? 255 : static_cast<int>(alpha);
+    };
+    alphaOf("resume", alphas.resume);
+    alphaOf("tab", alphas.tab);
+    alphaOf("barTrack", alphas.barTrack);
+    return alphas;
+}
+
+ThemeInactiveAlphas loadThemeInactiveAlphas(const string &dir) {
+    return readThemeInactiveAlphas(dir + sep + "theme.json");
+}
+
 string themeImageFile(const string &file, float outputScale, float &pixelScale) {
     pixelScale = 1.0f;
     if (outputScale <= 1.0f || file.empty())

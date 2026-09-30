@@ -464,6 +464,9 @@ void Style::progress(ableem::Renderer &renderer, const Rect &track, unsigned lon
 
 void Style::progress(Context &ctx, const Rect &track, unsigned long long done, unsigned long long total, Tone trackTone,
                      int trackAlpha, Tone fillTone, int fillAlpha) const {
+    // the style's own track alpha is the theme's `barTrack` inactive alpha when it sets one (G5r9)
+    if (trackAlpha == StyleAlpha)
+        trackAlpha = InactiveAlphas::orToday(ctx.inactiveAlphas().barTrack, progressTrackAlpha);
     progress(ctx.renderer(), track, done, total, trackTone, trackAlpha, fillTone, fillAlpha);
 }
 

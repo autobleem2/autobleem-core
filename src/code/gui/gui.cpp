@@ -242,6 +242,8 @@ void Gui::wireUiContext() {
     uiContext_.spinnerProvider = [this]() { return spinner_.anim(renderer()); };
     // the theme's own `disabled` role (step G5t): unset unless its theme.json has launcher.colors.disabled
     uiContext_.veilProvider = [this]() { return disabledVeil_; };
+    // the theme's own inactive-state alphas (step G5r9): every value unset unless its theme.json has launcher.inactive
+    uiContext_.inactiveProvider = [this]() { return inactiveAlphas_; };
 }
 
 //*******************************
@@ -323,6 +325,11 @@ void Gui::loadAssets(bool reloadMusic) {
         disabledVeil_.color = Color(veil.color.r, veil.color.g, veil.color.b, 255);
         disabledVeil_.alpha = static_cast<unsigned char>(veil.alpha);
     }
+    // the theme's own inactive-state alphas (G5r9): nothing set when it has no launcher.inactive
+    const ableem::ThemeInactiveAlphas inactive = ableem::loadThemeInactiveAlphas(AppBase::get().theme().loadedPath());
+    inactiveAlphas_.resume = inactive.resume;
+    inactiveAlphas_.tab = inactive.tab;
+    inactiveAlphas_.barTrack = inactive.barTrack;
     AppBase::get().audio().loadTheme(reloadMusic);
 
     // the classic screens' text halo, on unless the theme says otherwise; the launcher sets its own

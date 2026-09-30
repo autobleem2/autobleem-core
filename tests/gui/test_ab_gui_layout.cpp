@@ -132,3 +132,37 @@ TEST_CASE("Context::disabledVeil and Style::disabledColor: no role = the row's o
     CHECK(ctx.disabledVeil().alpha == 70);
     CHECK(same(style.disabledColor(ctx, normal), style.description));
 }
+
+TEST_CASE("InactiveAlphas: every value unset = the caller's own alpha; a theme's value wins, clamped (G5r9)") {
+    const abgui::InactiveAlphas none;
+    CHECK(none.resume == abgui::InactiveAlphas::Unset);
+    CHECK(none.tab == abgui::InactiveAlphas::Unset);
+    CHECK(none.barTrack == abgui::InactiveAlphas::Unset);
+    CHECK(abgui::InactiveAlphas::orToday(none.resume, 120) == 120);
+    CHECK(abgui::InactiveAlphas::orToday(none.barTrack, 77) == 77);
+
+    CHECK(abgui::InactiveAlphas::orToday(40, 120) == 40);
+    CHECK(abgui::InactiveAlphas::orToday(0, 120) == 0); // 0 is a value, not unset
+    CHECK(abgui::InactiveAlphas::orToday(255, 120) == 255);
+    CHECK(abgui::InactiveAlphas::orToday(900, 120) == 255);
+}
+
+TEST_CASE("Context::inactiveAlphas: no provider = all unset; the provider's values come through (G5r9)") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    abgui::Context ctx(maybe.gui->renderer());
+    CHECK(ctx.inactiveAlphas().resume == abgui::InactiveAlphas::Unset);
+    CHECK(ctx.inactiveAlphas().tab == abgui::InactiveAlphas::Unset);
+    CHECK(ctx.inactiveAlphas().barTrack == abgui::InactiveAlphas::Unset);
+
+    ctx.inactiveProvider = [] {
+        abgui::InactiveAlphas a;
+        a.tab = 50;
+        return a;
+    };
+    CHECK(ctx.inactiveAlphas().tab == 50);
+    CHECK(ctx.inactiveAlphas().resume == abgui::InactiveAlphas::Unset);
+    CHECK(abgui::InactiveAlphas::orToday(ctx.inactiveAlphas().resume, 120) == 120);
+    CHECK(abgui::InactiveAlphas::orToday(ctx.inactiveAlphas().tab, 120) == 50);
+}

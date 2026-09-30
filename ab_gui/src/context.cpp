@@ -169,4 +169,11 @@ DisabledVeil Context::disabledVeil() const {
     return veilProvider ? veilProvider() : DisabledVeil();
 }
 
+//*******************************
+// Context::inactiveAlphas
+//*******************************
+InactiveAlphas Context::inactiveAlphas() const {
+    return inactiveProvider ? inactiveProvider() : InactiveAlphas();
+}
+
 } // namespace abgui

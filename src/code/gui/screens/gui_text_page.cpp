@@ -8,6 +8,12 @@
 // GuiTextPage::prepareFrame
 //*******************************
 bool GuiTextPage::prepareFrame() {
-    color = abgui::OptionalColor(TextRenderer::toColor(app.theme().classic().textColor, 255));
+    // the lines draw in the theme's `row` role when its launcher.colors sets one (a colour or the name of another),
+    // else - as before, and on every theme that does not - in the classic theme's text colour
+    const ableem::ThemeColorRole &row = app.theme().launcher().colors.row;
+    if (row.color.set || !row.ref.empty())
+        color = abgui::OptionalColor(PanelStyle::styleFromTheme(app.theme().launcher()).row);
+    else
+        color = abgui::OptionalColor(TextRenderer::toColor(app.theme().classic().textColor, 255));
     return true;
 }

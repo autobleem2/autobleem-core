@@ -216,6 +216,12 @@ public:
     using VeilProvider = std::function<DisabledVeil()>;
     VeilProvider veilProvider;
     DisabledVeil disabledVeil() const;
+
+    // Appended (step G5r9): the inactive-state alphas of the current look (style.h, InactiveAlphas) - a theme's own
+    // launcher.inactive block. Unset, or a value left Unset, means the caller's own alpha as always.
+    using InactiveProvider = std::function<InactiveAlphas()>;
+    InactiveProvider inactiveProvider;
+    InactiveAlphas inactiveAlphas() const;
 };
 
 } // namespace abgui

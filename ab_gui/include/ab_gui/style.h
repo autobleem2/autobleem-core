@@ -66,6 +66,22 @@ struct DisabledVeil {
     ableem::Color drawn() const { return ableem::Color(color.r, color.g, color.b, alpha); }
 };
 
+// The inactive-state alphas (G5r9): how faint a thing that is not active draws - the Resume icon when the game has no
+// resume point, a tab that is not the current one, the track of a bubble's progress bar. A theme's own, like the
+// DisabledVeil (not a Style member - Style's layout is the SDK's; the Context hands it out, Context::inactiveAlphas).
+// A value the theme leaves out is Unset: the caller keeps today's alpha (`orToday`), so no theme = the same drawing.
+struct InactiveAlphas {
+    static constexpr int Unset = -1;
+    int resume = Unset;   // the Resume icon and its picture without a resume point (today 120)
+    int tab = Unset;      // a tab icon that is not the current one (today 120)
+    int barTrack = Unset; // the track under a progress bar's fill (today Style::progressTrackAlpha, 120)
+
+    // `value` as an alpha, or `today` when unset
+    static unsigned char orToday(int value, unsigned char today) {
+        return value < 0 ? today : static_cast<unsigned char>(value > 255 ? 255 : value);
+    }
+};
+
 // a colour of the style by its role, for the primitives that draw in "the text colour" or "the edge colour"
 // with an alpha of the caller's choosing
 enum class Tone {

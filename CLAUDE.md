@@ -498,6 +498,24 @@ include path to the extensions.
   BadgeInset 24)` and `centredIn(outer, w, h)` (the letter-jump box). Test theme: a `storeInstalled` icon (a tile with
   a check cut out; orange 1x, sky blue @2x) and `"colors": { "disabled": { "color": "#7828c8", "alpha": 130 } }` (a
   purple veil). Tests: `tests/gui/test_ab_gui_layout.cpp`, `tests/core/test_theme_spec.cpp`.
+- **The last Renderer-only calls, the inactive alphas and the plain text** (G5r7, G5r9; the standardisation audit). The
+  Store's spinner and tab underline, the pad wizard's element-row selection and hold bar, the game detail pane's rule
+  and cover plate and the Store's download bar go through the Context overloads (`Style::spinner/tab/selection/
+  progress/vrule/box(ctx, ...)`), so a theme's spinner strip, `selection` frame and roles reach them; no theme = the same
+  calls. The hard-coded inactive alphas (Resume 120, an inactive set-picker tab 120, the notification bubble's bar
+  track 120) are `abgui::InactiveAlphas` (style.h: `resume`, `tab`, `barTrack`, each `Unset` = -1 or 0..255,
+  `orToday(value, today)`), a theme's own `launcher.inactive` block (`ableem::readThemeInactiveAlphas(path)`/
+  `loadThemeInactiveAlphas(dir)` -> `ThemeInactiveAlphas`, every key optional, clamped) - **not a `Style`/`ThemeSpec`
+  member** (SDK layouts, no `AB_SDK_ABI` bump), handed out by the Context (`inactiveProvider`, `inactiveAlphas()`,
+  appended after `veilProvider`), `Gui::inactiveAlphas_` (appended after `disabledVeil_`) filled in `loadAssets()`.
+  `Style::progress(ctx, ...)` with `StyleAlpha` takes the `barTrack` value when the theme has one, else
+  `progressTrackAlpha`. A disabled row's text in `description` (G5t's `Style::disabledColor`) was already in every own row
+  loop (System menu, Extensions, Processors, the editor); the Store has no disabled row since G5t. `GuiTextPage`'s lines
+  take the theme's `row` role when its `launcher.colors` sets one (a colour or a name), else the classic text colour as
+  before (the role is unset on `default`/`ab2`). `text_renderer.cpp`'s back plate builds a default `abgui::Style()` only
+  for `box(Tone::Black, 70, Tone::None)`, which reads no style colour - left as it is. Test theme: `"row": "#ffe680"` and
+  `"inactive": { "resume": 40, "tab": 50, "barTrack": 200 }`. Tests: `tests/gui/test_ab_gui_layout.cpp`,
+  `tests/core/test_theme_spec.cpp`.
 - **`PanelStyle` is an `abgui::Style`** (since G3z; an adapter holding its own colours until then): the colour roles,
   metrics and every primitive on a Renderer or a Context are the Style's; PanelStyle adds the old constants
   (`HeaderHeight`...), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, `style()`/`fromStyle()`, and the

@@ -1070,3 +1070,58 @@ TEST_CASE("the test theme's spinner (tests/data/frame-test-theme): 8 frames at 8
     CHECK(s.frames == 8);
     CHECK(s.fps == 8);
 }
+
+TEST_CASE("readThemeInactiveAlphas: launcher.inactive - each key optional, clamped, bad ones stay unset (G5r9)") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("all.json", "{ \"launcher\": { \"inactive\": { \"resume\": 40, \"tab\": 50, \"barTrack\": 200 } } }");
+    ableem::ThemeInactiveAlphas a = ableem::readThemeInactiveAlphas(tmp.at("all.json"));
+    CHECK(a.resume == 40);
+    CHECK(a.tab == 50);
+    CHECK(a.barTrack == 200);
+
+    // one key: the others keep -1 (the code's own alpha)
+    tmp.writeFile("one.json", "{ \"launcher\": { \"inactive\": { \"tab\": 0 } } }");
+    a = ableem::readThemeInactiveAlphas(tmp.at("one.json"));
+    CHECK(a.resume == -1);
+    CHECK(a.tab == 0);
+    CHECK(a.barTrack == -1);
+
+    // out of range clamps; a string or a float is ignored
+    tmp.writeFile("range.json",
+                  "{ \"launcher\": { \"inactive\": { \"resume\": 999, \"tab\": -5, \"barTrack\": \"x\" } } }");
+    a = ableem::readThemeInactiveAlphas(tmp.at("range.json"));
+    CHECK(a.resume == 255);
+    CHECK(a.tab == 0);
+    CHECK(a.barTrack == -1);
+    tmp.writeFile("float.json", "{ \"launcher\": { \"inactive\": { \"resume\": 12.5 } } }");
+    CHECK(ableem::readThemeInactiveAlphas(tmp.at("float.json")).resume == -1);
+
+    // no block, a block of the wrong type, a bad file, no file: all unset
+    tmp.writeFile("noblock.json", "{ \"launcher\": {} }");
+    tmp.writeFile("number.json", "{ \"launcher\": { \"inactive\": 7 } }");
+    tmp.writeFile("bad.json", "{ \"launcher\": { \"inactive\": ");
+    for (const char *name : {"noblock.json", "number.json", "bad.json", "none.json"}) {
+        a = ableem::readThemeInactiveAlphas(tmp.at(name));
+        CHECK_MESSAGE(a.resume == -1, name);
+        CHECK_MESSAGE(a.tab == -1, name);
+        CHECK_MESSAGE(a.barTrack == -1, name);
+    }
+}
+
+TEST_CASE("loadThemeInactiveAlphas and the test theme's inactive block (tests/data/frame-test-theme) (G5r9)") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("t/theme.json", "{ \"launcher\": { \"inactive\": { \"resume\": 10 } } }");
+    CHECK(ableem::loadThemeInactiveAlphas(tmp.at("t")).resume == 10);
+    CHECK(ableem::loadThemeInactiveAlphas(tmp.at("nothing")).resume == -1);
+
+    const ableem::ThemeInactiveAlphas a =
+        ableem::loadThemeInactiveAlphas(string(AB_TEST_DATA_DIR) + "/frame-test-theme");
+    CHECK(a.resume == 40);
+    CHECK(a.tab == 50);
+    CHECK(a.barTrack == 200);
+
+    // the test theme's `row` role: a colour, so the text page's lines take it
+    ableem::ThemeSpec spec;
+    REQUIRE(spec.load(string(AB_TEST_DATA_DIR) + "/frame-test-theme/theme.json"));
+    CHECK(spec.launcher.colors.row.color.set);
+}
