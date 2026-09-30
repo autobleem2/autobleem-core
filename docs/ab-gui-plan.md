@@ -448,6 +448,20 @@ screenshots of them stay in `!autobleem\out\` (private).
     corners (ab2.0.0). A theme may set a **mask PNG** for the window (`launcher.menuIcons.resumePictureMask`,
     1x + @2x; its alpha is multiplied into the screenshot before it is drawn, in both places); no mask = the
     rectangle as today (0-diff). The designer draws ab2.0.0's mask from its resume tile.
+16. **The Store step and the disabled veil** (the owner, 2026-09-30; a G5 sub-step, **G5t**): the Store's rows sit on
+    the selection frame like every other list; an **installed item is a normal row with an "Installed" badge** at the
+    row's right (vertically centred, 24 px from the list panel's inner right edge; a theme icon `storeInstalled`, the
+    theme's own - ab2.0.0's is the designer's cyan check tile, 32x32 + @2x; no icon = a code-drawn mark) - no veil;
+    the details pane and the hint bar are framed; the **letter-jump box is centred on the list panel**, drawn with the
+    `panel` frame (no new piece). The **disabled-row veil** (`Style::disabled`, black at alpha 150 - too dark, the
+    owner on the PSC) becomes a colour role `disabled` (colour + alpha; `default`/`ab2` keep black 150, 0-diff;
+    ab2.0.0 a lighter veil in its panel tone, the designer's value) and a disabled row's text is drawn in the
+    `description` role - the owner left the look to the PM.
+17. **The RetroArch start picture plays the theme's spinner** (the owner, 2026-09-30; a G5p rider, **G5p2**):
+    `absplash` (the separate program that holds `retroarch.jpg` until RetroArch's video is up) plays the selected
+    theme's `launcher.spinner` strip (G5p) centred at (640, 480) of the 1280x720 picture - RetroArch reports no
+    progress, so no bar. The designer's new `retroarch.jpg` (RA icon over "RetroArch", no "loading..." text, no
+    baked spinner) ships with it; a theme without a strip = the code ring of dots.
     **CA1 (done):** the geometry is core's header-only `core/model/cover_light.h` (`CoverLight::glowBox`,
     `shineSlice`; `tests/core/test_cover_light.cpp`), drawn by the launcher's `Carousel::drawGlow/drawShine`. The
     **shine** is the designer's `sheen.png` (+`@2x`, autobleem-design `launcher/covers/out/`) shipped as the
