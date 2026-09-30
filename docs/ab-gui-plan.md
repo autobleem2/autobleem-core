@@ -147,7 +147,7 @@ data), the extension runtime, the game-aware screens in ab_ui and everything in 
 | G1 | this document | - | the owner's OK |
 | G2 | `ab_gui` target; `PanelStyle` -> `abgui::Style` + primitives, the 7 new primitives; every caller outside evoui draws through them (keyboard, busy/progress, About, splash, text page, detail pane, the Store's boxes/tabs/progress/toast, PSC-Bios' hold bar) | none | screenshot diff before/after, every screen, 2 themes, on the VM |
 | G3 | widgets move: `List` from `GuiMenuBase`, `ActionMenu`, `Confirm`, `Keyboard`, `FactsPage`, `TextPage`, `Busy`; `Context` replaces the `Gui`/`AppBase` look-ups; actions + ActionMap under the old hooks | none | the same diff; one **ABI bump** at the end, the Store and PSC-Bios rebuilt once |
-| G4 | frames (9-slice + hi-res images) in `Style`, `launcher.frames` in `theme.json`, `docs/theme-format.md` | only with a theme that sets frames (`ab2.0.0`) | default/ab2 diff unchanged; ab2.0.0 against its mockups |
+| G4 | frames (9-slice + hi-res images) for the `Style`'s primitives, `launcher.frames` in `theme.json`, `docs/theme-format.md` - sub-steps a-g below | only with a theme that sets frames (`ab2.0.0`) | default/ab2 diff unchanged; ab2.0.0 against its mockups |
 | G5 | evoui's own pieces on the primitives (badges, Play, menu tiles, the hint bar, the banner/bubble, the cover glow) | only with such a theme | as G4 |
 | later | FocusGroup beyond lists, GlyphSets, Confirm/Back swap | new options | per feature |
 
@@ -199,6 +199,57 @@ an adapter over it with its header untouched (or, where it cannot be, left as it
 The DebugDriver keeps seeing what it sees today in every step (the screen names on its stack, `items`/`selected`,
 `busy`): the scripts in `docs/testing.md` must run unchanged; a widget reports itself from G3h on, the per-screen
 publishing code goes in z (z2: it is the screens' own out-of-line code, no ABI change).
+
+### G4 sub-steps
+
+G4 brings the frames of 3. and the high-resolution images of 9. in, as small steps in the G3 manner: each one core
+commit (+ the launcher's gitlink and its own callers), built, run through the core suites, and checked by the
+**masked screenshot diff of the 58 screens against the baseline on `default` and `ab2` - 0 differ**. **Frames are
+strictly opt-in**: a theme without `launcher.frames` (every shipped theme today) draws exactly as before, because
+every primitive asks for its frame first and, finding none, runs its old code unchanged, call for call. The first
+set of frames is the owner's (2026-09-30): **panel, row selection, heading band, key, text field**; the rest of 3.'s
+list (chip, progress, tab, tile, badge, toast) is a later step. The designer draws them in parallel from
+`docs/ab-gui-frames-spec.md`, which is also what a theme author reads.
+
+**The frame model.** A frame is a PNG with alpha drawn as a 9-slice into a box: the four corners 1:1, the four edges
+stretched along their length, the centre stretched both ways (or left out - `fill: false`). Its numbers are logical
+(1280x720 units): `slice` - the corners' and edges' size from the image's outer edge, `bleed` - how far the image
+reaches outside the box (a glow, a shadow); an `@2x` image (twice the size, the same numbers) is drawn instead of
+the 1x one when the output scale is above 1 (a Pi or a PC at 1080p), or on every screen when it is the only one -
+the GPU scales it down on the console's 720p. `tint` names a colour role (`edge`, `selectionBand`, ...): the image
+is multiplied by it, so a white/grey frame follows the theme's `launcher.colors`; without it the image's own
+colours are drawn. In `theme.json`:
+`"launcher": { "frames": { "panel": { "image": "frames/panel.png", "slice": 24, "bleed": 8 } } }` (the spec has
+all of it).
+
+**Where the frames live - no ABI bump.** Not in `Style`: `PanelStyle` derives from it and extensions hold a
+`PanelStyle` by value, so a new `Style` member is a layout change (ABI 8). Not in `ThemeSpec`/`LauncherTheme`/
+`ThemeAssets` either (their layouts are the SDK's). Instead:
+- `abgui::FrameSet` holds the frames (the specs, the textures loaded on first use, dropped with the display) and the
+  **Context** hands them out through a provider (`frameProvider`/`frame(name)`, appended - no extension uses the
+  Context's layout); `Style` gains non-virtual functions only (`drawFrame(ctx, name, box)`, `colorByName`), so its
+  layout, and `PanelStyle`'s, stay.
+- `theme.json`'s `launcher.frames` is read by a new free function in lib_ableem's engine (`ableem::loadThemeFrames(
+  themeDir)` - the theme's own file only, never merged over `default`, so a frame can never reach a theme that did
+  not ask for it); `Gui` keeps the `FrameSet` as a member appended after `stack_` (Gui is built only by the host),
+  refills it in `loadAssets()` and releases its textures in `releaseDisplay()`.
+- A primitive draws its frame only through its `Context` overload: the `Renderer` overloads stay code-drawn, so each
+  caller that should take a frame moves to the Context overload in the step for its frame (a move that changes
+  nothing without a frame - the Context overload runs the Renderer one then).
+
+| Step | What | Files | Visible change | Check |
+|---|---|---|---|---|
+| **G4a** (senior) | **The mechanism, the panel, a test frame.** ab_gui `frame.h`: `Insets`, `FrameSpec` (1x/@2x files, slice, bleed, fill, tint), `Frame` (a loaded one), the pure `framePieces()` (the 9 source/destination rects - corners kept, a box too small for the corners shrinks them in proportion, an image smaller than its slices draws nothing), `FrameSet` (`assign`/`release`/`frame(renderer, name)`, the pure `pickFile` for the 1x/@2x choice); `Style::drawFrame(ctx, name, box)` (the frame from the Context, tinted by `colorByName`, false when there is none) and `Style::sheet(ctx, rect)` draws the **`panel`** frame when there is one; Context appended `frameProvider`/`frame()`; engine `ThemeInsets`/`ThemeFrame`/`readThemeFrames(path)`/`loadThemeFrames(dir)` (a number or `{left,top,right,bottom}` for slice/bleed; images resolved in the theme's folder, `<stem>@2x<ext>` found next to the 1x); `Gui::frames_` appended, filled in `loadAssets()`, released in `releaseDisplay()`, wired as the provider. A test theme in `tests/data/frame-test-theme/` (only `launcher.frames.panel`, over `default`): a cut-corner dark panel with a 2 px cyan rim and an 8 px cyan glow; its `@2x` has an **orange** rim, so a shot shows which image was picked. | `ab_gui/.../frame.h`, `ab_gui/src/frame.cpp`, `style.h/.cpp`, `context.h/.cpp`, `lib_ableem/.../theme_spec.h`, `theme_spec.cpp`, `gui/gui.h/.cpp`, `CMakeLists.txt`, `tests/gui/test_ab_gui_frame.cpp`, `tests/core/test_theme_spec.cpp`, `tests/CMakeLists.txt`, `tests/data/frame-test-theme/*`; launcher `docs/theme-format.md` | none on default/ab2; with the test theme every panel drawn through `Panel::sheet` - Options and every list, the editors, Game Manager, Memory Cards, Hardware Information, Confirm, the text and facts pages, the keyboard, the action menus (the Store's, PSC-Bios') - is the test frame. The launcher's own evoui panels keep the code-drawn sheet until G4b | the 58-screen diff 0 on default and ab2; the test theme: Options, a Confirm, the keyboard shot at scale 1 (cyan rim) and at an output scale above 1 (orange rim); `test_ab_gui_frame`, `test_theme_spec` |
+| **G4b** | **The launcher's panels take the panel frame**: the evoui screens that draw `Style::sheet(renderer, ...)` move to `sheet(gui->uiContext(), ...)` - System and Quick menu (`GuiSystemMenu`), Extensions, Processors, the set picker, the update prompt, the notification bubble (not the pad battery plate). | launcher `evoui/screens/evoui_{system_menu,extensions,processors,set_picker,update}.cpp`, `evoui/controls/evoui_notification_bubble.cpp` | none on default/ab2; the test theme frames these too | the diff 0; the test theme's System menu, set picker, bubble |
+| **G4c** | **Row selection** (`selection`): `Style::selection(ctx, rect)` draws the frame over the row's full extent instead of the band and the bar. A framed selection is drawn **under** the row's text: `abgui::List` draws it before its rows when there is a `selection` frame (the order without one stays: rows, then the band over them); `TextRenderer::renderSelectionBox` and the evoui callers (System menu, Extensions, Processors, set picker, update) go through the Context. | `style.cpp`, `list.cpp`, `gui/text_renderer.cpp`, the launcher's evoui screens | none on default/ab2 | the diff 0; the test theme gains a `selection` test frame |
+| **G4d** | **Heading band** (`heading`): `Style::label(ctx, rect)`; `TextRenderer::renderLabelBox` and the evoui callers (button guide, Extensions, System menu) through the Context. | `style.cpp`, `gui/text_renderer.cpp`, the launcher's evoui screens | none on default/ab2 | the diff 0; test frame |
+| **G4e** | **Keys and the text field** (`key`, `keyFunction`, `keyLit`, `keySelected`, `field`): `Style::key/field(ctx, ...)` - a missing `keyFunction`/`keyLit` falls back to `key`, a missing `keySelected` to `key` with today's selected outline over it; `abgui::Keyboard` draws through the Context overloads (so the Store's and PSC-Bios' keyboards follow - the same widget). The caret stays code-drawn in `text`. | `style.cpp`, `keyboard.cpp` | none on default/ab2 | the diff 0; the keyboard with test frames |
+| **G4f** | **High-resolution theme images** (9.): lib_ableem `Texture::loadFile(renderer, path, pixelScale)` (a new overload: the texture's existing `pixelScale_` set, so `size()` stays logical and `copy()` maps a source rect - no layout change); `ThemeAssets` loads `<stem>@2x<ext>` instead of the 1x file when the output scale is above 1 and it exists. Audited per image before it switches: every place that takes a texture's `size()` or reads the file's pixels (`Texture::opaqueBounds`, the check switch's margin, `outlineOf`) must work in logical units. May land as f1 (the classic background and logo, the hint and button icons) and f2 (the launcher's images). | `lib_ableem/.../texture.h`, `texture.cpp`, `gui/theme_assets.cpp`, launcher `evoui` image loads | none on default/ab2 (they ship no `@2x`) | the diff 0 at scale 1 and at 1.5 |
+| **G4g** | **The real frames**: the designer's first set as a new theme in `autobleem-themes` (`ab2.0.0`), checked against the owner's mockups; `docs/theme-format.md` final. | autobleem-themes | only with that theme | the mockups, on the VM, then the owner's device |
+
+G4a-e are each small enough for one brief; G4a is the senior one (the model and where it lives), b-e are mechanical
+over it. `docs/theme-format.md` (launcher) gets its `launcher.frames` section in G4a and a row per frame as each step
+lands.
 
 ## 12. The owner's decisions (2026-09-30)
 
