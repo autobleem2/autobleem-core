@@ -208,6 +208,9 @@ public:
     // the sheet and its edge; through the Context, the "panel" frame instead when there is one
     void sheet(ableem::Renderer &renderer, const ableem::Rect &panel) const;
     void sheet(Context &ctx, const ableem::Rect &panel) const;
+    // a notification bubble's panel (G5f): the "toast" frame when the Context has one, else the "panel" frame (what
+    // sheet() draws since G4b), else the code-drawn sheet and edge - so a theme without a toast frame is unchanged
+    void toast(Context &ctx, const ableem::Rect &panel) const;
     // a one-pixel rule across the panel, inset, at y
     void rule(ableem::Renderer &renderer, const ableem::Rect &panel, int y) const;
     void rule(Context &ctx, const ableem::Rect &panel, int y) const;
