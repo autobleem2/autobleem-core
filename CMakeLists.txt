@@ -86,6 +86,7 @@ endif()
 # ---- ab_core: the SDL-free model + services ----
 add_library(ab_core STATIC
         src/code/core/main.h
+        src/code/core/model/cover_light.h
         src/code/core/model/game_set.h
         src/code/core/model/ps_game.cpp
         src/code/core/model/session.h

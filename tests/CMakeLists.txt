@@ -12,6 +12,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/harness.cmake)
 
 ab_add_test(test_cd_image core/test_cd_image.cpp)
 ab_add_test(test_clock core/test_clock.cpp)
+ab_add_test(test_cover_light core/test_cover_light.cpp)
 ab_add_test(test_output_mode core/test_output_mode.cpp)
 ab_add_test(test_process_stats core/test_process_stats.cpp)
 ab_add_test(test_config core/test_config.cpp)

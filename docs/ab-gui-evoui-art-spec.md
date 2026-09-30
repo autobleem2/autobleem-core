@@ -207,8 +207,9 @@ frame it scales with the cover**: as the row scrolls the cover shrinks towards a
 bleed shrink with it (all numbers are for the 222 box), and it fades out as the cover leaves the middle. It breathes
 (80-100%, 5.6 s). It is drawn **behind** the covers and their reflections.
 
-**Today.** A soft square of light in `colors.selection` (white without it), brightest behind the cover, reaching
-**44 px** past its edges, at 55% strength. The mockup's accent line under the cover belongs in this frame's bottom
+**Today.** A soft light in `colors.selection` (white without it), brightest behind the cover, reaching **44 px** past
+each edge of the face - its real width and height, so a tall or a wide big box is lit round its own shape (CA1) - at
+55% strength. The mockup's accent line under the cover belongs in this frame's bottom
 bleed (about 8 px under the box).
 
 | | |
