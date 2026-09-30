@@ -372,3 +372,53 @@ TEST_CASE("Style::selection through a Context: the selection frame when the prov
     CHECK(style.drawFrame(ctx, "selection", row));
     style.selection(ctx, row);
 }
+
+TEST_CASE("Style::label through a Context: the heading frame when the provider has one, else the faint band") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+    const Rect band(20, 20, 400, 24);
+
+    // no provider: the code-drawn band (nothing to see here but that it runs)
+    style.label(ctx, band);
+
+    // a provider with a panel frame only: the heading is asked for, not found, and nothing else is drawn as a frame
+    FrameSet set;
+    FrameSpec panel;
+    panel.file = testFrame("panel.png");
+    panel.slice = TestSlice;
+    panel.bleed = TestBleed;
+    map<string, FrameSpec> specs;
+    specs["panel"] = panel;
+    set.assign(specs);
+    vector<string> asked;
+    ctx.frameProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.frame(renderer, name);
+    };
+    style.label(ctx, band);
+    REQUIRE(asked.size() == 1);
+    CHECK(asked[0] == "heading");
+    CHECK_FALSE(style.drawFrame(ctx, "heading", band));
+
+    // the test theme's heading frame (40x24, slice 12/6, no bleed)
+    FrameSpec heading;
+    heading.file = testFrame("heading.png");
+    heading.file2x = testFrame("heading@2x.png");
+    heading.slice = Insets{12, 6, 12, 6};
+    heading.bleed = Insets::all(0);
+    specs["heading"] = heading;
+    set.assign(specs);
+    const abgui::Frame f = set.frame(renderer, "heading");
+    REQUIRE(f.valid());
+    CHECK(f.texture.size().w == 40);
+    CHECK(f.texture.size().h == 24);
+    CHECK(style.drawFrame(ctx, "heading", band));
+    asked.clear();
+    style.label(ctx, band);
+    REQUIRE(asked.size() == 1);
+    CHECK(asked[0] == "heading");
+}

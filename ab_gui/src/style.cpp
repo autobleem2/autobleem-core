@@ -261,6 +261,8 @@ void Style::label(ableem::Renderer &renderer, const Rect &rect) const {
 }
 
 void Style::label(Context &ctx, const Rect &rect) const {
+    if (drawFrame(ctx, "heading", rect))
+        return;
     label(ctx.renderer(), rect);
 }
 

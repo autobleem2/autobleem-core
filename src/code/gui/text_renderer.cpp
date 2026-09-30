@@ -511,6 +511,13 @@ void TextRenderer::renderLabelBox(int line, int yoffset, int rightEdge) {
     PanelStyle::fromTheme(theme_.launcher()).label(renderer_, rectSelection);
 }
 
+void TextRenderer::renderLabelBox(abgui::Context &ctx, int line, int yoffset, int rightEdge) {
+    int fontHeight = themeFont_.lineHeight();
+    const Rect rectSelection =
+        abgui::List::band(getOpscreenRectOfTheme(), yoffset + fontHeight * line, fontHeight, 0, rightEdge);
+    PanelStyle::fromTheme(theme_.launcher()).label(ctx, rectSelection);
+}
+
 //*******************************
 // TextRenderer::renderDisabledBox
 //*******************************

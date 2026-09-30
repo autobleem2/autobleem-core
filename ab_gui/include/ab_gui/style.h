@@ -192,6 +192,7 @@ public:
     void disabled(Context &ctx, const ableem::Rect &rect) const;
     // a heading row (a label between the rows): a faint band in the edge colour
     void label(ableem::Renderer &renderer, const ableem::Rect &rect) const;
+    // the theme's `heading` frame (G4d) in the box when it has one, else the faint band
     void label(Context &ctx, const ableem::Rect &rect) const;
     // a small triangle at (cx, cy) pointing up (direction -1) or down (1): more rows that way
     void scrollMarker(ableem::Renderer &renderer, int cx, int cy, int direction) const;

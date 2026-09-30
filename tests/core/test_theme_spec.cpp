@@ -532,14 +532,17 @@ TEST_CASE("loadThemeFrames: the images resolved in the theme's folder, the @2x f
 TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a check expects") {
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
-    REQUIRE(frames.size() == 2);
+    REQUIRE(frames.size() == 3);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
+    const ableem::ThemeFrame *heading = nullptr;
     for (const ableem::ThemeFrame &f : frames) {
         if (f.name == "panel")
             panel = &f;
         if (f.name == "selection")
             selection = &f;
+        if (f.name == "heading")
+            heading = &f;
     }
     REQUIRE(panel != nullptr);
     CHECK(panel->image == dir + "/frames/panel.png");
@@ -556,4 +559,14 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(selection->slice.bottom == 10);
     CHECK(selection->bleed.left == 4);
     CHECK(selection->tint.empty());
+    // G4d: the heading band - slice 12 at the sides and 6 top and bottom, no bleed
+    REQUIRE(heading != nullptr);
+    CHECK(heading->image == dir + "/frames/heading.png");
+    CHECK(heading->image2x == dir + "/frames/heading@2x.png");
+    CHECK(heading->slice.left == 12);
+    CHECK(heading->slice.right == 12);
+    CHECK(heading->slice.top == 6);
+    CHECK(heading->slice.bottom == 6);
+    CHECK(heading->bleed.left == 0);
+    CHECK(heading->tint.empty());
 }

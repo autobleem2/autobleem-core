@@ -9,8 +9,12 @@
 # text reads over. The 1x rim is magenta, the @2x one lime (the panel's are cyan and orange).
 # theme.json: slice left/right 12, top/bottom 10, bleed 4.
 #
-# Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40) and
-# selection@2x.png (96x80) next to this script.
+# heading (G4d): a 40x24 band, the whole image is the box (no bleed), a 2 px rim and a faint white centre. The 1x rim is
+# yellow, the @2x one blue.
+# theme.json: slice left/right 12, top/bottom 6, bleed 0.
+#
+# Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
+# selection@2x.png (96x80), heading.png (40x24) and heading@2x.png (80x48) next to this script.
 import math
 import os
 import struct
@@ -67,6 +71,12 @@ def selection_shape():
     return Shape(w, h, bleed, poly, 2, (255, 255, 255, 60), 140)
 
 
+def heading_shape():
+    w, h = 40, 24
+    poly = [(0, 0), (w, 0), (w, h), (0, h)]
+    return Shape(w, h, 0, poly, 2, (255, 255, 255, 30), 0)
+
+
 def render(shape, scale, rim):
     w, h = shape.width * scale, shape.height * scale
     ss = 4
@@ -107,11 +117,13 @@ def write_png(path, w, h, rows):
 def main():
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frames")
     os.makedirs(out, exist_ok=True)
-    panel, selection = panel_shape(), selection_shape()
+    panel, selection, heading = panel_shape(), selection_shape(), heading_shape()
     write_png(os.path.join(out, "panel.png"), *render(panel, 1, (0, 229, 255)))
     write_png(os.path.join(out, "panel@2x.png"), *render(panel, 2, (255, 152, 0)))
     write_png(os.path.join(out, "selection.png"), *render(selection, 1, (255, 0, 200)))
     write_png(os.path.join(out, "selection@2x.png"), *render(selection, 2, (140, 255, 0)))
+    write_png(os.path.join(out, "heading.png"), *render(heading, 1, (255, 220, 0)))
+    write_png(os.path.join(out, "heading@2x.png"), *render(heading, 2, (0, 90, 255)))
 
 
 if __name__ == "__main__":

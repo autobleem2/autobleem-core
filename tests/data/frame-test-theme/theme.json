@@ -4,7 +4,9 @@
     "frames": {
       "panel": { "image": "frames/panel.png", "slice": 24, "bleed": 8 },
       "selection": { "image": "frames/selection.png", "slice": { "left": 12, "top": 10, "right": 12, "bottom": 10 },
-                     "bleed": 4 }
+                     "bleed": 4 },
+      "heading": { "image": "frames/heading.png", "slice": { "left": 12, "top": 6, "right": 12, "bottom": 6 },
+                   "bleed": 0 }
     }
   }
 }
