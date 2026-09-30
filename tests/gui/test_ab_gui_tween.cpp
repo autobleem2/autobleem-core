@@ -107,8 +107,8 @@ TEST_CASE("the other easings follow the textbook curves and start at 0, end at 1
         CHECK(abgui::ease::inOutCubic(t) == doctest::Approx(refInOutCubic(t)).epsilon(1e-6));
         CHECK(abgui::ease::outBack(t) == doctest::Approx(refOutBack(t)).epsilon(1e-5));
     }
-    for (abgui::Easing e : {&abgui::ease::outCubic, &abgui::ease::inCubic, &abgui::ease::inOutCubic,
-                            &abgui::ease::outBack}) {
+    for (abgui::Easing e :
+         {&abgui::ease::outCubic, &abgui::ease::inCubic, &abgui::ease::inOutCubic, &abgui::ease::outBack}) {
         CHECK(e(0.0f) == 0.0f);
         CHECK(e(1.0f) == 1.0f);
         CHECK(e(-0.5f) == 0.0f); // clamped outside the time
@@ -127,7 +127,8 @@ TEST_CASE("outBack overshoots by about 10% and comes back") {
 
 TEST_CASE("ease::pulse is pulseWave over one period, and a looping pulse tween is pulseWave itself") {
     for (long ms = 0; ms < 1000; ms += 13)
-        CHECK(abgui::ease::pulse(static_cast<float>(ms) / 1000.0f) == doctest::Approx(pulseWave(ms, 1000)).epsilon(1e-5));
+        CHECK(abgui::ease::pulse(static_cast<float>(ms) / 1000.0f) ==
+              doctest::Approx(pulseWave(ms, 1000)).epsilon(1e-5));
     CHECK(abgui::ease::pulse(0.0f) == 0.0f);
     CHECK(abgui::ease::pulse(1.0f) == 0.0f); // the next period's start, as pulseWave's phase 0
     CHECK(abgui::ease::pulse(0.5f) == doctest::Approx(1.0f));
@@ -343,14 +344,55 @@ TEST_CASE("an end callback may start the next tween; it starts at that time") {
     Clocked c;
     float x = 0, y = 0;
     TweenId next = NoTween;
-    c.tweens.start(Tween(x, 0, 1, 100).onEnd([&]() {
-        next = c.tweens.start(Tween(y, 0, 10, 100).ease(&abgui::ease::linear));
-    }));
+    c.tweens.start(
+        Tween(x, 0, 1, 100).onEnd([&]() { next = c.tweens.start(Tween(y, 0, 10, 100).ease(&abgui::ease::linear)); }));
     c.at(1100);
     CHECK(next != NoTween);
     CHECK(c.tweens.running(next));
     c.at(1150);
     CHECK(y == 5.0f);
+}
+
+TEST_CASE("startAt: a run started at a moment already gone is timed from it, owned and busy like start") {
+    const int level = DebugDriver::busyLevel();
+    {
+        Clocked c;
+        c.now = 1025;
+        float x = -1.0f;
+        TweenOwner owner;
+        // started 25 ms ago: the first update writes the value 25 ms in, and it ends 100 ms after 1000, not after 1025
+        const TweenId id =
+            c.tweens.startAt(1000, Timeline().add(Tween(x, 0.0f, 100.0f, 100).ease(&abgui::ease::linear)), owner);
+        CHECK(c.tweens.running(id));
+        CHECK(c.tweens.busy());
+        CHECK(DebugDriver::busyLevel() == level + 1);
+        CHECK(x == -1.0f); // nothing written before the first update
+        c.at(1025);
+        CHECK(x == 25.0f);
+        c.at(1075);
+        CHECK(x == 75.0f);
+        CHECK(c.tweens.running(id));
+        c.at(1100);
+        CHECK(x == 100.0f);
+        CHECK_FALSE(c.tweens.running(id));
+        CHECK(DebugDriver::busyLevel() == level);
+        // the owner stops it as it stops a started one
+        const TweenId other = c.tweens.startAt(1090, Timeline().add(Tween(x, 0.0f, 1.0f, 100)), owner);
+        owner.cancel();
+        x = 7.0f;
+        c.at(1120);
+        CHECK(x == 7.0f);
+        CHECK_FALSE(c.tweens.running(other));
+        CHECK(DebugDriver::busyLevel() == level);
+        // across the clock's wrap
+        c.now = 0x00000010u;
+        const TweenId wrapped =
+            c.tweens.startAt(0xFFFFFFF0u, Timeline().add(Tween(x, 0.0f, 64.0f, 64).ease(&abgui::ease::linear)), owner);
+        c.at(0x00000010u); // 32 ms after the start
+        CHECK(x == 32.0f);
+        CHECK(c.tweens.running(wrapped));
+    }
+    CHECK(DebugDriver::busyLevel() == level);
 }
 
 TEST_CASE("cancel stops a run where it is: no write, no callback") {
@@ -423,7 +465,7 @@ TEST_CASE("a tween whose owner is gone never writes again and does not call back
     {
         TweenOwner screen;
         id = c.tweens.start(Tween(y, 0, 100, 100).ease(&abgui::ease::linear).onEnd([&]() { called = true; }), screen);
-        c.at(1030);
+        c.at(1025);
         CHECK(y == 30.0f);
         CHECK(c.tweens.running(id));
     } // the screen is popped and destroyed

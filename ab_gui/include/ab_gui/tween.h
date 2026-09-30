@@ -23,9 +23,9 @@
 // Time: a run's clock starts when it is started; its values are a pure function of the time since (valueAt), so a
 // late frame lands where it should instead of drifting, and the unsigned tick counter's wrap does no harm. A tween
 // writes its float from its first update after its delay until its end (the end value exactly, `to` - or `from` for a
-// yoyo and a pulse); before its delay it does not touch it. cancel() stops a run where it is (no write, no callback); finish()
-// jumps it to its end (the end values, the callbacks - a loop, having no end, is dropped): what a press during a
-// transition does (7a).
+// yoyo and a pulse); before its delay it does not touch it. cancel() stops a run where it is (no write, no callback);
+// finish() jumps it to its end (the end values, the callbacks - a loop, having no end, is dropped): what a press during
+// a transition does (7a).
 //
 // Lifetime: a tween writes through a pointer, so a float that dies with its screen must never be written after.
 // Start such tweens for a TweenOwner the screen holds next to its floats: when the owner dies (or cancel()s), every
@@ -88,9 +88,9 @@ public:
     // the builder - each returns the tween, so they chain: Tween(y, -720, 0, 250).ease(ease::outBack).delay(100)
     Tween &delay(unsigned int ms);
     Tween &ease(Easing curve); // nullptr = linear
-    Tween &loop();              // again and again until cancelled (never ends; counts as ambient)
-    Tween &yoyo();              // there and back: the way back is the forward curve run backwards; ends at `from`
-    Tween &ambient();           // decoration: never holds the DebugDriver's busy, the frame need only Ambient
+    Tween &loop();             // again and again until cancelled (never ends; counts as ambient)
+    Tween &yoyo();             // there and back: the way back is the forward curve run backwards; ends at `from`
+    Tween &ambient();          // decoration: never holds the DebugDriver's busy, the frame need only Ambient
     Tween &onEnd(std::function<void()> callback);
 
     float *target() const { return target_; }
@@ -224,6 +224,10 @@ public:
     TweenId start(const Tween &tween, const TweenOwner &owner);
     TweenId start(const Timeline &timeline);
     TweenId start(const Timeline &timeline, const TweenOwner &owner);
+    // start() as if it had been started at `startedAt` on the clock - a moment already gone (not after now()), for a
+    // run that must follow on exactly from the end of another: the carousel's held-stick step starts where the last
+    // one ended, part of a frame ago (G5o5). Its first update writes the values for the time since `startedAt`
+    TweenId startAt(unsigned int startedAt, const Timeline &timeline, const TweenOwner &owner);
 
     // writes every running tween's value for now() (or `now`), then calls the callbacks of what ended, in the order
     // it ended (at the same time: the inner before the outer, then the order started). ScreenStack::frame calls it
@@ -258,7 +262,7 @@ public:
 
 private:
     struct Impl;
-    TweenId add(const Timeline &timeline, const TweenOwner *owner);
+    TweenId add(const Timeline &timeline, const TweenOwner *owner, unsigned int startedAt);
     void syncBusy();
 
     std::unique_ptr<Impl> impl_;
