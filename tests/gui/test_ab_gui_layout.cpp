@@ -69,6 +69,15 @@ TEST_CASE("trailingBadgeRect: 24 px in from the list's inner right edge, centred
     CHECK(abgui::trailingBadgeRect(100, 0, 20, 10, 10, 8).x == 82);
 }
 
+TEST_CASE("switchRect: the switch image ends at the value's right edge, centred on the row (G5m)") {
+    // the test theme's 60 x 30 switch in a 28 px classic row whose value ends at 868
+    const Rect r = abgui::switchRect(868, 124, 28, 60, 30);
+    CHECK(r.x == 808);
+    CHECK(r.x + r.w == 868);
+    CHECK(r.y == 123); // 1 px above the row: the image is taller than the line
+    CHECK(abgui::switchRect(100, 0, 61, 10, 10).y == 25); // an odd leftover px goes below
+}
+
 TEST_CASE("centredIn: a box centred on the list panel, the odd pixel right and below") {
     const Rect list(40, 100, 852, 480);
     const Rect box = abgui::centredIn(list, 88, 88);

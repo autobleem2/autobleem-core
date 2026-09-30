@@ -11,6 +11,7 @@
 
 #include <ab_gui/context.h>
 #include <ab_gui/frame.h>
+#include <ab_gui/icon.h>
 #include <ab_gui/list.h>
 #include <ab_gui/panel.h>
 
@@ -468,6 +469,48 @@ TEST_CASE(
     CHECK(sameColor(side.texts[6].color, side.style.value));
     for (const Side::Text &t : side.texts)
         CHECK(t.y == 124); // the font's line height is 0 here (no font provider)
+}
+
+TEST_CASE("List::drawRows: a theme with switchOn/switchOff draws the image, not ON/OFF; a disabled row keeps its veil (G5m)") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme/icons/";
+    abgui::IconSet set;
+    map<string, abgui::IconSpec> specs;
+    specs["switchOn"] = {dir + "switch_on.png", dir + "switch_on@2x.png"};
+    specs["switchOff"] = {dir + "switch_off.png", dir + "switch_off@2x.png"};
+    set.assign(specs);
+
+    Side side(*g.gui);
+    vector<string> asked;
+    side.ctx.iconProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.icon(g.gui->renderer(), name);
+    };
+    List list(*g.gui, side.ctx);
+    list.rows = {{"Sound", "Loud", false, false}, {"Music|@Check|", "", false, false}, {"Mode|@Uncheck|", "", false, true}};
+    list.maxVisible = 8;
+    list.lastVisible = 7;
+    list.yoffset = 124;
+    list.drawRows();
+    CHECK(asked == vector<string>{"switchOn", "switchOff"});
+    REQUIRE(side.texts.size() == 4); // the four texts below: no ~ON / ~OFF
+    vector<string> said;
+    for (const Side::Text &t : side.texts)
+        said.push_back(t.text);
+    // the switch rows' labels are drawn, their values are images
+    CHECK(said == vector<string>{"Sound", "Loud", "Music", "Mode"});
+}
+
+TEST_CASE("List::drawSwitch: no icon of that name - nothing drawn, false (default and ab2 have none)") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    Side side(*g.gui);
+    CHECK_FALSE(List::drawSwitch(side.ctx, true, 868, 124, 28)); // no provider at all
+    side.ctx.iconProvider = [](const string &) { return ableem::Texture(); };
+    CHECK_FALSE(List::drawSwitch(side.ctx, false, 868, 124, 28));
 }
 
 TEST_CASE("List::driverItems / driverSelected: every row as shown, a heading marked '#', '|' as '/'") {

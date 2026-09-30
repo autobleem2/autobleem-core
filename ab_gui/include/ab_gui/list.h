@@ -127,6 +127,10 @@ public:
     // a switch row ("Label|@Check|" / "Label|@Uncheck|"): 1 on, 0 off, -1 not a switch; `label` (when given) gets the
     // text before the marker for a switch, the whole text otherwise
     static int switchState(const std::string &text, std::string *label = nullptr);
+    // a switch row's value as the theme's image (G5m): the Context's `switchOn`/`switchOff` icon drawn at its own size
+    // with its right edge at `right`, centred on the row (`top`, `rowHeight`); false - nothing drawn - when the theme
+    // has no such icon, and the caller says ON/OFF as text. There are no built-in switch icons.
+    static bool drawSwitch(Context &ctx, bool on, int right, int top, int rowHeight);
     // whether a list of `size` rows draws in a compact panel
     static bool isCompact(int size, int selectionRightEdge);
 
