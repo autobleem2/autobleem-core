@@ -46,6 +46,14 @@
 # cut, a dark centre at about 80% the title and detail read over. Hot pink (255, 105, 180) at 1x, dark teal (0, 100, 100)
 # at @2x. theme.json: slice 20, bleed 8.
 #
+# tile, tileSelected (G5i): 72x72 - the game menu's tile, a 64x64 body (4 px bleed), a 2 px rim, the top-left and
+# bottom-right corners cut, a faint centre (tileSelected a stronger one and a wider glow) the glyph reads over. tile:
+# teal (0, 200, 170) at 1x, plum (150, 40, 110) at @2x; tileSelected: amber (255, 190, 0) at 1x, crimson (200, 30, 60) at
+# @2x. theme.json: slice 24, bleed 4.
+#
+# band (G5i): 64x64 - the resume-slot picker's strip, the whole image is the box (no bleed), a 2 px rim, square corners,
+# a dark centre at about 80%. Lime (170, 255, 0) at 1x, navy (20, 40, 140) at @2x. theme.json: slice 24, bleed 0.
+#
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
 # selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
 # key_selected.png (48x48 each), field.png (56x56), badge.png (40x40), chip.png (32x32), footer.png (64x62), hint_bar.png (80x80), toast.png (64x64), progress_track.png and progress_fill.png (16x8) and the
@@ -165,6 +173,19 @@ def tab_shape():
     return Shape(size, size, 0, poly, 2, (255, 255, 255, 40), 0)
 
 
+def tile_shape(centre_alpha, glow):
+    size, bleed, cut = 72, 4, 10
+    x0, y0, x1, y1 = bleed, bleed, size - bleed, size - bleed
+    poly = [(x0 + cut, y0), (x1, y0), (x1, y1 - cut), (x1 - cut, y1), (x0, y1), (x0, y0 + cut)]
+    return Shape(size, size, bleed, poly, 2, (255, 255, 255, centre_alpha), glow)
+
+
+def band_shape():
+    size = 64
+    poly = [(0, 0), (size, 0), (size, size), (0, size)]
+    return Shape(size, size, 0, poly, 2, (10, 8, 16, 204), 0)
+
+
 def toast_shape():
     size, bleed, cut = 64, 8, 10
     x0, y0, x1, y1 = bleed, bleed, size - bleed, size - bleed
@@ -236,6 +257,9 @@ def main():
         ("footer", footer_shape(), (200, 120, 60), (60, 140, 200)),
         ("hint_bar", hint_bar_shape(), (250, 128, 114), (128, 128, 0)),
         ("tab", tab_shape(), (90, 80, 255), (170, 110, 0)),
+        ("tile", tile_shape(40, 60), (0, 200, 170), (150, 40, 110)),
+        ("tile_selected", tile_shape(110, 170), (255, 190, 0), (200, 30, 60)),
+        ("band", band_shape(), (170, 255, 0), (20, 40, 140)),
         ("toast", toast_shape(), (255, 105, 180), (0, 100, 100)),
         ("progress_track", progress_shape(40), (255, 105, 180), (0, 100, 0)),
         ("progress_fill", progress_shape(200), (100, 180, 255), (205, 92, 0)),
