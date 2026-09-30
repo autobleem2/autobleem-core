@@ -126,6 +126,9 @@ if (AB_CORE_UI)
     # the ambient motion on tweens (G5o2): Play's pulse, the arrow's bob and the glow's breathing at sample times against
     # pulseWave and sin(ticks / 900), the ambient rules (never busy, frame need Ambient, owner) - pure
     ab_add_test(test_ab_gui_ambient gui/test_ab_gui_ambient.cpp LIBS ab_gui)
+    # the bubble's slides and the fade-in on non-ambient tweens (G5o4): the old state machine and timers against the
+    # tween versions at every frame, a show()/hide() part-way, only the slides busy (not the hold) - pure
+    ab_add_test(test_ab_gui_transitions gui/test_ab_gui_transitions.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)
