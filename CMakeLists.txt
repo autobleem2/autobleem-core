@@ -179,6 +179,7 @@ add_library(ab_gui STATIC
         ab_gui/include/ab_gui/footer_shorten.h
         ab_gui/include/ab_gui/hold_repeat.h
         ab_gui/include/ab_gui/list.h
+        ab_gui/include/ab_gui/keyboard.h
         ab_gui/include/ab_gui/list_model.h
         ab_gui/include/ab_gui/panel.h
         ab_gui/include/ab_gui/screen.h
@@ -192,6 +193,7 @@ add_library(ab_gui STATIC
         ab_gui/src/context.cpp
         ab_gui/src/facts_page.cpp
         ab_gui/src/list.cpp
+        ab_gui/src/keyboard.cpp
         ab_gui/src/panel.cpp
         ab_gui/src/screen.cpp
         ab_gui/src/screen_stack.cpp

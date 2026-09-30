@@ -86,6 +86,10 @@ if (AB_CORE_UI)
     # the moves, the sounds, L1/R1 first/last, a held d-pad at the shared pace, the DebugDriver's items/selected (those
     # cases skip themselves without a renderer)
     ab_add_test(test_ab_gui_list gui/test_ab_gui_list.cpp LIBS ab_gui)
+    # ab_gui's Keyboard (G3n): the key tables, the selection's moves and the UTF-8 editing (pure), and the events - the pad,
+    # typed text, the USB keyboard's keys - with the keyboard-as-pad off while it shows and back on every way out, through
+    # a headless GuiBase (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_keyboard gui/test_ab_gui_keyboard.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)
