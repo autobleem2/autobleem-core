@@ -61,6 +61,10 @@ if (AB_CORE_UI)
     # ab_gui's Action and ActionMap (G3f): the default map against today's pad and keyboard mapping, the Confirm/Back
     # swap, and HoldRepeat's pace after its move into ab_gui (all pure)
     ab_add_test(test_ab_gui_actions gui/test_ab_gui_actions.cpp LIBS ab_gui)
+    # ab_gui's Screen (G3g): its loop through the ActionMap reaches the same old hooks in the same order as
+    # ableem::GuiScreen's loop - every button, d-pad direction and key, held repeats, releases - on a headless GuiBase
+    # (skips itself without a renderer)
+    ab_add_test(test_ab_gui_screen gui/test_ab_gui_screen.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

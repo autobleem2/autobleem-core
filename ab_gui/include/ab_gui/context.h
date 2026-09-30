@@ -12,6 +12,7 @@
 //
 #pragma once
 
+#include <ab_gui/actions.h>
 #include <ab_gui/screen_stack.h>
 #include <ab_gui/style.h>
 
@@ -130,6 +131,12 @@ public:
 
 private:
     ScreenStack *stack_ = nullptr;
+
+    // Appended (step G3g): the program's one ActionMap - the pad and keys -> actions every abgui::Screen reads its
+    // events through (the default map, the Confirm/Back swap off). One for the program, so a swap set from an
+    // Options row holds on every screen.
+public:
+    ActionMap actions;
 };
 
 } // namespace abgui

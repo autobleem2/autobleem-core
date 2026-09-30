@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// abgui::Screen (G3g of docs/ab-gui-plan.md, 7): the base of ab_gui's screens, on top of ableem::GuiScreen. A screen
+// draws (draw()), the stack presents (render() is ScreenStack::frame(draw) and final), and its loop reads the events
+// through the Context's ActionMap: each press or release of a mapped button or key reaches onAction(), anything else
+// (a key no action is bound to, typed text, a device event) reaches onUnmapped().
+//
+// The default onAction() is the adapter under the old hooks: it calls the doCross_Pressed()/doJoyUp()/doEnter()-style
+// hook ableem::GuiScreen::loop would have called for the same event, in the same order - so a screen moved onto this
+// base behaves as it did until it overrides onAction() itself:
+// - a pad button: the hook of the button its action belongs to (Confirm Cross, Back Circle, Option Triangle, Extra
+//   Square, Menu Start, View Select, PrevTab L1, NextTab R1, PageUp L2, PageDown R2; First L1, Last R1 - the classic
+//   lists' first/last row keys), pressed or released. With the default map and the swap off that is the button's own
+//   hook; with the Confirm/Back swap on, Circle reaches doCross_Pressed().
+// - the d-pad: doJoyUp/Down/Right/Left/Center by the live d-pad state, whichever direction the event was, on the press
+//   and on the release (the old PadMapper's priority) - GuiScreen::dispatchDpad(). (The d-pad hooks follow the d-pad's
+//   own state, so a button bound to a direction keeps its own button hook here.)
+// - a key that reaches the screen as a key (the keyboard-as-pad is off - the typing screens - or the key is not one
+//   the PC map turns into a pad button): its own hook, Enter doEnter, Esc doEscape, the arrows doKeyUp..., and nothing
+//   on its release - the typing keys keep their meaning whatever their action is. (With the keyboard-as-pad on, Input
+//   has already made a mapped key into the pad event, which comes here as a pad button.)
+// The default onUnmapped() is GuiScreen::dispatchEvent(): the key's hook, doTextInput(), or nothing.
+//
+// Hold-repeat is the hooks' own, as before (fastForwardUntilAnotherEvent, HoldRepeat on the live d-pad state), and the
+// busy rule is Input's (poll() and flushInputEvents()), so neither changes here. Nothing derives from Screen yet; the
+// classic GuiScreen shim moves onto it in G3z, when AB_SDK_ABI goes to 7 (a new base changes the shim's layout).
+//
+#pragma once
+
+#include <ab_gui/actions.h>
+#include <ab_gui/context.h>
+
+#include <ableem/ui/gui_base.h>
+#include <ableem/ui/gui_screen.h>
+
+namespace abgui {
+
+//********************
+// Screen
+//********************
+class Screen : public ableem::GuiScreen {
+public:
+    // `gui` is the GuiBase the screen's input and platform are (ableem::GuiScreen's), `context` the program's
+    // Context over the same GuiBase (AutoBleem: Gui::uiContext())
+    Screen(ableem::GuiBase &gui, Context &context) : ableem::GuiScreen(gui), ctx(context) {}
+
+    Context &ctx;
+
+    // the screen's picture, between the stack's clear and its present - never clear() or present() here
+    virtual void draw() = 0;
+    // one frame through the Context's stack (ScreenStack::frame(draw)); without a stack, one on the renderer
+    void render() final;
+    // ableem::GuiScreen::loop with the events through the ActionMap: until menuVisible goes false, every polled
+    // event (a Quit closes the screen) to handle(), then a frame when the pacer says one is due
+    void loop() override;
+
+    // one event as the loop hands it out: through the Context's ActionMap to onAction() when it is a mapped
+    // button's or key's press or release, else to onUnmapped()
+    void handle(const ableem::Event &event);
+
+    // a mapped press or release; the default is the adapter under the old hooks (legacyAction)
+    virtual void onAction(const ActionEvent &action);
+    // an event no action is bound to; the default is its old hook (GuiScreen::dispatchEvent)
+    virtual void onUnmapped(const ableem::Event &event);
+
+protected:
+    // the old hook for `action`, as ableem::GuiScreen::loop called it (see the top of this file)
+    void legacyAction(const ActionEvent &action);
+};
+
+// the pad button whose classic hooks an action reaches (Confirm Cross ... PageDown R2, First L1, Last R1);
+// Button::None for None and the directions
+ableem::Button classicButton(Action action);
+
+} // namespace abgui

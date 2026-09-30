@@ -62,6 +62,7 @@ Action ActionMap::fromKey(Key key, int code) const {
 
 ActionEvent ActionMap::fromEvent(const Event &event) const {
     ActionEvent result;
+    result.event = event;
     switch (event.type) {
     case Event::Type::ButtonDown:
     case Event::Type::DpadDown:

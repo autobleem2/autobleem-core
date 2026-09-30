@@ -175,11 +175,13 @@ add_library(ab_gui STATIC
         ab_gui/include/ab_gui/footer_shorten.h
         ab_gui/include/ab_gui/hold_repeat.h
         ab_gui/include/ab_gui/panel.h
+        ab_gui/include/ab_gui/screen.h
         ab_gui/include/ab_gui/screen_stack.h
         ab_gui/include/ab_gui/style.h
         ab_gui/src/actions.cpp
         ab_gui/src/context.cpp
         ab_gui/src/panel.cpp
+        ab_gui/src/screen.cpp
         ab_gui/src/screen_stack.cpp
         ab_gui/src/style.cpp)
 target_link_libraries(ab_gui ableem)

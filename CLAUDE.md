@@ -285,8 +285,20 @@ include path to the extensions.
   and the keyboard as `ableem::KeyboardMap` maps it (Enter, Backspace/Esc, Tab, F1/F2, PgUp/PgDn, Home/End, arrows,
   Space). First/Last have no default button (L1/R1 are the tabs' or the list's ends - the screen decides); `bind`
   gives them one. `setSwapConfirmBack(true)` exchanges Confirm and Back on the pad's buttons only (default off).
-  **Nothing uses it yet** (G3g wires it). `abgui::HoldRepeat`/`DpadHold` (`hold_repeat.h`) are the moved shared
+  The program's one map is the Context's `actions` (G3g); an `ActionEvent` carries the `event` it came from.
+  `abgui::HoldRepeat`/`DpadHold` (`hold_repeat.h`) are the moved shared
   hold-repeat pace; `gui/hold_repeat.h` keeps the global names as aliases. Tests: `tests/gui/test_ab_gui_actions.cpp`.
+- **`abgui::Screen`** (`screen.h`, G3g) - the base of ab_gui's screens, `: public ableem::GuiScreen`, holding a
+  `Context &ctx`: `draw()` pure, `render()` final (`ctx.stack().frame(draw)`), `loop()` = the old loop with every
+  event through `handle()`: a mapped press/release to `virtual onAction(const ActionEvent &)`, anything else to
+  `virtual onUnmapped(const Event &)`. The defaults are **the adapter under the old hooks** (`legacyAction`): a pad
+  button reaches the hook of the button its action belongs to (`classicButton`: Confirm Cross ... PageDown R2, First
+  L1, Last R1 - the button's own with the default map), the d-pad `dispatchDpad()` (the live state, the old
+  priority), a key its own key hook (Enter `doEnter`, whatever its action), text `doTextInput`. The switches live once,
+  in `ableem::GuiScreen`'s new non-virtual `dispatchEvent/dispatchDpad/dispatchButton/dispatchKey`, which its own
+  `loop()` calls too. **Nothing derives from it yet**: the classic `GuiScreen` shim moves onto it in G3z (a base
+  change is a layout change - ABI 7). Tests: `tests/gui/test_ab_gui_screen.cpp` (the old loop and the new one, hook
+  for hook, over the same events).
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to

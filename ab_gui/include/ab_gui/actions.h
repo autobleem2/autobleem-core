@@ -7,8 +7,8 @@
 //
 // The default map is today's: the pad buttons as the classic screens read them, the keys as
 // ableem::KeyboardMap::toPad turns them into pad buttons and those into actions, so what a key does does not change
-// by going through an action. Nothing reads an ActionMap yet (G3g wires it); the screens' doCross_Pressed()-style
-// hooks stay.
+// by going through an action. abgui::Screen's loop reads the Context's map (G3g) and its default onAction() calls the
+// screens' doCross_Pressed()-style hooks, which stay.
 //
 //   Cross Confirm    Circle Back      Triangle Option   Square Extra    Start Menu     Select View
 //   L1 PrevTab       R1 NextTab       L2 PageUp         R2 PageDown     d-pad Up/Down/Left/Right
@@ -55,6 +55,9 @@ struct ActionEvent {
     bool pressed = false;  // a ButtonDown, DpadDown or KeyDown
     bool released = false; // a ButtonUp, DpadUp or KeyUp
     bool mapped() const { return action != Action::None; }
+    // the event it came from (G3g): a button and a key can be the same action, and abgui::Screen's adapter under
+    // the old hooks still tells them apart (Cross is doCross_Pressed, Enter doEnter)
+    ableem::Event event;
 };
 
 class ActionMap {

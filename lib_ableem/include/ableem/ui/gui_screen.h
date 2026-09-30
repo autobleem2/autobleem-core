@@ -89,6 +89,20 @@ public:
     // the power button / Esc case is handled by Input itself (Platform::setPowerOffHandler), so screens no
     // longer need to check for it themselves.
     bool handleQuit(const Event &e);
+
+    // What loop() does with each event it polls (a Quit aside): the hook the event is for. Non-virtual, so a
+    // screen's layout and vtable are what they were; a loop of a subclass that reads the events itself
+    // (abgui::Screen's, through its ActionMap) reaches the hooks through the same code.
+    // one event: a d-pad event -> dispatchDpad(), a button -> dispatchButton(), a KeyDown -> dispatchKey(), a
+    // TextInput -> doTextInput(); anything else (a KeyUp, a device event) reaches no hook
+    void dispatchEvent(const Event &e);
+    // the d-pad hook of the live d-pad state, whichever direction the event was: up, down, right, left, else
+    // centre (the old PadMapper's priority)
+    void dispatchDpad();
+    // Cross..R2's pressed (or released) hook; nothing for another button
+    void dispatchButton(Button button, bool pressed);
+    // a KeyDown's hook (Up..Escape); nothing for a key without one
+    void dispatchKey(Key key);
 };
 
 } // namespace ableem
