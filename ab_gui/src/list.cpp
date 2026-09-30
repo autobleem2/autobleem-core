@@ -5,6 +5,7 @@
 #include <ab_gui/list.h>
 
 #include <ab_gui/hold_repeat.h>
+#include <ab_gui/layout.h>
 
 #include <ableem/ui/debug_driver.h>
 
@@ -72,6 +73,16 @@ int List::switchState(const string &text, string *label) {
     return state;
 }
 
+bool List::drawSwitch(Context &ctx, bool on, int right, int top, int rowHeight) {
+    const ableem::Texture icon = ctx.icon(on ? "switchOn" : "switchOff");
+    if (!icon.valid())
+        return false;
+    const ableem::Size size = icon.size();
+    const Rect dst = switchRect(right, top, rowHeight, size.w, size.h);
+    ctx.renderer().copy(icon, nullptr, &dst);
+    return true;
+}
+
 bool List::isCompact(int size, int selectionRightEdge) {
     return size <= CompactRows && selectionRightEdge == 0;
 }
@@ -135,7 +146,10 @@ void List::drawRow(int index, int line, bool isSelected) {
     }
     string label;
     const int on = switchState(row.label, &label);
-    const string value = on == -1 ? row.value : ctx.translate(on == 1 ? "ON" : "OFF");
+    // a switch is the theme's image when it ships one (G5m), else the text ON/OFF
+    const bool image =
+        on != -1 && drawSwitch(ctx, on == 1, valueRight(panel, style, selectionRightEdge), top, lineHeight);
+    const string value = on == -1 ? row.value : image ? string() : ctx.translate(on == 1 ? "ON" : "OFF");
     // a disabled row's text is the `description` role when the theme has a `disabled` role (G5t), else as any row's
     const ableem::Color &labelColor =
         row.disabled ? style.disabledColor(ctx, style.rowColor(isSelected)) : style.rowColor(isSelected);

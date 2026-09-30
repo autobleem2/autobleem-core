@@ -23,6 +23,8 @@ using ableem::Color;
 using ableem::Rect;
 using ableem::Size;
 
+abgui::Context *TextRenderer::switchContext_ = nullptr;
+
 #define SCREEN_WIDTH ableem::GuiBase::ScreenWidth
 
 // the classic rows' geometry is abgui::List's (G3m part 2), at the default metrics (PanelStyle::RowInset is
@@ -456,8 +458,16 @@ int TextRenderer::renderTextLineOptions(const string &_text, int line, int yoffs
         return h; // there is no check/uncheck emoji on this line
     }
 
-    // the value as text at the row's right edge, like any other option's value (the theme's switch images
-    // were drawn here until 2026-09-29 - the owner: a plain OFF/ON choice)
+    // the theme's switch image at the row's right edge when it ships `switchOn`/`switchOff` (G5m, UIREV-10), else the
+    // value as text, like any other option's value (the old check/uncheck images went on 2026-09-29 - the owner: a
+    // plain OFF/ON choice)
+    if (switchContext_ != nullptr) {
+        Rect opscreen = getOpscreenRectOfTheme();
+        const int right = abgui::List::valueRight(opscreen, rowMetrics(), rightEdge);
+        const int top = abgui::List::rowTop(line, yoffset, themeFont_.lineHeight());
+        if (abgui::List::drawSwitch(*switchContext_, button == 1, right, top, themeFont_.lineHeight()))
+            return h;
+    }
     renderRowValue(button == 1 ? _("ON") : _("OFF"), line, yoffset, rightEdge);
     return h;
 }

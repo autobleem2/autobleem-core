@@ -95,6 +95,10 @@ public:
     // Disabled (G5t) is a row that cannot be changed under a theme with a `disabled` role: the description colour
     enum class RowRole { Plain, Row, Selected, Heading, FactRow, Disabled };
     void setRowRole(RowRole role) { rowRole_ = role; }
+
+    // The Context whose `switchOn`/`switchOff` icons renderTextLineOptions draws (G5m, UIREV-10); Gui sets it in
+    // wireUiContext. Static - the one Gui's - so no object layout changes (SDK); null (a tool with no Gui) = ON/OFF text.
+    static void setSwitchContext(abgui::Context *ctx) { switchContext_ = ctx; }
     RowRole rowRole() const { return rowRole_; }
     struct RowRoleScope {
         RowRoleScope(TextRenderer &text, RowRole role) : text_(text), saved_(text.rowRole()) { text.setRowRole(role); }
@@ -256,4 +260,5 @@ private:
     // the colour of the current row role (setRowRole), or null for Plain; `value` for the right-hand value
     bool rowRoleColor(bool value, ableem::Color &out);
     RowRole rowRole_ = RowRole::Plain; // appended last: SDK layout (AB_SDK_ABI 6)
+    static abgui::Context *switchContext_;
 };

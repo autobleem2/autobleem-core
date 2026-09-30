@@ -145,6 +145,7 @@ static Texture faceIconOutline(ThemeAssets &assets, const string &key) {
 // every provider reads assets_/text_/the theme when it is called, never before: the fonts and textures are
 // replaced on a theme load and dropped while a game has the display
 void Gui::wireUiContext() {
+    TextRenderer::setSwitchContext(&uiContext_); // the theme's switch images for renderTextLineOptions (G5m)
     uiContext_.fontProvider = [this](abgui::FontRole role) -> const ableem::Font & {
         switch (role) {
         case abgui::FontRole::Title:
