@@ -82,8 +82,9 @@ TEST_CASE("the glow's breathing: 0.9 + 0.1 x sin(ticks / 900), from any start, o
         TweenOwner owner;
         tweens.start(abgui::ambient::clockPhase(phase, start), owner);
         // the first value, before any update, is already the old one
+        // 1e-4: a large tick count as a float (the old formula) loses digits the wrapped phase keeps
         CHECK(0.9f + 0.1f * sin(phase / 900.0f) ==
-              doctest::Approx(0.9f + 0.1f * sin(static_cast<float>(start) / 900.0f)).epsilon(1e-6));
+              doctest::Approx(0.9f + 0.1f * sin(static_cast<float>(start) / 900.0f)).epsilon(1e-4));
         // and every sample after it, past two wraps
         for (unsigned int dt = 1; dt <= 200000; dt += 997) {
             now = start + dt;
