@@ -835,7 +835,7 @@ TEST_CASE("readThemeLogo: launcher.logo {file, x, y, w, h}, set only with a file
     TempDir tmp("theme_spec");
     tmp.writeFile("theme.json", "{ \"launcher\": { \"logo\": { \"file\": \"images/logo.png\","
                                 " \"x\": 22, \"y\": 591, \"w\": 317, \"h\": 75 } } }");
-    const ableem::ThemeLogo logo = ableem::readThemeLogo(tmp.at("theme.json"));
+    const ableem::ThemeLauncherLogo logo = ableem::readThemeLogo(tmp.at("theme.json"));
     CHECK(logo.set);
     CHECK(logo.file == "images/logo.png");
     CHECK(logo.x == 22);
@@ -862,7 +862,7 @@ TEST_CASE("loadThemeLogo: the file resolved in the theme's own folder, never the
     tmp.writeFile("t/theme.json", json);
     tmp.writeFile("t/images/logo.png", "x");
     tmp.writeFile("gone/theme.json", json); // the file is not there
-    const ableem::ThemeLogo logo = ableem::loadThemeLogo(tmp.at("t"));
+    const ableem::ThemeLauncherLogo logo = ableem::loadThemeLogo(tmp.at("t"));
     CHECK(logo.set);
     CHECK(logo.file == tmp.at("t") + "/images/logo.png");
     CHECK(logo.w == 70);
@@ -889,7 +889,7 @@ TEST_CASE("readThemeResumeMask / loadThemeResumeMask: launcher.menuIcons.resumeP
 
 TEST_CASE("the test theme's logo and resume mask (tests/data/frame-test-theme), each with its @2x") {
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
-    const ableem::ThemeLogo logo = ableem::loadThemeLogo(dir);
+    const ableem::ThemeLauncherLogo logo = ableem::loadThemeLogo(dir);
     REQUIRE(logo.set);
     CHECK(logo.file == dir + "/images/logo.png");
     CHECK(ableem::DirEntry::exists(dir + "/images/logo@2x.png"));

@@ -308,7 +308,7 @@ void Gui::loadAssets(bool reloadMusic) {
     frames_.assign(themeFrames(AppBase::get().theme().loadedPath())); // the textures load when first drawn
     icons_.assign(ThemeAssets::iconSpecs(AppBase::get().theme()), ThemeAssets::iconHalo(AppBase::get().theme()));
     // the theme's own launcher logo and resume picture mask (G5q, G5s): nothing when it sets none
-    const ableem::ThemeLogo logo = ableem::loadThemeLogo(AppBase::get().theme().loadedPath());
+    const ableem::ThemeLauncherLogo logo = ableem::loadThemeLogo(AppBase::get().theme().loadedPath());
     launcherLogo_ = logo.set ? ThemeAssets::loadImage(renderer(), logo.file) : Texture();
     launcherLogoRect_ = launcherLogo_.valid() ? Rect(logo.x, logo.y, logo.w, logo.h) : Rect();
     resumeMask_ = ThemeAssets::loadImage(renderer(), ableem::loadThemeResumeMask(AppBase::get().theme().loadedPath()));

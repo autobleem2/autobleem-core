@@ -928,8 +928,8 @@ bool resolveThemeIconHalo(const string &themeDir, const string &defaultDir) {
 //*******************************
 // readThemeLogo / loadThemeLogo / readThemeResumeMask / loadThemeResumeMask
 //*******************************
-ThemeLogo readThemeLogo(const string &path) {
-    ThemeLogo logo;
+ThemeLauncherLogo readThemeLogo(const string &path) {
+    ThemeLauncherLogo logo;
     json launcher;
     if (!readLauncher(path, launcher))
         return logo;
@@ -945,14 +945,14 @@ ThemeLogo readThemeLogo(const string &path) {
     return logo;
 }
 
-ThemeLogo loadThemeLogo(const string &dir) {
-    ThemeLogo logo = readThemeLogo(dir + sep + "theme.json");
+ThemeLauncherLogo loadThemeLogo(const string &dir) {
+    ThemeLauncherLogo logo = readThemeLogo(dir + sep + "theme.json");
     if (!logo.set)
         return logo;
     const string file = existing(dir, logo.file);
     if (file.empty()) {
         PLOG_WARNING << "Theme logo '" << logo.file << "': not in " << dir << " - no logo drawn";
-        return ThemeLogo();
+        return ThemeLauncherLogo();
     }
     logo.file = file;
     return logo;
@@ -974,8 +974,9 @@ string loadThemeResumeMask(const string &dir) {
     if (file.empty())
         return file;
     const string path = existing(dir, file);
-    if (path.empty())
+    if (path.empty()) {
         PLOG_WARNING << "Theme resume picture mask '" << file << "': not in " << dir << " - a plain rectangle";
+    }
     return path;
 }
 

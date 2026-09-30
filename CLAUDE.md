@@ -470,7 +470,7 @@ include path to the extensions.
   `tests/core/test_theme_spec.cpp`.
 - **The launcher logo and the resume picture mask** (G5q, G5s; plan decisions 14, 15) - two single-image elements of the
   theme's **own** theme.json (never merged over `default`; unset = nothing / a rectangle, call for call), read by
-  `ableem::loadThemeLogo(dir)` (`launcher.logo: {file, x, y, w, h}`, `ThemeLogo`) and `loadThemeResumeMask(dir)`
+  `ableem::loadThemeLogo(dir)` (`launcher.logo: {file, x, y, w, h}`, `ThemeLauncherLogo`) and `loadThemeResumeMask(dir)`
   (`launcher.menuIcons.resumePictureMask`), both kept out of `ThemeSpec`. The 1x file is what is named; the `@2x` next
   to it comes through `ThemeAssets::loadImage` (G4f). `Gui` (`launcherLogo_`, `launcherLogoRect_`, `resumeMask_`,
   appended after `icons_`, no ABI bump) loads them in `loadAssets()` and drops them in `releaseDisplay()`;
