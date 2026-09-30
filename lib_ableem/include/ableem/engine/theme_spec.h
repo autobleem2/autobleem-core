@@ -4,6 +4,7 @@
 // keeps the file honest (a bad file is reported, never thrown) and merges a partial theme over a base one.
 #pragma once
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -265,6 +266,37 @@ std::vector<ThemeFrame> readThemeFrames(const std::string &path);
 // the folder; `image2x` when given and in the folder, else "<image's stem>@2x<ext>" when that is next to the image. A
 // frame with neither file is dropped (logged).
 std::vector<ThemeFrame> loadThemeFrames(const std::string &dir);
+
+//******************
+// ThemeIcon (launcher.icons, ab_gui G5a)
+//******************
+// A fixed image by name a program draws at its own size - a d-pad arrow, a meta-row badge, a tab's picture
+// (autobleem-core docs/ab-gui-evoui-art-spec.md, 3.). Kept out of ThemeSpec for ThemeFrame's reason. Unlike frames,
+// icons fall back: the theme's own entry, else the default theme's, else the program's built-in file
+// (resolveThemeIcons) - so a theme may replace one icon and keep the rest.
+struct ThemeIcon {
+    std::string name;    // "dpadUp", "disc", "tabApps", ...
+    std::string image;   // the 1x PNG
+    std::string image2x; // the @2x PNG ("" none)
+};
+
+// launcher.icons of the theme.json at `path`, by name, the file names as written: a name -> "file" or
+// { "image", "image2x" }. An entry with neither image is skipped; a missing or invalid file gives none. Never throws.
+std::vector<ThemeIcon> readThemeIcons(const std::string &path);
+// launcher.iconHalo of the theme.json at `path` into `halo`; false (and `halo` untouched) when the file does not set
+// it as a boolean
+bool readThemeIconHalo(const std::string &path, bool &halo);
+// the icons of the theme in `dir` (its own theme.json only), resolved as loadThemeFrames resolves frames: `image` when
+// it is in the folder, `image2x` when given and in the folder, else "<image's stem>@2x<ext>" next to the image. An
+// entry with neither file is dropped (logged) - the name then falls back.
+std::vector<ThemeIcon> loadThemeIcons(const std::string &dir);
+// The icon table a program draws from: for every name, the theme's own (loadThemeIcons(themeDir)), else the default
+// theme's (loadThemeIcons(defaultDir)), else `builtIn`'s file (name -> an absolute path; its "@2x" twin next to it when
+// there is one; a file that is not there gives no icon). Names only a theme has are kept too. Sorted by name.
+std::vector<ThemeIcon> resolveThemeIcons(const std::string &themeDir, const std::string &defaultDir,
+                                         const std::map<std::string, std::string> &builtIn);
+// whether the halo is drawn under the icons: the theme's launcher.iconHalo, else the default theme's, else true
+bool resolveThemeIconHalo(const std::string &themeDir, const std::string &defaultDir);
 
 //******************
 // High-resolution theme images (ab_gui G4f)

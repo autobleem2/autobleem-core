@@ -11,6 +11,7 @@
 #include "gui_font.h"
 #include "panel_style.h"
 #include <ab_gui/context.h>
+#include <ab_gui/icon.h>
 
 #include <functional>
 #include "text_renderer.h"
@@ -152,4 +153,8 @@ private:
     // textures dropped by releaseDisplay(), handed out as the Context's frameProvider. Last on purpose: appended, so
     // every member an extension reaches through gui.h's inline code keeps its offset (AB_SDK_ABI stays 7)
     abgui::FrameSet frames_;
+    // the current theme's icons (ab_gui G5a: launcher.icons - the theme's own, else the default's, else the built-in
+    // evoimg/ files, ThemeAssets::iconSpecs): refilled by loadAssets(), their textures and halos dropped by
+    // releaseDisplay(), handed out as the Context's iconProvider/iconHaloProvider. Appended last, as frames_ was
+    abgui::IconSet icons_;
 };

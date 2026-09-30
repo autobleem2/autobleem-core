@@ -189,6 +189,16 @@ public:
     using FrameProvider = std::function<Frame(const std::string &)>;
     FrameProvider frameProvider;
     Frame frame(const std::string &name) const;
+
+    // Appended (step G5a): the icons of the current look by name ("dpadUp", "disc", "tabApps", ... - icon.h) and the
+    // dark halo drawn under each (invalid when the look draws none: a theme's "iconHalo": false). AutoBleem's is Gui's
+    // IconSet: the theme's own launcher.icons, else the default theme's, else the program's built-in files. Asked at
+    // draw time like every provider; unset, or an invalid texture back, means no icon (no halo).
+    using IconProvider = std::function<ableem::Texture(const std::string &)>;
+    IconProvider iconProvider;
+    IconProvider iconHaloProvider;
+    ableem::Texture icon(const std::string &name) const;
+    ableem::Texture iconHalo(const std::string &name) const;
 };
 
 } // namespace abgui

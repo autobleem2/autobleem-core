@@ -3,11 +3,10 @@
 //
 #include "theme_assets.h"
 #include "gui.h" // Gui::tickBusy, the spinner between the loads
-#include "panel_style.h" // PanelStyle::outlineOf, the d-pad arrows' dark halo (UIREV-2)
 #include "../core/services/environment.h"
 #include "../core/main.h"
 
-#include <ableem/engine/theme_spec.h> // themeImageFile, the @2x choice (ab_gui G4f)
+#include <ableem/engine/theme_spec.h> // themeImageFile, the @2x choice (ab_gui G4f); resolveThemeIcons (G5a)
 
 using namespace std;
 using ableem::Texture;
@@ -99,18 +98,24 @@ void ThemeAssets::load() {
     hintCross = loadImage(renderer_, launcher.hints.cross);
     hintCircle = loadImage(renderer_, launcher.hints.circle);
     hintTriangle = loadImage(renderer_, launcher.hints.triangle);
-    const string evoimg = Env::getWorkingPath() + sep + "evoimg" + sep;
-    dpadUp = loadImage(renderer_, evoimg + "dpad_up.png");
-    dpadDown = loadImage(renderer_, evoimg + "dpad_down.png");
-    dpadLeft = loadImage(renderer_, evoimg + "dpad_left.png");
-    dpadRight = loadImage(renderer_, evoimg + "dpad_right.png");
-    // the arrows' own dark halo (UIREV-2, L1): a loaded Texture cannot be read back pixel by pixel, so the
-    // outline is built from a fresh Image decode of the same file, once here rather than per frame - the 1x file
-    // even when an @2x arrow is drawn: the outline is placed by the arrow's logical size (Style::button)
-    dpadUpOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_up.png"));
-    dpadDownOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_down.png"));
-    dpadLeftOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_left.png"));
-    dpadRightOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_right.png"));
+    // the d-pad arrows from the icon table (ab_gui G5a): the theme's launcher.icons dpadUp..., else the default's, else
+    // the built-in evoimg/dpad_*.png - on a theme without the block the very files and calls of before (abgui::loadIcon
+    // loads a 1x file exactly as loadImage did, an @2x next to it above scale 1 the same way too)
+    const map<string, abgui::IconSpec> icons = iconSpecs(theme_);
+    const bool halo = iconHalo(theme_);
+    auto arrow = [&](const char *name, Texture &texture, Texture &outline) {
+        auto it = icons.find(name);
+        const abgui::IconSpec spec = it == icons.end() ? abgui::IconSpec() : it->second;
+        texture = abgui::loadIcon(renderer_, spec);
+        // the arrow's own dark halo (UIREV-2, L1), made once here rather than per frame from the 1x file even when an
+        // @2x arrow is drawn: the outline is placed by the arrow's logical size (Style::button). None with
+        // "iconHalo": false - the theme's arrows carry their own glow
+        outline = halo ? abgui::loadIconHalo(renderer_, spec) : Texture();
+    };
+    arrow("dpadUp", dpadUp, dpadUpOutline);
+    arrow("dpadDown", dpadDown, dpadDownOutline);
+    arrow("dpadLeft", dpadLeft, dpadLeftOutline);
+    arrow("dpadRight", dpadRight, dpadRightOutline);
 
     // a theme without launcher fonts (and a default theme without them either) gets the shipped pair -
     // Open Sans Medium/Bold (OFL), the stand-in for the console's SST since 2026-09-21
@@ -157,6 +162,63 @@ Texture ThemeAssets::loadImage(ableem::Renderer &renderer, const string &file) {
     if (pixelScale == 1.0f)
         return Texture::loadFile(renderer, picked); // the 1x file: the very call it always was
     return Texture::loadFile(renderer, picked, pixelScale);
+}
+
+//*******************************
+// ThemeAssets::builtInIcons / iconSpecs / iconHalo
+//*******************************
+map<string, string> ThemeAssets::builtInIcons(const Theme &theme) {
+    static const struct {
+        const char *name;
+        const char *file;
+    } evoimgIcons[] = {
+        // the meta row (G5b)
+        {"disc", "cd.png"},
+        {"usb", "usb.png"},
+        {"internal", "ps1.png"},
+        {"hd", "hd.png"},
+        {"sd", "sd.png"},
+        {"lock", "lock.png"},
+        {"unlock", "unlock.png"},
+        {"favorite", "favorite.png"},
+        {"retroarch", "ra.png"},
+        {"lightgun", "lightgun.png"},
+        {"lightgun2", "lightgun2.png"},
+        // the hint lines and footers (G5a)
+        {"dpadUp", "dpad_up.png"},
+        {"dpadDown", "dpad_down.png"},
+        {"dpadLeft", "dpad_left.png"},
+        {"dpadRight", "dpad_right.png"},
+        // the set picker's tabs, the missing-art covers, the big box's edge (G5c)
+        {"tabPlayStation", "tab_playstation.png"},
+        {"tabRetroArch", "tab_retroarch.png"},
+        {"tabApps", "tab_apps.png"},
+        {"raCover", "ra-cover.png"},
+        {"appCover", "app-cover.png"},
+        {"bigBox", "bigbox.png"},
+    };
+    map<string, string> table;
+    const string evoimg = Env::getWorkingPath() + sep + "evoimg" + sep;
+    for (const auto &icon : evoimgIcons)
+        table[icon.name] = evoimg + icon.file;
+    table["players"] = theme.launcher().metaPanel; // resolved: the theme's own, else the default's
+    return table;
+}
+
+map<string, abgui::IconSpec> ThemeAssets::iconSpecs(const Theme &theme) {
+    map<string, abgui::IconSpec> specs;
+    for (const ableem::ThemeIcon &icon :
+         ableem::resolveThemeIcons(theme.loadedPath(), Theme::defaultsPath(), builtInIcons(theme))) {
+        abgui::IconSpec spec;
+        spec.file = icon.image;
+        spec.file2x = icon.image2x;
+        specs[icon.name] = spec;
+    }
+    return specs;
+}
+
+bool ThemeAssets::iconHalo(const Theme &theme) {
+    return ableem::resolveThemeIconHalo(theme.loadedPath(), Theme::defaultsPath());
 }
 
 //*******************************

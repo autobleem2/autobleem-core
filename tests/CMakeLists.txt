@@ -94,6 +94,10 @@ if (AB_CORE_UI)
     # tests/data/frame-test-theme's panel and Style::drawFrame/sheet through a Context on a headless GuiBase (those cases
     # skip themselves without a renderer)
     ab_add_test(test_ab_gui_frame gui/test_ab_gui_frame.cpp LIBS ab_gui)
+    # ab_gui's icons (G5a): the shared 1x/@2x pick and the IconSet's specs (pure), and on a headless GuiBase the test
+    # theme's icons and halos loading, the Context's icon providers, Style::drawFrame at an alpha and drawFirstFrame
+    # (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_icon gui/test_ab_gui_icon.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

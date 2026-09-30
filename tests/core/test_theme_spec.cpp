@@ -8,6 +8,7 @@
 
 #include <ableem/engine/theme_spec.h>
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -612,4 +613,197 @@ TEST_CASE("the high-resolution test theme (tests/data/hires-test-theme): every i
         CHECK(picked == file.substr(0, file.size() - 4) + "@2x.png");
         CHECK(scale == 2.0f);
     }
+}
+
+//*******************************
+// launcher.icons (ab_gui G5a)
+//*******************************
+namespace {
+const ableem::ThemeIcon *iconNamed(const std::vector<ableem::ThemeIcon> &icons, const string &name) {
+    for (const ableem::ThemeIcon &i : icons)
+        if (i.name == name)
+            return &i;
+    return nullptr;
+}
+} // namespace
+
+TEST_CASE("readThemeIcons: launcher.icons by name - a file, or { image, image2x }; iconHalo") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("theme.json", "{ \"launcher\": { \"iconHalo\": false, \"icons\": {"
+                                " \"dpadUp\": \"icons/up.png\","
+                                " \"disc\": { \"image\": \"icons/cd.png\", \"image2x\": \"hi/cd.png\" },"
+                                " \"tabApps\": { \"image2x\": \"icons/apps@2x.png\" },"
+                                " \"lock\": { \"slice\": 4 },"
+                                " \"sd\": 7,"
+                                " \"hd\": \"\" } } }");
+    const std::vector<ableem::ThemeIcon> icons = ableem::readThemeIcons(tmp.at("theme.json"));
+    REQUIRE(icons.size() == 3); // lock has no image, sd is not a file name, hd is empty
+
+    const ableem::ThemeIcon *up = iconNamed(icons, "dpadUp");
+    REQUIRE(up != nullptr);
+    CHECK(up->image == "icons/up.png");
+    CHECK(up->image2x.empty());
+    const ableem::ThemeIcon *disc = iconNamed(icons, "disc");
+    REQUIRE(disc != nullptr);
+    CHECK(disc->image == "icons/cd.png");
+    CHECK(disc->image2x == "hi/cd.png");
+    const ableem::ThemeIcon *apps = iconNamed(icons, "tabApps");
+    REQUIRE(apps != nullptr);
+    CHECK(apps->image.empty());
+    CHECK(apps->image2x == "icons/apps@2x.png");
+
+    bool halo = true;
+    CHECK(ableem::readThemeIconHalo(tmp.at("theme.json"), halo));
+    CHECK_FALSE(halo);
+
+    // no block, a bad file, no file, an iconHalo that is not a boolean
+    tmp.writeFile("plain.json", "{ \"launcher\": { \"colors\": { \"text\": \"#ffffff\" }, \"iconHalo\": \"no\" } }");
+    tmp.writeFile("bad.json", "{ \"launcher\": { \"icons\": ");
+    tmp.writeFile("array.json", "{ \"launcher\": { \"icons\": [ \"a.png\" ] } }");
+    CHECK(ableem::readThemeIcons(tmp.at("plain.json")).empty());
+    CHECK(ableem::readThemeIcons(tmp.at("bad.json")).empty());
+    CHECK(ableem::readThemeIcons(tmp.at("array.json")).empty());
+    CHECK(ableem::readThemeIcons(tmp.at("none.json")).empty());
+    halo = true;
+    CHECK_FALSE(ableem::readThemeIconHalo(tmp.at("plain.json"), halo));
+    CHECK_FALSE(ableem::readThemeIconHalo(tmp.at("bad.json"), halo));
+    CHECK_FALSE(ableem::readThemeIconHalo(tmp.at("none.json"), halo));
+    CHECK(halo); // untouched
+}
+
+TEST_CASE("loadThemeIcons: the images resolved in the theme's folder, the @2x found next to the 1x") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("t/theme.json", "{ \"launcher\": { \"icons\": {"
+                                  " \"dpadUp\": \"icons/up.png\","
+                                  " \"dpadDown\": \"icons/down.png\","
+                                  " \"disc\": { \"image\": \"icons/cd.png\", \"image2x\": \"icons/big-cd.png\" },"
+                                  " \"tabApps\": { \"image2x\": \"icons/apps.png\" },"
+                                  " \"lock\": \"icons/gone.png\" } } }");
+    tmp.writeFile("t/icons/up.png", "x");
+    tmp.writeFile("t/icons/up@2x.png", "x");
+    tmp.writeFile("t/icons/down.png", "x"); // no @2x
+    tmp.writeFile("t/icons/cd.png", "x");
+    tmp.writeFile("t/icons/cd@2x.png", "x"); // not the one named
+    tmp.writeFile("t/icons/big-cd.png", "x");
+    tmp.writeFile("t/icons/apps.png", "x");
+    const string dir = tmp.at("t");
+    const std::vector<ableem::ThemeIcon> icons = ableem::loadThemeIcons(dir);
+    REQUIRE(icons.size() == 4); // lock's file is not there
+
+    const ableem::ThemeIcon *up = iconNamed(icons, "dpadUp");
+    REQUIRE(up != nullptr);
+    CHECK(up->image == dir + "/icons/up.png");
+    CHECK(up->image2x == dir + "/icons/up@2x.png");
+    const ableem::ThemeIcon *down = iconNamed(icons, "dpadDown");
+    REQUIRE(down != nullptr);
+    CHECK(down->image2x.empty());
+    const ableem::ThemeIcon *disc = iconNamed(icons, "disc");
+    REQUIRE(disc != nullptr);
+    CHECK(disc->image2x == dir + "/icons/big-cd.png");
+    const ableem::ThemeIcon *apps = iconNamed(icons, "tabApps");
+    REQUIRE(apps != nullptr);
+    CHECK(apps->image.empty());
+    CHECK(apps->image2x == dir + "/icons/apps.png");
+    CHECK(iconNamed(icons, "lock") == nullptr);
+}
+
+TEST_CASE("resolveThemeIcons: the theme's own, else the default theme's, else the built-in file (UIREV-30)") {
+    TempDir tmp("theme_spec");
+    // the program's built-in files: up has an @2x twin next to it, left is missing on disk
+    tmp.writeFile("evoimg/dpad_up.png", "x");
+    tmp.writeFile("evoimg/dpad_up@2x.png", "x");
+    tmp.writeFile("evoimg/dpad_down.png", "x");
+    tmp.writeFile("evoimg/dpad_right.png", "x");
+    tmp.writeFile("evoimg/cd.png", "x");
+    std::map<string, string> builtIn;
+    builtIn["dpadUp"] = tmp.at("evoimg/dpad_up.png");
+    builtIn["dpadDown"] = tmp.at("evoimg/dpad_down.png");
+    builtIn["dpadLeft"] = tmp.at("evoimg/dpad_left.png");
+    builtIn["dpadRight"] = tmp.at("evoimg/dpad_right.png");
+    builtIn["disc"] = tmp.at("evoimg/cd.png");
+    builtIn["players"] = ""; // a theme without a meta panel: nothing
+    // the default theme replaces the right arrow and the down arrow, the theme the down arrow and the disc and adds an
+    // icon of its own; its up arrow's file is missing
+    tmp.writeFile("default/theme.json", "{ \"launcher\": { \"icons\": { \"dpadRight\": \"r.png\","
+                                        " \"dpadDown\": \"d.png\" } } }");
+    tmp.writeFile("default/r.png", "x");
+    tmp.writeFile("default/d.png", "x");
+    tmp.writeFile("t/theme.json", "{ \"launcher\": { \"icons\": { \"dpadDown\": \"i/d.png\", \"disc\": \"i/cd.png\","
+                                  " \"extension\": \"i/ext.png\", \"dpadUp\": \"i/missing.png\" } } }");
+    tmp.writeFile("t/i/d.png", "x");
+    tmp.writeFile("t/i/cd.png", "x");
+    tmp.writeFile("t/i/cd@2x.png", "x");
+    tmp.writeFile("t/i/ext.png", "x");
+    const string def = tmp.at("default");
+    const string theme = tmp.at("t");
+
+    const std::vector<ableem::ThemeIcon> icons = ableem::resolveThemeIcons(theme, def, builtIn);
+    const ableem::ThemeIcon *up = iconNamed(icons, "dpadUp"); // the theme's file is missing: the built-in one
+    REQUIRE(up != nullptr);
+    CHECK(up->image == tmp.at("evoimg/dpad_up.png"));
+    CHECK(up->image2x == tmp.at("evoimg/dpad_up@2x.png"));
+    const ableem::ThemeIcon *down = iconNamed(icons, "dpadDown"); // the theme's, over the default's
+    REQUIRE(down != nullptr);
+    CHECK(down->image == theme + "/i/d.png");
+    const ableem::ThemeIcon *right = iconNamed(icons, "dpadRight"); // the default's, over the built-in
+    REQUIRE(right != nullptr);
+    CHECK(right->image == def + "/r.png");
+    CHECK(right->image2x.empty());
+    const ableem::ThemeIcon *disc = iconNamed(icons, "disc");
+    REQUIRE(disc != nullptr);
+    CHECK(disc->image == theme + "/i/cd.png");
+    CHECK(disc->image2x == theme + "/i/cd@2x.png");
+    CHECK(iconNamed(icons, "extension") != nullptr); // a name only the theme has
+    CHECK(iconNamed(icons, "dpadLeft") == nullptr);  // its built-in file is not there
+    CHECK(iconNamed(icons, "players") == nullptr);
+    CHECK(icons.size() == 5);
+
+    // the default theme itself: the default's over the built-in
+    const std::vector<ableem::ThemeIcon> ofDefault = ableem::resolveThemeIcons(def, def, builtIn);
+    REQUIRE(iconNamed(ofDefault, "dpadDown") != nullptr);
+    CHECK(iconNamed(ofDefault, "dpadDown")->image == def + "/d.png");
+    REQUIRE(iconNamed(ofDefault, "disc") != nullptr);
+    CHECK(iconNamed(ofDefault, "disc")->image == tmp.at("evoimg/cd.png"));
+    CHECK(iconNamed(ofDefault, "extension") == nullptr);
+
+    // a theme and a default without the block (every shipped theme today): exactly the built-in files
+    tmp.writeFile("plain/theme.json", "{ \"format\": 1 }");
+    tmp.writeFile("plaindef/theme.json", "{ \"format\": 1 }");
+    const std::vector<ableem::ThemeIcon> plain =
+        ableem::resolveThemeIcons(tmp.at("plain"), tmp.at("plaindef"), builtIn);
+    REQUIRE(plain.size() == 4);
+    for (const ableem::ThemeIcon &i : plain) {
+        CHECK(i.image == builtIn[i.name]);
+        CHECK(i.image2x == (i.name == "dpadUp" ? tmp.at("evoimg/dpad_up@2x.png") : string()));
+    }
+}
+
+TEST_CASE("resolveThemeIconHalo: the theme's iconHalo, else the default's, else on") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("off/theme.json", "{ \"launcher\": { \"iconHalo\": false } }");
+    tmp.writeFile("on/theme.json", "{ \"launcher\": { \"iconHalo\": true } }");
+    tmp.writeFile("plain/theme.json", "{ \"format\": 1 }");
+    CHECK(ableem::resolveThemeIconHalo(tmp.at("plain"), tmp.at("plain")));
+    CHECK_FALSE(ableem::resolveThemeIconHalo(tmp.at("off"), tmp.at("plain")));
+    CHECK_FALSE(ableem::resolveThemeIconHalo(tmp.at("plain"), tmp.at("off")));
+    CHECK(ableem::resolveThemeIconHalo(tmp.at("on"), tmp.at("off")));
+    CHECK(ableem::resolveThemeIconHalo(tmp.at("nothing"), tmp.at("nothing")));
+}
+
+TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of the art spec, each with its @2x") {
+    const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
+    const std::vector<ableem::ThemeIcon> icons = ableem::loadThemeIcons(dir);
+    CHECK(icons.size() == 27);
+    for (const char *name :
+         {"players",        "disc",         "usb",      "internal",  "hd",       "sd",       "lock",      "unlock",
+          "favorite",       "retroarch",    "lightgun", "lightgun2", "dpadUp",   "dpadDown", "dpadLeft",  "dpadRight",
+          "tabPlayStation", "tabRetroArch", "tabApps",  "raCover",   "appCover", "bigBox",   "extension", "battery",
+          "play",           "switchOn",     "switchOff"}) {
+        const ableem::ThemeIcon *icon = iconNamed(icons, name);
+        REQUIRE_MESSAGE(icon != nullptr, name);
+        CHECK(icon->image.find(dir + "/icons/") == 0);
+        CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
+    }
+    CHECK(ableem::resolveThemeIconHalo(dir, dir));   // the halo stays on: it shows under the test colours
+    CHECK(ableem::loadThemeFrames(dir).size() == 8); // the frames are untouched by the block
 }

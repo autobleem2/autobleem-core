@@ -164,6 +164,11 @@ public:
     // (an unknown name: its own colours); false, and nothing drawn, when the Context has no such frame - the caller
     // then draws its code-drawn shape. The primitives' Context overloads ask for theirs: sheet() "panel" (G4a)
     bool drawFrame(Context &ctx, const std::string &name, const ableem::Rect &box) const;
+    // the same at `alpha` (255: as drawn above) - a frame that fades (G5a; the cover glow's, G5k)
+    bool drawFrame(Context &ctx, const std::string &name, const ableem::Rect &box, unsigned char alpha) const;
+    // the first of `names` the Context has a frame for, drawn into `box` (the toast's: "toast", then "panel"); false,
+    // and nothing drawn, when it has none of them (G5a)
+    bool drawFirstFrame(Context &ctx, const std::vector<std::string> &names, const ableem::Rect &box) const;
 
     //*******************************
     // the primitives

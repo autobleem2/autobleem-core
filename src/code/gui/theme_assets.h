@@ -7,6 +7,7 @@
 #include "../core/services/config.h"
 #include "../core/services/theme.h"
 
+#include <ab_gui/icon.h>
 #include <ableem/ableem.h>
 
 #include <map>
@@ -33,6 +34,17 @@ public:
     // a theme image: its "<stem>@2x<ext>" when the output scale is above 1 and one is next to `file`, loaded with
     // pixel scale 2 so it draws in the 1x one's logical size (ableem::themeImageFile) - else `file` as it always was
     static ableem::Texture loadImage(ableem::Renderer &renderer, const std::string &file);
+
+    // The launcher's icons (launcher.icons, ab_gui G5a - docs/theme-format.md): each name the theme's own entry, else
+    // the default theme's, else the built-in file (builtInIcons()), with its @2x file when there is one - what Gui's
+    // IconSet is filled with, and where the d-pad arrows below are loaded from. Statics: no layout change (AB_SDK_ABI)
+    static std::map<std::string, abgui::IconSpec> iconSpecs(const Theme &theme);
+    // whether the icons get their dark halo: the theme's launcher.iconHalo, else the default's, else true
+    static bool iconHalo(const Theme &theme);
+    // the built-in table: an icon's name -> its file, `evoimg/` in the resources (the meta row's badges, the d-pad
+    // arrows, the set picker's tabs, the missing-art covers, the big box's edge) - and `players`, which has no built-in
+    // file: the theme's launcher.metaPanel (merged over the default's)
+    static std::map<std::string, std::string> builtInIcons(const Theme &theme);
 
     // the UI's font set (titles, rows, footers, the menus, the extensions' screens): the launcher's pair (the
     // theme's launcher.fonts, else Open Sans Medium/Bold) - or, with "Use Default Font" off, the user's font for
@@ -61,8 +73,9 @@ public:
     std::map<std::string, ableem::Texture> buttonTextureMap; // "X", "O", "Start", "Check", ... -> its texture
     // the launcher's footer hints (theme.json launcher.hints), what PanelStyle draws in a panel's footer
     ableem::Texture hintCross, hintCircle, hintTriangle;
-    // the d-pad hint chips (evoimg/dpad_*.png, tools/make_evoimg_icons.py) - ours, not the theme's: every
-    // theme gets the same four arrows. What PanelStyle::faceIcon draws for "|@Up|"/"|@Down|"/"|@Left|"/"|@Right|"
+    // the d-pad hint chips: the icon table's dpadUp/dpadDown/dpadLeft/dpadRight (iconSpecs - the theme's
+    // launcher.icons, else the default's, else the launcher's evoimg/dpad_*.png, tools/make_evoimg_icons.py; ab_gui
+    // G5a). What PanelStyle::faceIcon draws for "|@Up|"/"|@Down|"/"|@Left|"/"|@Right|"
     ableem::Texture dpadUp, dpadDown, dpadLeft, dpadRight;
     // the transparent margin to the right of the check switch's art (the larger of on/off), measured
     // from the theme's files: an option row's value text lines up with the switch's visible edge

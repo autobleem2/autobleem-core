@@ -104,8 +104,9 @@ Gui::Gui()
 // Gui::wireUiContext
 //********************
 // the face buttons' images: the launcher's hint icons for X/O/T (the theme's buttons when a theme has none),
-// the theme's square, the launcher's own d-pad arrows (evoimg/dpad_*.png - ours, not the theme's, so every
-// theme's hint line gets the same four); an invalid texture for every other key, which Style draws as a chip
+// the theme's square, the d-pad arrows of the icon table (ThemeAssets' dpad*: the theme's launcher.icons, else the
+// default's, else the launcher's own evoimg/dpad_*.png - ab_gui G5a); an invalid texture for every other key, which
+// Style draws as a chip
 static Texture faceIcon(ThemeAssets &assets, const string &key) {
     if (key == "X")
         return assets.hintCross.valid() ? assets.hintCross : assets.buttonTextureMap["X"];
@@ -126,8 +127,8 @@ static Texture faceIcon(ThemeAssets &assets, const string &key) {
     return Texture();
 }
 
-// faceIcon's outline (UIREV-2): only the launcher's own d-pad arrows need one - X/O/T/S already carry the
-// theme's own art and read fine on every theme's hint bar
+// faceIcon's outline (UIREV-2): only the d-pad arrows need one - X/O/T/S already carry the theme's own art and read
+// fine on every theme's hint bar; none when the theme's icons carry their own glow ("iconHalo": false, G5a)
 static Texture faceIconOutline(ThemeAssets &assets, const string &key) {
     if (key == "Up")
         return assets.dpadUpOutline;
@@ -233,6 +234,9 @@ void Gui::wireUiContext() {
     uiContext_.setStack(stack_);
     // the theme's frames by name (step G4a): none unless the theme's own theme.json has launcher.frames
     uiContext_.frameProvider = [this](const string &name) { return frames_.frame(renderer(), name); };
+    // the theme's icons by name and their halos (step G5a): every name falls back to the default's, then the built-in
+    uiContext_.iconProvider = [this](const string &name) { return icons_.icon(renderer(), name); };
+    uiContext_.iconHaloProvider = [this](const string &name) { return icons_.halo(renderer(), name); };
 }
 
 //*******************************
@@ -281,6 +285,7 @@ void Gui::loadAssets(bool reloadMusic) {
     text_.clearTextCache(); // keyed on the font handles about to be replaced
     assets_.load();
     frames_.assign(themeFrames(AppBase::get().theme().loadedPath())); // the textures load when first drawn
+    icons_.assign(ThemeAssets::iconSpecs(AppBase::get().theme()), ThemeAssets::iconHalo(AppBase::get().theme()));
     AppBase::get().audio().loadTheme(reloadMusic);
 
     // the classic screens' text halo, on unless the theme says otherwise; the launcher sets its own
@@ -363,6 +368,7 @@ void Gui::releaseDisplay() {
     text_.clearTextCache();
     assets_.unload();  // before the renderer goes: SDL frees the textures with it
     frames_.release(); // the same for the frames' textures (the specs stay; they load again when next drawn)
+    icons_.release();  // and the icons' textures and halos
     GuiBase::releaseDisplay();
 }
 

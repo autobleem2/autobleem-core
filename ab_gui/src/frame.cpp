@@ -84,12 +84,37 @@ vector<FramePiece> framePieces(const Size &image, float imageScale, const Insets
 // drawFrame
 //*******************************
 void drawFrame(ableem::Renderer &renderer, const Frame &frame, const Rect &box, const ableem::Color &tint) {
+    drawFrame(renderer, frame, box, tint, 255);
+}
+
+void drawFrame(ableem::Renderer &renderer, const Frame &frame, const Rect &box, const ableem::Color &tint,
+               unsigned char alpha) {
     if (!frame.valid())
         return;
-    ableem::Texture texture = frame.texture; // a handle: the colour mod is the texture's own
+    ableem::Texture texture = frame.texture; // a handle: the colour and alpha mods are the texture's own
     texture.setColorMod(tint);
+    texture.setAlphaMod(alpha);
     for (const FramePiece &p : framePieces(texture.size(), frame.imageScale, frame.slice, frame.bleed, frame.fill, box))
         renderer.copy(texture, &p.src, &p.dst);
+}
+
+//*******************************
+// pickImageFile
+//*******************************
+string pickImageFile(const string &file, const string &file2x, float outputScale, float &scale) {
+    if (outputScale > 1.0f && !file2x.empty()) {
+        scale = 2.0f;
+        return file2x;
+    }
+    if (!file.empty()) {
+        scale = 1.0f;
+        return file;
+    }
+    scale = 2.0f;
+    if (!file2x.empty())
+        return file2x;
+    scale = 1.0f;
+    return "";
 }
 
 //*******************************
@@ -112,19 +137,7 @@ void FrameSet::release() {
 }
 
 string FrameSet::pickFile(const FrameSpec &spec, float outputScale, float &scale) {
-    if (outputScale > 1.0f && !spec.file2x.empty()) {
-        scale = 2.0f;
-        return spec.file2x;
-    }
-    if (!spec.file.empty()) {
-        scale = 1.0f;
-        return spec.file;
-    }
-    scale = 2.0f;
-    if (!spec.file2x.empty())
-        return spec.file2x;
-    scale = 1.0f;
-    return "";
+    return pickImageFile(spec.file, spec.file2x, outputScale, scale);
 }
 
 Frame FrameSet::frame(ableem::Renderer &renderer, const string &name) {

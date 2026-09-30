@@ -805,6 +805,126 @@ vector<ThemeFrame> loadThemeFrames(const string &dir) {
     return frames;
 }
 
+//*******************************
+// readThemeIcons / loadThemeIcons / resolveThemeIcons
+//*******************************
+namespace {
+
+// the "launcher" object of the theme.json at `path` into `out`; false when the file is missing, invalid or has none
+bool readLauncher(const string &path, json &out) {
+    ifstream in(path, ifstream::binary);
+    if (!in.is_open())
+        return false;
+    json j;
+    try {
+        in >> j;
+    } catch (const json::exception &) {
+        return false; // ThemeSpec::load has logged it
+    }
+    const json *launcher = child(j, "launcher");
+    if (!launcher || !launcher->is_object())
+        return false;
+    out = *launcher;
+    return true;
+}
+
+// `file` (relative to `dir`) as an absolute path when it is there, else ""
+string existing(const string &dir, const string &file) {
+    if (file.empty())
+        return string();
+    const string path = dir + sep + file;
+    return DirEntry::exists(path) ? path : string();
+}
+
+} // namespace
+
+vector<ThemeIcon> readThemeIcons(const string &path) {
+    vector<ThemeIcon> icons;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return icons;
+    const json *block = child(launcher, "icons");
+    if (!block || !block->is_object())
+        return icons;
+    for (auto it = block->begin(); it != block->end(); ++it) {
+        ThemeIcon icon;
+        icon.name = it.key();
+        if (it->is_string()) {
+            icon.image = it->get<string>();
+        } else {
+            readStr(*it, "image", icon.image);
+            readStr(*it, "image2x", icon.image2x);
+        }
+        if (icon.image.empty() && icon.image2x.empty())
+            continue;
+        icons.push_back(icon);
+    }
+    return icons;
+}
+
+bool readThemeIconHalo(const string &path, bool &halo) {
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return false;
+    const json *v = child(launcher, "iconHalo");
+    if (!v || !v->is_boolean())
+        return false;
+    halo = v->get<bool>();
+    return true;
+}
+
+vector<ThemeIcon> loadThemeIcons(const string &dir) {
+    vector<ThemeIcon> icons;
+    for (ThemeIcon icon : readThemeIcons(dir + sep + "theme.json")) {
+        const string image = existing(dir, icon.image);
+        string image2x;
+        if (!icon.image2x.empty())
+            image2x = existing(dir, icon.image2x);
+        else if (!image.empty() && DirEntry::exists(at2x(image)))
+            image2x = at2x(image);
+        if (image.empty() && image2x.empty()) {
+            PLOG_WARNING << "Theme icon '" << icon.name << "': no image in " << dir << " - it falls back";
+            continue;
+        }
+        icon.image = image;
+        icon.image2x = image2x;
+        icons.push_back(icon);
+    }
+    return icons;
+}
+
+vector<ThemeIcon> resolveThemeIcons(const string &themeDir, const string &defaultDir,
+                                    const map<string, string> &builtIn) {
+    map<string, ThemeIcon> table;
+    // the built-in files first, then the default theme's entries over them, then the theme's own over those
+    for (const auto &b : builtIn) {
+        if (b.second.empty() || !DirEntry::exists(b.second))
+            continue;
+        ThemeIcon icon;
+        icon.name = b.first;
+        icon.image = b.second;
+        if (DirEntry::exists(at2x(b.second)))
+            icon.image2x = at2x(b.second);
+        table[b.first] = icon;
+    }
+    for (const ThemeIcon &icon : loadThemeIcons(defaultDir))
+        table[icon.name] = icon;
+    if (themeDir != defaultDir)
+        for (const ThemeIcon &icon : loadThemeIcons(themeDir))
+            table[icon.name] = icon;
+    vector<ThemeIcon> icons;
+    for (const auto &t : table)
+        icons.push_back(t.second);
+    return icons;
+}
+
+bool resolveThemeIconHalo(const string &themeDir, const string &defaultDir) {
+    bool halo = true;
+    if (!readThemeIconHalo(themeDir + sep + "theme.json", halo))
+        readThemeIconHalo(defaultDir + sep + "theme.json", halo);
+    return halo;
+}
+
 string themeImageFile(const string &file, float outputScale, float &pixelScale) {
     pixelScale = 1.0f;
     if (outputScale <= 1.0f || file.empty())

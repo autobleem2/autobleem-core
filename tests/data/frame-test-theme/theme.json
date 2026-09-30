@@ -12,6 +12,19 @@
       "keyLit": { "image": "frames/key_lit.png", "slice": 16, "bleed": 4 },
       "keySelected": { "image": "frames/key_selected.png", "slice": 16, "bleed": 4 },
       "field": { "image": "frames/field.png", "slice": 16, "bleed": 4 }
+    },
+    "icons": {
+      "players": "icons/players.png", "disc": "icons/disc.png",
+      "usb": "icons/usb.png", "internal": "icons/internal.png", "hd": "icons/hd.png", "sd": "icons/sd.png",
+      "lock": "icons/lock.png", "unlock": "icons/unlock.png", "favorite": "icons/favorite.png",
+      "retroarch": "icons/retroarch.png", "lightgun": "icons/lightgun.png", "lightgun2": "icons/lightgun2.png",
+      "dpadUp": "icons/dpad_up.png", "dpadDown": "icons/dpad_down.png",
+      "dpadLeft": "icons/dpad_left.png", "dpadRight": "icons/dpad_right.png",
+      "tabPlayStation": "icons/tab_playstation.png", "tabRetroArch": "icons/tab_retroarch.png",
+      "tabApps": "icons/tab_apps.png",
+      "raCover": "icons/ra_cover.png", "appCover": "icons/app_cover.png", "bigBox": "icons/big_box.png",
+      "extension": "icons/extension.png", "battery": "icons/battery.png", "play": "icons/play.png",
+      "switchOn": "icons/switch_on.png", "switchOff": "icons/switch_off.png"
     }
   }
 }

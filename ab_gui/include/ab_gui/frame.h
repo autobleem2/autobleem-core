@@ -72,6 +72,15 @@ bool frameFits(const ableem::Size &image, float imageScale, const Insets &slice)
 // draws `frame` into `box` (grown by its bleed) with `tint` multiplying its colours (white: its own)
 void drawFrame(ableem::Renderer &renderer, const Frame &frame, const ableem::Rect &box,
                const ableem::Color &tint = ableem::Color(255, 255, 255, 255));
+// the same at `alpha` (255: as the image is; a glow fading with a scroll - G5a). The texture is shared by every draw of
+// the frame, so every draw sets its alpha (the one above 255)
+void drawFrame(ableem::Renderer &renderer, const Frame &frame, const ableem::Rect &box, const ableem::Color &tint,
+               unsigned char alpha);
+
+// which of an image's two files to load at `outputScale` - what FrameSet and IconSet (icon.h) both pick by: the @2x one
+// above scale 1 when there is one, else the 1x one, else the @2x one (the GPU scales it down); `scale` gets its image
+// pixels per logical pixel. "" when neither is set
+std::string pickImageFile(const std::string &file, const std::string &file2x, float outputScale, float &scale);
 
 //********************
 // FrameSet
@@ -90,8 +99,9 @@ public:
     // there is no such frame, or its image does not load or is smaller than its slices (logged once, then remembered)
     Frame frame(ableem::Renderer &renderer, const std::string &name);
 
-    // which file to draw at `outputScale`: the @2x one above scale 1 when there is one, else the 1x one, else the
-    // @2x one (the GPU scales it down); `scale` gets its image pixels per logical pixel. "" when neither is set
+    // which file to draw at `outputScale` (pickImageFile): the @2x one above scale 1 when there is one, else the 1x
+    // one, else the @2x one (the GPU scales it down); `scale` gets its image pixels per logical pixel. "" when neither
+    // is set
     static std::string pickFile(const FrameSpec &spec, float outputScale, float &scale);
 
 private:

@@ -438,7 +438,23 @@ include path to the extensions.
   tells the callers to draw it before the row's text (`abgui::List::draw` does; without the frame the band stays over the
   rows). `Style::label(ctx, rect)` draws the `heading` frame (G4d) in a heading band's box, else the faint band; `TextRenderer::renderLabelBox(ctx, ...)` is the classic screens' way to it. `Style::key(ctx, ...)` / `field(ctx, ...)` (G4e) draw the `keySelected`/`keyLit`/`keyFunction`/`key` and `field` frames - a missing state frame falls back to `key` (a selected key then gets today's outline over it), no frame at all runs the old Renderer call; `abgui::Keyboard` goes through them. A test theme with a panel frame (cyan rim at 1x, orange at @2x), a selection frame (magenta / lime), a heading frame (yellow / blue), key (white / grey), keyFunction (lilac / violet), keyLit (cream / brown), keySelected (red / pink) and field (green / teal) frames:
   `tests/data/frame-test-theme/` (`make_test_frame.py` draws them). Tests:
-  `tests/gui/test_ab_gui_frame.cpp`, `tests/core/test_theme_spec.cpp` (the reader).
+  `tests/gui/test_ab_gui_frame.cpp`, `tests/core/test_theme_spec.cpp` (the reader). Since G5a `Style::drawFrame(ctx,
+  name, box, alpha)` draws one at an alpha and `drawFirstFrame(ctx, {names}, box)` the first the Context has.
+- **Icons** (`icon.h`, G5a; the plan's "G5 sub-steps", the artist's side `docs/ab-gui-evoui-art-spec.md`, 3.) - fixed images
+  by name drawn at their own size (a d-pad arrow, a meta-row badge, a tab), `FrameSet`'s twin: `IconSpec` (1x/@2x
+  files), `loadIcon()` (the @2x above output scale 1 at pixel scale 2 - `size()` logical; a 1x file with the plain
+  `loadFile` call), `loadIconHalo()` (`Style::outlineOf` of the 1x file), `IconSet` (`assign(specs, halo)`, `icon()`/
+  `halo()` loaded on first ask, `release()`); `pickImageFile()` (`frame.h`) is the one 1x/@2x rule of both sets. The
+  Context hands them out (`iconProvider`/`iconHaloProvider`, `icon(name)`/`iconHalo(name)`, appended). **Unlike frames,
+  icons fall back** (UIREV-30): the engine's `resolveThemeIcons(themeDir, defaultDir, builtIn)` gives per name the
+  theme's own `launcher.icons` entry, else `default`'s, else the program's built-in file; `resolveThemeIconHalo` reads
+  `launcher.iconHalo` (the theme's, else `default`'s, else on - false drops every halo). AutoBleem's built-in table is
+  `ThemeAssets::builtInIcons()` (the `evoimg/` files, `players` = the theme's `launcher.metaPanel`), resolved by
+  `ThemeAssets::iconSpecs()`/`iconHalo()` (statics - no layout change); `Gui::icons_` (appended after `frames_`) is
+  filled in `loadAssets()` and released in `releaseDisplay()`. The d-pad arrows `ThemeAssets` hands out as glyphs load
+  from the table (the same `evoimg/dpad_*.png` on a theme without the block). The test theme's icons: all 27 names,
+  orange at 1x, sky blue at @2x (`tests/data/frame-test-theme/make_test_icons.py`). Tests: `tests/gui/test_ab_gui_icon.cpp`,
+  `tests/core/test_theme_spec.cpp`.
 - **`PanelStyle` is an `abgui::Style`** (since G3z; an adapter holding its own colours until then): the colour roles,
   metrics and every primitive on a Renderer or a Context are the Style's; PanelStyle adds the old constants
   (`HeaderHeight`...), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, `style()`/`fromStyle()`, and the
@@ -555,7 +571,7 @@ executable/abpad files and points here for the rest.
 | `gui/app_audio.*` | `AppAudio` | The background music track and the five UI sounds (`cursor`, `cancel`, `home_up`, `home_down`, `resume`), plus which track to play (theme's or the user's from `resources/music`) at which sample rate. Owned by `App`: `app.audio().cursor.play()`. Sits on `gui->audio()`, which is only lib_ableem's mixer device. |
 | `gui/gui.*` | `Gui` singleton | The screen only: SDL window/renderer (via `ableem::GuiBase`), `assets()`, `text()`, and the background/logo/status drawing that combines them. `display(resume)` (re)inits and shows the splash (`resume=false`, boot only) or sets `session().resumingGui` for the launcher to pick up (`resume=true`, after a game exits). |
 | `gui/screens/gui_splash.*` | `GuiSplash` | Fades in, holds at full brightness for `SplashHoldDuration` (2s), fades back out, then returns - `Gui::display(false)` is its only caller, once at boot. |
-| `gui/theme_assets.*` | `ThemeAssets` | The current theme's textures (background, logo, jewel case, the `|@X|` button markers) and fonts (`themeFont` at the theme's size, plus the `themeFonts`/`sonyFonts` sets). `load()` re-reads theme.json (`Theme::load()`) and reloads everything from the resolved paths. Screens use `gui->assets()`. Every image goes through the static `loadImage(renderer, file)` (G4f): the `@2x` file above output scale 1 when the theme ships one, else the very call it always was - the launcher's evoui images load through it too. |
+| `gui/theme_assets.*` | `ThemeAssets` | The current theme's textures (background, logo, jewel case, the `|@X|` button markers) and fonts (`themeFont` at the theme's size, plus the `themeFonts`/`sonyFonts` sets). `load()` re-reads theme.json (`Theme::load()`) and reloads everything from the resolved paths. Screens use `gui->assets()`. Every image goes through the static `loadImage(renderer, file)` (G4f): the `@2x` file above output scale 1 when the theme ships one, else the very call it always was - the launcher's evoui images load through it too. The icon table (G5a): `builtInIcons`/`iconSpecs`/`iconHalo` (statics), which the d-pad arrows and `Gui`'s IconSet load from. |
 | `gui/text_renderer.*` | `TextRenderer` | The classic UI's text drawing: `|@X|` button markers laid out inline with text, `renderTextLine/ToColumns/Options`, selection and label boxes, the theme's menu-panel/status-bar rects, `toColor()`. Holds references to `Gui`'s theme font and button textures; screens use `gui->text()`. |
 | `gui/gui_screen.h` | `GuiScreen` | Base for every screen: `init/render/loop` + virtual `doCross_Pressed()`-style handlers; `show()` runs them. Set `menuVisible=false` to exit. Carries `gui`, `renderer` and `app` (an `AppBase &` - see `app_base.*`). |
 | `gui/menus/gui_*` | `GuiMenuBase`, `GuiOptionsMenuBase`, ... | Header-only templated list menus (string, two-column, playlist, game dir) and concrete Options / Memory Cards / Game Manager / Game Editor menus. |

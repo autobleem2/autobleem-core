@@ -43,10 +43,11 @@ public:
     // the directory load() actually read
     const std::string &loadedPath() const { return loadedPath_; }
 
+    // <themes>/default: the theme every other one is merged over (and whose icons fill the gaps, ab_gui G5a)
+    static std::string defaultsPath();
+
 private:
     Config &config_;
     ThemeSpec spec_;
     std::string loadedPath_;
-
-    static std::string defaultsPath();
 };

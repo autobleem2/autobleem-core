@@ -141,4 +141,15 @@ Frame Context::frame(const string &name) const {
     return frameProvider ? frameProvider(name) : Frame();
 }
 
+//*******************************
+// Context::icon / iconHalo
+//*******************************
+ableem::Texture Context::icon(const string &name) const {
+    return iconProvider ? iconProvider(name) : ableem::Texture();
+}
+
+ableem::Texture Context::iconHalo(const string &name) const {
+    return iconHaloProvider ? iconHaloProvider(name) : ableem::Texture();
+}
+
 } // namespace abgui

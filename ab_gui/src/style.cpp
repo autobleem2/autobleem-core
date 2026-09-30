@@ -198,14 +198,25 @@ bool Style::colorByName(const string &name, Color &out) const {
 }
 
 bool Style::drawFrame(Context &ctx, const string &name, const Rect &box) const {
+    return drawFrame(ctx, name, box, 255);
+}
+
+bool Style::drawFrame(Context &ctx, const string &name, const Rect &box, unsigned char alpha) const {
     const Frame frame = ctx.frame(name);
     if (!frame.valid())
         return false;
     Color tint(255, 255, 255, 255);
     if (!frame.tint.empty() && colorByName(frame.tint, tint))
         tint.a = 255; // the colour multiplies the image's; its alpha is the image's own
-    abgui::drawFrame(ctx.renderer(), frame, box, tint);
+    abgui::drawFrame(ctx.renderer(), frame, box, tint, alpha);
     return true;
+}
+
+bool Style::drawFirstFrame(Context &ctx, const vector<string> &names, const Rect &box) const {
+    for (const string &name : names)
+        if (drawFrame(ctx, name, box))
+            return true;
+    return false;
 }
 
 //*******************************
