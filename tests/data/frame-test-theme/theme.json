@@ -2,7 +2,9 @@
   "format": 1,
   "launcher": {
     "frames": {
-      "panel": { "image": "frames/panel.png", "slice": 24, "bleed": 8 }
+      "panel": { "image": "frames/panel.png", "slice": 24, "bleed": 8 },
+      "selection": { "image": "frames/selection.png", "slice": { "left": 12, "top": 10, "right": 12, "bottom": 10 },
+                     "bleed": 4 }
     }
   }
 }

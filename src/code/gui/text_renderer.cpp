@@ -486,6 +486,21 @@ void TextRenderer::renderSelectionBox(int line, int yoffset, int xoffset, ableem
     PanelStyle::fromTheme(theme_.launcher()).selection(renderer_, rectSelection);
 }
 
+void TextRenderer::renderSelectionBox(abgui::Context &ctx, int line, int yoffset, int xoffset, ableem::Font font,
+                                      int rightEdge) {
+    if (!font.valid())
+        font = themeFont_;
+
+    int fontHeight = font.lineHeight();
+    const Rect rectSelection =
+        abgui::List::band(getOpscreenRectOfTheme(), yoffset + fontHeight * line, fontHeight, xoffset, rightEdge);
+    PanelStyle::fromTheme(theme_.launcher()).selection(ctx, rectSelection);
+}
+
+bool TextRenderer::selectionFramed(abgui::Context &ctx) const {
+    return PanelStyle::fromTheme(theme_.launcher()).selectionFramed(ctx);
+}
+
 //*******************************
 // TextRenderer::renderLabelBox
 //*******************************

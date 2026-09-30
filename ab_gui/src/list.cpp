@@ -172,7 +172,8 @@ Panel List::currentPanel() const {
 //*******************************
 // the classic list's frame, call for call: the backdrop, the compact panel set (a short list with nothing beside it)
 // so the rows drawn meanwhile follow it, the sheet, the header, the page from the cursor at the first draw, the rows,
-// the band, the markers, the footer, the compact panel dropped
+// the band (before the rows when the theme has a `selection` frame), the markers, the footer, the compact panel
+// dropped
 void List::draw() {
     ctx.drawBackdrop();
     const bool compact = isCompact(size(), selectionRightEdge);
@@ -186,8 +187,13 @@ void List::draw() {
         ListModel::computePagePosition(view());
         firstRender = false;
     }
+    // a themed selection frame goes under the rows' text; the code-drawn band stays over it, as it always was
+    const bool framed = panel.style().selectionFramed(ctx);
+    if (framed)
+        drawSelection();
     drawRows();
-    drawSelection();
+    if (!framed)
+        drawSelection();
     currentPanel().scrollMarkers(ctx, firstVisible > 0, lastVisible < size() - 1);
 
     currentPanel().footer(ctx, statusText());

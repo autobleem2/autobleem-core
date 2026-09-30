@@ -13,6 +13,10 @@
 #include <string>
 #include <vector>
 
+namespace abgui {
+class Context;
+}
+
 enum XAlignment { XALIGN_LEFT, XALIGN_CENTER, XALIGN_RIGHT };
 
 //********************
@@ -207,6 +211,11 @@ public:
     // the font's line height
     void renderSelectionBox(int line, int yoffset, int xoffset = 0, ableem::Font font = ableem::Font(),
                             int rightEdge = 0);
+    // the same through the Context (G4c): the theme's `selection` frame when it has one, else the band and the bar.
+    // A framed selection goes under the row's text - draw it before the row (selectionFramed()), not after
+    void renderSelectionBox(abgui::Context &ctx, int line, int yoffset, int xoffset = 0,
+                            ableem::Font font = ableem::Font(), int rightEdge = 0);
+    bool selectionFramed(abgui::Context &ctx) const;
 
     // a heading row between the rows: PanelStyle's faint band, to the panel's right edge or `rightEdge`
     // (a screen with a pane on the right passes where its rows stop, as for renderSelectionBox)
