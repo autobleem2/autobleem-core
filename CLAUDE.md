@@ -347,6 +347,14 @@ include path to the extensions.
   copy `selected`/`result`/the scroll back. The launcher's `GuiSystemMenu` (Quick and System menus, the DebugDriver's
   `items`/`selected`) keeps its own class: its 20/14/15 px fonts and description strip are not `FontRole`s yet.
   Tests: `tests/gui/test_ab_gui_action_menu.cpp`.
+- **`abgui::ListModel`** (`list_model.h`, G3m part 1) - the selection and paging of a list, pure and header-only:
+  a `View` of references to the caller's own `selected`/`firstVisible`/`lastVisible` plus `maxVisible` and `size`, and
+  inline static templates over a skip predicate: `adjustPageBy`, `computePagePosition`, `landOnSelectable`,
+  `stepDown`/`stepUp` (with the wrap), `pageDown`/`pageUp`, `home`/`end`. `GuiMenuBase` keeps every data member
+  (ABI 6: extensions build it inline) and forwards its `adjustPageBy`/`landOnSelectable`/`computePagePosition`/
+  `doKeyDown`.. to the model through `modelView()`/`skipper()` (non-virtual, no layout change); `labelsOnly` and the
+  sounds stay in the class. Tests: `tests/classic/test_menu_base_navigation.cpp` (the real model, plus a brute-force
+  comparison with the frozen old code). Part 2 (`abgui::List`, the drawing and input) is open.
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to

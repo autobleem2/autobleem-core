@@ -37,7 +37,7 @@ if (AB_CORE_UI)
     # UIREV-2: doHome()/doEnd()'s skip-past-a-heading fix, driven through a local model of GuiMenuBase's
     # selection math - the real class needs a live AppBase/Gui over a theme/resources tree this repo does not
     # ship (see the file's opening comment), the same reason no other classic-menu test builds one
-    ab_add_test(test_menu_base_navigation classic/test_menu_base_navigation.cpp)
+    ab_add_test(test_menu_base_navigation classic/test_menu_base_navigation.cpp LIBS ab_gui)
     # UIREV-3: PanelStyle::footer()'s icons-only fallback once even FONT_15_BOLD is too wide, driven through
     # a local model of widthAt() - the real class needs a live Gui/ThemeAssets over a theme/resources tree
     # this repo does not ship (see the file's opening comment), the same reason as the suite above

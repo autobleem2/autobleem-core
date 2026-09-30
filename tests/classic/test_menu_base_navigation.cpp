@@ -9,32 +9,41 @@
 //
 // GuiMenuBase is header-only but its constructor chain (GuiScreen -> AppBase::get()/Gui::getInstance())
 // needs a live AppBase built over a real theme/resources tree, which this repository does not ship (it is
-// the launcher's) and no existing test in tests/classic/ constructs one for this reason (test_busy_input.cpp
-// and test_input_flush.cpp use a bare ableem::GuiBase, never a GuiScreen subclass). So this suite drives a
-// small local model, TestMenu, that reproduces the selection and page math of adjustPageBy(),
-// landOnSelectable(), computePagePosition() and doKeyDown/Up/PageDown/PageUp/Home/End() line for line (the
-// sounds aside) instead of an instance of the real class. Keep it in step with gui_menu_base.h.
+// the launcher's), so no instance of the class is built here. Since G3m the selection and page rules are not
+// in the class but in abgui::ListModel (<ab_gui/list_model.h>), which GuiMenuBase's doKeyDown/Up/PageDown/PageUp/
+// Home/End, adjustPageBy, landOnSelectable and computePagePosition forward to - so this suite tests the REAL
+// model. TestMenu is only the state GuiMenuBase keeps in its members (selected, the page, maxVisible) plus the
+// heading list its skipSelectingThisLineWhenMovingByOne() answers from. OldMenu at the end of the file is the
+// frozen pre-G3m code, and a brute-force test compares the two step for step.
 //
 #include "doctest/doctest.h"
 
+#include <ab_gui/list_model.h>
+
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
 namespace {
 
-// mirrors GuiMenuBase<LineDataType>'s navigation with labelsOnly == false
+// the state GuiMenuBase keeps in its members, moved by abgui::ListModel with labelsOnly == false
 struct TestMenu {
     std::vector<bool> heading; // true = a row skipSelectingThisLineWhenMovingByOne() would return true for
     int selected = 0;
     int firstVisibleIndex = 0;
     int lastVisibleIndex = 19; // the first page of maxVisible rows, as computePagePosition() leaves it
-    int maxVisible = 20; // every list fits on one page unless a case says otherwise
+    int maxVisible = 20;       // every list fits on one page unless a case says otherwise
 
     int size() const { return static_cast<int>(heading.size()); }
     bool skip(int i) const { return heading[static_cast<size_t>(i)]; }
     bool onHeading() const { return skip(selected); }
     bool selectedVisible() const { return selected >= firstVisibleIndex && selected <= lastVisibleIndex; }
+
+    abgui::ListModel::View view() { return {selected, firstVisibleIndex, lastVisibleIndex, maxVisible, size()}; }
+    std::function<bool(int)> skipper() const {
+        return [this](int i) { return skip(i); };
+    }
 
     // what render() does on its first frame
     void start(int sel) {
@@ -42,124 +51,15 @@ struct TestMenu {
         computePagePosition();
     }
 
-    void adjustPageBy(int moveBy) {
-        selected += moveBy;
-        firstVisibleIndex += moveBy;
-        lastVisibleIndex += moveBy;
-    }
-
-    void landOnSelectable(int step) {
-        int i = selected;
-        while (i >= 0 && i < size() && skip(i))
-            i += step;
-        if (i < 0 || i >= size()) {
-            i = selected;
-            while (i >= 0 && i < size() && skip(i))
-                i -= step;
-        }
-        if (i < 0 || i >= size())
-            return;
-        selected = i;
-        if (selected < firstVisibleIndex) {
-            firstVisibleIndex = selected;
-            lastVisibleIndex = selected + maxVisible - 1;
-        } else if (selected > lastVisibleIndex) {
-            lastVisibleIndex = selected;
-            firstVisibleIndex = selected - maxVisible + 1;
-        }
-    }
-
-    void computePagePosition() {
-        if (size() == 0) {
-            selected = 0;
-            firstVisibleIndex = 0;
-            lastVisibleIndex = 0;
-        } else {
-            if (size() <= maxVisible || selected < maxVisible)
-                firstVisibleIndex = 0;
-            else if (selected >= size() - maxVisible)
-                firstVisibleIndex = size() - maxVisible;
-            else
-                firstVisibleIndex = selected - (maxVisible / 2);
-            lastVisibleIndex = firstVisibleIndex + maxVisible - 1;
-        }
-    }
-
-    void doKeyDown() {
-        if (size() > 1) {
-            int before = selected;
-            if (selected < size() - 1) {
-                if (selected == lastVisibleIndex)
-                    adjustPageBy(1);
-                else
-                    ++selected;
-                landOnSelectable(1);
-            }
-            if (selected == before) {
-                selected = 0;
-                computePagePosition();
-                landOnSelectable(1);
-            }
-        }
-    }
-
-    void doKeyUp() {
-        if (size() > 1) {
-            int before = selected;
-            if (selected > 0) {
-                if (selected == firstVisibleIndex)
-                    adjustPageBy(-1);
-                else
-                    --selected;
-                landOnSelectable(-1);
-            }
-            if (selected == before) {
-                selected = size() - 1;
-                computePagePosition();
-                landOnSelectable(-1);
-            }
-        }
-    }
-
-    void doPageDown() {
-        if (size() > 1) {
-            if (lastVisibleIndex + maxVisible >= size()) {
-                selected = size() - 1;
-                computePagePosition();
-            } else {
-                adjustPageBy(maxVisible);
-            }
-            landOnSelectable(1);
-        }
-    }
-
-    void doPageUp() {
-        if (size() > 1) {
-            if (firstVisibleIndex - maxVisible < 0) {
-                selected = 0;
-                computePagePosition();
-            } else {
-                adjustPageBy(-maxVisible);
-            }
-            landOnSelectable(-1);
-        }
-    }
-
-    void doHome() {
-        if (size() > 1) {
-            selected = 0;
-            computePagePosition();
-            landOnSelectable(1);
-        }
-    }
-
-    void doEnd() {
-        if (size() > 1) {
-            selected = size() - 1;
-            computePagePosition();
-            landOnSelectable(-1);
-        }
-    }
+    void adjustPageBy(int moveBy) { abgui::ListModel::adjustPageBy(view(), moveBy); }
+    void landOnSelectable(int step) { abgui::ListModel::landOnSelectable(view(), step, skipper()); }
+    void computePagePosition() { abgui::ListModel::computePagePosition(view()); }
+    void doKeyDown() { abgui::ListModel::stepDown(view(), skipper()); }
+    void doKeyUp() { abgui::ListModel::stepUp(view(), skipper()); }
+    void doPageDown() { abgui::ListModel::pageDown(view(), skipper()); }
+    void doPageUp() { abgui::ListModel::pageUp(view(), skipper()); }
+    void doHome() { abgui::ListModel::home(view(), skipper()); }
+    void doEnd() { abgui::ListModel::end(view(), skipper()); }
 };
 
 } // namespace
@@ -418,4 +318,317 @@ TEST_CASE("getStatusLine: names L1/R1 First/last paired with L2/R2 Page, in that
     // the owner-approved pairing order: L1/R1 before L2/R2 (PanelStyle::footer re-sorts by button rank
     // regardless, but the source order is worth pinning so a future edit doesn't silently drop one)
     CHECK(status.find("|@L1|/|@R1|") < status.find("|@L2|/|@R2|"));
+}
+
+//*******************************
+// G3m: the model against the code it replaced
+//*******************************
+// OldMenu is GuiMenuBase's navigation exactly as it was before the rules moved into abgui::ListModel (the bodies of
+// the class's adjustPageBy, landOnSelectable, computePagePosition and doKeyDown/Up/PageDown/PageUp/Home/End). The
+// brute-force test drives both through the same moves over many list shapes and compares the whole state after every
+// move - "every list behaves as before" in one place.
+
+namespace {
+
+struct OldMenu {
+    std::vector<bool> heading;
+    int selected = 0;
+    int firstVisibleIndex = 0;
+    int lastVisibleIndex = 0;
+    int maxVisible = 8;
+
+    int size() const { return static_cast<int>(heading.size()); }
+    bool skip(int i) const { return heading[static_cast<size_t>(i)]; }
+
+    void adjustPageBy(int moveBy) {
+        selected += moveBy;
+        firstVisibleIndex += moveBy;
+        lastVisibleIndex += moveBy;
+    }
+
+    void landOnSelectable(int step) {
+        int i = selected;
+        while (i >= 0 && i < size() && skip(i))
+            i += step;
+        if (i < 0 || i >= size()) {
+            i = selected;
+            while (i >= 0 && i < size() && skip(i))
+                i -= step;
+        }
+        if (i < 0 || i >= size())
+            return;
+        selected = i;
+        if (selected < firstVisibleIndex) {
+            firstVisibleIndex = selected;
+            lastVisibleIndex = selected + maxVisible - 1;
+        } else if (selected > lastVisibleIndex) {
+            lastVisibleIndex = selected;
+            firstVisibleIndex = selected - maxVisible + 1;
+        }
+    }
+
+    void computePagePosition() {
+        if (size() == 0) {
+            selected = 0;
+            firstVisibleIndex = 0;
+            lastVisibleIndex = 0;
+        } else {
+            bool AllLinesFitOnOnePage = size() <= maxVisible;
+            bool selectedIsOnTheFirstPage = selected < maxVisible;
+            bool selectedIsOnTheLastPage = selected >= (size() - maxVisible);
+            if (AllLinesFitOnOnePage) {
+                firstVisibleIndex = 0;
+            } else if (selectedIsOnTheFirstPage) {
+                firstVisibleIndex = 0;
+            } else if (selectedIsOnTheLastPage) {
+                firstVisibleIndex = size() - maxVisible;
+            } else {
+                firstVisibleIndex = selected - (maxVisible / 2);
+            }
+            lastVisibleIndex = firstVisibleIndex + maxVisible - 1;
+        }
+    }
+
+    void doKeyDown() {
+        if (size() > 1) {
+            int before = selected;
+            if (selected < size() - 1) {
+                if (selected == lastVisibleIndex)
+                    adjustPageBy(1);
+                else
+                    ++selected;
+                landOnSelectable(1);
+            }
+            if (selected == before) {
+                selected = 0;
+                computePagePosition();
+                landOnSelectable(1);
+            }
+        }
+    }
+
+    void doKeyUp() {
+        if (size() > 1) {
+            int before = selected;
+            if (selected > 0) {
+                if (selected == firstVisibleIndex)
+                    adjustPageBy(-1);
+                else
+                    --selected;
+                landOnSelectable(-1);
+            }
+            if (selected == before) {
+                selected = size() - 1;
+                computePagePosition();
+                landOnSelectable(-1);
+            }
+        }
+    }
+
+    void doPageDown() {
+        if (size() > 1) {
+            if (lastVisibleIndex + maxVisible >= size()) {
+                selected = size() - 1;
+                computePagePosition();
+            } else {
+                adjustPageBy(maxVisible);
+            }
+            landOnSelectable(1);
+        }
+    }
+
+    void doPageUp() {
+        if (size() > 1) {
+            if (firstVisibleIndex - maxVisible < 0) {
+                selected = 0;
+                computePagePosition();
+            } else {
+                adjustPageBy(-maxVisible);
+            }
+            landOnSelectable(-1);
+        }
+    }
+
+    void doHome() {
+        if (size() > 1) {
+            selected = 0;
+            computePagePosition();
+            landOnSelectable(1);
+        }
+    }
+
+    void doEnd() {
+        if (size() > 1) {
+            selected = size() - 1;
+            computePagePosition();
+            landOnSelectable(-1);
+        }
+    }
+};
+
+void applyOld(OldMenu &m, int op) {
+    switch (op) {
+    case 0:
+        m.doKeyDown();
+        break;
+    case 1:
+        m.doKeyUp();
+        break;
+    case 2:
+        m.doPageDown();
+        break;
+    case 3:
+        m.doPageUp();
+        break;
+    case 4:
+        m.doHome();
+        break;
+    default:
+        m.doEnd();
+        break;
+    }
+}
+
+void applyNew(TestMenu &m, int op) {
+    switch (op) {
+    case 0:
+        m.doKeyDown();
+        break;
+    case 1:
+        m.doKeyUp();
+        break;
+    case 2:
+        m.doPageDown();
+        break;
+    case 3:
+        m.doPageUp();
+        break;
+    case 4:
+        m.doHome();
+        break;
+    default:
+        m.doEnd();
+        break;
+    }
+}
+
+bool same(const OldMenu &o, const TestMenu &n) {
+    return o.selected == n.selected && o.firstVisibleIndex == n.firstVisibleIndex &&
+           o.lastVisibleIndex == n.lastVisibleIndex;
+}
+
+} // namespace
+
+TEST_CASE("ListModel matches the old GuiMenuBase code over every list shape, page size, start and move") {
+    long compared = 0;
+    long diverged = 0;
+    unsigned rng = 12345;
+    for (int count = 0; count <= 12; ++count) {
+        const unsigned masks = 1u << count;
+        const unsigned maskStep = count > 10 ? 5 : 1; // all shapes up to 10 rows, a sample beyond
+        for (unsigned mask = 0; mask < masks; mask += maskStep) {
+            for (int fit = 1; fit <= 6; ++fit) {
+                for (int start = 0; start < (count == 0 ? 1 : count); ++start) {
+                    OldMenu o;
+                    TestMenu n;
+                    for (int i = 0; i < count; ++i) {
+                        o.heading.push_back(((mask >> i) & 1u) != 0);
+                        n.heading.push_back(((mask >> i) & 1u) != 0);
+                    }
+                    o.maxVisible = n.maxVisible = fit;
+                    o.selected = n.selected = start;
+                    o.computePagePosition(); // the first frame
+                    n.computePagePosition();
+                    if (!same(o, n))
+                        ++diverged;
+                    // a fixed sweep of every move, then a pseudo-random walk
+                    for (int step = 0; step < 6 + 24; ++step) {
+                        rng = rng * 1103515245u + 12345u;
+                        const int op = step < 6 ? step : static_cast<int>((rng >> 16) % 6u);
+                        applyOld(o, op);
+                        applyNew(n, op);
+                        if (!same(o, n)) {
+                            ++diverged;
+                            INFO("count " << count << " mask " << mask << " fit " << fit << " start " << start
+                                          << " step " << step);
+                            CHECK(same(o, n));
+                            break;
+                        }
+                        ++compared;
+                    }
+                }
+            }
+        }
+    }
+    CHECK(diverged == 0);
+    CHECK(compared > 500000);
+}
+
+TEST_CASE("ListModel: an empty list and a one-row list do not move; computePagePosition zeroes an empty one") {
+    TestMenu m;
+    m.selected = 5;
+    m.firstVisibleIndex = 3;
+    m.lastVisibleIndex = 9;
+    m.computePagePosition();
+    CHECK(m.selected == 0);
+    CHECK(m.firstVisibleIndex == 0);
+    CHECK(m.lastVisibleIndex == 0);
+    m.doKeyDown();
+    m.doKeyUp();
+    m.doPageDown();
+    m.doPageUp();
+    m.doHome();
+    m.doEnd();
+    CHECK(m.selected == 0);
+
+    m.heading = {false};
+    m.start(0);
+    m.doKeyDown();
+    CHECK(m.selected == 0);
+    m.doEnd();
+    CHECK(m.selected == 0);
+}
+
+TEST_CASE("ListModel: wrap round both ends of a paged list, the page following") {
+    TestMenu m;
+    m.heading = std::vector<bool>(10, false);
+    m.maxVisible = 3;
+    m.start(0);
+    m.doKeyUp(); // the first row: wraps to the last, the last page shown
+    CHECK(m.selected == 9);
+    CHECK(m.firstVisibleIndex == 7);
+    CHECK(m.lastVisibleIndex == 9);
+    m.doKeyDown(); // the last row: wraps to the first
+    CHECK(m.selected == 0);
+    CHECK(m.firstVisibleIndex == 0);
+    CHECK(m.lastVisibleIndex == 2);
+}
+
+TEST_CASE("ListModel: a page size of one moves a row a page; paging at both ends lands on the end rows") {
+    TestMenu m;
+    m.heading = std::vector<bool>(5, false);
+    m.maxVisible = 1;
+    m.start(0);
+    m.doPageDown();
+    CHECK(m.selected == 1);
+    CHECK(m.selectedVisible());
+    m.doEnd();
+    CHECK(m.selected == 4);
+    m.doPageDown(); // already on the last page: stays on the last row
+    CHECK(m.selected == 4);
+    m.doHome();
+    m.doPageUp();
+    CHECK(m.selected == 0);
+}
+
+TEST_CASE("ListModel: computePagePosition puts the cursor in the middle of a long list") {
+    TestMenu m;
+    m.heading = std::vector<bool>(30, false);
+    m.maxVisible = 6;
+    m.start(15);
+    CHECK(m.firstVisibleIndex == 12); // selected - maxVisible / 2
+    CHECK(m.lastVisibleIndex == 17);
+    m.start(28); // near the end: the last page
+    CHECK(m.firstVisibleIndex == 24);
+    CHECK(m.lastVisibleIndex == 29);
 }
