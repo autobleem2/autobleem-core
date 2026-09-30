@@ -3,6 +3,7 @@
 //
 #include "text_renderer.h"
 #include "panel_style.h"
+#include <ab_gui/facts_page.h>
 #include <ab_gui/text_page.h>
 #include "../core/services/system.h"
 
@@ -605,14 +606,5 @@ int TextRenderer::renderWrappedText(const ableem::Font &font, const string &text
 // TextRenderer::elide
 //*******************************
 string TextRenderer::elide(const ableem::Font &font, const string &text, int maxWidth) {
-    if (font.width(text) <= maxWidth)
-        return text;
-    const string dots = "...";
-    string cut = text;
-    while (!cut.empty() && font.width(cut + dots) > maxWidth) {
-        cut.pop_back();
-        while (!cut.empty() && (static_cast<unsigned char>(cut.back()) & 0xC0) == 0x80)
-            cut.pop_back(); // a whole UTF-8 char
-    }
-    return cut + dots;
+    return abgui::elideText(text, maxWidth, [&font](const string &s) { return font.width(s); });
 }
