@@ -407,3 +407,9 @@ screenshots of them stay in `!autobleem\out\` (private).
 9. The evoui menu row's icons **stay the approved ab2.0.0 ones** - the glyph-only redraw proposed for G5i is
    rejected ("the previous icons were better"); approved art is not redrawn without the owner's OK. The owner,
    2026-09-30.
+10. ab2.0.0 art after the designer's audit (the owner, 2026-09-30): the menu row has **no tile frames** (variant A -
+    the approved icons, the selected one grows as today; G5i's `tile`/`tileSelected` are not used by ab2.0.0); the
+    Play frame's translated label is drawn **in capitals** ("PLAY", as the approved image - a theme setting for the
+    label's case); the colour roles **heading/edge cyan, selectionBand magenta** are approved; the **new G5 pieces**
+    in the mockups (toast, chip, progress bars, tab, band, plate + battery, the internal/retroarch/extension icons,
+    the empty covers, the play icon) are approved as a set - each shown on the VM in its step.
