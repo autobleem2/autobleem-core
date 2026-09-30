@@ -28,6 +28,26 @@ struct PadBatteryInfo {
 };
 
 //******************
+// PadBatteryCharge
+//******************
+// Where the launcher fills a pad's charge into the battery glyph - pure numbers, so the code-drawn outline and the
+// theme's `battery` icon (docs/ab-gui-evoui-art-spec.md, 3.) share one rule. The glyph is a body plus a nub
+// `NubWidth` wide on its right; the charge sits `Inset` px inside the body (spec: x 2..24, y 2..11 of the 29 x 13
+// icon), is `bodyWidth - 2 * Inset` wide at 100% (at least 1 px) and `height - 2 * Inset` tall.
+struct PadBatteryCharge {
+    static constexpr int NubWidth = 3;
+    static constexpr int NubHeight = 7;
+    static constexpr int Inset = 2;
+    static constexpr int BodyWidth = 26; // the code-drawn body's width; an icon is its own width less NubWidth
+    static constexpr int BodyHeight = 13;
+
+    int x = 0, y = 0, w = 0, h = 0;
+
+    // the charge's rect for a glyph of `glyphWidth` x `glyphHeight` (body + nub) whose top-left is (glyphX, glyphY)
+    static PadBatteryCharge rect(int glyphX, int glyphY, int glyphWidth, int glyphHeight, int percent);
+};
+
+//******************
 // PadBatteryService
 //******************
 // Stateless but for the root it reads from: list() does a handful of small file reads, cheap enough to call
@@ -50,6 +70,13 @@ public:
     // "capacity_level"'s words -> an approximate percent, for a kernel that has no plain "capacity" file;
     // -1 for anything unrecognised (including "Unknown")
     static int percentFromCapacityLevel(const std::string &level);
+
+    // the dev-host hook: AB_FAKE_PAD_BATTERY="<percent>[,<percent>...]" fakes one pad per value (at most
+    // MaxFakePads, each 0-100 - out of range is clamped, a token that is not a number is skipped). Pure, so the
+    // tests feed it strings; the pads are named "fake_battery_<n>", Discharging, addresses 00:00:00:00:00:0<n>.
+    static constexpr size_t MaxFakePads = 4;
+    static std::vector<int> parseFakeSpec(const std::string &spec);
+    static std::vector<PadBatteryInfo> fakeBatteries(const std::string &spec);
 
 private:
     std::string root_;
