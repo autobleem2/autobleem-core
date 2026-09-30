@@ -222,14 +222,13 @@ void TextRenderer::AllTextOrEmojiTokenInfo::render(int x, int y, XAlignment xAli
 
     if (drawBackgroundRect) {
         // render a grey box behind the text
-        renderer.setDrawColor(Color(0, 0, 0, 70));
         Rect backRect;
         backRect.x = x - 10;
         backRect.y = y - 2;
         backRect.w = totalSize.w + 20;
         backRect.h = totalSize.h + 4;
 
-        renderer.fillRect(backRect);
+        abgui::Style().box(renderer, backRect, abgui::Tone::Black, 70, abgui::Tone::None);
     }
 
     for (auto &tokenInfo : tokenInfos) {

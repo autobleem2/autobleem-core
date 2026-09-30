@@ -53,6 +53,25 @@ struct ColorRoles {
     RoleColor row, rowSelected, heading, value, description, footer, selectionBand, edge;
 };
 
+// a colour of the style by its role, for the primitives that draw in "the text colour" or "the edge colour"
+// with an alpha of the caller's choosing
+enum class Tone {
+    None,          // draw nothing (a box without a fill, or without an edge)
+    Black,         // pure black
+    White,         // pure white
+    Text,          // Style::text
+    Secondary,     // Style::secondary
+    Edge,          // Style::edge
+    SelectionBand, // Style::selectionBand
+};
+
+// a key cell's state (Style::key)
+enum class KeyState {
+    Normal,   // a shade of white over the sheet, an edge in the secondary colour
+    Lit,      // Normal, lit up (Shift held on)
+    Selected, // the cursor is on it: the text colour, filled and outlined
+};
+
 // a footer hint: one or more button icons ("X", "O", "T", "S", "Start", "Select", "L1", "R1", "L2", "R2",
 // "Esc", "Enter", "Tab", "Up"...) and its label
 struct HintItem {
@@ -113,6 +132,23 @@ public:
     unsigned char bandAlpha = 38;      // the selected row's band
     unsigned char labelAlpha = 70;     // a heading's band
     unsigned char disabledAlpha = 150; // the black over a row that cannot be changed
+    // the keyboard's key cells and text field
+    unsigned char keyAlpha = 18;         // a character key's white
+    unsigned char keyFunctionAlpha = 8;  // a function key's white, a shade darker
+    unsigned char keyLitAlpha = 50;      // a lit key's white
+    unsigned char keySelectedAlpha = 60; // the selected key's fill (text colour)
+    unsigned char keyEdgeAlpha = 110;    // an unselected key's edge (secondary colour)
+    unsigned char fieldAlpha = 14;       // the text field's white
+    unsigned char fieldEdgeAlpha = 160;  // the text field's edge (secondary colour)
+    int caretWidth = 2;                  // the text caret
+    // the busy spinner: dots on a ring, the brightest leading, each one behind it fading
+    int spinnerDots = 12;
+    int spinnerRadius = 30;
+    int spinnerDot = 8;
+    int spinnerFade = 19;
+    // a progress bar's track and fill when the caller does not say otherwise
+    unsigned char progressTrackAlpha = 120;
+    int tabHeight = 3; // the active tab's underline
 
     // a row's text / its value, selected or not
     const ableem::Color &rowColor(bool selected) const { return selected ? rowSelected : row; }
@@ -145,6 +181,55 @@ public:
     // a small triangle at (cx, cy) pointing up (direction -1) or down (1): more rows that way
     void scrollMarker(ableem::Renderer &renderer, int cx, int cy, int direction) const;
     void scrollMarker(Context &ctx, int cx, int cy, int direction) const;
+
+    // an alpha argument of OwnAlpha keeps the colour's own alpha (a theme colour is opaque unless it says otherwise)
+    static constexpr int OwnAlpha = -1;
+    // ... and StyleAlpha the style's own metric for that primitive (progressTrackAlpha, edgeAlpha)
+    static constexpr int StyleAlpha = -2;
+    // the role's colour with `alpha` (OwnAlpha: its own); Tone::None gives a transparent black
+    ableem::Color tone(Tone role, int alpha = OwnAlpha) const;
+
+    // a box: the fill in `fill` at `fillAlpha` under a one-pixel edge in `edgeTone` at `edgeAlpha`; Tone::None
+    // leaves that part out. The defaults are the plain frame: an edge in the edge colour, no fill
+    void box(ableem::Renderer &renderer, const ableem::Rect &rect, Tone fill = Tone::None,
+             int fillAlpha = OwnAlpha, Tone edgeTone = Tone::Edge, int edgeAlpha = OwnAlpha) const;
+    void box(Context &ctx, const ableem::Rect &rect, Tone fill = Tone::None, int fillAlpha = OwnAlpha,
+             Tone edgeTone = Tone::Edge, int edgeAlpha = OwnAlpha) const;
+    // a flat translucent plate in the caller's own colour (alpha included) - a theme's status bar, whose colour
+    // and rect the theme gives
+    void plate(ableem::Renderer &renderer, const ableem::Rect &rect, const ableem::Color &color) const;
+    void plate(Context &ctx, const ableem::Rect &rect, const ableem::Color &color) const;
+    // a key cell of the on-screen keyboard: a function key is a shade darker than a character key
+    void key(ableem::Renderer &renderer, const ableem::Rect &rect, KeyState state = KeyState::Normal,
+             bool function = false) const;
+    void key(Context &ctx, const ableem::Rect &rect, KeyState state = KeyState::Normal, bool function = false) const;
+    // the keyboard's text field, and the caret in it: `x`, `y` and `height` the caret's own place
+    void field(ableem::Renderer &renderer, const ableem::Rect &rect) const;
+    void field(Context &ctx, const ableem::Rect &rect) const;
+    void caret(ableem::Renderer &renderer, int x, int y, int height) const;
+    void caret(Context &ctx, int x, int y, int height) const;
+    // a progress bar: the `track` in trackTone at trackAlpha, and over it from its left the share done/total in
+    // fillTone at fillAlpha (nothing when total is 0; done is clamped to total)
+    void progress(ableem::Renderer &renderer, const ableem::Rect &track, unsigned long long done,
+                  unsigned long long total, Tone trackTone = Tone::Secondary, int trackAlpha = StyleAlpha,
+                  Tone fillTone = Tone::Text, int fillAlpha = OwnAlpha) const;
+    void progress(Context &ctx, const ableem::Rect &track, unsigned long long done, unsigned long long total,
+                  Tone trackTone = Tone::Secondary, int trackAlpha = StyleAlpha,
+                  Tone fillTone = Tone::Text, int fillAlpha = OwnAlpha) const;
+    // the busy spinner: spinnerDots dots on a ring of `radius` around (cx, cy), `dot` px squares, dot `lead`
+    // the brightest and every one behind it spinnerFade alpha dimmer; the program turns `lead` with its clock
+    void spinner(ableem::Renderer &renderer, int cx, int cy, int radius, int dot, int lead) const;
+    void spinner(Context &ctx, int cx, int cy, int radius, int dot, int lead) const;
+    // the same fitted into `box`: the metrics' radius and dot, no bigger than the box allows
+    void spinner(ableem::Renderer &renderer, const ableem::Rect &box, int lead) const;
+    void spinner(Context &ctx, const ableem::Rect &box, int lead) const;
+    // the active tab's underline: tabHeight tall, `w` wide, from (x, y), in the selection band's colour
+    void tab(ableem::Renderer &renderer, int x, int y, int w) const;
+    void tab(Context &ctx, int x, int y, int w) const;
+    // a vertical one-pixel rule from (x, y), `h` tall, in the edge colour; alpha: StyleAlpha is edgeAlpha, OwnAlpha is
+    // the colour's own
+    void vrule(ableem::Renderer &renderer, int x, int y, int h, int alpha = StyleAlpha) const;
+    void vrule(Context &ctx, int x, int y, int h, int alpha = StyleAlpha) const;
 
     // the status-line protocol every screen writes - "Card 1/12   |@L1|/|@R1| Page  |@X| Rename  |@O| Go back |"
     // - taken apart: the text before the first marker is the status (a counter, drawn at the footer's right

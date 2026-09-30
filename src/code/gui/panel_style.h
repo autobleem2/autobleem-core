@@ -88,6 +88,29 @@ public:
     void label(ableem::Renderer &renderer, const ableem::Rect &rect) const;
     // a small triangle at (cx, cy) pointing up (direction -1) or down (1): more rows that way
     void scrollMarker(ableem::Renderer &renderer, int cx, int cy, int direction) const;
+    // a plain box: `fill` at `fillAlpha` under a one-pixel edge (Tone::None leaves either out; Style::OwnAlpha keeps
+    // the colour's own alpha)
+    void box(ableem::Renderer &renderer, const ableem::Rect &rect, abgui::Tone fill = abgui::Tone::None,
+             int fillAlpha = abgui::Style::OwnAlpha, abgui::Tone edgeTone = abgui::Tone::Edge,
+             int edgeAlpha = abgui::Style::OwnAlpha) const;
+    // a flat translucent plate in the caller's own colour (a theme's status bar)
+    void plate(ableem::Renderer &renderer, const ableem::Rect &rect, const ableem::Color &color) const;
+    // the on-screen keyboard's key cell, its text field and the caret in it
+    void key(ableem::Renderer &renderer, const ableem::Rect &rect, abgui::KeyState state = abgui::KeyState::Normal,
+             bool function = false) const;
+    void field(ableem::Renderer &renderer, const ableem::Rect &rect) const;
+    void caret(ableem::Renderer &renderer, int x, int y, int height) const;
+    // a progress bar: the track and over it the share done/total
+    void progress(ableem::Renderer &renderer, const ableem::Rect &track, unsigned long long done,
+                  unsigned long long total, abgui::Tone trackTone = abgui::Tone::Secondary,
+                  int trackAlpha = abgui::Style::StyleAlpha, abgui::Tone fillTone = abgui::Tone::Text,
+                  int fillAlpha = abgui::Style::OwnAlpha) const;
+    // the busy spinner's dots on a ring, `lead` the brightest; and fitted into a box
+    void spinner(ableem::Renderer &renderer, int cx, int cy, int radius, int dot, int lead) const;
+    void spinner(ableem::Renderer &renderer, const ableem::Rect &box, int lead) const;
+    // the active tab's underline, and a vertical rule (alpha: Style::StyleAlpha = the edge alpha)
+    void tab(ableem::Renderer &renderer, int x, int y, int w) const;
+    void vrule(ableem::Renderer &renderer, int x, int y, int h, int alpha = abgui::Style::StyleAlpha) const;
     // a footer hint: one or more button icons ("X", "O", "T", "S", "Start", "Select", "L1", "R1", "L2", "R2",
     // "Esc", "Enter", "Tab" - the launcher's hint icons for the first three, the theme's button textures
     // for the rest) and its label

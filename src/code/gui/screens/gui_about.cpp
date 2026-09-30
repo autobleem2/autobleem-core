@@ -100,16 +100,9 @@ void GuiAbout::render() {
 
     gui->renderBackground();
 
-    renderer.setDrawColor(ableem::Color(0, 0, 0, 235));
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-
-    ableem::Rect rect2;
-    rect2.x = 0;
-    rect2.y = 0;
-    rect2.w = SCREEN_WIDTH;
-    rect2.h = SCREEN_HEIGHT;
-
-    renderer.fillRect(rect2);
+    // the screen darkened to near black, no edge: the star field shows through what is left
+    gui->panelStyle().box(renderer, ableem::Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), abgui::Tone::Black, 235,
+                          abgui::Tone::None);
 
     fx.render(gui->platform().ticks());
 
@@ -198,15 +191,9 @@ void GuiAbout::renderSurprise() {
 
     gui->renderBackground();
 
-    renderer.setDrawColor(ableem::Color(0, 0, 0, 235));
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-
-    ableem::Rect rect2;
-    rect2.x = 0;
-    rect2.y = 0;
-    rect2.w = SCREEN_WIDTH;
-    rect2.h = SCREEN_HEIGHT;
-    renderer.fillRect(rect2);
+    // the screen darkened to near black, no edge: the star field shows through what is left
+    gui->panelStyle().box(renderer, ableem::Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), abgui::Tone::Black, 235,
+                          abgui::Tone::None);
 
     fx.render(gui->platform().ticks());
 

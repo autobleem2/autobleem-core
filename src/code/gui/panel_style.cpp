@@ -144,6 +144,50 @@ void PanelStyle::scrollMarker(ableem::Renderer &renderer, int cx, int cy, int di
     style().scrollMarker(renderer, cx, cy, direction);
 }
 
+void PanelStyle::box(ableem::Renderer &renderer, const ableem::Rect &rect, abgui::Tone fill, int fillAlpha,
+                     abgui::Tone edgeTone, int edgeAlpha) const {
+    style().box(renderer, rect, fill, fillAlpha, edgeTone, edgeAlpha);
+}
+
+void PanelStyle::plate(ableem::Renderer &renderer, const ableem::Rect &rect, const ableem::Color &color) const {
+    style().plate(renderer, rect, color);
+}
+
+void PanelStyle::key(ableem::Renderer &renderer, const ableem::Rect &rect, abgui::KeyState state,
+                     bool function) const {
+    style().key(renderer, rect, state, function);
+}
+
+void PanelStyle::field(ableem::Renderer &renderer, const ableem::Rect &rect) const {
+    style().field(renderer, rect);
+}
+
+void PanelStyle::caret(ableem::Renderer &renderer, int x, int y, int height) const {
+    style().caret(renderer, x, y, height);
+}
+
+void PanelStyle::progress(ableem::Renderer &renderer, const ableem::Rect &track, unsigned long long done,
+                          unsigned long long total, abgui::Tone trackTone, int trackAlpha, abgui::Tone fillTone,
+                          int fillAlpha) const {
+    style().progress(renderer, track, done, total, trackTone, trackAlpha, fillTone, fillAlpha);
+}
+
+void PanelStyle::spinner(ableem::Renderer &renderer, int cx, int cy, int radius, int dot, int lead) const {
+    style().spinner(renderer, cx, cy, radius, dot, lead);
+}
+
+void PanelStyle::spinner(ableem::Renderer &renderer, const ableem::Rect &box, int lead) const {
+    style().spinner(renderer, box, lead);
+}
+
+void PanelStyle::tab(ableem::Renderer &renderer, int x, int y, int w) const {
+    style().tab(renderer, x, y, w);
+}
+
+void PanelStyle::vrule(ableem::Renderer &renderer, int x, int y, int h, int alpha) const {
+    style().vrule(renderer, x, y, h, alpha);
+}
+
 //*******************************
 // PanelStyle::parseHints / footer
 //*******************************

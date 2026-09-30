@@ -35,10 +35,8 @@ void GuiSplash::render() {
     const ableem::ThemeStatusBar &bar = app.theme().classic().statusBar;
     int bg_alpha = bar.alpha * alpha / 255;
 
-    renderer.setDrawColor(TextRenderer::toColor(bar.color, bg_alpha));
-    renderer.setBlendMode(ableem::BlendMode::Blend);
     ableem::Rect rect = gui->text().getTextRectOfTheme();
-    renderer.fillRect(rect);
+    gui->panelStyle().plate(renderer, rect, TextRenderer::toColor(bar.color, bg_alpha));
 
     int y = bar.textY;
     string splashText = _("AutoBleem") + " " + Env::productVersion();

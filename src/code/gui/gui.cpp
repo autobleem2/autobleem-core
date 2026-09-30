@@ -345,12 +345,8 @@ void Gui::drawBusyFrame() {
         const int messageY = ScreenHeight / 2 - 20 + 30 + 24;
         ableem::Rect track(ScreenWidth / 2 - width / 2, messageY + assets_.themeFonts[FONT_22_MED].lineHeight() + 12,
                            width, height);
-        renderer().setBlendMode(ableem::BlendMode::Blend);
-        renderer().setDrawColor(Color(style.secondary.r, style.secondary.g, style.secondary.b, 120));
-        renderer().fillRect(track);
-        renderer().setDrawColor(style.text);
-        renderer().fillRect(
-            ableem::Rect(track.x, track.y, width * std::min(busyDone_, busyTotal_) / busyTotal_, height));
+        style.progress(renderer(), track, static_cast<unsigned long long>(std::max(0, std::min(busyDone_, busyTotal_))),
+                       static_cast<unsigned long long>(busyTotal_));
     }
     renderer().present();
 }
@@ -360,16 +356,7 @@ void Gui::drawSpinner(int cx, int cy, const string &message) {
     PanelStyle style = panelStyle();
     const int radius = 30, dot = 8;
     const int lead = static_cast<int>(platform().ticks() / 70) % 12;
-    renderer().setBlendMode(ableem::BlendMode::Blend);
-    for (int i = 0; i < 12; i++) {
-        const int behind = (lead - i + 12) % 12; // 0 for the leading dot, 11 for the one just ahead of it
-        const int alpha = 255 - behind * 19;
-        const double a = i * 3.14159265 / 6.0;
-        const int x = cx + static_cast<int>(radius * cos(a)) - dot / 2;
-        const int y = cy + static_cast<int>(radius * sin(a)) - dot / 2;
-        renderer().setDrawColor(Color(style.text.r, style.text.g, style.text.b, static_cast<unsigned char>(alpha)));
-        renderer().fillRect(Rect(x, y, dot, dot));
-    }
+    style.spinner(renderer(), cx, cy, radius, dot, lead);
     if (!message.empty())
         text_.renderText_WithColor(assets_.themeFonts[FONT_22_MED], message, cx, cy + radius + 24, style.text,
                                    XALIGN_CENTER);

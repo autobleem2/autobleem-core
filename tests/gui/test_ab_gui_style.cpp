@@ -243,3 +243,41 @@ TEST_CASE("the footer's label shortening is ab_gui's") {
     CHECK(labels[0] == "Back");
     CHECK(labels[1] == "Sel..");
 }
+
+TEST_CASE("the keyboard, spinner, progress and tab metrics default to what the callers drew") {
+    const Style s;
+    CHECK(s.keyAlpha == 18);
+    CHECK(s.keyFunctionAlpha == 8);
+    CHECK(s.keyLitAlpha == 50);
+    CHECK(s.keySelectedAlpha == 60);
+    CHECK(s.keyEdgeAlpha == 110);
+    CHECK(s.fieldAlpha == 14);
+    CHECK(s.fieldEdgeAlpha == 160);
+    CHECK(s.caretWidth == 2);
+    CHECK(s.spinnerDots == 12);
+    CHECK(s.spinnerRadius == 30);
+    CHECK(s.spinnerDot == 8);
+    CHECK(s.spinnerFade == 19);
+    CHECK(s.progressTrackAlpha == 120);
+    CHECK(s.tabHeight == 3);
+}
+
+TEST_CASE("tone: a role's colour, its own alpha unless one is given, nothing for None") {
+    Style s;
+    s.text = Color(10, 20, 30, 255);
+    s.secondary = Color(40, 50, 60, 200);
+    s.edge = Color(70, 80, 90, 255);
+    s.selectionBand = Color(1, 2, 3, 255);
+    const Color text = s.tone(abgui::Tone::Text);
+    CHECK((text.r == 10 && text.g == 20 && text.b == 30 && text.a == 255));
+    CHECK(s.tone(abgui::Tone::Secondary).a == 200); // its own
+    CHECK(s.tone(abgui::Tone::Secondary, 120).a == 120);
+    CHECK(s.tone(abgui::Tone::Edge, 999).a == 255); // clamped
+    const Color band = s.tone(abgui::Tone::SelectionBand, 38);
+    CHECK((band.r == 1 && band.g == 2 && band.b == 3 && band.a == 38));
+    const Color black = s.tone(abgui::Tone::Black, 235);
+    CHECK((black.r == 0 && black.g == 0 && black.b == 0 && black.a == 235));
+    const Color white = s.tone(abgui::Tone::White);
+    CHECK((white.r == 255 && white.g == 255 && white.b == 255 && white.a == 255));
+    CHECK(s.tone(abgui::Tone::None).a == 0);
+}

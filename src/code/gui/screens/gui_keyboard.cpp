@@ -228,21 +228,10 @@ void GuiKeyboard::moveSelection(int dx, int dy) {
 //*******************************
 void GuiKeyboard::drawKey(const ableem::Rect &key, const KeyCap &cap, bool selected) {
     PanelStyle style = gui->panelStyle();
-    renderer.setBlendMode(ableem::BlendMode::Blend);
     const bool lit = cap.kind == KeyKind::Shift && shift != Shift::Off;
-    if (selected) {
-        renderer.setDrawColor(ableem::Color(style.text.r, style.text.g, style.text.b, 60));
-        renderer.fillRect(key);
-        renderer.setDrawColor(style.text);
-        renderer.drawRect(key);
-    } else {
-        // the function keys a shade darker than the letters, as on a phone's keyboard
-        const unsigned char fill = cap.kind == KeyKind::Char ? 18 : 8;
-        renderer.setDrawColor(ableem::Color(255, 255, 255, lit ? 50 : fill));
-        renderer.fillRect(key);
-        renderer.setDrawColor(ableem::Color(style.secondary.r, style.secondary.g, style.secondary.b, 110));
-        renderer.drawRect(key);
-    }
+    const abgui::KeyState state =
+        selected ? abgui::KeyState::Selected : lit ? abgui::KeyState::Lit : abgui::KeyState::Normal;
+    style.key(renderer, key, state, cap.kind != KeyKind::Char);
     // every key's label in the theme's text colour (K1, UIREV-21): the function row's words used to draw in
     // the dimmer secondary colour and read as barely-there next to the letters - only the key's own tile
     // (above) stays a shade darker, as on a phone's keyboard
@@ -311,11 +300,7 @@ void GuiKeyboard::render() {
     const ableem::Font &fieldFont = fonts[FONT_22_MED];
     const int fieldH = 48;
     ableem::Rect field(content.x + PanelStyle::RowInset, yoffset + 6, content.w - 2 * PanelStyle::RowInset, fieldH);
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(ableem::Color(255, 255, 255, 14));
-    renderer.fillRect(field);
-    renderer.setDrawColor(ableem::Color(style.secondary.r, style.secondary.g, style.secondary.b, 160));
-    renderer.drawRect(field);
+    style.field(renderer, field);
     // a long text scrolls so the caret stays in the field
     const int fieldInner = field.w - 32;
     // the text drawn as it is (a "|" or "@" typed is text, not a marker), scrolled to keep the caret in view
@@ -325,8 +310,7 @@ void GuiKeyboard::render() {
     const int textY = field.y + (fieldH - fieldFont.lineHeight()) / 2;
     fieldFont.drawColor(renderer, textX, textY, style.text, shown);
     if ((gui->platform().ticks() / 500) % 2 == 0) {
-        renderer.setDrawColor(style.text);
-        renderer.fillRect(ableem::Rect(textX + before, textY + 2, 2, fieldFont.lineHeight() - 4));
+        style.caret(renderer, textX + before, textY + 2, fieldFont.lineHeight() - 4);
     }
 
     // the keys: four rows of the page and the function row, centred in what is left

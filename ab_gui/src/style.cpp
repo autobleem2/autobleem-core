@@ -26,6 +26,8 @@ constexpr int Style::DefaultRowHeight;
 constexpr int Style::DefaultRowInset;
 constexpr int Style::DefaultMargin;
 constexpr int Style::DefaultSelectionBar;
+constexpr int Style::OwnAlpha;
+constexpr int Style::StyleAlpha;
 
 namespace {
 string upper(const string &key) {
@@ -242,6 +244,191 @@ void Style::scrollMarker(ableem::Renderer &renderer, int cx, int cy, int directi
 
 void Style::scrollMarker(Context &ctx, int cx, int cy, int direction) const {
     scrollMarker(ctx.renderer(), cx, cy, direction);
+}
+
+//*******************************
+// Style::tone
+//*******************************
+Color Style::tone(Tone role, int alpha) const {
+    Color c(0, 0, 0, 0);
+    switch (role) {
+    case Tone::None:
+        return c;
+    case Tone::Black:
+        c = Color(0, 0, 0, 255);
+        break;
+    case Tone::White:
+        c = Color(255, 255, 255, 255);
+        break;
+    case Tone::Text:
+        c = text;
+        break;
+    case Tone::Secondary:
+        c = secondary;
+        break;
+    case Tone::Edge:
+        c = edge;
+        break;
+    case Tone::SelectionBand:
+        c = selectionBand;
+        break;
+    }
+    if (alpha >= 0)
+        c.a = static_cast<unsigned char>(min(alpha, 255));
+    return c;
+}
+
+//*******************************
+// Style::box
+//*******************************
+void Style::box(ableem::Renderer &renderer, const Rect &rect, Tone fill, int fillAlpha, Tone edgeTone,
+                int edgeAlpha) const {
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    if (fill != Tone::None) {
+        renderer.setDrawColor(tone(fill, fillAlpha));
+        renderer.fillRect(rect);
+    }
+    if (edgeTone != Tone::None) {
+        renderer.setDrawColor(tone(edgeTone, edgeAlpha));
+        renderer.drawRect(rect);
+    }
+}
+
+void Style::box(Context &ctx, const Rect &rect, Tone fill, int fillAlpha, Tone edgeTone, int edgeAlpha) const {
+    box(ctx.renderer(), rect, fill, fillAlpha, edgeTone, edgeAlpha);
+}
+
+//*******************************
+// Style::plate
+//*******************************
+void Style::plate(ableem::Renderer &renderer, const Rect &rect, const Color &color) const {
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    renderer.setDrawColor(color);
+    renderer.fillRect(rect);
+}
+
+void Style::plate(Context &ctx, const Rect &rect, const Color &color) const {
+    plate(ctx.renderer(), rect, color);
+}
+
+//*******************************
+// Style::key / field / caret
+//*******************************
+void Style::key(ableem::Renderer &renderer, const Rect &rect, KeyState state, bool function) const {
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    if (state == KeyState::Selected) {
+        renderer.setDrawColor(Color(text.r, text.g, text.b, keySelectedAlpha));
+        renderer.fillRect(rect);
+        renderer.setDrawColor(text);
+        renderer.drawRect(rect);
+        return;
+    }
+    // the function keys a shade darker than the letters, as on a phone's keyboard
+    const unsigned char fill = state == KeyState::Lit ? keyLitAlpha : function ? keyFunctionAlpha : keyAlpha;
+    renderer.setDrawColor(Color(255, 255, 255, fill));
+    renderer.fillRect(rect);
+    renderer.setDrawColor(Color(secondary.r, secondary.g, secondary.b, keyEdgeAlpha));
+    renderer.drawRect(rect);
+}
+
+void Style::key(Context &ctx, const Rect &rect, KeyState state, bool function) const {
+    key(ctx.renderer(), rect, state, function);
+}
+
+void Style::field(ableem::Renderer &renderer, const Rect &rect) const {
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    renderer.setDrawColor(Color(255, 255, 255, fieldAlpha));
+    renderer.fillRect(rect);
+    renderer.setDrawColor(Color(secondary.r, secondary.g, secondary.b, fieldEdgeAlpha));
+    renderer.drawRect(rect);
+}
+
+void Style::field(Context &ctx, const Rect &rect) const {
+    field(ctx.renderer(), rect);
+}
+
+void Style::caret(ableem::Renderer &renderer, int x, int y, int height) const {
+    renderer.setDrawColor(text);
+    renderer.fillRect(Rect(x, y, caretWidth, height));
+}
+
+void Style::caret(Context &ctx, int x, int y, int height) const {
+    caret(ctx.renderer(), x, y, height);
+}
+
+//*******************************
+// Style::progress
+//*******************************
+void Style::progress(ableem::Renderer &renderer, const Rect &track, unsigned long long done,
+                     unsigned long long total, Tone trackTone, int trackAlpha, Tone fillTone, int fillAlpha) const {
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    renderer.setDrawColor(tone(trackTone, trackAlpha == StyleAlpha ? progressTrackAlpha : trackAlpha));
+    renderer.fillRect(track);
+    if (total == 0)
+        return;
+    const unsigned long long shown = done < total ? done : total;
+    const int width = static_cast<int>(static_cast<unsigned long long>(track.w) * shown / total);
+    renderer.setDrawColor(tone(fillTone, fillAlpha));
+    renderer.fillRect(Rect(track.x, track.y, width, track.h));
+}
+
+void Style::progress(Context &ctx, const Rect &track, unsigned long long done, unsigned long long total,
+                     Tone trackTone, int trackAlpha, Tone fillTone, int fillAlpha) const {
+    progress(ctx.renderer(), track, done, total, trackTone, trackAlpha, fillTone, fillAlpha);
+}
+
+//*******************************
+// Style::spinner
+//*******************************
+void Style::spinner(ableem::Renderer &renderer, int cx, int cy, int radius, int dotSize, int lead) const {
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    for (int i = 0; i < spinnerDots; i++) {
+        const int behind = (lead - i + spinnerDots) % spinnerDots; // 0 for the leading dot
+        const int alpha = 255 - behind * spinnerFade;
+        const double a = i * 3.14159265 / 6.0;
+        const int x = cx + static_cast<int>(radius * cos(a)) - dotSize / 2;
+        const int y = cy + static_cast<int>(radius * sin(a)) - dotSize / 2;
+        renderer.setDrawColor(Color(text.r, text.g, text.b, static_cast<unsigned char>(alpha)));
+        renderer.fillRect(Rect(x, y, dotSize, dotSize));
+    }
+}
+
+void Style::spinner(Context &ctx, int cx, int cy, int radius, int dotSize, int lead) const {
+    spinner(ctx.renderer(), cx, cy, radius, dotSize, lead);
+}
+
+void Style::spinner(ableem::Renderer &renderer, const Rect &box, int lead) const {
+    const int size = min(box.w, box.h);
+    const int dotSize = min(spinnerDot, max(3, size / 10)); // never bigger than the metrics' own
+    const int radius = min(spinnerRadius, max(6, size / 2 - dotSize - 2));
+    spinner(renderer, box.x + box.w / 2, box.y + box.h / 2, radius, dotSize, lead);
+}
+
+void Style::spinner(Context &ctx, const Rect &box, int lead) const {
+    spinner(ctx.renderer(), box, lead);
+}
+
+//*******************************
+// Style::tab / vrule
+//*******************************
+void Style::tab(ableem::Renderer &renderer, int x, int y, int w) const {
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    renderer.setDrawColor(selectionBand);
+    renderer.fillRect(Rect(x, y, w, tabHeight));
+}
+
+void Style::tab(Context &ctx, int x, int y, int w) const {
+    tab(ctx.renderer(), x, y, w);
+}
+
+void Style::vrule(ableem::Renderer &renderer, int x, int y, int h, int alpha) const {
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    renderer.setDrawColor(tone(Tone::Edge, alpha == StyleAlpha ? edgeAlpha : alpha));
+    renderer.fillRect(Rect(x, y, 1, h));
+}
+
+void Style::vrule(Context &ctx, int x, int y, int h, int alpha) const {
+    vrule(ctx.renderer(), x, y, h, alpha);
 }
 
 //*******************************
