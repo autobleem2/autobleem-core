@@ -240,6 +240,26 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   (libchdr is linked by `ableem_engine`); `lib_ableem/examples/demo.cpp` (`ableem_demo` target) is a
   from-scratch smoke test of the ui library alone - texture + font + sound + input, no AutoBleem code involved.
 
+## ab_gui (the AutoBleem User Interface Library, `docs/ab-gui-plan.md`)
+
+`ab_gui/` (namespace `abgui`, headers `ab_gui/include/ab_gui/` included as `<ab_gui/...>`, CMake target `ab_gui`,
+built with `AB_CORE_UI`) links `ableem` only: no AutoBleem code and **no SDL** (no SDL header, call or type - what it
+needs that the `ableem` API lacks goes into lib_ableem first). `ab_classic` links it; `ab_add_extension` passes its
+include path to the extensions.
+- **`abgui::Style`** (`style.h`) - the look as data (the colour roles, the metrics as fields with today's values as
+  defaults, `Default*` constants) and its primitives (`dim/sheet/rule/header/selection/disabled/label/scrollMarker/
+  footer/button(s)/buttonWidth/buttonsWidth/outlineOf`, `parseHints`). `Style::fromColors(ColorRoles)` resolves the
+  roles from a plain block - AutoBleem's `LauncherTheme` never reaches ab_gui.
+- **`abgui::Context`** (`context.h`) - what the drawing needs: the `Renderer`, and as providers asked at draw time
+  (never cached - the display release frees fonts and textures) the fonts by `FontRole` (Title/Row/RowSmall/Small/
+  Classic), the button glyphs and their outlines, the text drawer and measurer, the translator and the current
+  `Style`. `Gui` owns AutoBleem's (`Gui::uiContext()`, wired in `Gui::wireUiContext()` to `ThemeAssets`,
+  `TextRenderer`, `_()` and the theme).
+- `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
+- **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
+  hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to
+  `Style` with `gui.uiContext()`. Tests: `tests/gui/test_ab_gui_style.cpp`.
+
 ## UI styling standards (2026-09-21, the `feature/ui-fixes` pass)
 
 Every screen but the launcher's own carousel frame draws in **one look**, and new screens must too:
