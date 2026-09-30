@@ -610,3 +610,55 @@ TEST_CASE("Style::footer through a Context (G5r8): the footer frame replaces the
     style.footer(ctx, band, "|@X| Select", true);
     CHECK(asked == vector<string>{"footer"});
 }
+
+TEST_CASE("Style::toast (G5f): the toast frame, else the panel frame, else the code-drawn sheet") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+    const Rect box(200, 16, 440, 48);
+
+    // no provider (every shipped theme): the sheet and its edge, nothing asked
+    style.toast(ctx, box);
+
+    FrameSet set;
+    FrameSpec panel;
+    panel.file = testFrame("panel.png");
+    panel.slice = TestSlice;
+    panel.bleed = TestBleed;
+    map<string, FrameSpec> specs;
+    specs["panel"] = panel;
+    set.assign(specs);
+    vector<string> asked;
+    ctx.frameProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.frame(renderer, name);
+    };
+
+    // a theme with a panel frame only: the toast is asked for first, the panel drawn - what G4b gave the bubble
+    style.toast(ctx, box);
+    CHECK(asked == vector<string>{"toast", "panel"});
+
+    // the test theme's toast (64x64, slice 20, bleed 4): the first frame there is drawn, the panel not asked
+    FrameSpec toast;
+    toast.file = testFrame("toast.png");
+    toast.file2x = testFrame("toast@2x.png");
+    toast.slice = Insets::all(20);
+    toast.bleed = Insets::all(4);
+    specs["toast"] = toast;
+    set.assign(specs);
+    REQUIRE(set.frame(renderer, "toast").valid());
+    CHECK(set.frame(renderer, "toast").texture.size().w == 64);
+    CHECK(set.frame(renderer, "toast").texture.size().h == 64);
+    asked.clear();
+    style.toast(ctx, box);
+    CHECK(asked == vector<string>{"toast"});
+
+    // a theme with neither: both asked, the code-drawn sheet follows
+    set.assign(map<string, FrameSpec>());
+    asked.clear();
+    style.toast(ctx, box);
+    CHECK(asked == vector<string>{"toast", "panel"});
+}

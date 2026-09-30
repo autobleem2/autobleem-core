@@ -38,9 +38,13 @@
 # top-right and bottom-left corners cut, a dark centre at about 70% the hints read over, an 8 px glow. Salmon
 # (250, 128, 114) at 1x, olive (128, 128, 0) at @2x. theme.json: slice 28, bleed 8.
 #
+# toast (G5f): 64x64 - the art spec's notification bubble: a 56x56 body with a 4 px glow, a 2 px rim, the two top corners
+# cut, a dark centre at about 80% the title and detail read over. Hot pink (255, 105, 180) at 1x, dark teal (0, 100, 100)
+# at @2x. theme.json: slice 20, bleed 4.
+#
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
 # selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
-# key_selected.png (48x48 each), field.png (56x56), badge.png (40x40), chip.png (32x32), footer.png (64x62), hint_bar.png (80x80) and the
+# key_selected.png (48x48 each), field.png (56x56), badge.png (40x40), chip.png (32x32), footer.png (64x62), hint_bar.png (80x80), toast.png (64x64) and the
 # @2x of all of them next to this script.
 import math
 import os
@@ -146,6 +150,13 @@ def hint_bar_shape():
     return Shape(size, size, bleed, poly, 2, (24, 20, 30, 180), 110)
 
 
+def toast_shape():
+    size, bleed, cut = 64, 4, 10
+    x0, y0, x1, y1 = bleed, bleed, size - bleed, size - bleed
+    poly = [(x0 + cut, y0), (x1 - cut, y0), (x1, y0 + cut), (x1, y1), (x0, y1), (x0, y0 + cut)]
+    return Shape(size, size, bleed, poly, 2, (20, 16, 28, 204), 100)
+
+
 def render(shape, scale, rim):
     w, h = shape.width * scale, shape.height * scale
     ss = 4
@@ -203,6 +214,7 @@ def main():
         ("chip", chip_shape(), (120, 255, 190), (128, 0, 40)),
         ("footer", footer_shape(), (200, 120, 60), (60, 140, 200)),
         ("hint_bar", hint_bar_shape(), (250, 128, 114), (128, 128, 0)),
+        ("toast", toast_shape(), (255, 105, 180), (0, 100, 100)),
     ]
     for name, shape, rim1, rim2 in keys:
         write_png(os.path.join(out, name + ".png"), *render(shape, 1, rim1))

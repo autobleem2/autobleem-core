@@ -171,6 +171,14 @@ void Style::sheet(Context &ctx, const Rect &panel) const {
 }
 
 //*******************************
+// Style::toast
+//*******************************
+void Style::toast(Context &ctx, const Rect &panel) const {
+    if (!drawFirstFrame(ctx, {"toast", "panel"}, panel))
+        sheet(ctx.renderer(), panel);
+}
+
+//*******************************
 // Style::colorByName / drawFrame
 //*******************************
 bool Style::colorByName(const string &name, Color &out) const {

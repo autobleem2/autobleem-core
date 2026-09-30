@@ -15,7 +15,8 @@
       "badge": { "image": "frames/badge.png", "slice": 12, "bleed": 4 },
       "chip": { "image": "frames/chip.png", "slice": 10, "bleed": 2 },
       "footer": { "image": "frames/footer.png", "slice": 16, "bleed": 4 },
-      "hintBar": { "image": "frames/hint_bar.png", "slice": 28, "bleed": 8 }
+      "hintBar": { "image": "frames/hint_bar.png", "slice": 28, "bleed": 8 },
+      "toast": { "image": "frames/toast.png", "slice": 20, "bleed": 4 }
     },
     "logo": { "file": "images/logo.png", "x": 22, "y": 591, "w": 317, "h": 75 },
     "menuIcons": { "resumePictureMask": "images/resume_mask.png" },
