@@ -591,7 +591,7 @@ Every screen but the launcher's own carousel frame draws in **one look**, and ne
   game: the cover on a plate, a screenshot when there is one, then facts as `FONT_15_BOLD` label over
   `FONT_20_BOLD` value, a rule to its left.
 - **Footers are structured** and drawn by `PanelStyle::footer` from the `"|@X| Label  |@O| Label"`
-  protocol (`parseHints`): the hints **sorted** Cross, Circle, Triangle, Square, Start, Select, L1/R1,
+  protocol (`parseHints`): the hints **sorted** Cross, Circle, Triangle, Square, the d-pad (Left/Right), Start, Select, L1/R1,
   L2/R2, keyboard keys; icons 30 px (the launcher's hint images for X/O/T, the theme's buttons for the
   rest); labels in the largest launcher font that fits; a counter ("Game 3/21") at the right edge in the
   secondary colour. **Labels**: Circle is "Back" wherever leaving loses nothing, "Cancel" only where

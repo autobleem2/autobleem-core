@@ -331,13 +331,21 @@ public:
     // the footer: the rule along the top of `footer` (footerHeight tall, the panel's width), the hints from the
     // left inset in the largest of the Row / RowSmall / Small fonts they fit in (then their labels shortened,
     // then icons only), the status at the right edge. The hints are drawn in the one order every screen
-    // shares, whatever order they were given in: Cross, Circle, Triangle, Square, Start, Select, L1/R1, L2/R2,
-    // then the keyboard's keys. G5r8: a theme's optional `footer` frame is drawn over `footer` (the band) instead
+    // shares, whatever order they were given in: Cross, Circle, Triangle, Square, the d-pad, Start, Select, L1/R1,
+    // L2/R2, then the keyboard's keys. G5r8: a theme's optional `footer` frame is drawn over `footer` (the band) instead
     // of the rule, and only when `withRule` is set; no frame = the rule, call for call
     void footer(Context &ctx, const ableem::Rect &footer, const std::vector<HintItem> &hints,
                 const std::string &status = "", bool withRule = true) const;
     // the same from the protocol string
     void footer(Context &ctx, const ableem::Rect &footer, const std::string &line, bool withRule = true) const;
+    // the footer's shared order (G5r3): where a hint's first key ranks - X, O, T, S, then the d-pad (Left, Right,
+    // Up, Down), Start, Select, L1, R1, L2, R2, Enter, Esc, Tab; any other key last (100) - and the hints sorted by
+    // it (stable)
+    static int hintRank(const std::string &icon);
+    static std::vector<HintItem> sortedHints(std::vector<HintItem> hints);
+    // what a hint's keys take in the footer, each with the 6 px after it: `buttonWidth` per key (the theme's glyph
+    // when there is one, else the chip) - the width the footer's fit is decided on
+    int hintIconsWidth(Context &ctx, const HintItem &hint, int height = 30) const;
 
     // a dark outline/halo texture from an image's own alpha shape: the shape drawn in black at alpha 150 at
     // each of the eight 1 px offsets and once more 2 px down-right. The texture is the image's size plus 5 in

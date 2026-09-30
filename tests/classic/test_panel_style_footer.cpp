@@ -46,9 +46,10 @@ struct HintItem {
     string label;
 };
 
-// mirrors ab_gui/src/style.cpp's file-local buttonRank()
+// mirrors ab_gui/src/style.cpp's Style::hintRank() (the real one is tested in test_ab_gui_style)
 int buttonRank(const string &icon) {
-    static const char *order[] = {"X", "O", "T", "S", "Start", "Select", "L1", "R1", "L2", "R2", "Enter", "Esc", "Tab"};
+    static const char *order[] = {"X",     "O",  "T",  "S",  "Left", "Right", "Up",    "Down", "Start",
+                                  "Select", "L1", "R1", "L2", "R2",   "Enter", "Esc", "Tab"};
     for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); i++)
         if (icon == order[i])
             return static_cast<int>(i);
@@ -73,8 +74,9 @@ int textWidth(int fontPx, const string &s) {
     return static_cast<int>(utf8Length(s)) * charWidth(fontPx);
 }
 
-// mirrors ab_gui/src/style.cpp's footer() local buttonWidth lambda: a face button (X/O/T/S) is the fixed 30 px
-// icon, a named one (L2, R2, ...) is a chip - its uppercased name at FONT_15_BOLD (15 px) plus 14 px padding
+// stands in for Style::buttonWidth as the footer measures keys since G5r3 (the theme's glyph when there is one, the
+// chip otherwise - the real widths are tested in test_ab_gui_frame): a face button (X/O/T/S) is the 30 px icon,
+// a named one (L2, R2, ...) is a chip - its uppercased name at FONT_15_BOLD (15 px) plus 14 px padding
 const int Font15 = 15, Font20 = 20, Font22 = 22;
 int buttonWidth(const string &key) {
     if (key == "X" || key == "O" || key == "T" || key == "S")
