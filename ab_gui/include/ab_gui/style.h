@@ -287,6 +287,11 @@ public:
     // the active tab's underline: tabHeight tall, `w` wide, from (x, y), in the selection band's colour
     void tab(ableem::Renderer &renderer, int x, int y, int w) const;
     void tab(Context &ctx, int x, int y, int w) const;
+    // the current tab of a tab strip (the set picker's), `cell` its whole box: the theme's `tab` frame (G5h), else the
+    // cell filled with the selection band's colour at bandAlpha and a selectionBar-tall bar of it along the cell's
+    // bottom. Drawn under the tab's icon and label; the other tabs draw nothing. The Renderer overload is the old look.
+    void tabCell(ableem::Renderer &renderer, const ableem::Rect &cell) const;
+    void tabCell(Context &ctx, const ableem::Rect &cell) const;
     // a vertical one-pixel rule from (x, y), `h` tall, in the edge colour; alpha: StyleAlpha is edgeAlpha, OwnAlpha is
     // the colour's own
     void vrule(ableem::Renderer &renderer, int x, int y, int h, int alpha = StyleAlpha) const;

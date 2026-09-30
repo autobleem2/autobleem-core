@@ -610,3 +610,50 @@ TEST_CASE("Style::footer through a Context (G5r8): the footer frame replaces the
     style.footer(ctx, band, "|@X| Select", true);
     CHECK(asked == vector<string>{"footer"});
 }
+
+TEST_CASE("Style::tabCell through a Context (G5h): the tab frame when the provider has one, else the band and bar") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+    const Rect cell(100, 40, 150, 102);
+
+    // no provider (every shipped theme): the code-drawn band and bar - both overloads run
+    style.tabCell(ctx, cell);
+    style.tabCell(renderer, cell);
+
+    // a provider with a panel frame only: `tab` is asked for, not found, the old look is drawn
+    FrameSet set;
+    FrameSpec panel;
+    panel.file = testFrame("panel.png");
+    panel.slice = TestSlice;
+    panel.bleed = TestBleed;
+    map<string, FrameSpec> specs;
+    specs["panel"] = panel;
+    set.assign(specs);
+    vector<string> asked;
+    ctx.frameProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.frame(renderer, name);
+    };
+    style.tabCell(ctx, cell);
+    CHECK(asked == vector<string>{"tab"});
+
+    // the test theme's tab (48x48, slice 16, no bleed): drawn, and one ask
+    FrameSpec tab;
+    tab.file = testFrame("tab.png");
+    tab.file2x = testFrame("tab@2x.png");
+    tab.slice = Insets::all(16);
+    specs["tab"] = tab;
+    set.assign(specs);
+    const abgui::Frame f = set.frame(renderer, "tab");
+    REQUIRE(f.valid());
+    CHECK(f.texture.size().w == 48);
+    CHECK(f.texture.size().h == 48);
+    asked.clear();
+    style.tabCell(ctx, cell);
+    CHECK(asked == vector<string>{"tab"});
+    CHECK(style.drawFrame(ctx, "tab", cell));
+}

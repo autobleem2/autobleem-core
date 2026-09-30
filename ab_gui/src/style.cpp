@@ -534,6 +534,23 @@ void Style::tab(Context &ctx, int x, int y, int w) const {
     tab(ctx.renderer(), x, y, w);
 }
 
+//*******************************
+// Style::tabCell
+//*******************************
+void Style::tabCell(ableem::Renderer &renderer, const Rect &cell) const {
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    renderer.setDrawColor(Color(selectionBand.r, selectionBand.g, selectionBand.b, bandAlpha));
+    renderer.fillRect(cell);
+    renderer.setDrawColor(selectionBand);
+    renderer.fillRect(Rect(cell.x, cell.y + cell.h - selectionBar, cell.w, selectionBar));
+}
+
+void Style::tabCell(Context &ctx, const Rect &cell) const {
+    if (drawFrame(ctx, "tab", cell))
+        return;
+    tabCell(ctx.renderer(), cell);
+}
+
 void Style::vrule(ableem::Renderer &renderer, int x, int y, int h, int alpha) const {
     renderer.setBlendMode(ableem::BlendMode::Blend);
     renderer.setDrawColor(tone(Tone::Edge, alpha == StyleAlpha ? edgeAlpha : alpha));

@@ -535,8 +535,8 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
     // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip
-    // (G5d), footer (G5r8), hintBar (G5e)
-    REQUIRE(frames.size() == 12);
+    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h)
+    REQUIRE(frames.size() == 13);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
     const ableem::ThemeFrame *heading = nullptr;
@@ -619,6 +619,19 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(hintBar->slice.bottom == 28);
     CHECK(hintBar->bleed.right == 8);
     CHECK(hintBar->tint.empty());
+    // G5h: the set picker's current tab - slice 16 all round, no bleed (the whole 48 x 48 image is the box)
+    const ableem::ThemeFrame *tab = nullptr;
+    for (const ableem::ThemeFrame &f : frames)
+        if (f.name == "tab")
+            tab = &f;
+    REQUIRE(tab != nullptr);
+    CHECK(tab->image == dir + "/frames/tab.png");
+    CHECK(tab->image2x == dir + "/frames/tab@2x.png");
+    CHECK(tab->slice.left == 16);
+    CHECK(tab->slice.bottom == 16);
+    CHECK(tab->bleed.left == 0);
+    CHECK(tab->bleed.right == 0);
+    CHECK(tab->tint.empty());
 }
 
 TEST_CASE("themeImageFile: the @2x next to a theme image above scale 1, else the image itself (G4f)") {
@@ -854,7 +867,7 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
         CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
     }
     CHECK(ableem::resolveThemeIconHalo(dir, dir));    // the halo stays on: it shows under the test colours
-    CHECK(ableem::loadThemeFrames(dir).size() == 12); // the frames are untouched by the block
+    CHECK(ableem::loadThemeFrames(dir).size() == 13); // the frames are untouched by the block
 }
 
 TEST_CASE("readThemeLogo: launcher.logo {file, x, y, w, h}, set only with a file and a positive size (G5q)") {

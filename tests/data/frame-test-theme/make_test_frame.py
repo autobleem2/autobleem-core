@@ -38,6 +38,10 @@
 # top-right and bottom-left corners cut, a dark centre at about 70% the hints read over, an 8 px glow. Salmon
 # (250, 128, 114) at 1x, olive (128, 128, 0) at @2x. theme.json: slice 28, bleed 8.
 #
+# tab (G5h): 48x48 - the set picker's current tab, the whole image is the box (no bleed), a 2 px rim, the two top corners
+# cut, a faint centre the icon and label read over. Indigo (90, 80, 255) at 1x, bronze (170, 110, 0) at @2x.
+# theme.json: slice 16, bleed 0.
+#
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
 # selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
 # key_selected.png (48x48 each), field.png (56x56), badge.png (40x40), chip.png (32x32), footer.png (64x62), hint_bar.png (80x80) and the
@@ -146,6 +150,12 @@ def hint_bar_shape():
     return Shape(size, size, bleed, poly, 2, (24, 20, 30, 180), 110)
 
 
+def tab_shape():
+    size, cut = 48, 8
+    poly = [(cut, 0), (size - cut, 0), (size, cut), (size, size), (0, size), (0, cut)]
+    return Shape(size, size, 0, poly, 2, (255, 255, 255, 40), 0)
+
+
 def render(shape, scale, rim):
     w, h = shape.width * scale, shape.height * scale
     ss = 4
@@ -203,6 +213,7 @@ def main():
         ("chip", chip_shape(), (120, 255, 190), (128, 0, 40)),
         ("footer", footer_shape(), (200, 120, 60), (60, 140, 200)),
         ("hint_bar", hint_bar_shape(), (250, 128, 114), (128, 128, 0)),
+        ("tab", tab_shape(), (90, 80, 255), (170, 110, 0)),
     ]
     for name, shape, rim1, rim2 in keys:
         write_png(os.path.join(out, name + ".png"), *render(shape, 1, rim1))
