@@ -427,8 +427,10 @@ include path to the extensions.
   `Style`, `ThemeSpec` and `ThemeAssets` on purpose** (their layouts are the SDK's - no ABI bump): `Gui` owns the
   `FrameSet` (`frames_`, appended after `stack_`), fills it in `loadAssets()` from `ableem::loadThemeFrames(
   theme().loadedPath())` - the engine's reader of **the theme's own** `launcher.frames` (never merged over `default`),
-  `@2x` found next to the 1x - and releases it in `releaseDisplay()`. A test theme with a panel frame (cyan rim at 1x,
-  orange at @2x): `tests/data/frame-test-theme/` (`make_test_frame.py` draws it). Tests:
+  `@2x` found next to the 1x - and releases it in `releaseDisplay()`. `Style::selection(ctx, rect)` draws the `selection` frame (G4c) instead of the band and bar, and `selectionFramed(ctx)`
+  tells the callers to draw it before the row's text (`abgui::List::draw` does; without the frame the band stays over the
+  rows). A test theme with a panel frame (cyan rim at 1x, orange at @2x) and a selection frame (magenta / lime):
+  `tests/data/frame-test-theme/` (`make_test_frame.py` draws them). Tests:
   `tests/gui/test_ab_gui_frame.cpp`, `tests/core/test_theme_spec.cpp` (the reader).
 - **`PanelStyle` is an `abgui::Style`** (since G3z; an adapter holding its own colours until then): the colour roles,
   metrics and every primitive on a Renderer or a Context are the Style's; PanelStyle adds the old constants

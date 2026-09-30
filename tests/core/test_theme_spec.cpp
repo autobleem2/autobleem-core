@@ -532,10 +532,28 @@ TEST_CASE("loadThemeFrames: the images resolved in the theme's folder, the @2x f
 TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a check expects") {
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
-    REQUIRE(frames.size() == 1);
-    CHECK(frames[0].name == "panel");
-    CHECK(frames[0].image == dir + "/frames/panel.png");
-    CHECK(frames[0].image2x == dir + "/frames/panel@2x.png");
-    CHECK(frames[0].slice.top == 24);
-    CHECK(frames[0].bleed.right == 8);
+    REQUIRE(frames.size() == 2);
+    const ableem::ThemeFrame *panel = nullptr;
+    const ableem::ThemeFrame *selection = nullptr;
+    for (const ableem::ThemeFrame &f : frames) {
+        if (f.name == "panel")
+            panel = &f;
+        if (f.name == "selection")
+            selection = &f;
+    }
+    REQUIRE(panel != nullptr);
+    CHECK(panel->image == dir + "/frames/panel.png");
+    CHECK(panel->image2x == dir + "/frames/panel@2x.png");
+    CHECK(panel->slice.top == 24);
+    CHECK(panel->bleed.right == 8);
+    // G4c: the row selection - slice 12 at the sides and 10 top and bottom, a 4 px bleed, its own colours
+    REQUIRE(selection != nullptr);
+    CHECK(selection->image == dir + "/frames/selection.png");
+    CHECK(selection->image2x == dir + "/frames/selection@2x.png");
+    CHECK(selection->slice.left == 12);
+    CHECK(selection->slice.right == 12);
+    CHECK(selection->slice.top == 10);
+    CHECK(selection->slice.bottom == 10);
+    CHECK(selection->bleed.left == 4);
+    CHECK(selection->tint.empty());
 }

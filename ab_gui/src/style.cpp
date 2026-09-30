@@ -242,7 +242,13 @@ void Style::selection(ableem::Renderer &renderer, const Rect &rect) const {
 }
 
 void Style::selection(Context &ctx, const Rect &rect) const {
+    if (drawFrame(ctx, "selection", rect))
+        return;
     selection(ctx.renderer(), rect);
+}
+
+bool Style::selectionFramed(Context &ctx) const {
+    return ctx.frame("selection").valid();
 }
 
 //*******************************

@@ -10,6 +10,7 @@
 #include "doctest/doctest.h"
 
 #include <ab_gui/context.h>
+#include <ab_gui/frame.h>
 #include <ab_gui/list.h>
 #include <ab_gui/panel.h>
 
@@ -19,6 +20,7 @@
 #include <cstdlib>
 #include <exception>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <typeinfo>
@@ -359,6 +361,74 @@ TEST_CASE("List::draw: a long list, or a short one with a pane beside it, draws 
     pane.labelsOnly = true; // nothing to pick: no row is the cursor's
     pane.draw();
     CHECK(side.calls == vector<string>{"backdrop", "title", "row 0@0", "row 1@1", "row 2@2", "status"});
+}
+
+TEST_CASE("List::draw: with a selection frame it is drawn before the rows (under their text), without one after") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    ableem::Renderer &renderer = g.gui->renderer();
+
+    // what the list asked the Context's frame provider for, next to the rows: "frame selection" is the query of
+    // selectionFramed() first, then the frame's drawing (a frame that is there is drawn, one that is not falls back to
+    // the code-drawn band)
+    auto order = [](const vector<string> &calls) {
+        vector<string> out;
+        for (const string &c : calls)
+            if (c.compare(0, 3, "row") == 0 || c == "frame selection")
+                out.push_back(c);
+        return out;
+    };
+
+    // no frame (every shipped theme): the rows, then the band over them - the classic order
+    {
+        Side side(*g.gui);
+        side.ctx.frameProvider = [&](const string &name) {
+            side.calls.push_back("frame " + name);
+            return abgui::Frame();
+        };
+        Recorder list(*g.gui, side, 3);
+        list.selected = 1;
+        list.maxVisible = 5;
+        list.draw();
+        CHECK(order(side.calls) ==
+              vector<string>{"frame selection", "row 0@0", "row 1@1*", "row 2@2", "frame selection"});
+    }
+
+    // the same list on a context with no provider at all draws exactly the old call order
+    {
+        Side side(*g.gui);
+        Recorder list(*g.gui, side, 3);
+        list.selected = 1;
+        list.maxVisible = 5;
+        list.draw();
+        CHECK(side.calls ==
+              vector<string>{"backdrop", "compact", "title", "row 0@0", "row 1@1*", "row 2@2", "status", "full"});
+    }
+
+    // a `selection` frame: drawn before the first row, so the text reads over it
+    {
+        abgui::FrameSet set;
+        abgui::FrameSpec spec;
+        spec.file = string(AB_TEST_DATA_DIR) + "/frame-test-theme/frames/selection.png";
+        spec.slice = abgui::Insets(12, 10, 12, 10);
+        spec.bleed = abgui::Insets::all(4);
+        map<string, abgui::FrameSpec> specs;
+        specs["selection"] = spec;
+        set.assign(specs);
+        Side side(*g.gui);
+        side.ctx.frameProvider = [&](const string &name) {
+            side.calls.push_back("frame " + name);
+            return set.frame(renderer, name);
+        };
+        Recorder list(*g.gui, side, 3);
+        list.selected = 1;
+        list.maxVisible = 5;
+        list.draw();
+        CHECK(order(side.calls) ==
+              vector<string>{"frame selection", "frame selection", "row 0@0", "row 1@1*", "row 2@2"});
+        set.release();
+    }
 }
 
 TEST_CASE(

@@ -322,3 +322,53 @@ TEST_CASE("Style::drawFrame and sheet() through a Context: the frame when the pr
     REQUIRE(asked.size() == 1);
     CHECK(asked[0] == "panel");
 }
+
+TEST_CASE("Style::selection through a Context: the selection frame when the provider has one, else the band and bar") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+    const Rect row(20, 20, 400, 28);
+
+    // no provider: not framed, the code-drawn band (nothing to see here but that it runs)
+    CHECK_FALSE(style.selectionFramed(ctx));
+    style.selection(ctx, row);
+
+    // a provider with a panel frame only: still not framed - a theme with no `selection` keeps the old look
+    FrameSet set;
+    FrameSpec panel;
+    panel.file = testFrame("panel.png");
+    panel.slice = TestSlice;
+    panel.bleed = TestBleed;
+    map<string, FrameSpec> specs;
+    specs["panel"] = panel;
+    set.assign(specs);
+    vector<string> asked;
+    ctx.frameProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.frame(renderer, name);
+    };
+    CHECK_FALSE(style.selectionFramed(ctx));
+    asked.clear();
+    style.selection(ctx, row);
+    REQUIRE(asked.size() == 1);
+    CHECK(asked[0] == "selection");
+
+    // the test theme's selection frame (48x40, slice 12/10, bleed 4)
+    FrameSpec selection;
+    selection.file = testFrame("selection.png");
+    selection.file2x = testFrame("selection@2x.png");
+    selection.slice = Insets{12, 10, 12, 10};
+    selection.bleed = Insets::all(4);
+    specs["selection"] = selection;
+    set.assign(specs);
+    const abgui::Frame f = set.frame(renderer, "selection");
+    REQUIRE(f.valid());
+    CHECK(f.texture.size().w == 48);
+    CHECK(f.texture.size().h == 40);
+    CHECK(style.selectionFramed(ctx));
+    CHECK(style.drawFrame(ctx, "selection", row));
+    style.selection(ctx, row);
+}

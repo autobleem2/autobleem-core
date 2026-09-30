@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
-# The test theme's panel frame (ab_gui G4a, docs/ab-gui-frames-spec.md): a dark panel with its top-left and
-# bottom-right corners cut, a 2 px rim and an 8 px glow. The 1x image has a cyan rim, the @2x one an orange rim, so a
-# screenshot shows which of the two the output scale picked. Standard library only; writes frames/panel.png (64x64)
-# and frames/panel@2x.png (128x128) next to this script. theme.json: slice 24 (8 bleed + 16 corner), bleed 8.
+# The test theme's frames (ab_gui G4a/G4c, docs/ab-gui-frames-spec.md)
+#
+# panel (G4a): a dark panel with its top-left and bottom-right corners cut, a 2 px rim and an 8 px glow. The 1x image
+# has a cyan rim, the @2x one an orange rim, so a screenshot shows which of the two the output scale picked.
+# theme.json: slice 24 (8 bleed + 16 corner), bleed 8.
+#
+# selection (G4c): a 48x40 image - the row's 40x32 box with a 4 px glow, a 2 px rim and a translucent centre the row's
+# text reads over. The 1x rim is magenta, the @2x one lime (the panel's are cyan and orange).
+# theme.json: slice left/right 12, top/bottom 10, bleed 4.
+#
+# Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40) and
+# selection@2x.png (96x80) next to this script.
 import math
 import os
 import struct
 import zlib
-
-SIZE = 64    # the 1x image, logical px
-BLEED = 8    # the glow's reach outside the box
-CUT = 10     # the cut corners
-RIM = 2      # the rim's width inside the box
-CENTRE = (11, 22, 34, 215)
-
-BOX = (BLEED, BLEED, SIZE - BLEED, SIZE - BLEED)
-x0, y0, x1, y1 = BOX
-POLY = [(x0 + CUT, y0), (x1, y0), (x1, y1 - CUT), (x1 - CUT, y1), (x0, y1), (x0, y0 + CUT)]
 
 
 def seg_dist(px, py, ax, ay, bx, by):
@@ -25,41 +23,61 @@ def seg_dist(px, py, ax, ay, bx, by):
     return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
 
 
-def signed_dist(px, py):
-    # negative inside the (convex, clockwise in screen coordinates) polygon
-    inside = True
-    for i in range(len(POLY)):
-        ax, ay = POLY[i]
-        bx, by = POLY[(i + 1) % len(POLY)]
-        if (bx - ax) * (py - ay) - (by - ay) * (px - ax) < 0:
-            inside = False
-            break
-    d = min(seg_dist(px, py, *POLY[i], *POLY[(i + 1) % len(POLY)]) for i in range(len(POLY)))
-    return -d if inside else d
+class Shape:
+    """A convex polygon (clockwise in screen coordinates) with a rim, a glow and a centre colour."""
+
+    def __init__(self, width, height, bleed, poly, rim_width, centre, glow):
+        self.width, self.height, self.bleed = width, height, bleed
+        self.poly, self.rim_width, self.centre, self.glow = poly, rim_width, centre, glow
+
+    def signed_dist(self, px, py):
+        # negative inside the polygon
+        n = len(self.poly)
+        inside = True
+        for i in range(n):
+            ax, ay = self.poly[i]
+            bx, by = self.poly[(i + 1) % n]
+            if (bx - ax) * (py - ay) - (by - ay) * (px - ax) < 0:
+                inside = False
+                break
+        d = min(seg_dist(px, py, *self.poly[i], *self.poly[(i + 1) % n]) for i in range(n))
+        return -d if inside else d
+
+    def colour_at(self, px, py, rim):
+        d = self.signed_dist(px, py)
+        if d <= -self.rim_width:
+            return self.centre
+        if d <= 0:
+            return rim + (255,)
+        if d < self.bleed:
+            return rim + (int(round(self.glow * (1 - d / self.bleed) ** 2)),)
+        return (0, 0, 0, 0)
 
 
-def colour_at(px, py, rim):
-    d = signed_dist(px, py)
-    if d <= -RIM:
-        return CENTRE
-    if d <= 0:
-        return rim + (255,)
-    if d < BLEED:
-        return rim + (int(round(110 * (1 - d / BLEED) ** 2)),)
-    return (0, 0, 0, 0)
+def panel_shape():
+    size, bleed, cut = 64, 8, 10
+    x0, y0, x1, y1 = bleed, bleed, size - bleed, size - bleed
+    poly = [(x0 + cut, y0), (x1, y0), (x1, y1 - cut), (x1 - cut, y1), (x0, y1), (x0, y0 + cut)]
+    return Shape(size, size, bleed, poly, 2, (11, 22, 34, 215), 110)
 
 
-def render(scale, rim):
-    n = SIZE * scale
+def selection_shape():
+    w, h, bleed = 48, 40, 4
+    poly = [(bleed, bleed), (w - bleed, bleed), (w - bleed, h - bleed), (bleed, h - bleed)]
+    return Shape(w, h, bleed, poly, 2, (255, 255, 255, 60), 140)
+
+
+def render(shape, scale, rim):
+    w, h = shape.width * scale, shape.height * scale
     ss = 4
     rows = []
-    for y in range(n):
+    for y in range(h):
         row = bytearray()
-        for x in range(n):
+        for x in range(w):
             r = g = b = a = 0.0
             for j in range(ss):
                 for i in range(ss):
-                    c = colour_at((x + (i + 0.5) / ss) / scale, (y + (j + 0.5) / ss) / scale, rim)
+                    c = shape.colour_at((x + (i + 0.5) / ss) / scale, (y + (j + 0.5) / ss) / scale, rim)
                     ca = c[3] / 255.0
                     r += c[0] * ca
                     g += c[1] * ca
@@ -71,16 +89,16 @@ def render(scale, rim):
             else:
                 row += bytes((0, 0, 0, 0))
         rows.append(bytes(row))
-    return n, rows
+    return w, h, rows
 
 
-def write_png(path, n, rows):
+def write_png(path, w, h, rows):
     raw = b"".join(b"\x00" + r for r in rows)
 
     def chunk(tag, data):
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
 
-    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", n, n, 8, 6, 0, 0, 0))
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
     png += chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
     with open(path, "wb") as f:
         f.write(png)
@@ -89,8 +107,11 @@ def write_png(path, n, rows):
 def main():
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frames")
     os.makedirs(out, exist_ok=True)
-    write_png(os.path.join(out, "panel.png"), *render(1, (0, 229, 255)))
-    write_png(os.path.join(out, "panel@2x.png"), *render(2, (255, 152, 0)))
+    panel, selection = panel_shape(), selection_shape()
+    write_png(os.path.join(out, "panel.png"), *render(panel, 1, (0, 229, 255)))
+    write_png(os.path.join(out, "panel@2x.png"), *render(panel, 2, (255, 152, 0)))
+    write_png(os.path.join(out, "selection.png"), *render(selection, 1, (255, 0, 200)))
+    write_png(os.path.join(out, "selection@2x.png"), *render(selection, 2, (140, 255, 0)))
 
 
 if __name__ == "__main__":

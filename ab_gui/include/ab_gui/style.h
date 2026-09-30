@@ -181,7 +181,11 @@ public:
     int header(Context &ctx, const ableem::Rect &panel, const std::string &title) const;
     // the selected row: the band and the bar, `rect` being the row's full extent
     void selection(ableem::Renderer &renderer, const ableem::Rect &rect) const;
+    // through the Context, the "selection" frame (G4c) drawn into `rect` instead of the band and the bar when there
+    // is one - then it must be drawn UNDER the row's text (selectionFramed), the code-drawn band goes over it
     void selection(Context &ctx, const ableem::Rect &rect) const;
+    // whether the Context has a "selection" frame: the callers then draw the selection before the rows, not after
+    bool selectionFramed(Context &ctx) const;
     // a row that cannot be changed (a locked setting): drawn over the row once it is drawn, the sheet's black
     // laid over it again so label, value and switch all fall back behind the rows around it
     void disabled(ableem::Renderer &renderer, const ableem::Rect &rect) const;
