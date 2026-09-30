@@ -26,7 +26,10 @@ ab_ui / ab_evoui / tools / extensions   the programs
 
 - Lives in **autobleem-core**, next to lib_ableem: `ab_gui/` (sources), headers as `<ab_gui/...>`, its own CMake
   target `ab_gui` (links `ableem`), namespace `abgui`.
-- C++14 (the console's gcc-6), no SDL include outside lib_ableem (as today), clang-format/tidy rules as today.
+- C++14 (the console's gcc-6), clang-format/tidy rules as today.
+- **Hard rule (the owner, 2026-09-30): no SDL outside lib_ableem.** ab_gui and everything built on it never include
+  an SDL header, call an SDL function or use an SDL type; the `ableem` interface exposes no SDL type either. What
+  is missing goes into lib_ableem first - so a GLES2 renderer can later replace the SDL one under the same interface.
 - **No singletons.** One `abgui::Context` holds what every widget needs: the `Renderer` and `Input`, the fonts, the
   button glyphs, the UI sounds, the translator (a `std::function<std::string(const std::string&)>`), the `Style`.
   AutoBleem's `Gui` builds one and keeps it; another program builds its own.
