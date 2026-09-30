@@ -404,3 +404,6 @@ screenshots of them stay in `!autobleem\out\` (private).
    summary) - but **never the errors**, which keep their fixed 2-4 s. The owner, 2026-09-30.
 8. The splash screen gets its **own Options row, "Splash screen: On/Off"** (Interface group; today it cannot be
    skipped at all - a fixed 2 s hold); its strings go to the translation pass. The owner, 2026-09-30.
+9. The evoui menu row's icons **stay the approved ab2.0.0 ones** - the glyph-only redraw proposed for G5i is
+   rejected ("the previous icons were better"); approved art is not redrawn without the owner's OK. The owner,
+   2026-09-30.
