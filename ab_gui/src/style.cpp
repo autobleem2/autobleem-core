@@ -380,6 +380,25 @@ void Style::key(ableem::Renderer &renderer, const Rect &rect, KeyState state, bo
 }
 
 void Style::key(Context &ctx, const Rect &rect, KeyState state, bool function) const {
+    // the frame of the key's state; a state with none falls back to `key` (a selected key gets today's outline
+    // over it), and no frame at all runs the old drawing unchanged
+    const char *name = state == KeyState::Selected ? "keySelected"
+                       : state == KeyState::Lit    ? "keyLit"
+                       : function                  ? "keyFunction"
+                                                   : "key";
+    if (drawFrame(ctx, name, rect))
+        return;
+    if (state != KeyState::Normal || function) {
+        if (drawFrame(ctx, "key", rect)) {
+            if (state == KeyState::Selected) {
+                ableem::Renderer &renderer = ctx.renderer();
+                renderer.setBlendMode(ableem::BlendMode::Blend);
+                renderer.setDrawColor(text);
+                renderer.drawRect(rect);
+            }
+            return;
+        }
+    }
     key(ctx.renderer(), rect, state, function);
 }
 
@@ -392,7 +411,8 @@ void Style::field(ableem::Renderer &renderer, const Rect &rect) const {
 }
 
 void Style::field(Context &ctx, const Rect &rect) const {
-    field(ctx.renderer(), rect);
+    if (!drawFrame(ctx, "field", rect))
+        field(ctx.renderer(), rect);
 }
 
 void Style::caret(ableem::Renderer &renderer, int x, int y, int height) const {

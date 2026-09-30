@@ -13,8 +13,20 @@
 # yellow, the @2x one blue.
 # theme.json: slice left/right 12, top/bottom 6, bleed 0.
 #
+# key, keyFunction, keyLit, keySelected (G4e): 48x48 - the key's 40x40 box with a 4 px glow, a 2 px rim, a cut top-left
+# and bottom-right corner. Rim colours 1x / @2x (none is a panel, selection or heading colour):
+#   key          white / grey        (centre: faint white)
+#   keyFunction  lilac / violet      (a quieter centre than key)
+#   keyLit       cream / brown       (a strong centre)
+#   keySelected  red / pink          (the strongest centre, the widest glow)
+# theme.json: slice 16, bleed 4, for all four.
+#
+# field (G4e): 56x56 - the field's 48x48 box with a 4 px glow, a 2 px rim, square corners. Green at 1x, teal at @2x.
+# theme.json: slice 16, bleed 4.
+#
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
-# selection@2x.png (96x80), heading.png (40x24) and heading@2x.png (80x48) next to this script.
+# selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
+# key_selected.png (48x48 each), field.png (56x56) and the @2x of all of them next to this script.
 import math
 import os
 import struct
@@ -77,6 +89,19 @@ def heading_shape():
     return Shape(w, h, 0, poly, 2, (255, 255, 255, 30), 0)
 
 
+def key_shape(centre_alpha, glow):
+    size, bleed, cut = 48, 4, 6
+    x0, y0, x1, y1 = bleed, bleed, size - bleed, size - bleed
+    poly = [(x0 + cut, y0), (x1, y0), (x1, y1 - cut), (x1 - cut, y1), (x0, y1), (x0, y0 + cut)]
+    return Shape(size, size, bleed, poly, 2, (255, 255, 255, centre_alpha), glow)
+
+
+def field_shape():
+    size, bleed = 56, 4
+    poly = [(bleed, bleed), (size - bleed, bleed), (size - bleed, size - bleed), (bleed, size - bleed)]
+    return Shape(size, size, bleed, poly, 2, (255, 255, 255, 45), 90)
+
+
 def render(shape, scale, rim):
     w, h = shape.width * scale, shape.height * scale
     ss = 4
@@ -124,6 +149,16 @@ def main():
     write_png(os.path.join(out, "selection@2x.png"), *render(selection, 2, (140, 255, 0)))
     write_png(os.path.join(out, "heading.png"), *render(heading, 1, (255, 220, 0)))
     write_png(os.path.join(out, "heading@2x.png"), *render(heading, 2, (0, 90, 255)))
+    keys = [
+        ("key", key_shape(40, 60), (255, 255, 255), (150, 150, 150)),
+        ("key_function", key_shape(20, 40), (190, 160, 255), (120, 60, 200)),
+        ("key_lit", key_shape(110, 80), (255, 240, 200), (140, 90, 40)),
+        ("key_selected", key_shape(150, 170), (255, 40, 40), (255, 150, 200)),
+        ("field", field_shape(), (0, 220, 80), (0, 160, 160)),
+    ]
+    for name, shape, rim1, rim2 in keys:
+        write_png(os.path.join(out, name + ".png"), *render(shape, 1, rim1))
+        write_png(os.path.join(out, name + "@2x.png"), *render(shape, 2, rim2))
 
 
 if __name__ == "__main__":

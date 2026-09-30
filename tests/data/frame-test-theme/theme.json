@@ -6,7 +6,12 @@
       "selection": { "image": "frames/selection.png", "slice": { "left": 12, "top": 10, "right": 12, "bottom": 10 },
                      "bleed": 4 },
       "heading": { "image": "frames/heading.png", "slice": { "left": 12, "top": 6, "right": 12, "bottom": 6 },
-                   "bleed": 0 }
+                   "bleed": 0 },
+      "key": { "image": "frames/key.png", "slice": 16, "bleed": 4 },
+      "keyFunction": { "image": "frames/key_function.png", "slice": 16, "bleed": 4 },
+      "keyLit": { "image": "frames/key_lit.png", "slice": 16, "bleed": 4 },
+      "keySelected": { "image": "frames/key_selected.png", "slice": 16, "bleed": 4 },
+      "field": { "image": "frames/field.png", "slice": 16, "bleed": 4 }
     }
   }
 }

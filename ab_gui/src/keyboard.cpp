@@ -305,7 +305,7 @@ void Keyboard::drawKey(const Style &style, const ableem::Rect &key, const KeyCap
     ableem::Renderer &renderer = ctx.renderer();
     const bool lit = cap.kind == KeyKind::Shift && shift != Shift::Off;
     const KeyState state = selected ? KeyState::Selected : lit ? KeyState::Lit : KeyState::Normal;
-    style.key(renderer, key, state, cap.kind != KeyKind::Char);
+    style.key(ctx, key, state, cap.kind != KeyKind::Char);
     // every key's label in the theme's text colour (K1, UIREV-21): the function row's words used to draw in
     // the dimmer secondary colour and read as barely-there next to the letters - only the key's own tile
     // (above) stays a shade darker, as on a phone's keyboard
@@ -365,7 +365,7 @@ void Keyboard::draw() {
     const ableem::Font &fieldFont = ctx.font(FontRole::Row);
     const int fieldH = 48;
     ableem::Rect field(content.x + rowInset, yoffset + 6, content.w - 2 * rowInset, fieldH);
-    style.field(renderer, field);
+    style.field(ctx, field);
     // a long text scrolls so the caret stays in the field
     const int fieldInner = field.w - 32;
     // the text drawn as it is (a "|" or "@" typed is text, not a marker), scrolled to keep the caret in view

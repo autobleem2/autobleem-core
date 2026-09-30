@@ -422,3 +422,93 @@ TEST_CASE("Style::label through a Context: the heading frame when the provider h
     REQUIRE(asked.size() == 1);
     CHECK(asked[0] == "heading");
 }
+
+TEST_CASE("Style::key and field through a Context: the state's frame, else key, else the old drawing") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+    const Rect box(20, 20, 96, 64);
+    using abgui::KeyState;
+
+    // no provider: the code-drawn keys and field (nothing to see here but that they run)
+    style.key(ctx, box);
+    style.key(ctx, box, KeyState::Normal, true);
+    style.key(ctx, box, KeyState::Lit);
+    style.key(ctx, box, KeyState::Selected);
+    style.field(ctx, box);
+
+    // a provider with a panel frame only: every state asks for its own frame, then `key`, and finds neither
+    FrameSet set;
+    FrameSpec panel;
+    panel.file = testFrame("panel.png");
+    panel.slice = TestSlice;
+    panel.bleed = TestBleed;
+    map<string, FrameSpec> specs;
+    specs["panel"] = panel;
+    set.assign(specs);
+    vector<string> asked;
+    ctx.frameProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.frame(renderer, name);
+    };
+    style.key(ctx, box);
+    CHECK(asked == vector<string>{"key"});
+    asked.clear();
+    style.key(ctx, box, KeyState::Normal, true);
+    CHECK(asked == vector<string>{"keyFunction", "key"});
+    asked.clear();
+    style.key(ctx, box, KeyState::Lit, true);
+    CHECK(asked == vector<string>{"keyLit", "key"});
+    asked.clear();
+    style.key(ctx, box, KeyState::Selected);
+    CHECK(asked == vector<string>{"keySelected", "key"});
+    asked.clear();
+    style.field(ctx, box);
+    CHECK(asked == vector<string>{"field"});
+
+    // the test theme's frames: 48x48 keys (slice 16, bleed 4), a 56x56 field
+    auto spec = [&](const char *file) {
+        FrameSpec s;
+        s.file = testFrame(string(file) + ".png");
+        s.file2x = testFrame(string(file) + "@2x.png");
+        s.slice = Insets::all(16);
+        s.bleed = Insets::all(4);
+        return s;
+    };
+    specs["key"] = spec("key");
+    specs["field"] = spec("field");
+    set.assign(specs);
+    REQUIRE(set.frame(renderer, "key").valid());
+    CHECK(set.frame(renderer, "key").texture.size().w == 48);
+    REQUIRE(set.frame(renderer, "field").valid());
+    CHECK(set.frame(renderer, "field").texture.size().w == 56);
+
+    // only `key` and `field`: function, lit and selected keys fall back to it (the selected one gets its outline)
+    asked.clear();
+    style.key(ctx, box, KeyState::Normal, true);
+    CHECK(asked == vector<string>{"keyFunction", "key"});
+    asked.clear();
+    style.key(ctx, box, KeyState::Selected);
+    CHECK(asked == vector<string>{"keySelected", "key"});
+    asked.clear();
+    style.key(ctx, box);
+    CHECK(asked == vector<string>{"key"});
+    asked.clear();
+    style.field(ctx, box);
+    CHECK(asked == vector<string>{"field"});
+
+    // all of them: one frame asked for each state
+    specs["keyFunction"] = spec("key_function");
+    specs["keyLit"] = spec("key_lit");
+    specs["keySelected"] = spec("key_selected");
+    set.assign(specs);
+    for (const auto &c : vector<pair<KeyState, bool>>{{KeyState::Normal, true}, {KeyState::Lit, false},
+                                                       {KeyState::Selected, false}}) {
+        asked.clear();
+        style.key(ctx, box, c.first, c.second);
+        CHECK(asked.size() == 1);
+    }
+}
