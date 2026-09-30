@@ -1,106 +1,49 @@
 //
 // Created by screemer on 2019-01-24.
 //
+// GuiConfirm: a yes/no question in a compact dialog. The layout, the keys and the loop are ab_gui's abgui::Confirm
+// (docs/ab-gui-plan.md, G3j); this class keeps its header - the Store extension constructs it, built for ABI 6 - and
+// hands its question and answers to one of those for every frame and for the loop.
+//
 
 #include "gui_confirm.h"
-#include "gui_about.h"
-#include <string>
 #include "../gui.h"
+
+#include <ab_gui/confirm.h>
+
 using namespace std;
+
+namespace {
+
+// an abgui::Confirm holding what the classic dialog holds
+void fill(abgui::Confirm &dialog, const GuiConfirm &classic) {
+    dialog.label = classic.label;
+    dialog.title = classic.title;
+    dialog.confirmLabel = classic.confirmLabel;
+    dialog.cancelLabel = classic.cancelLabel;
+    dialog.result = classic.result;
+}
+
+} // namespace
 
 //*******************************
 // GuiConfirm::render
 //*******************************
-// the frame through Gui's screen stack: clear, draw(), present (docs/ab-gui-plan.md, G3c)
+// the frame through Gui's screen stack (docs/ab-gui-plan.md, G3c): clear, draw, present
 void GuiConfirm::render() {
-    gui->uiContext().stack().frame([this]() { draw(); });
-}
-
-//*******************************
-// GuiConfirm::draw
-//*******************************
-// A compact dialog in the shared look (PanelStyle), centred over the dimmed screen: the header, the
-// question wrapped to the panel, the two hints
-void GuiConfirm::draw() {
-    shared_ptr<Gui> gui(Gui::getInstance());
-    gui->renderBackground();
-    PanelStyle style = gui->panelStyle();
-    style.dim(renderer);
-
-    const int width = 800;
-    Fonts &fonts = gui->assets().themeFonts;
-    const ableem::Font &font = fonts[FONT_22_MED];
-    // the question wrapped to the panel
-    const int textWidth = width - 2 * (PanelStyle::RowInset + 8);
-    const int textHeight = gui->text().wrappedHeight(font, label, textWidth);
-    const int height = PanelStyle::HeaderHeight + 12 + textHeight + 24 + PanelStyle::FooterHeight;
-    ableem::Rect panel((SCREEN_WIDTH - width) / 2, (SCREEN_HEIGHT - height) / 2, width, height);
-    style.sheet(renderer, panel);
-
-    const TextRenderer::Shadow classicShadow = gui->text().shadow();
-    TextRenderer::Shadow shadow;
-    shadow.enabled = style.textShadow;
-    gui->text().setShadow(shadow);
-
-    int y = style.header(*gui, panel, title.empty() ? _("Please confirm") : title) + 12;
-    gui->text().renderWrappedText(font, label, panel.x + PanelStyle::RowInset + 8, y, textWidth, style.text);
-    style.footer(*gui,
-                 ableem::Rect(panel.x, panel.y + panel.h - PanelStyle::FooterHeight, panel.w, PanelStyle::FooterHeight),
-                 {{{"X"}, confirmLabel.empty() ? _("Confirm") : confirmLabel},
-                  {{"O"}, cancelLabel.empty() ? _("Cancel") : cancelLabel}},
-                 "", false);
-
-    gui->text().setShadow(classicShadow);
+    abgui::Confirm dialog(*gui, gui->uiContext());
+    fill(dialog, *this);
+    dialog.render();
 }
 
 //*******************************
 // GuiConfirm::loop
 //*******************************
 void GuiConfirm::loop() {
-    shared_ptr<Gui> gui(Gui::getInstance());
+    abgui::Confirm dialog(*gui, gui->uiContext());
+    fill(dialog, *this);
     menuVisible = true;
-    while (menuVisible) {
-        // nothing animates here: sleep until a press, and redraw 4 times a second meanwhile (the performance
-        // overlay, the DebugDriver's shots)
-        if (!gui->input().waitForEvent(250))
-            render();
-        Event e;
-        while (gui->input().poll(e)) {
-            // this is for pc Only
-            if (e.type == Event::Type::Quit) {
-                menuVisible = false;
-            }
-
-            switch (e.type) {
-            case Event::Type::ButtonDown:
-                if (e.button == Button::Cross) {
-                    app.audio().cursor.play();
-                    result = true;
-                    menuVisible = false;
-                };
-
-                if (e.button == Button::Circle) {
-                    app.audio().cancel.play();
-                    result = false;
-                    menuVisible = false;
-                };
-                break;
-
-            case Event::Type::KeyDown:
-                if (e.key == Key::Return) {
-                    app.audio().cursor.play();
-                    result = true;
-                    menuVisible = false;
-                }
-                if (e.key == Key::Escape) {
-                    app.audio().cancel.play();
-                    result = false;
-                    menuVisible = false;
-                }
-                break;
-            default:
-                break;
-            }
-        }
-    }
+    dialog.loop();
+    result = dialog.result;
+    menuVisible = false;
 }

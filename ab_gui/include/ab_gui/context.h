@@ -145,6 +145,13 @@ public:
     using LineDrawer = std::function<void(const ableem::Font &, const std::string &, int x, int y, LineAlign)>;
     LineDrawer lineDrawer;
     void drawLine(const ableem::Font &font, const std::string &text, int x, int y, LineAlign align) const;
+
+    // Appended (step G3j): switches the halo under the text (Style::textShadow) on or off for the text drawn from now
+    // on and returns what it was, so a dialog can set its own and put the program's back. AutoBleem's is the text
+    // renderer's shadow; unset, nothing happens and false comes back.
+    using ShadowSwitch = std::function<bool(bool)>;
+    ShadowSwitch shadowSwitch;
+    bool setTextShadow(bool on) const;
 };
 
 } // namespace abgui

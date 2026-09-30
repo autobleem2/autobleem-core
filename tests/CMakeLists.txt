@@ -71,6 +71,9 @@ if (AB_CORE_UI)
     # ab_gui's FactsPage (G3i): the rows, the paging and refresh rules, the value column and the elision (pure), and the
     # events through a headless GuiBase (those cases skip themselves without a renderer)
     ab_add_test(test_ab_gui_facts_page gui/test_ab_gui_facts_page.cpp LIBS ab_gui)
+    # ab_gui's Confirm (G3j): the dialog's layout (pure) and the events through a headless GuiBase (those cases skip
+    # themselves without a renderer)
+    ab_add_test(test_ab_gui_confirm gui/test_ab_gui_confirm.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

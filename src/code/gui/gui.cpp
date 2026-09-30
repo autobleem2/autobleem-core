@@ -168,6 +168,14 @@ void Gui::wireUiContext() {
                                    abgui::Context::LineAlign align) {
         text_.renderText(font, line, x, y, align == abgui::Context::LineAlign::Centre ? XALIGN_CENTER : XALIGN_LEFT);
     };
+    // the halo under the text on or off, the previous state back (a dialog sets its style's and restores the theme's)
+    uiContext_.shadowSwitch = [this](bool on) {
+        TextRenderer::Shadow shadow = text_.shadow();
+        const bool was = shadow.enabled;
+        shadow.enabled = on;
+        text_.setShadow(shadow);
+        return was;
+    };
     uiContext_.textMeasurer = [this](const ableem::Font &font, const string &line) {
         return text_.textWidth(font, line);
     };

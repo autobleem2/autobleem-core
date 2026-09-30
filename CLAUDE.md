@@ -325,6 +325,16 @@ include path to the extensions.
   (ABI 6; PSC-Bios's page and Hardware Information derive from it and keep doing so): its `render()`/`loop()` build
   a forwarding `abgui::FactsPage` from the header's state, run it and copy the state back; `init()` and
   `refresh()` stay on the old class. Tests: `tests/gui/test_ab_gui_facts_page.cpp`.
+- **`abgui::Confirm`** (`confirm.h`, G3j) - a yes/no question in a compact 800 px dialog over the backdrop: the
+  header (`title`, else "Please confirm"), `label` wrapped to the panel, the two answers as footer hints
+  (`confirmLabel`/`cancelLabel`, else "Confirm"/"Cancel"), `result`. The `TextPage` pattern: `draw()` on a
+  `Panel` over `Confirm::panelRect` (pure, tested with `textWidth`), its own `loop()` (rest for a press, a frame
+  every 250 ms meanwhile, events to `handle()`), `onAction` (Confirm = yes with the Cursor sound, Back = no with
+  Cancel; the d-pad and other buttons nothing) and `onUnmapped` (Enter yes, Escape no). Context gained
+  `shadowSwitch`/`setTextShadow` (appended; Gui wires it to the text renderer's shadow) for the halo the dialog
+  sets from its style. **`GuiConfirm`'s header is untouched** (the Store extension constructs it; `GuiKeepDisplay`
+  derives from it): `render()`/`loop()` build an `abgui::Confirm` from the header's fields and copy `result`
+  back. Tests: `tests/gui/test_ab_gui_confirm.cpp`.
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to

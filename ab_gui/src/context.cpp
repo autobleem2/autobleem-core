@@ -106,4 +106,8 @@ void Context::drawLine(const ableem::Font &font, const string &text, int x, int 
     drawText(font, text, x, y, style().text);
 }
 
+bool Context::setTextShadow(bool on) const {
+    return shadowSwitch ? shadowSwitch(on) : false;
+}
+
 } // namespace abgui
