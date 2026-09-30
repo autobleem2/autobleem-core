@@ -217,7 +217,7 @@ The first set with the recommended numbers:
 ```
 
 (The `@2x` files are found by name; the rest of the theme - colours, images, fonts - is as `docs/theme-format.md` in
-the launcher says. Which frames take effect: the panel since G4a, the others as G4b-e land.)
+the launcher says. Which frames take effect: the panel since G4a (on every panel since G4b), the others as G4c-e land.)
 
 ## 4. Delivery checklist
 
