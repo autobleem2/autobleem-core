@@ -453,7 +453,7 @@ include path to the extensions.
   `ThemeAssets::iconSpecs()`/`iconHalo()` (statics - no layout change); `Gui::icons_` (appended after `frames_`) is
   filled in `loadAssets()` and released in `releaseDisplay()`. **G5b**: the launcher's `PsMeta` draws its meta row through the Context (`icon(name)`/`iconHalo(name)` per badge - `internal`/`usb`, `hd`/`sd`,
   `lock`/`unlock`, `favorite`, `retroarch`, `lightgun`/`lightgun2`, each with its halo, and the `disc`, both without a badge; the `players`
-  icon has no halo yet - G5r2 - and no badge) and the optional `badge` frame, `Style::drawFrame`, behind each badge: the icon's rect grown by 1 px). The d-pad arrows `ThemeAssets` hands out as glyphs load
+  icon has no halo yet - G5r2 - and no badge) and the optional `badge` frame, `Style::drawFrame`, behind each badge: the icon's rect grown by 1 px). **G5c**: the set picker's tabs (`tabPlayStation`/`tabRetroArch`/`tabApps`) and the Extensions list's `extension` (a theme's only, no built-in) are the Context's icons too, fetched at draw time. `raCover`/`appCover`/`bigBox` stay the built-in `evoimg/` files on every theme (the carousel's parts - the owner, 2026-09-30; `ThemeAssets::bigBoxFrame` and the cover loads are untouched). The d-pad arrows `ThemeAssets` hands out as glyphs load
   from the table (the same `evoimg/dpad_*.png` on a theme without the block). The test theme's icons: all 27 names,
   orange at 1x, sky blue at @2x (`tests/data/frame-test-theme/make_test_icons.py`). Tests: `tests/gui/test_ab_gui_icon.cpp`,
   `tests/core/test_theme_spec.cpp`.

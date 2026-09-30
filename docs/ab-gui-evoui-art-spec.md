@@ -301,8 +301,8 @@ falls back to (`resources/evoimg/`), which also shows today's design.
 | `lightgun` / `lightgun2` | A light-gun game for one / two players | `lightgun.png` / `lightgun2.png` | 30 x 30 | 60 x 60 | G5b |
 | `dpadUp` `dpadDown` `dpadLeft` `dpadRight` | The d-pad in the hint bar and every footer ("Game menu", "Choose"), in a 30 px line | `dpad_*.png` | 28 x 28 | 56 x 56 | G5a |
 | `tabPlayStation` `tabRetroArch` `tabApps` | The set picker's tabs (the others at 47%) | `tab_*.png` (64 x 64, drawn at 56) | 56 x 56 | 112 x 112 | G5c |
-| `raCover` / `appCover` | The art of a RetroArch game / an App that has none, laid into the big box (and App start's pane) | `ra-cover.png` / `app-cover.png` | 226 x 226 | 452 x 452 | G5c |
-| `bigBox` | The printed-cardboard edge of a RetroArch game's or an App's box - a 9-slice with a fixed **7 px** border (keep every detail within 7 px of the edge; the middle stays transparent) | `bigbox.png` | 226 x 226 | 452 x 452 | G5c |
+| `raCover` / `appCover` | The art of a RetroArch game / an App that has none, laid into the big box (and App start's pane) | `ra-cover.png` / `app-cover.png` | 226 x 226 | 452 x 452 | not a theme key (the carousel's part, the same on every theme - the owner, 2026-09-30) |
+| `bigBox` | The printed-cardboard edge of a RetroArch game's or an App's box - a 9-slice with a fixed **7 px** border (keep every detail within 7 px of the edge; the middle stays transparent) | `bigbox.png` | 226 x 226 | 452 x 452 | not a theme key (as above) |
 | `extension` | An extension that ships no icon, in the Extensions list (none built in) | - | 56 x 56 | 112 x 112 | G5c |
 | `battery` | The pad battery's empty outline and nub; the code fills the charge into x 2..24, y 2..11 (`text`, `hint` when low) | code-drawn | 29 x 13 | 58 x 26 | G5l |
 | `play` | Play's glyph (2.10, way B only) | - | 28 x 28 | 56 x 56 | G5j |
