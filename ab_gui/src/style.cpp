@@ -473,7 +473,24 @@ void Style::spinner(ableem::Renderer &renderer, int cx, int cy, int radius, int 
 }
 
 void Style::spinner(Context &ctx, int cx, int cy, int radius, int dotSize, int lead) const {
+    if (spinnerStrip(ctx, cx, cy, ctx.ticks()))
+        return;
     spinner(ctx.renderer(), cx, cy, radius, dotSize, lead);
+}
+
+bool Style::spinnerStrip(Context &ctx, int cx, int cy, unsigned long long elapsedMs) const {
+    const SpinnerAnim anim = ctx.spinnerAnim();
+    if (!anim.valid())
+        return false;
+    const int index = spinnerFrameIndex(elapsedMs, anim.fps, anim.frames);
+    const Rect src = spinnerFrameRect(anim.strip.size(), anim.frames, index);
+    ableem::Size frame;
+    frame.w = src.w;
+    frame.h = src.h;
+    const Rect dst = spinnerDestRect(frame, cx, cy);
+    ctx.renderer().setBlendMode(ableem::BlendMode::Blend);
+    ctx.renderer().copy(anim.strip, &src, &dst);
+    return true;
 }
 
 void Style::spinner(ableem::Renderer &renderer, const Rect &box, int lead) const {
@@ -484,6 +501,8 @@ void Style::spinner(ableem::Renderer &renderer, const Rect &box, int lead) const
 }
 
 void Style::spinner(Context &ctx, const Rect &box, int lead) const {
+    if (spinnerStrip(ctx, box.x + box.w / 2, box.y + box.h / 2, ctx.ticks()))
+        return;
     spinner(ctx.renderer(), box, lead);
 }
 

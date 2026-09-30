@@ -382,6 +382,17 @@ include path to the extensions.
   setBusyProgress/endBusy/tickBusy/drawText` keep their signatures and forward (Gui's old busy members went in G3z).
   Pure and tested: `frameDue`, `spinnerLead`, `spinnerCentre`, `messageTop`, `barRect`, `barDone`,
   `waitSpinnerY`. Tests: `tests/gui/test_ab_gui_busy.cpp` (and `tests/classic/test_busy_input.cpp`, unchanged).
+  **The spinner as a theme element** (G5p, `spinner.h`; the plan's decision 13): a theme's own `launcher.spinner:
+  {image, frames, fps}` (`ableem::loadThemeSpinner` - one image of N equal frames side by side, `@2x` next to it, never
+  merged from the default theme; `fps` unset = 24) replaces the ring of dots. `SpinnerStrip` (`assign`/`release`/
+  `anim(renderer)`; `Gui::spinner_`, appended after `icons_` - no ABI bump) loads it on the first ask like `IconSet` (the
+  @2x above output scale 1 at pixel scale 2, `size()` logical), the Context hands it out as `spinnerProvider`/
+  `spinnerAnim()` (appended; an invalid `SpinnerAnim` = no strip), `Style::spinnerStrip(ctx, cx, cy, elapsedMs)` draws
+  frame `spinnerFrameIndex` = `(elapsed * fps / 1000) mod frames` centred on (cx, cy) at its own size (`spinnerFrameRect`,
+  `spinnerDestRect`), and `Style::spinner(ctx, ...)` and `Busy` (elapsed from the job's start; `waitScreen`: the clock)
+  try it before the ring - a theme without one draws today's ring call for call. Test theme: `tests/data/frame-test-theme/
+  spinner/` (`make_test_spinner.py`, 8 frames, orange at 1x / sky blue at @2x). Tests: `tests/gui/test_ab_gui_spinner.cpp`,
+  `tests/core/test_theme_spec.cpp`.
 - **`abgui::ListModel`** (`list_model.h`, G3m part 1) - the selection and paging of a list, pure and header-only:
   a `View` of references to the caller's own `selected`/`firstVisible`/`lastVisible` plus `maxVisible` and `size`, and
   inline static templates over a skip predicate: `adjustPageBy`, `computePagePosition`, `landOnSelectable`,

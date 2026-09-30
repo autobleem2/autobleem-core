@@ -238,6 +238,26 @@ void Gui::wireUiContext() {
     // the theme's icons by name and their halos (step G5a): every name falls back to the default's, then the built-in
     uiContext_.iconProvider = [this](const string &name) { return icons_.icon(renderer(), name); };
     uiContext_.iconHaloProvider = [this](const string &name) { return icons_.halo(renderer(), name); };
+    // the theme's own busy spinner strip (step G5p): none unless its theme.json has launcher.spinner - the ring of dots
+    uiContext_.spinnerProvider = [this]() { return spinner_.anim(renderer()); };
+}
+
+//*******************************
+// themeSpinner
+//*******************************
+// the spinner strip of the theme in `dir` as the SpinnerStrip takes it: only that theme's own - never the default
+// theme's, so a theme without launcher.spinner keeps the code-drawn ring
+static abgui::SpinnerSpec themeSpinner(const string &dir) {
+    abgui::SpinnerSpec spec;
+    ableem::ThemeSpinner s;
+    if (ableem::loadThemeSpinner(dir, s)) {
+        spec.file = s.image;
+        spec.file2x = s.image2x;
+        spec.frames = s.frames;
+        spec.fps = s.fps;
+        PLOG_INFO << "Theme spinner: " << s.frames << " frames at " << s.fps << " fps from " << dir;
+    }
+    return spec;
 }
 
 //*******************************
@@ -292,6 +312,7 @@ void Gui::loadAssets(bool reloadMusic) {
     launcherLogo_ = logo.set ? ThemeAssets::loadImage(renderer(), logo.file) : Texture();
     launcherLogoRect_ = launcherLogo_.valid() ? Rect(logo.x, logo.y, logo.w, logo.h) : Rect();
     resumeMask_ = ThemeAssets::loadImage(renderer(), ableem::loadThemeResumeMask(AppBase::get().theme().loadedPath()));
+    spinner_.assign(themeSpinner(AppBase::get().theme().loadedPath())); // the strip loads when first drawn
     AppBase::get().audio().loadTheme(reloadMusic);
 
     // the classic screens' text halo, on unless the theme says otherwise; the launcher sets its own
@@ -423,6 +444,7 @@ void Gui::releaseDisplay() {
     icons_.release();          // and the icons' textures and halos
     launcherLogo_ = Texture(); // and the logo and the resume mask
     resumeMask_ = Texture();
+    spinner_.release();        // and the spinner strip's
     GuiBase::releaseDisplay();
 }
 

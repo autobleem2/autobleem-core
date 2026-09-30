@@ -240,10 +240,17 @@ public:
     // the busy spinner: spinnerDots dots on a ring of `radius` around (cx, cy), `dot` px squares, dot `lead`
     // the brightest and every one behind it spinnerFade alpha dimmer; the program turns `lead` with its clock
     void spinner(ableem::Renderer &renderer, int cx, int cy, int radius, int dot, int lead) const;
+    // through the Context, the theme's frame strip (G5p, spinner.h) instead when it has one: its current frame, drawn
+    // centred on (cx, cy) at its own size - radius, dot and lead are then unused, the frame is (Context::ticks() * fps /
+    // 1000) mod frames
     void spinner(Context &ctx, int cx, int cy, int radius, int dot, int lead) const;
-    // the same fitted into `box`: the metrics' radius and dot, no bigger than the box allows
+    // the same fitted into `box`: the metrics' radius and dot, no bigger than the box allows (a strip: centred in it,
+    // at its own size)
     void spinner(ableem::Renderer &renderer, const ableem::Rect &box, int lead) const;
     void spinner(Context &ctx, const ableem::Rect &box, int lead) const;
+    // the strip's frame `elapsedMs` into the animation drawn centred on (cx, cy); false, and nothing drawn, when the
+    // Context has no strip - the caller then draws its ring (Busy plays it from the job's start)
+    bool spinnerStrip(Context &ctx, int cx, int cy, unsigned long long elapsedMs) const;
     // the active tab's underline: tabHeight tall, `w` wide, from (x, y), in the selection band's colour
     void tab(ableem::Renderer &renderer, int x, int y, int w) const;
     void tab(Context &ctx, int x, int y, int w) const;

@@ -12,6 +12,7 @@
 #include "panel_style.h"
 #include <ab_gui/context.h>
 #include <ab_gui/icon.h>
+#include <ab_gui/spinner.h>
 
 #include <functional>
 #include "text_renderer.h"
@@ -163,6 +164,11 @@ private:
     ableem::Texture launcherLogo_;
     ableem::Rect launcherLogoRect_;
     ableem::Texture resumeMask_;
+
+    // the current theme's busy spinner strip (ab_gui G5p: its own theme.json's launcher.spinner, never the default's):
+    // refilled by loadAssets(), its texture dropped by releaseDisplay(), handed out as the Context's spinnerProvider.
+    // Appended last, as icons_ was
+    abgui::SpinnerStrip spinner_;
 
 public:
     // the theme's launcher logo and the logical rect it is drawn in; an invalid texture = the theme has none

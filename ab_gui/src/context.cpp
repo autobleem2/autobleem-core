@@ -152,4 +152,14 @@ ableem::Texture Context::iconHalo(const string &name) const {
     return iconHaloProvider ? iconHaloProvider(name) : ableem::Texture();
 }
 
+//*******************************
+// Context::spinnerAnim
+//*******************************
+SpinnerAnim Context::spinnerAnim() const {
+    if (!spinnerProvider)
+        return SpinnerAnim();
+    SpinnerAnim anim = spinnerProvider();
+    return anim.valid() ? anim : SpinnerAnim();
+}
+
 } // namespace abgui

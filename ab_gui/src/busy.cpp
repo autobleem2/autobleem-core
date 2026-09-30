@@ -94,7 +94,7 @@ void Busy::drawFrame() {
         const Style style = ctx_->style();
         style.dim(renderer);
         const ableem::Point centre = spinnerCentre(renderer.width(), renderer.height());
-        drawSpinner(centre.x, centre.y, message_);
+        drawSpinner(centre.x, centre.y, message_, ctx_->ticks() - started_);
         if (total_ > 0) {
             // the bar under the message, as the notification bubble draws its own
             const ableem::Rect track =
@@ -105,9 +105,11 @@ void Busy::drawFrame() {
     });
 }
 
-void Busy::drawSpinner(int cx, int cy, const string &message) {
+void Busy::drawSpinner(int cx, int cy, const string &message, unsigned int elapsed) {
     const Style style = ctx_->style();
-    style.spinner(ctx_->renderer(), cx, cy, SpinnerRadius, SpinnerDot, spinnerLead(ctx_->ticks()));
+    // the theme's frame strip (G5p) when it has one, played from the job's start; else the ring of dots as always
+    if (!style.spinnerStrip(*ctx_, cx, cy, elapsed))
+        style.spinner(ctx_->renderer(), cx, cy, SpinnerRadius, SpinnerDot, spinnerLead(ctx_->ticks()));
     if (!message.empty()) {
         // centred on cx as the text renderer centres a line: half the canvas less half the width
         const ableem::Font &font = ctx_->font(FontRole::Row);
@@ -127,7 +129,7 @@ void Busy::waitScreen(const string &message, const string &topLine) {
         ableem::Renderer &renderer = ctx_->renderer();
         const int cx = renderer.width() / 2;
         // the spinner under the logo (the logo rect is the program's; below it, or the lower third of the screen)
-        drawSpinner(cx, waitSpinnerY(renderer.height(), logo), message);
+        drawSpinner(cx, waitSpinnerY(renderer.height(), logo), message, ctx_->ticks()); // no job: the clock itself
         if (!topLine.empty()) {
             const ableem::Font &font = ctx_->font(FontRole::RowSmall);
             ctx_->drawText(font, topLine, cx - ctx_->textWidth(font, topLine) / 2, WaitTopLineY, ctx_->style().text);

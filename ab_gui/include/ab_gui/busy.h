@@ -17,6 +17,8 @@
 // frame goes through the stack, so a tick from a load inside a screen's drawing is a frame of its own, presented
 // at once, as it always was.
 //
+// A theme with its own spinner strip (spinner.h, G5p) has it played in place of the ring, from the job's start.
+//
 // waitScreen() is the other "please wait" picture: for a blocking call nothing can tick from (a network scan, the
 // flasher, the power-off), one frame of the program's background and logo with the spinner and the message.
 //
@@ -109,8 +111,9 @@ public:
 
 private:
     void drawFrame();
-    // the ring about (cx, cy) with `message` centred under it
-    void drawSpinner(int cx, int cy, const std::string &message);
+    // the ring about (cx, cy) - or the theme's spinner strip (G5p), `elapsed` ms into its animation - with `message`
+    // centred under it
+    void drawSpinner(int cx, int cy, const std::string &message, unsigned int elapsed);
 
     ScreenStack &stack_;
     Context *ctx_ = nullptr;
