@@ -148,12 +148,13 @@ data), the extension runtime, the game-aware screens in ab_ui and everything in 
 | G2 | `ab_gui` target; `PanelStyle` -> `abgui::Style` + primitives, the 7 new primitives; every caller outside evoui draws through them (keyboard, busy/progress, About, splash, text page, detail pane, the Store's boxes/tabs/progress/toast, PSC-Bios' hold bar) | none | screenshot diff before/after, every screen, 2 themes, on the VM |
 | G3 | widgets move: `List` from `GuiMenuBase`, `ActionMenu`, `Confirm`, `Keyboard`, `FactsPage`, `TextPage`, `Busy`; `Context` replaces the `Gui`/`AppBase` look-ups; actions + ActionMap under the old hooks | none | the same diff; one **ABI bump** at the end, the Store and PSC-Bios rebuilt once |
 | G4 | frames (9-slice + hi-res images) for the `Style`'s primitives, `launcher.frames` in `theme.json`, `docs/theme-format.md` - sub-steps a-g below | only with a theme that sets frames (`ab2.0.0`) | default/ab2 diff unchanged; ab2.0.0 against its mockups |
-| G5 | evoui's own pieces on the primitives (badges, Play, menu tiles, the hint bar, the banner/bubble, the cover glow) | only with such a theme | as G4 |
+| G5 | evoui's own pieces on the primitives (badges, Play, menu tiles, the hint bar, the banner/bubble, the cover glow), evoui's icons from the theme, its motion on Tweens (7b) - sub-steps below, the artist's side `docs/ab-gui-evoui-art-spec.md` | only with such a theme (the bug riders: on every theme, named) | as G4 |
 | G6 | **after G5** - the bridge for 1.0 themes: a converted 1.0 theme looks tidy on today's screens (evoui first) - derived colour roles, a generic frame set, evoui's missing pieces; sub-steps below | only on converted 1.0 themes | a chosen test set of community themes, shots before/after, the owner's look |
 | later | FocusGroup beyond lists, GlyphSets, Confirm/Back swap | new options | per feature |
 
 Every step is checked on the pcusb-test VM through the DebugDriver (screenshots before/after), then on a device
-by the owner. UIREV-10/26/27/30/31 and BUG-30/31 are done inside these steps, not before.
+by the owner. UIREV-10/26/27/30/31 and BUG-28/30/31/32 are done inside these steps, not before (the G5 sub-steps say
+where).
 
 ### G3 sub-steps
 
@@ -251,6 +252,114 @@ all of it).
 G4a-e are each small enough for one brief; G4a is the senior one (the model and where it lives), b-e are mechanical
 over it. `docs/theme-format.md` (launcher) gets its `launcher.frames` section in G4a and a row per frame as each step
 lands.
+
+### G5 sub-steps
+
+G5 moves what the EvolutionUI (the launcher's `evoui/`) still draws by itself onto the primitives, so a theme can
+give each piece its own art, and moves evoui's hand-written timers onto 7b's Tweens. The G4 manner holds: each step
+one commit (core and/or launcher, + the gitlink), built, the core suites, and the **masked screenshot diff of the 58
+screens against the baseline on `default` and `ab2` - 0 differ**; the look checked with a test theme and then with
+`ab2.0.0` against its mockups. The designer draws from `docs/ab-gui-evoui-art-spec.md`. **Starts once G4f is merged**:
+the icons' `@2x` files need G4f's `Texture::loadFile(renderer, path, pixelScale)`, and G5a/G5c touch
+`theme_assets.cpp`, which G4f changes.
+
+**What evoui draws by itself today** (the code read for this split, launcher `src/code/evoui/`): the hint bar's two
+lines straight onto the theme's footer image (`GuiLauncher::layoutHints/draw`, the named-key chips inside core's
+`Style::button`); Play as two theme images with a CPU-made outline, pulsing (`makePlayOutline`, `PsZoomBtn`); the game
+menu's four 118 px icons, the selected one zoomed 1.5x (`PsMenu`); the meta row - the players icon (`launcher.metaPanel`,
+drawn with no outline), the disc and the badges from `evoimg/` with UIREV-27's halo (`PsMeta`); the resume-slot
+picker - a black band and the Resume icon at 2.7x as four tiles, the selected one with a halo in `colors.selection`
+(`PsStateSelector`); the notification bubbles - the scan's, the extensions', the set banner and the message line, a
+sheet (the Context's since G4b) and a code-drawn bar (`NotificationBubble`); the pad battery plate - a code sheet,
+a drawn battery and its percent (`renderPadBatteries`); the selected cover's glow (a procedural soft square in
+`selection`, breathing) and shine (`Carousel::drawGlow/drawShine`); the set picker's current-tab band and bar and its
+tab icons (`evoimg/tab_*.png`); the big box's edge and the missing-art covers (`evoimg/bigbox.png`, `ra-cover.png`,
+`app-cover.png`); the update prompt's outlined bar; the d-pad hint arrows (`evoimg/dpad_*.png`, core `ThemeAssets`).
+The motion: the menu row's slide and zoom, the meta panel's slide, the settings band, Play's pulse, the arrow's bob,
+the bubbles' slide, the fade-in overlay, the glow's breathing, the carousel's scroll - each on its own timer.
+
+**What G5 adds to G4's model.**
+- **More frames**, the same `launcher.frames` and `FrameSet` (the theme's own, opt-in, `@2x`, `tint`): `toast`,
+  `hintBar`, `chip`, `progressTrack`/`progressFill`, `tab`, `tile`/`tileSelected`, `band`, `coverGlow`, `plate`, `play`,
+  `badge`. `Style` gains non-virtual functions only: `drawFrame(ctx, name, box, alpha)` (a frame drawn at an alpha - the
+  glow fades with the scroll) and `drawFirstFrame(ctx, {names}, box)` (the first of several that exists - `toast`, then
+  `panel`), plus a primitive per piece below.
+- **Icons**, a new `launcher.icons` block (UIREV-30): fixed images by name, not 9-slices. `abgui::IconSet` is
+  `FrameSet`'s twin - the specs by name, a texture loaded on first use (`@2x` above output scale 1, through G4f's
+  overload, so its size stays logical) with its dark halo (`Style::outlineOf`) made on first use unless the theme
+  says `"iconHalo": false`, both dropped with the display; the Context hands them out (`iconProvider`, `icon(name)`,
+  `iconHalo(name)`, appended); `Gui::icons_` is appended after `frames_` and filled in `loadAssets()`. **Unlike frames,
+  icons fall back** - UIREV-30's rule: the theme's own entry, else `default`'s, else the program's built-in file
+  (AutoBleem's table: today's `evoimg/` files, the art spec lists them) - so a theme replaces one icon and keeps the
+  rest. Read by the engine next to the frames: `ableem::readThemeIcons(path)`/`loadThemeIcons(dir)` (a name ->
+  `"file"` or `{ "image", "image2x" }`).
+- **No ABI bump**, for G4's reasons: `Style` non-virtual only, the Context and `Gui` appended, `ThemeAssets`' layout
+  untouched (the d-pad arrows it hands out as glyphs are loaded from the path the icon table resolves).
+- **Opt-in**: every piece asks for its frame or icon first and, finding none, runs today's code call for call;
+  `default` and `ab2` set neither block and the built-in table names today's files, so the diff stays 0. A change that
+  is meant for **every** theme (a bug fix, a UIREV row) is a **rider**: its own sub-step with an **expected diff** (the
+  screens and the change named) instead of 0, reproduced on develop first (hard rule 5).
+- **The test theme** (`tests/data/frame-test-theme/`) gains every new frame and a `launcher.icons` block, colour-coded
+  1x vs `@2x` as in G4, so a shot shows which one was picked.
+
+| Step | What | Files | Visible change | Check |
+|---|---|---|---|---|
+| **G5a** (senior) | **The icon set and the frame helpers.** `abgui::IconSet` (`icon.h`: `IconSpec` 1x/@2x, `assign`/`release`/`icon(renderer, name)`/`halo(renderer, name)`, the pure `pickFile` shared with `FrameSet`), the Context's provider, `Gui::icons_`, the built-in table (name -> `evoimg/<file>`), engine `ThemeIcon`/`readThemeIcons`/`loadThemeIcons` (the theme's, then `default`'s entry per name); `Style::drawFrame(ctx, name, box, alpha)`, `drawFirstFrame`. `ThemeAssets` loads the four d-pad arrows (and their outlines) from the table's paths. The test theme's `launcher.icons` (every name, colour-coded). | ab_gui `icon.h`, `src/icon.cpp`, `style.h/.cpp`, `context.h/.cpp`, lib_ableem `theme_spec.h/.cpp`, `gui/gui.h/.cpp`, `gui/theme_assets.cpp`, `CMakeLists.txt`, `tests/gui/test_ab_gui_icon.cpp`, `tests/core/test_theme_spec.cpp`, `tests/data/frame-test-theme/*`; launcher `docs/theme-format.md` (the `launcher.icons` section) | none (the arrows resolve to the same files) | the diff 0; the test theme's d-pad arrows in the launcher's hint lines (Games state, the menu row) at scale 1 and 1.5; `test_ab_gui_icon`, `test_theme_spec` |
+| **G5b** | **The meta row on icons** (UIREV-30, part 1): `PsMeta` asks the Context for `players` (the theme's `launcher.icons.players`, else its old `launcher.metaPanel`), `disc`, `usb`, `internal`, `hd`, `sd`, `lock`, `unlock`, `favorite`, `retroarch`, `lightgun`, `lightgun2` and their halo; its 22 texture members and its own outline code go. The optional `badge` frame under each badge (not under the players icon or the disc). The players icon still draws without a halo here - that is rider R2. | launcher `evoui/controls/evoui_meta.{h,cpp}` | none on default/ab2 | the diff 0; the test theme: a PS1 game with every badge (favourite, RetroArch, a light gun), an internal game, a RetroArch game |
+| **G5c** | **The rest of `evoui/` on icons** (UIREV-30, part 2): the set picker's `tabPlayStation`/`tabRetroArch`/`tabApps`, the missing-art covers `raCover`/`appCover` (the carousel, App start), the big box's edge `bigBox` (`ThemeAssets::bigBoxFrame`'s path; still a 9-slice of 7 px), and `extension` - a theme's icon for an extension that ships none (no built-in one, so default/ab2 keep the empty column - rider R6 is the change for every theme). | launcher `evoui/screens/evoui_{set_picker,app_start,extensions}.cpp`, `evoui/carousel_game.cpp`; core `gui/theme_assets.cpp` | none on default/ab2 | the diff 0; the test theme's set picker, a RetroArch game and an App with no art, Extensions |
+| **G5d** | **The chip** (`chip`): `Style::button`'s named-key chip (START, SELECT, L2+R2, ESC, a word like RESET) draws the frame instead of its 24 px box; the name stays code-drawn. Everything that draws buttons follows: the launcher's hint lines, every footer, the button guide, the Store and PSC-Bios. | core `ab_gui/src/style.cpp`, the test theme, `tests/gui/test_ab_gui_frame.cpp` | none on default/ab2 | the diff 0; the test theme's launcher hints, the button guide, a footer with Start |
+| **G5e** (senior) | **The hint bar** (`hintBar`): `GuiLauncher::layoutHints`' fitting (each line in its half of the theme's `launcher.hintBar`, fonts 22 down to 14, then the gaps, line 2 dropping hints from the right, one line under 48 px) moves into ab_gui as the pure `abgui::HintBar` (layout only - positions, fonts, what is dropped - tested against a frozen copy of the old numbers); the launcher keeps building the lines and its signature cache. With the frame, it is drawn into the `hintBar` rect before the lines. | ab_gui `hint_bar.h`, `src/hint_bar.cpp`, `tests/gui/test_ab_gui_hint_bar.cpp`; launcher `evoui/screens/evoui_launcher.h`, `evoui_launcher_screen.cpp` | none on default/ab2 | the diff 0 (every launcher state: Games, the menu row, the resume picker, an empty set, a long German line 2); `test_ab_gui_hint_bar` |
+| **G5f** | **The toast** (`toast`, falling back to `panel`): `NotificationBubble` - the scan's bubble, the extensions', the set banner, the message line - draws through `Style::toast(ctx, rect)`: the `toast` frame, else the `panel` frame (what G4b gave it), else the code sheet. Its bar moves onto `Style::progress(ctx, track, done, total, Tone::Secondary, 120, Tone::Text)` - the same pixels (a unit test compares the rects and colours with the old calls). | launcher `evoui/controls/evoui_notification_bubble.cpp`; core `style.h/.cpp` | none on default/ab2 | the diff 0; the test theme: the scan's bubble with its bar, the banner and a message stacked |
+| **G5g** | **Progress bars** (`progressTrack`, `progressFill`): `Style::progress(ctx, ...)` draws the track frame into the bar and the fill frame into the done share; the update prompt's outlined bar (a 1 px rect and a fill 2 px inside) becomes `Style::progressBox(ctx, ...)` - its old code as a primitive, the same frames when set. Busy's bar, the Store's downloads and the bubbles follow. | core `style.h/.cpp`, `busy.cpp`; launcher `evoui/screens/evoui_update.cpp`; the test theme | none on default/ab2 | the diff 0; a unit test of `progressBox`'s rects; the test theme's busy spinner with a bar |
+| **G5h** | **The tab** (`tab`): the set picker's current tab - its band and the bar under it - becomes `Style::tabCell(ctx, cell)`: the frame, else the old band and bar. (The Store's tab underline, `Style::tab`, stays code-drawn - a later step.) | core `style.h/.cpp`; launcher `evoui/screens/evoui_set_picker.cpp` | none on default/ab2 | the diff 0; the test theme's set picker on each tab |
+| **G5i** | **Menu tiles and the resume-slot picker** (`tile`, `tileSelected`, `band`): `PsMenu` draws `tile` - `tileSelected` for the selected icon while the row is open - into each icon's box, zoomed with it, under the theme's `menuIcons` image; the greyed Resume keeps its alpha 120 over both. The picker: its black band is the `band` frame; its four tiles take `tile`/`tileSelected` the same way (the `selection`-colour halo, or the red tint, only when there is no `tileSelected`). | launcher `evoui/controls/evoui_menu.cpp`, `evoui_stateselector.cpp` | none on default/ab2 | the diff 0; the test theme's row open on each icon, the picker loading and saving (the VM's test game with resume slots) |
+| **G5j** | **Play** (`play` frame, `play` icon) - the owner's choice (below): with the frame, Play is a 9-slice button in the play button's box (540, 428, 200 x 68) with the `play` icon and the translated label in code (`_("Play")`, `_("Start")` for an App - the hint line's words, no new string), pulsing as today; `playButton`/`playText` and their outline are then not drawn. Without the frame, today's two images. | launcher `evoui/screens/evoui_launcher_screen.cpp`, `evoui_launcher.h`, `evoui/controls/evoui_zoom_btn.*` | none on default/ab2 | the diff 0; the test theme's Games state on a PS1 game and an App, a long translation |
+| **G5k** | **The cover glow** (`coverGlow`): `Carousel::drawGlow` draws the frame round the selected cover's face - its box the face, its slices and bleed scaled with the cover (size / 222, the only frame that scales), at the glow's alpha (strength x breathing) through `drawFrame(ctx, name, box, alpha)`, tint `selection` (not a `Style` role, and `Style` cannot grow: `Gui` resolves such a tint from `launcher.colors` when it fills the `FrameSet` - `FrameSpec` gains the resolved colour); without it the procedural square. The shine stays code-drawn (Options' "Cover shine"). | launcher `evoui/carousel.{h,cpp}`; core `ab_gui/.../frame.h`, `src/frame.cpp`, `gui/gui.cpp` | none on default/ab2 | the diff 0 (the glow's breathing is masked as today); the test theme's row at rest and mid-scroll |
+| **G5l** | **The pad battery plate** (`plate` frame, `battery` icon): `renderPadBatteries`' code sheet is the `plate` frame through the Context; the battery's outline and nub the `battery` icon, the charge still code-drawn into its inner rect. A dev-host hook fakes a battery (`AB_FAKE_PAD_BATTERY=<percent>[,<percent>]`) - the VM has no wireless pad. | launcher `evoui/screens/evoui_launcher_screen.cpp`, `core/services/pad_battery.*` (the hook) | none on default/ab2 | the diff 0; with the hook: one and two pads, a low one, default and the test theme |
+| **G5m** | **The switch** (UIREV-10, the owner's choice): a boolean row's value draws the `switchOn`/`switchOff` icons, right-aligned, when the theme has them; else the ON/OFF text of 2026-09-29 - `abgui::List`'s rows, `TextRenderer::renderRowValue` (Options, the editors), so the Store's and PSC-Bios's lists follow. | core `ab_gui/src/list.cpp`, `gui/text_renderer.cpp` | none on default/ab2 (no built-in switch icons) | the diff 0; the test theme's Options and game editor |
+| **G5n** | **One font** (UIREV-31): a theme's `launcher.fonts` pair is also the classic screens' default font - Options' "Use default font" on means the theme's medium, not Open Sans; a user's font still wins, a CJK language still overrides; `classic.font` stays unread. The Store and PSC-Bios follow (they draw with the Context's fonts). | core `gui/theme_assets.cpp`, `gui/gui_font.*` | only a theme that sets `launcher.fonts` - none of the shipped five; `ab2.0.0` (Red Hat Text) | the diff 0 on default/ab2; `ab2.0.0`'s Options, keyboard, a Confirm, the Store; UIREV-31's diacritics sheet of the 16 languages |
+| **G5o1** (senior) | **Tweens** (7b): `abgui::Tween` (a `float&`, from/to, duration, delay, easing - `easeOutCubic` as `core/model/timing.h`, linear, in/out, a small overshoot, and `pulseWave` as an easing - loop, yoyo, `ambient`, a callback at the end) and `Timeline` (in sequence, in parallel), one clock (the Context's `ticks()`), owned by the `ScreenStack` (`ctx.stack().tweens()`, appended); the Input frame need Active while a non-ambient tween runs, Ambient for loops; the DebugDriver busy while a non-ambient one runs. Pure; no caller. | ab_gui `tween.h`, `src/tween.cpp`, `screen_stack.*`, `tests/gui/test_ab_gui_tween.cpp` | none | every easing's values at sample times against the old formulas; `test_ab_gui_tween` |
+| **G5o2** | **The ambient motion on tweens**: Play's pulse (`PsZoomBtn`), the arrow's bob (`PsMoveBtn`), the glow's breathing - loop/yoyo tweens with the same curves, periods and start times. | launcher `evoui/controls/evoui_{zoom,move}_btn.*`, `evoui/carousel.cpp` | none | the diff 0; a unit test: the old and the new value at the same times |
+| **G5o3** | **The launcher's state change on tweens**: the menu row's slide (200 ms) and its option move and zoom (100 ms), the meta panel's slide (200 ms), the settings band (100 ms) - started by `switchState` and the option moves; `somethingMoves()` asks the tweens. | launcher `evoui/controls/evoui_{menu,meta,settings_back}.*`, `evoui/screens/evoui_launcher_{screen,input}.cpp` | none | the diff 0 at rest in every state; `ab_drive` `wait_ready` after Down/Up waits the tweens out |
+| **G5o4** | **Bubbles and the fade-in on tweens**: the bubbles' slide in and out (250 ms) with the hold as a delay, the black fade-in (`LauncherFadeInDuration`). | launcher `evoui/controls/evoui_notification_bubble.*`, `evoui_launcher_screen.cpp` | none | the diff 0; the banner and a scan's summary through their whole life on the VM |
+| **G5o5** (senior) | **The carousel's timing on tweens**: the scroll and `moveMainCover`'s timed positions (eased for a tap, linear for a held stick, the queued tap, the held stick chaining with no pause) - the 3D drawing stays. | launcher `evoui/carousel.{h,cpp}`, `evoui/screens/evoui_launcher_input.cpp` | none | the diff 0; `AB_BENCH_SCROLL=1/tap/menu` with `AB_FRAME_STATS` before/after on the Pi (60 fps held) |
+
+**Riders - on every theme** (each its own sub-step; an expected diff, not 0; reproduced on develop first):
+
+| Step | What | Files | Expected diff | Check |
+|---|---|---|---|---|
+| **G5r1** | **BUG-30, the set banner** (a regression - below): `showSetName()` shows the banner again, with the meaning of `showingtimeout=0` the owner chooses; a stored old 0 is converted once if the meaning changes. Independent of the rest: may land before G5a. | launcher `evoui/screens/evoui_launcher_screen.cpp`, `gui/menus/gui_options_menu.cpp`; core `core/services/config.cpp` (a conversion, if chosen) | the banner on the launcher shots taken within its hold after a set change | `ab_drive`: Select, pick a set, shot at once - the banner; with `showingtimeout` 0, 2 and missing |
+| **G5r2** | **BUG-28, the players icon** (the code half; closes UIREV-27): the players icon gets the same halo as the other badges - `PsMeta::render` copies it with no outline, the one icon of the row that does (`evoui_meta.cpp`, the `renderer.copy(tex, ...)` of the players line). The new drawing BUG-28 asks for is art: `ab2.0.0`'s `players` icon (the art spec); a redrawn `meta_panel.png` for ab2/default is the owner's call. | launcher `evoui/controls/evoui_meta.cpp` (after G5b: the players icon's halo from the icon set) | the players icon on every carousel shot of a PS1 game | the diff lists only that; the console, a light theme (the owner) |
+| **G5r3** | **BUG-32, Options' Left/Right hint**: `GuiOptions::getStatusLine()` never had one (UIREV-11 added L1/R1 and L2/R2 only) - it gets `\|@Left\|/\|@Right\| Choose` (the key the launcher's menu row already uses: no new string); the game editor the same where it lacks it. And `Style::footer` measures each key with `Style::buttonWidth(ctx, key)`: today its own width function counts every key but X/O/T/S as a chip, while `button()` draws the theme's glyph when there is one - the d-pad arrows, the theme's L1..R2 images - so the fit is decided on wrong widths; the d-pad gets a place in the shared order (the owner's choice; unknown keys rank last today). | launcher `gui/menus/gui_options_menu.cpp`, `gui_game_editor_menu.cpp`; core `ab_gui/src/style.cpp` | every Options footer; another footer only where the true widths pick another font size (the diff names them) | Options on the VM, German and Polish too |
+| **G5r4** | **BUG-31, PSC-Bios's white frame** - reproduce on the console first (the owner's device session). The lead: `ScreenStack::frame(draw)` clears "in the current draw colour" (G3c), so a screen with no `frameColor` inherits whatever colour the last drawing left set - the launcher's frame ends with the pad battery fill, the bubble's bar or a hint colour set (`text`, white on most themes) - and PSC-Bios's first frame (the network hub over `lastCapture()`, or a busy frame started inside its opening) is cleared white and presented before anything opaque covers it. Fix: the stack clears to opaque black unless the screen sets `frameColor` (the launcher and the splash do). | core `ab_gui/src/screen_stack.cpp`, `tests/gui/test_ab_gui_screen_stack.cpp` | none expected (every screen covers the canvas) | the diff 0; on the console: Network & Controllers from both menus, no white frame |
+| **G5r5** | **UIREV-26's backdrop** (S4, C5, and the owner's idea from the PSC check: every panel over the carousel's snapshot): one launcher snapshot for every screen opened from the launcher, drawn without the hint band and the bubbles (S4: the snapshot kept an empty hint band), handed out through the Context's `backdropDrawer` while a sub-screen runs - Memory Cards and the memory card picker (C5), and the screens the owner names - instead of the theme's background and logo. | launcher `evoui/screens/evoui_launcher_{screen,actions}.cpp`, `gui/menus/gui_memcards_menu.*`, `gui/screens/gui_select_memcard.cpp`; core `gui/gui.cpp` (the drawer) | every screen that drew the plain background and moves over the snapshot | the diff lists them; the owner's look |
+| **G5r6** | **UIREV-26's X1**: an extension with no icon (and no theme `extension` icon, G5c) starts its title where the icon would be, not after an empty column. | launcher `evoui/screens/evoui_extensions.cpp` | the Extensions list with such an extension | the diff lists it |
+
+**BUG-30 - where the set banner went.** The banner is `notificationLines[0]`, set by `GuiLauncher::showSetName()` (a
+`NotificationBubble` at the top right since 2026-09-21), held for Options' `showingtimeout` seconds. Launcher
+`8756f300` (2026-09-29, "Options: the new order, Splash timeout, and one font for the UI") renamed the row
+"Showing Timeout (0 for no timeout)" to "Splash timeout", showed 0 as "Skip", and added `if (timeout <= 0) return;` to
+`showSetName()`. Until then 0 meant "no timeout": `setText(text, 0)` holds the bubble until the next `setText`, so the
+banner stayed up for good. A stick whose `config.ini` already said `showingtimeout=0` - the old row offered it by name -
+had the banner always on and now never sees it: nothing converted the stored value. A missing key still means 2 s
+(`Config`, `DefaultShowingTimeoutText`), so a fresh stick shows it for 2 s. Nothing else on the banner's path changed
+up to `feature/uirev-int` `67f35ad9` (`loop_chooseSet()` still calls `showSetName()`; the bubble's files only gained
+`animating()` in `e6430a1a`). To confirm before the fix: the `showingtimeout` value in the console stick's
+`config.ini` (read only). The fix waits for the owner's meaning of 0.
+
+**Not in G5.** UIREV-26's S2 (the "System" header over a "System" heading), S5 (Cross "Select" -> "Open"), C6
+("(Internal)") and A1 (the About credits) are wording, not drawing - a UIREV text batch with its translations; S3
+(grey rows read as disabled) went with UIREV-29. The Quick/System menu onto `abgui::ActionMenu` (font roles by
+size, G3k), the Store's tab underline, the scroll markers as images, the jewel case (an Options choice,
+`evoimg/frames/`), the classic buttons (`classic.buttons`, already the theme's) and 7a's transitions are later steps.
+
+**For the owner before the steps that need it:** what `showingtimeout=0` means (G5r1); Play as the theme's two images
+or a frame with a translated label (G5j); the switch images for the ON/OFF values - on every theme, only on a theme
+that asks, or not at all (G5m, UIREV-10); where the d-pad hints go in the footers' shared order (G5r3); which screens
+move onto the launcher's snapshot (G5r5).
+
+G5a, G5e, G5o1 and G5o5 are the senior ones; the rest are mechanical over them. `docs/theme-format.md` (launcher) gets
+the `launcher.icons` section in G5a and a row per frame or icon as each step lands.
 
 ### G6 - the bridge for 1.0 themes (the owner, 2026-09-30; starts when G5 is done)
 
