@@ -369,6 +369,20 @@ include path to the extensions.
   `doKeyDown`.. to the model through `modelView()`/`skipper()` (non-virtual, no layout change); `labelsOnly` and the
   sounds stay in the class. Tests: `tests/classic/test_menu_base_navigation.cpp` (the real model, plus a brute-force
   comparison with the frozen old code). Part 2 (`abgui::List`, the drawing and input) is open.
+- **`abgui::Keyboard`** (`keyboard.h`, G3n) - the on-screen keyboard: pages of letters, symbols and two of accents, a function
+  row (Shift once/lock, the page key, Space, Backspace, Done), a text field with a caret (`label`, `result`, `cancelled`,
+  `displayAsterisksInstead`; `cursorIndex`/`page`/`row`/`column`/`shift` public for a forwarder). The `TextPage` pattern:
+  `draw()` on `Panel::full(ctx)` (keys and field through `Style::key/field/caret`, labels drawn as they are, never parsed
+  for `|@X|` markers), its own `loop()` - **the keyboard-as-pad is off and the raw keyboard on for its duration and both
+  are put back after it, whichever way it ends** (Done, Back, Esc, the window's Quit) - `onAction` (Confirm types the
+  key, Option backspace, Extra space, PrevTab Shift, NextTab the next page, PageUp/PageDown the text cursor, Menu Done,
+  Back cancels; the d-pad by its live state; a button plays the Cursor sound) and `onUnmapped` (typed text, and the USB
+  keyboard's arrows/Home/End/Backspace/Delete/Enter/Esc as keys). Pure and tested: `keyAt`, `pageKeyLabel`, `pageName`,
+  `previousChar/nextChar`, `inserted/backspaced/deletedForward`, `shown/caretIn`, `moved`, `shiftAfter`, `nextPage`.
+  **`GuiKeyboard`'s header is untouched** (ABI 6; the Store and PSC-Bios construct it): `render()`/`loop()` build an
+  `abgui::Keyboard` from the header's state and copy `result`, `cancelled` and the cursor/selection back; `init()` and
+  the statics stay on the old class (`pageName` keeps its `_()` literals for the language tools). Tests:
+  `tests/gui/test_ab_gui_keyboard.cpp`.
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to
