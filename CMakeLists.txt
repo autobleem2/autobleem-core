@@ -192,6 +192,7 @@ add_library(ab_gui STATIC
         ab_gui/include/ab_gui/spinner.h
         ab_gui/include/ab_gui/style.h
         ab_gui/include/ab_gui/text_page.h
+        ab_gui/include/ab_gui/tween.h
         ab_gui/src/actions.cpp
         ab_gui/src/action_menu.cpp
         ab_gui/src/busy.cpp
@@ -208,7 +209,8 @@ add_library(ab_gui STATIC
         ab_gui/src/screen_stack.cpp
         ab_gui/src/spinner.cpp
         ab_gui/src/style.cpp
-        ab_gui/src/text_page.cpp)
+        ab_gui/src/text_page.cpp
+        ab_gui/src/tween.cpp)
 target_link_libraries(ab_gui ableem)
 target_include_directories(ab_gui PUBLIC ab_gui/include)
 

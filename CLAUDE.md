@@ -283,6 +283,26 @@ include path to the extensions.
   G3z: `prepareFrame()`, then `stack().frame(draw)`), and `Gui`'s own frames (busy, `drawText`, the splash picture,
   the resume's black frame) go through it too - **a screen never calls `clear()`/`present()` itself**. A frame started inside another's drawing is presented at once as a frame of its own. The launcher links
   ab_gui `--whole-archive` since then (header templates call it). Tests: `tests/gui/test_ab_gui_screen_stack.cpp`.
+- **`abgui::Tween` / `Timeline` / `Tweens`** (`tween.h`, G5o1; the plan's 7b) - the one timing base for element
+  animations. A `Tween` drives a caller's `float&` from/to over a duration with a delay and an `Easing` (a plain
+  `float(*)(float)`: `ease::outCubic` = `core/model/timing.h`'s `easeOutCubic` formula for formula (the default),
+  `linear`, `inCubic`, `inOutCubic`, `outBack` (~10% overshoot), `pulse` = `pulseWave` over one period), `loop()`,
+  `yoyo()` (the way back is the curve run backwards, ends at `from`), `ambient()`, `onEnd(cb)`; its values are the pure
+  `valueAt(elapsed)` (`from` before the delay, exactly the curve's end - `to`, `from` for a yoyo or a pulse - at the end; nothing is written before
+  the delay). A `Timeline` is `sequence()`/`parallel()` of tweens, timelines and `wait(ms)`s with its own delay and end
+  callback. `Tweens` runs them: **one per program, owned by the `ScreenStack`** (`ctx.stack().tweens()`, an appended
+  `unique_ptr` member), clocked by the Context's `ticks()` (`Context::setStack` binds it; a settable `clock` wins) and
+  **advanced before every outermost `ScreenStack::frame`** (outside the frame, so an end callback may open a screen);
+  `start()` returns a `TweenId`, `cancel(id)` stops where it is (no write, no callback), `finish(id)` jumps to the end
+  (end values, callbacks in end order; a loop is dropped), `finishNonAmbient()` (a press during a transition). A run
+  holding a non-ambient, non-loop tween is `busy()` - **the DebugDriver's `busy` counts it** (one `setBusy` step for
+  the whole set) - and `frameNeed()` is Active then, Ambient with only ambient runs/loops, else Idle;
+  `applyFrameNeed(input)` raises the Input's need, never lowers it (a screen calls it after setting its own).
+  **Lifetime**: a tween on a screen's float is started for a `TweenOwner` the screen holds next to it - when the owner
+  dies or `cancel()`s, its tweens never write or call back again (a weak reference to the owner's token, checked
+  before every write and callback). No caller yet (G5o2+ move evoui's timers onto it). No `AB_SDK_ABI` bump: new
+  classes, `ScreenStack` appended (`busy_` keeps its offset), `Context`'s layout untouched. Tests:
+  `tests/gui/test_ab_gui_tween.cpp`.
 - **`abgui::Action` / `abgui::ActionMap`** (`actions.h`, G3f) - what the player wants, not which button: `Confirm`,
   `Back`, `Option`, `Extra`, `Menu`, `View`, `PrevTab`/`NextTab`, `PageUp`/`PageDown`, `Up/Down/Left/Right`,
   `First`/`Last`. `ActionMap` turns a pad button (`fromButton`), a key (`fromKey`) or an `ableem::Event`
