@@ -413,3 +413,15 @@ screenshots of them stay in `!autobleem\out\` (private).
     label's case); the colour roles **heading/edge cyan, selectionBand magenta** are approved; the **new G5 pieces**
     in the mockups (toast, chip, progress bars, tab, band, plate + battery, the internal/retroarch/extension icons,
     the empty covers, the play icon) are approved as a set - each shown on the VM in its step.
+11. **Covers of other aspects than PS1** (the owner, 2026-09-30; the code map is `!autobleem` tmp `cover-aspect/
+    note.md`): only big boxes (RetroArch games, Apps) are non-square; they stay **centred vertically in their slot**
+    (compared against a bottom baseline - centred won) with **fixed slot spacing**, reflections as today. The
+    **cover shine becomes a diagonal band on every box, PS1 included**, scaled to the cover's height and clipped to
+    its width (today its size comes from the width - wrong on tall/wide art); the selection glow uses the real art
+    rect too. A game without art gets its **platform's typical aspect** from a data table (`<db name>=w:h`,
+    default 1:1) and a **two-layer placeholder** (a stretchable background + a fixed-size glyph centred by the
+    code; the designer's neutral pieces in autobleem-design `launcher/covers/out/`) - the same for every theme
+    (`raCover`/`appCover`/`bigBox` are not theme keys). All of it applies to **every theme**. Steps (before G5k, so
+    the `coverGlow` frame gets the real rect): **CA1** the diagonal shine + the glow on the real rect (the PS1
+    carousel shots change - an expected diff, the owner judges it), **CA4** the aspect table (core loader + tests,
+    keyed on `PsGame::db_name`), **CA5** the two-layer placeholder, **CA6** docs.
