@@ -346,6 +346,9 @@ TEST_CASE("FactsPage: the keyboard's own keys do nothing here") {
     MaybeGui g;
     if (!g.available())
         return;
+    // the keys as keys (the keyboard-as-pad off, as a typing screen has it): with it on - the default - the real Input
+    // makes Down the d-pad's down and Backspace Circle before any screen sees them
+    g.gui->input().setKeyboardAsPad(false);
     Side side(*g.gui);
     Page page(*g.gui, side.ctx);
     page.menuVisible = true;
