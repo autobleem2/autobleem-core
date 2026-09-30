@@ -479,7 +479,8 @@ screenshots of them stay in `!autobleem\out\` (private).
     left edge to just off its right; so the designer's static placement (centred on a portrait face, at 0.1 w on a
     landscape one) is a moment of the crossing, not a resting place, and a landscape face gets exactly one band as
     it passes (no tiling). Scope as before: the selected game facing the viewer only (not a turned cover, not an
-    empty box or the stand-in of a cover still loading), Options' "Cover shine" (`covershine`) switches it off. The
+    empty box or the stand-in of a cover still loading; a **no-art placeholder (CA5) is a cover like any other** -
+    the band crosses its face rect at the system's aspect, the owner 2026-09-30), Options' "Cover shine" (`covershine`) switches it off. The
     **glow** is the face grown by 44 px x the cover's scale on each side, width and height each their own (was a
     square from `content.w`). Reflection, centring and spacing unchanged; `AB_SDK_ABI` stays 7. Expected diff: the new
     band shows only in a frame taken while it crosses (the 720 ms after a cover comes to rest - `Carousel::animating`
