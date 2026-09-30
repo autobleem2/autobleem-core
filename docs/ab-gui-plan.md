@@ -444,3 +444,19 @@ screenshots of them stay in `!autobleem\out\` (private).
     counts it as motion, so a shot after `wait_ready` comes after it; `clip start/stop` records the crossing), and
     the glow changes only round a non-square big box (a PS1 case and every square box get the same rect as before,
     to float rounding - and the breathing glow is masked in the diff).
+    **CA4 (done):** the aspect table is a data file, the launcher's `resources/platform/cover_aspects.cfg`
+    (`#` comments, `<database name>=<w>:<h>` lines, whole numbers 1..99, anything unlisted 1:1 - the same shape as
+    the `platform/*.cores.cfg`), read by core's `core/services/cover_aspect.h` (`CoverAspectTable::load/parse/
+    aspectFor(dbName)`, SDL-free; bad lines ignored, a later line wins, a playlist's `.lpl` suffix on the name is
+    ignored; `tests/core/test_cover_aspect.cpp`). Keyed on `PsGame::db_name`; an App has no system and is 1:1. The
+    numbers are estimates of the usual retail box (one database name covers the US, Japanese and PAL boxes, which
+    differ). **CA5 (done):** a RetroArch game or an App with no art (`PsCarouselGame::artPath()` fell back, `noArt`)
+    is composed as a big box of the table's aspect (fitted into the 226 slot like real art, so `content` is that
+    rect and the glow, shine, turn and reflection follow it) whose face is two layers - the designer's
+    `evoimg/cover_bg.png` stretched as a 9-slice (4 px) over the box, and `evoimg/glyph_game.png` / `glyph_app.png`
+    at a fixed 96 px centred on it (all three with their `@2x` through `ThemeAssets::loadImage`) - and the `bigBox`
+    frame over both as for art; the same on every theme (not theme keys). `ra-cover.png`, `app-cover.png` and
+    `bigbox.png` stay in `evoimg/` for the code that still reads them (the game editor's RetroArch menu, the App
+    start screen, the fallback file the cover loader reads) until the owner approves the neutral box art. The PS1
+    jewel case, a game with art and the empty-box shelf (BUG-34) are untouched; `AB_SDK_ABI` stays 7. Expected
+    diff: only a RetroArch game or App that has no art changes (the new placeholder at the system's aspect).
