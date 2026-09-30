@@ -397,6 +397,10 @@ screenshots of them stay in `!autobleem\out\` (private).
 5. G5m / UIREV-10 yes/no values - **switch images only in a theme that ships `switchOn`/`switchOff`**; every other
    theme keeps the ON/OFF text.
 6. G5r3 footer order - the d-pad hints (Left/Right "Choose") **right after the face buttons**, before L1/R1, L2/R2.
-7. G5r1 / BUG-30 (the "Showing: <set>" bubble after a set change) - **the Options row gets its own name** (the set
-   bubble's time, not "Splash timeout"), **0 = don't show**, and a stored old `showingtimeout=0` (which meant "stay
-   up") is converted once to 2 s so the bubble comes back.
+7. G5r1 / BUG-30 (the "Showing: <set>" bubble after a set change) - the Options row is **"Notification timeout"**
+   (the English key was wrongly "Splash timeout"; the translations already say "notification time"), **0 = don't
+   show**, and a stored old `showingtimeout=0` (which meant "stay up") is converted once to 2 s so the bubble comes
+   back. It governs the **informational** bubbles - the set bubble and the other info notifications (e.g. the scan
+   summary) - but **never the errors**, which keep their fixed 2-4 s. The owner, 2026-09-30.
+8. The splash screen gets its **own Options row, "Splash screen: On/Off"** (Interface group; today it cannot be
+   skipped at all - a fixed 2 s hold); its strings go to the translation pass. The owner, 2026-09-30.
