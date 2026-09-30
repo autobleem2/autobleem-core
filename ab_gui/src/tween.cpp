@@ -210,7 +210,9 @@ Timeline &Timeline::onEnd(function<void()> callback) {
 unsigned int Timeline::length() const {
     unsigned int steps = 0;
     for (const Step &step : steps_) {
-        const unsigned int len = step.tween ? step.tween->length() : step.timeline ? step.timeline->length() : step.wait;
+        const unsigned int len = step.tween      ? step.tween->length()
+                                 : step.timeline ? step.timeline->length()
+                                                 : step.wait;
         steps = order_ == Order::Sequence ? addTime(steps, len) : max(steps, len);
     }
     return addTime(delay_, steps);
@@ -422,25 +424,29 @@ unsigned int Tweens::now() const {
 // Tweens::start
 //*******************************
 TweenId Tweens::start(const Tween &tween) {
-    return add(Timeline().add(tween), nullptr);
+    return add(Timeline().add(tween), nullptr, now());
 }
 
 TweenId Tweens::start(const Tween &tween, const TweenOwner &owner) {
-    return add(Timeline().add(tween), &owner);
+    return add(Timeline().add(tween), &owner, now());
 }
 
 TweenId Tweens::start(const Timeline &timeline) {
-    return add(timeline, nullptr);
+    return add(timeline, nullptr, now());
 }
 
 TweenId Tweens::start(const Timeline &timeline, const TweenOwner &owner) {
-    return add(timeline, &owner);
+    return add(timeline, &owner, now());
 }
 
-TweenId Tweens::add(const Timeline &timeline, const TweenOwner *owner) {
+TweenId Tweens::startAt(unsigned int startedAt, const Timeline &timeline, const TweenOwner &owner) {
+    return add(timeline, &owner, startedAt);
+}
+
+TweenId Tweens::add(const Timeline &timeline, const TweenOwner *owner, unsigned int startedAt) {
     Run run;
     run.id = impl_->nextId++;
-    run.start = now();
+    run.start = startedAt;
     if (owner) {
         run.owned = true;
         run.owner = owner->token_;

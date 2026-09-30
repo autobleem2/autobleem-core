@@ -293,7 +293,8 @@ include path to the extensions.
   callback. `Tweens` runs them: **one per program, owned by the `ScreenStack`** (`ctx.stack().tweens()`, an appended
   `unique_ptr` member), clocked by the Context's `ticks()` (`Context::setStack` binds it; a settable `clock` wins) and
   **advanced before every outermost `ScreenStack::frame`** (outside the frame, so an end callback may open a screen);
-  `start()` returns a `TweenId`, `cancel(id)` stops where it is (no write, no callback), `finish(id)` jumps to the end
+  `start()` returns a `TweenId` (`startAt(startedAt, timeline, owner)` starts one as if at a moment already gone - the
+  carousel's held-stick step following on exactly from the last, G5o5), `cancel(id)` stops where it is (no write, no callback), `finish(id)` jumps to the end
   (end values, callbacks in end order; a loop is dropped), `finishNonAmbient()` (a press during a transition). A run
   holding a non-ambient, non-loop tween is `busy()` - **the DebugDriver's `busy` counts it** (one `setBusy` step for
   the whole set) - and `frameNeed()` is Active then, Ambient with only ambient runs/loops, else Idle;
