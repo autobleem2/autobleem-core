@@ -99,6 +99,23 @@ Event key(Key k) {
     return e;
 }
 
+// The keys as keys: the keyboard-as-pad off, as a typing screen has it. With it on (the default) the real Input turns a
+// mapped key into its pad event before any screen sees it - an arrow is the d-pad, Backspace Circle, Page Up/Down
+// L1/R1 - which is what the last case checks.
+struct KeysAsKeys {
+    GuiBase &gui;
+    bool was;
+    explicit KeysAsKeys(GuiBase &g) : gui(g), was(g.input().keyboardAsPad()) { gui.input().setKeyboardAsPad(false); }
+    ~KeysAsKeys() { gui.input().setKeyboardAsPad(was); }
+};
+
+Event keyUp(Key k) {
+    Event e;
+    e.type = Event::Type::KeyUp;
+    e.key = k;
+    return e;
+}
+
 // the event through the Input as the loop reads it (the d-pad state follows), then to the page
 void feed(GuiBase &gui, Page &page, const Event &event) {
     gui.input().inject(event);
@@ -166,6 +183,7 @@ TEST_CASE("TextPage: Circle and Escape close it with the Cancel sound") {
     MaybeGui g;
     if (!g.available())
         return;
+    KeysAsKeys keys(*g.gui);
     Side side(*g.gui);
     Page page(*g.gui, side.ctx);
     page.menuVisible = true;
@@ -184,6 +202,7 @@ TEST_CASE("TextPage: buttons that mean nothing to a page do nothing") {
     MaybeGui g;
     if (!g.available())
         return;
+    KeysAsKeys keys(*g.gui);
     Side side(*g.gui);
     Page page(*g.gui, side.ctx);
     page.menuVisible = true;
@@ -200,6 +219,7 @@ TEST_CASE("TextPage: the d-pad and the arrows scroll a line, L2/R2 and Page Up/D
     MaybeGui g;
     if (!g.available())
         return;
+    KeysAsKeys keys(*g.gui);
     Side side(*g.gui);
     Page page(*g.gui, side.ctx);
 
@@ -230,6 +250,7 @@ TEST_CASE("TextPage: the Cursor sound plays only when the page moved") {
     MaybeGui g;
     if (!g.available())
         return;
+    KeysAsKeys keys(*g.gui);
     Side side(*g.gui);
     Page page(*g.gui, side.ctx);
     feed(*g.gui, page, key(Key::Up)); // already at the top
@@ -244,4 +265,29 @@ TEST_CASE("TextPage: the Cursor sound plays only when the page moved") {
     side.sounds.clear();
     feed(*g.gui, page, key(Key::Down));
     CHECK(side.sounds.empty());
+}
+
+TEST_CASE("TextPage: with the keyboard-as-pad on the keys arrive as the pad - as on the old page") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    g.gui->input().setKeyboardAsPad(true);
+    Side side(*g.gui);
+    Page page(*g.gui, side.ctx);
+    page.menuVisible = true;
+    // Down is the d-pad's down: a line
+    feed(*g.gui, page, key(Key::Down));
+    CHECK(page.firstLine() == 1);
+    feed(*g.gui, page, keyUp(Key::Down));
+    CHECK(page.firstLine() == 1);
+    CHECK(g.gui->input().dpadCentered());
+    // Page Down is R1, which does not page here (L2/R2 do): nothing
+    feed(*g.gui, page, key(Key::PageDown));
+    feed(*g.gui, page, keyUp(Key::PageDown));
+    CHECK(page.firstLine() == 1);
+    CHECK(side.sounds == vector<UiSound>{UiSound::Cursor});
+    // Backspace is Circle: it closes
+    feed(*g.gui, page, key(Key::Backspace));
+    CHECK(!page.menuVisible);
+    CHECK(side.sounds == vector<UiSound>{UiSound::Cursor, UiSound::Cancel});
 }

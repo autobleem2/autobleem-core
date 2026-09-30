@@ -5,11 +5,14 @@
 // screen of each kind recording its hook calls) and checks the two lists are the same, and against the expected hooks:
 // every button's press and release, every d-pad direction, the d-pad's priority while two are held, every key (the
 // keyboard-as-pad off, as the typing screens have it, and on), a key held (its repeats), typed text, events no hook
-// takes, a screen closing in the middle of a batch, and a hold-repeat running inside a hook (the same steps at the
-// same pace, ended by the release). Then the new path itself: the Confirm/Back swap, a rebinding, a screen that
-// overrides onAction()/onUnmapped(), and render() going through the Context's stack.
+// takes, a screen closing in the middle of a batch (by a hook or a Quit), and a hold-repeat running inside a hook (the
+// same steps at the same pace, ended by the release). Then the new path itself: the Confirm/Back swap, a rebinding, a
+// screen that overrides onAction()/onUnmapped(), and render() going through the Context's stack.
 //
 // Like test_busy_input.cpp this needs a real GuiBase (the Input the loops poll); it skips itself where there is none.
+// The events are injected, so the real Input treats them as it treats the DebugDriver's: a key is turned into its pad
+// event while the keyboard-as-pad is on (the default - the key cases say which they want), and a release is handed
+// out only after its press.
 //
 #include "doctest/doctest.h"
 
@@ -184,18 +187,26 @@ template <class Base> struct Recording : Base {
     void doTextInput(const string &t) override { calls.push_back("doTextInput:" + t); }
 };
 
+// A played batch ends with the screen's first frame: the loop drains every queued event, then draws, and the frame
+// closes the screen. (Not a Quit queued behind the events: the real Input's padEventPending() counts a queued Quit
+// too, so a hold-repeat inside a hook would stop on it at its first step.)
+template <class S> void frameAndClose(S *screen, int &frames) {
+    frames++;
+    screen->menuVisible = false;
+}
+
 // a screen on the old loop (ableem::GuiScreen::loop)
 struct OldScreen : Recording<ableem::GuiScreen> {
     explicit OldScreen(GuiBase &gui) : Recording<ableem::GuiScreen>(gui) {}
     int frames = 0;
-    void render() override { frames++; }
+    void render() override { frameAndClose(this, frames); }
 };
 
 // a screen on the new one (abgui::Screen::loop, the default onAction/onUnmapped)
 struct NewScreen : Recording<abgui::Screen> {
     NewScreen(GuiBase &gui, Context &ctx) : Recording<abgui::Screen>(gui, ctx) {}
     int frames = 0;
-    void draw() override { frames++; }
+    void draw() override { frameAndClose(this, frames); }
 };
 
 // the program's side of a new screen: a Context over the GuiBase with a stack on a counting display
@@ -206,11 +217,10 @@ struct NewSide {
     explicit NewSide(GuiBase &gui) : ctx(gui.renderer(), gui.input(), gui.platform()) { ctx.setStack(stack); }
 };
 
-// the events, then a Quit (which closes the screen at the end of the batch), into the Input; then the screen's loop
+// the events into the Input, then the screen's loop: it takes them all and closes on its first frame
 template <class S> void play(GuiBase &gui, S &screen, const vector<Event> &events) {
     for (const Event &e : events)
         gui.input().inject(e);
-    gui.input().inject(ofType(Event::Type::Quit));
     screen.loop();
 }
 
@@ -397,6 +407,9 @@ TEST_CASE("a screen closed by a hook still gets the rest of the batch, as on the
                {button(true, Button::Circle), button(false, Button::Circle), button(true, Button::Cross),
                 button(false, Button::Cross)},
                closes) == "doCircle_Pressed doCircle_Released doCross_Pressed doCross_Released");
+    // a Quit (a window's close) closes it the same way, and reaches no hook
+    CHECK(both(*g.gui, {ofType(Event::Type::Quit), button(true, Button::Cross), button(false, Button::Cross)}) ==
+          "doCross_Pressed doCross_Released");
 }
 
 TEST_CASE("the Confirm/Back swap exchanges Cross and Circle's hooks for the pad only") {
