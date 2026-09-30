@@ -430,6 +430,11 @@ screenshots of them stay in `!autobleem\out\` (private).
     screen drops in from the top** (a slide-down, eased, over the splash's last frame or black); with the new
     "Splash screen: Off" row the launcher **fades in from a black frame** instead. Every theme; a DebugDriver
     `busy` while it runs so the walk waits for it.
+13. **The busy spinner is a theme element** (the owner, 2026-09-30; a G5 sub-step, **G5p**): a theme may ship a
+    **frame strip** - one image with N animation frames side by side (1x + @2x), declared in `theme.json`
+    (e.g. `launcher.spinner: {image, frames, fps}`); `abgui::Busy` (and every spinner drawn through
+    `Style::spinner`) plays it centred where the dots ring is today; a theme without it keeps the code-drawn
+    ring of dots, call for call (0-diff). The designer draws ab2.0.0's.
     **CA1 (done):** the geometry is core's header-only `core/model/cover_light.h` (`CoverLight::glowBox`,
     `shineSlice`; `tests/core/test_cover_light.cpp`), drawn by the launcher's `Carousel::drawGlow/drawShine`. The
     **shine** is the designer's `sheen.png` (+`@2x`, autobleem-design `launcher/covers/out/`) shipped as the
