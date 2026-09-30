@@ -4,16 +4,19 @@
 // the button glyphs, the text drawing, the translator and the current Style - with no singletons. A program
 // builds one and keeps it (AutoBleem's Gui owns its own); every primitive and, later, every widget takes it.
 //
-// Everything but the renderer is a provider, asked at draw time and never cached: a font or a texture is only
-// good until the program drops it (a theme reload, the display handed to an emulator and taken back), so a
-// Context never holds one itself. ab_gui knows nothing of AutoBleem and nothing of SDL: only lib_ableem's
-// ableem types cross this interface.
+// Everything but the renderer, the input and the platform is a provider, asked when it is needed and never
+// cached: a font, a texture or a sound is only good until the program drops it (a theme reload, the display
+// handed to an emulator and taken back), so a Context never holds one itself. The renderer, the input and the
+// platform outlive all of that (GuiBase keeps them across the display's release), so it holds those.
+// ab_gui knows nothing of AutoBleem and nothing of SDL: only lib_ableem's ableem types cross this interface.
 //
 #pragma once
 
 #include <ab_gui/style.h>
 
 #include <ableem/ui/font.h>
+#include <ableem/ui/input.h>
+#include <ableem/ui/platform.h>
 #include <ableem/ui/renderer.h>
 #include <ableem/ui/texture.h>
 #include <ableem/ui/types.h>
@@ -22,6 +25,11 @@
 #include <string>
 
 namespace abgui {
+
+// The UI's sound effects: the five of a console-style menu (the PlayStation Classic's set, which AutoBleem's
+// themes carry) - a cursor step, a cancel, the two "home" sounds the lists play on a page or a jump to the
+// first/last row, and the resume sound. Which one a widget plays is the widget's (as today's screens do).
+enum class UiSound { Cursor, Cancel, HomeUp, HomeDown, Resume };
 
 //********************
 // Context
@@ -36,10 +44,23 @@ public:
     using TextMeasurer = std::function<int(const ableem::Font &, const std::string &)>;
     using Translator = std::function<std::string(const std::string &)>;
     using StyleProvider = std::function<Style()>;
+    // plays one of the UI's sounds (the program's own - AutoBleem's are the theme's)
+    using SoundPlayer = std::function<void(UiSound)>;
+    // milliseconds from some fixed start - what the widgets time hold-repeat, blinking and animations by
+    using Clock = std::function<unsigned int()>;
 
+    // a drawing-only Context: no input, the clock only when one is set (a test's, say), else 0
     explicit Context(ableem::Renderer &renderer) : renderer_(&renderer) {}
+    // what a program's screens get: the renderer, the input they read and the platform whose ticks they time
+    // by - all three GuiBase's, which outlive every screen
+    Context(ableem::Renderer &renderer, ableem::Input &input, ableem::Platform &platform)
+        : renderer_(&renderer), input_(&input), platform_(&platform) {}
 
     ableem::Renderer &renderer() const { return *renderer_; }
+    // the input the screens read (and set their frame need on); only with the three-argument constructor -
+    // hasInput() says whether there is one
+    bool hasInput() const { return input_ != nullptr; }
+    ableem::Input &input() const { return *input_; }
 
     // What the program supplies. An unset provider falls back to something harmless (see the calls below).
     FontProvider fontProvider;
@@ -65,10 +86,26 @@ public:
     std::string translate(const std::string &text) const;
     // the current look through the provider, else the defaults
     Style style() const;
+    // the sound through the player, else nothing
+    void play(UiSound sound) const;
+    // the time in milliseconds: the clock when one is set, else the platform's ticks, else 0
+    unsigned int ticks() const;
+    // waits `ms` milliseconds on the platform (a hold-repeat's few ms between looks at the queue); nothing
+    // without one
+    void delay(unsigned int ms) const;
 
 private:
     ableem::Renderer *renderer_;
     ableem::Font none_; // what font() hands out without a provider
+
+    // Appended after the members above (step G3a), so their offsets stay what they were.
+public:
+    SoundPlayer soundPlayer;
+    Clock clock; // unset: the platform's ticks
+
+private:
+    ableem::Input *input_ = nullptr;
+    ableem::Platform *platform_ = nullptr;
 };
 
 } // namespace abgui

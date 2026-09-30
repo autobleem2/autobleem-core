@@ -97,8 +97,9 @@ public:
 
     // the shared look, resolved from the current theme
     PanelStyle panelStyle();
-    // AutoBleem's abgui::Context (ab_gui, docs/ab-gui-plan.md): the renderer, and as providers asked at draw time
-    // the launcher's fonts by role, the button glyphs, the text renderer, _() and the current theme's Style.
+    // AutoBleem's abgui::Context (ab_gui, docs/ab-gui-plan.md): the renderer, the input and the platform's ticks,
+    // and as providers asked at draw time the launcher's fonts by role, the button glyphs, the text renderer, _(),
+    // the current theme's Style and its UI sounds (AppAudio's).
     // Nothing in it is cached, so it stays valid across a theme reload and the display's release for a game.
     abgui::Context &uiContext() { return uiContext_; }
 

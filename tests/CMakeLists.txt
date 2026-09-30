@@ -48,6 +48,9 @@ if (AB_CORE_UI)
     # ab_gui's Style on its own (G2): the defaults, the colour roles from a plain ColorRoles block, the hint
     # protocol - all static or plain data, no renderer needed
     ab_add_test(test_ab_gui_style gui/test_ab_gui_style.cpp LIBS ab_gui)
+    # ab_gui's Context (G3a): the input, the clock and the UI sounds - through a real headless GuiBase (skips
+    # itself without a renderer, like test_busy_input)
+    ab_add_test(test_ab_gui_context gui/test_ab_gui_context.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

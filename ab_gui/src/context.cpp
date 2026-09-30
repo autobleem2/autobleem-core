@@ -55,4 +55,26 @@ Style Context::style() const {
     return styleProvider ? styleProvider() : Style();
 }
 
+//*******************************
+// Context::play
+//*******************************
+void Context::play(UiSound sound) const {
+    if (soundPlayer)
+        soundPlayer(sound);
+}
+
+//*******************************
+// Context::ticks / delay
+//*******************************
+unsigned int Context::ticks() const {
+    if (clock)
+        return clock();
+    return platform_ ? platform_->ticks() : 0;
+}
+
+void Context::delay(unsigned int ms) const {
+    if (platform_)
+        platform_->delay(ms);
+}
+
 } // namespace abgui

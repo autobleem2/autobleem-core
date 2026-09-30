@@ -256,8 +256,12 @@ include path to the extensions.
 - **`abgui::Context`** (`context.h`) - what the drawing needs: the `Renderer`, and as providers asked at draw time
   (never cached - the display release frees fonts and textures) the fonts by `FontRole` (Title/Row/RowSmall/Small/
   Classic), the button glyphs and their outlines, the text drawer and measurer, the translator and the current
-  `Style`. `Gui` owns AutoBleem's (`Gui::uiContext()`, wired in `Gui::wireUiContext()` to `ThemeAssets`,
-  `TextRenderer`, `_()` and the theme).
+  `Style`. Since G3a also the `Input` and `Platform` (the three-argument constructor; `hasInput()`/`input()`),
+  `ticks()`/`delay()` (a settable `clock` wins over the platform's ticks) and `play(UiSound)` over a `soundPlayer`
+  (Cursor, Cancel, HomeUp, HomeDown, Resume) - what the widgets moving into ab_gui reach instead of `gui->`/`app.`;
+  new members are appended at the end. `Gui` owns AutoBleem's (`Gui::uiContext()`, wired in
+  `Gui::wireUiContext()` to `ThemeAssets`, `TextRenderer`, `_()`, the theme and `AppAudio`'s five sounds). The G3
+  sub-steps and their ABI rule are in `docs/ab-gui-plan.md` ("G3 sub-steps").
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to

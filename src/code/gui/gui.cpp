@@ -90,7 +90,8 @@ string Gui::windowTitle_ = "AutoBleem";
 Gui::Gui()
     : ableem::GuiBase(windowTitle_, ScreenWidth, ScreenHeight, outputScale(), multisampleSamples(), fullscreen()),
       assets_(renderer(), AppBase::get().theme(), AppBase::get().config()),
-      text_(renderer(), AppBase::get().theme(), assets_.themeFont, assets_.buttonTextureMap), uiContext_(renderer()) {
+      text_(renderer(), AppBase::get().theme(), assets_.themeFont, assets_.buttonTextureMap),
+      uiContext_(renderer(), input(), platform()) {
     wireUiContext();
     // the pad mappings the launcher and the pscbios wizard share; probePads() reads the first that exists
     input().loadMappings(Env::padMappingFiles());
@@ -166,6 +167,28 @@ void Gui::wireUiContext() {
     };
     uiContext_.translator = [](const string &line) { return ableem::translate(line); };
     uiContext_.styleProvider = []() { return PanelStyle::styleFromTheme(AppBase::get().theme().launcher()); };
+    // the theme's five UI sounds (AppAudio reloads them with the theme - asked for at the moment one plays)
+    uiContext_.soundPlayer = [](abgui::UiSound sound) {
+        AppAudio &audio = AppBase::get().audio();
+        switch (sound) {
+        case abgui::UiSound::Cursor:
+            audio.cursor.play();
+            break;
+        case abgui::UiSound::Cancel:
+            audio.cancel.play();
+            break;
+        case abgui::UiSound::HomeUp:
+            audio.home_up.play();
+            break;
+        case abgui::UiSound::HomeDown:
+            audio.home_down.play();
+            break;
+        case abgui::UiSound::Resume:
+            audio.resume.play();
+            break;
+        }
+    };
+    // the clock stays unset: the widgets time by the platform's ticks, as the screens do today
 }
 
 //*******************************
