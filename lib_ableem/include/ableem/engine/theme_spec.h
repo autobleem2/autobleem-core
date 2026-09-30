@@ -266,4 +266,14 @@ std::vector<ThemeFrame> readThemeFrames(const std::string &path);
 // frame with neither file is dropped (logged).
 std::vector<ThemeFrame> loadThemeFrames(const std::string &dir);
 
+//******************
+// High-resolution theme images (ab_gui G4f)
+//******************
+// Which file to load for the theme image `file` (a resolved path) at `outputScale`, and its pixels per logical pixel
+// in `pixelScale` (for Texture::loadFile): above scale 1 its "<stem>@2x<ext>" when that is next to it - the same
+// picture at twice the pixels, pixelScale 2 - else `file` itself, pixelScale 1. At scale 1 (and for an empty
+// `file`) it is `file` and the disk is not asked. The 1x file stays what a theme must ship: its size is the image's
+// logical size, and whatever measures the picture's pixels (Texture::opaqueBounds, an outline) reads the 1x file.
+std::string themeImageFile(const std::string &file, float outputScale, float &pixelScale);
+
 } // namespace ableem

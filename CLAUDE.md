@@ -172,7 +172,13 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   output pixels (`toOutput()`, edges rounded so neighbours tile; identity at 1). `Texture::createTarget`
   allocates output pixels and carries `pixelScale()`, which `copy()` applies to a source rect, so a target is
   addressed like the screen; `Font::load` loads the face `scale` times bigger, draws in output pixels and
-  measures in logical ones. Nothing in the app knows. `Gui::outputScale()` is the policy: a Pi on a >= 1080p
+  measures in logical ones. Nothing in the app knows. **High-resolution theme images** (ab_gui G4f): above scale 1
+  a theme image's `<stem>@2x<ext>` (exactly twice the pixels) is loaded instead of the 1x one when it is next to it
+  (`ableem::themeImageFile` in `engine/theme_spec.h` picks, `Texture::loadFile(renderer, path, pixelScale)` loads it
+  with pixel scale 2, so `size()` is logical and `copy()` scales a source rect like a target's; `ThemeAssets::
+  loadImage` is the one call the app makes). At scale 1 nothing is looked up. The 1x file stays required, and
+  whatever measures a picture's pixels (`opaqueBounds`, `outlineOf`) reads the 1x file. The audit of every reader is
+  the plan's G4f row; `tests/data/hires-test-theme/` is a theme whose 1x and @2x images differ in colour. `Gui::outputScale()` is the policy: a Pi on a >= 1080p
   display gets 1.5 (`Platform::desktopDisplaySize()`), a dev host reads `AB_OUTPUT_SCALE`, the console is 1.
   The Pi installer boots in 1920x1080 by default now (`--hdmi-mode`), the plymouth script scales the logo up.
 - **MSAA** (2026-09-18): `GuiBase(..., multisampleSamples)` asks for a multisampled GL context before the
@@ -200,7 +206,8 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   column, the columns spread perspective-correctly with each side's height as its depth. Nothing newer than
   SDL 2.0.4 (`SDL_RenderGeometry` is 2.0.18, which the console's own `autobleem_sdl` now is since 2026-09-29 -
   was 2.0.14; the carousel still targets 2.0.4 unguarded).
-- **`Texture`** - shared handle (copy freely) with `loadFile/loadMemory/createTarget/createStreaming`, plus
+- **`Texture`** - shared handle (copy freely) with `loadFile/loadMemory/createTarget/createStreaming` (and
+  `loadFile(renderer, path, pixelScale)` for a high-resolution image - see "Output scale"), plus
   `PixelLock` (RAII `lock()`) for per-pixel `get/set` - replaces the old manual `SDL_LockTexture` +
   `SDL_AllocFormat`/`SDL_MapRGBA` dance (see `engine/cardedit.cpp`, the memory card icon renderer).
 - **`Font`** - shared handle over SDL_FontCache: `textSize/width/lineHeight/draw/drawAlign/drawColor`. The
@@ -548,7 +555,7 @@ executable/abpad files and points here for the rest.
 | `gui/app_audio.*` | `AppAudio` | The background music track and the five UI sounds (`cursor`, `cancel`, `home_up`, `home_down`, `resume`), plus which track to play (theme's or the user's from `resources/music`) at which sample rate. Owned by `App`: `app.audio().cursor.play()`. Sits on `gui->audio()`, which is only lib_ableem's mixer device. |
 | `gui/gui.*` | `Gui` singleton | The screen only: SDL window/renderer (via `ableem::GuiBase`), `assets()`, `text()`, and the background/logo/status drawing that combines them. `display(resume)` (re)inits and shows the splash (`resume=false`, boot only) or sets `session().resumingGui` for the launcher to pick up (`resume=true`, after a game exits). |
 | `gui/screens/gui_splash.*` | `GuiSplash` | Fades in, holds at full brightness for `SplashHoldDuration` (2s), fades back out, then returns - `Gui::display(false)` is its only caller, once at boot. |
-| `gui/theme_assets.*` | `ThemeAssets` | The current theme's textures (background, logo, jewel case, the `|@X|` button markers) and fonts (`themeFont` at the theme's size, plus the `themeFonts`/`sonyFonts` sets). `load()` re-reads theme.json (`Theme::load()`) and reloads everything from the resolved paths. Screens use `gui->assets()`. |
+| `gui/theme_assets.*` | `ThemeAssets` | The current theme's textures (background, logo, jewel case, the `|@X|` button markers) and fonts (`themeFont` at the theme's size, plus the `themeFonts`/`sonyFonts` sets). `load()` re-reads theme.json (`Theme::load()`) and reloads everything from the resolved paths. Screens use `gui->assets()`. Every image goes through the static `loadImage(renderer, file)` (G4f): the `@2x` file above output scale 1 when the theme ships one, else the very call it always was - the launcher's evoui images load through it too. |
 | `gui/text_renderer.*` | `TextRenderer` | The classic UI's text drawing: `|@X|` button markers laid out inline with text, `renderTextLine/ToColumns/Options`, selection and label boxes, the theme's menu-panel/status-bar rects, `toColor()`. Holds references to `Gui`'s theme font and button textures; screens use `gui->text()`. |
 | `gui/gui_screen.h` | `GuiScreen` | Base for every screen: `init/render/loop` + virtual `doCross_Pressed()`-style handlers; `show()` runs them. Set `menuVisible=false` to exit. Carries `gui`, `renderer` and `app` (an `AppBase &` - see `app_base.*`). |
 | `gui/menus/gui_*` | `GuiMenuBase`, `GuiOptionsMenuBase`, ... | Header-only templated list menus (string, two-column, playlist, game dir) and concrete Options / Memory Cards / Game Manager / Game Editor menus. |

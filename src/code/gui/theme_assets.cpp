@@ -7,6 +7,8 @@
 #include "../core/services/environment.h"
 #include "../core/main.h"
 
+#include <ableem/engine/theme_spec.h> // themeImageFile, the @2x choice (ab_gui G4f)
+
 using namespace std;
 using ableem::Texture;
 
@@ -48,20 +50,21 @@ void ThemeAssets::load() {
     logoRect.w = classic.logo.w;
     logoRect.h = classic.logo.h;
 
-    backgroundImg = Texture::loadFile(renderer_, classic.background);
+    backgroundImg = loadImage(renderer_, classic.background);
     Gui::tickBusy();
     // drawn at its own size from the top-left corner (the theme's is the screen's); the splash used to be
-    // the only place setting this, which left every program without a splash with no background at all
+    // the only place setting this, which left every program without a splash with no background at all.
+    // Logical: an @2x background's size() is its pixels over 2, the 1x one's size
     ableem::Size backgroundSize = backgroundImg.size();
     backgroundRect = ableem::Rect(0, 0, backgroundSize.w, backgroundSize.h);
-    logo = Texture::loadFile(renderer_, classic.logo.file);
-    bigBoxFrame = Texture::loadFile(renderer_, Env::getWorkingPath() + sep + "evoimg/bigbox.png");
+    logo = loadImage(renderer_, classic.logo.file);
+    bigBoxFrame = loadImage(renderer_, Env::getWorkingPath() + sep + "evoimg/bigbox.png");
     if (config_.inifile.values["jewel"] != "none") {
         if (config_.inifile.values["jewel"] == "default") {
-            cdJewel = Texture::loadFile(renderer_, Env::getWorkingPath() + sep + "evoimg/nofilter.png");
+            cdJewel = loadImage(renderer_, Env::getWorkingPath() + sep + "evoimg/nofilter.png");
         } else {
-            cdJewel = Texture::loadFile(renderer_, Env::getWorkingPath() + sep + "evoimg/frames/" +
-                                                       config_.inifile.values["jewel"]);
+            cdJewel =
+                loadImage(renderer_, Env::getWorkingPath() + sep + "evoimg/frames/" + config_.inifile.values["jewel"]);
         }
     } else {
         cdJewel = Texture();
@@ -69,19 +72,20 @@ void ThemeAssets::load() {
 
     Gui::tickBusy();
     const auto &b = classic.buttons;
-    buttonTextureMap["O"] = Texture::loadFile(renderer_, b.circle);
-    buttonTextureMap["X"] = Texture::loadFile(renderer_, b.cross);
-    buttonTextureMap["T"] = Texture::loadFile(renderer_, b.triangle);
-    buttonTextureMap["S"] = Texture::loadFile(renderer_, b.square);
-    buttonTextureMap["Select"] = Texture::loadFile(renderer_, b.select);
-    buttonTextureMap["Start"] = Texture::loadFile(renderer_, b.start);
-    buttonTextureMap["L1"] = Texture::loadFile(renderer_, b.l1);
-    buttonTextureMap["R1"] = Texture::loadFile(renderer_, b.r1);
-    buttonTextureMap["L2"] = Texture::loadFile(renderer_, b.l2);
-    buttonTextureMap["R2"] = Texture::loadFile(renderer_, b.r2);
-    buttonTextureMap["Check"] = Texture::loadFile(renderer_, b.check);
-    buttonTextureMap["Uncheck"] = Texture::loadFile(renderer_, b.uncheck);
+    buttonTextureMap["O"] = loadImage(renderer_, b.circle);
+    buttonTextureMap["X"] = loadImage(renderer_, b.cross);
+    buttonTextureMap["T"] = loadImage(renderer_, b.triangle);
+    buttonTextureMap["S"] = loadImage(renderer_, b.square);
+    buttonTextureMap["Select"] = loadImage(renderer_, b.select);
+    buttonTextureMap["Start"] = loadImage(renderer_, b.start);
+    buttonTextureMap["L1"] = loadImage(renderer_, b.l1);
+    buttonTextureMap["R1"] = loadImage(renderer_, b.r1);
+    buttonTextureMap["L2"] = loadImage(renderer_, b.l2);
+    buttonTextureMap["R2"] = loadImage(renderer_, b.r2);
+    buttonTextureMap["Check"] = loadImage(renderer_, b.check);
+    buttonTextureMap["Uncheck"] = loadImage(renderer_, b.uncheck);
     checkIconRightMargin = 0;
+    // measured on the 1x file (`path`), whichever one is drawn: its pixels are logical, like the texture's size()
     auto rightMargin = [](const string &path, const Texture &texture) {
         ableem::Rect bounds = Texture::opaqueBounds(path);
         ableem::Size whole = texture.size();
@@ -89,19 +93,20 @@ void ThemeAssets::load() {
     };
     checkIconRightMargin =
         max(rightMargin(b.check, buttonTextureMap["Check"]), rightMargin(b.uncheck, buttonTextureMap["Uncheck"]));
-    buttonTextureMap["Esc"] = Texture::loadFile(renderer_, b.esc);
-    buttonTextureMap["Enter"] = Texture::loadFile(renderer_, b.enter);
-    buttonTextureMap["Tab"] = Texture::loadFile(renderer_, b.tab);
-    hintCross = Texture::loadFile(renderer_, launcher.hints.cross);
-    hintCircle = Texture::loadFile(renderer_, launcher.hints.circle);
-    hintTriangle = Texture::loadFile(renderer_, launcher.hints.triangle);
+    buttonTextureMap["Esc"] = loadImage(renderer_, b.esc);
+    buttonTextureMap["Enter"] = loadImage(renderer_, b.enter);
+    buttonTextureMap["Tab"] = loadImage(renderer_, b.tab);
+    hintCross = loadImage(renderer_, launcher.hints.cross);
+    hintCircle = loadImage(renderer_, launcher.hints.circle);
+    hintTriangle = loadImage(renderer_, launcher.hints.triangle);
     const string evoimg = Env::getWorkingPath() + sep + "evoimg" + sep;
-    dpadUp = Texture::loadFile(renderer_, evoimg + "dpad_up.png");
-    dpadDown = Texture::loadFile(renderer_, evoimg + "dpad_down.png");
-    dpadLeft = Texture::loadFile(renderer_, evoimg + "dpad_left.png");
-    dpadRight = Texture::loadFile(renderer_, evoimg + "dpad_right.png");
+    dpadUp = loadImage(renderer_, evoimg + "dpad_up.png");
+    dpadDown = loadImage(renderer_, evoimg + "dpad_down.png");
+    dpadLeft = loadImage(renderer_, evoimg + "dpad_left.png");
+    dpadRight = loadImage(renderer_, evoimg + "dpad_right.png");
     // the arrows' own dark halo (UIREV-2, L1): a loaded Texture cannot be read back pixel by pixel, so the
-    // outline is built from a fresh Image decode of the same file, once here rather than per frame
+    // outline is built from a fresh Image decode of the same file, once here rather than per frame - the 1x file
+    // even when an @2x arrow is drawn: the outline is placed by the arrow's logical size (Style::button)
     dpadUpOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_up.png"));
     dpadDownOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_down.png"));
     dpadLeftOutline = PanelStyle::outlineOf(renderer_, ableem::Image::loadFile(evoimg + "dpad_left.png"));
@@ -141,6 +146,17 @@ void ThemeAssets::load() {
         themeFonts = fixedFonts(); // the same pair: shared handles, nothing opened twice
     }
     Gui::tickBusy();
+}
+
+//*******************************
+// ThemeAssets::loadImage
+//*******************************
+Texture ThemeAssets::loadImage(ableem::Renderer &renderer, const string &file) {
+    float pixelScale = 1.0f;
+    const string picked = ableem::themeImageFile(file, renderer.outputScale(), pixelScale);
+    if (pixelScale == 1.0f)
+        return Texture::loadFile(renderer, picked); // the 1x file: the very call it always was
+    return Texture::loadFile(renderer, picked, pixelScale);
 }
 
 //*******************************

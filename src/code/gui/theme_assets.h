@@ -30,6 +30,10 @@ public:
     // destroys it. load() brings them back once the display is acquired again.
     void unload();
 
+    // a theme image: its "<stem>@2x<ext>" when the output scale is above 1 and one is next to `file`, loaded with
+    // pixel scale 2 so it draws in the 1x one's logical size (ableem::themeImageFile) - else `file` as it always was
+    static ableem::Texture loadImage(ableem::Renderer &renderer, const std::string &file);
+
     // the UI's font set (titles, rows, footers, the menus, the extensions' screens): the launcher's pair (the
     // theme's launcher.fonts, else Open Sans Medium/Bold) - or, with "Use Default Font" off, the user's font for
     // both (2026-09-29, the owner)
