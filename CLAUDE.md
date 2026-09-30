@@ -300,7 +300,7 @@ include path to the extensions.
   `applyFrameNeed(input)` raises the Input's need, never lowers it (a screen calls it after setting its own).
   **Lifetime**: a tween on a screen's float is started for a `TweenOwner` the screen holds next to it - when the owner
   dies or `cancel()`s, its tweens never write or call back again (a weak reference to the owner's token, checked
-  before every write and callback). No caller yet (G5o2+ move evoui's timers onto it). No `AB_SDK_ABI` bump: new
+  before every write and callback). Callers so far: the launcher's ambient motion (G5o2, `ambient.h`) and, since G5o4, the notification bubble's two slides and the launcher's fade-in (`transitions.h`: `slideClock`/`bubbleProgress`, `fadeInClock`/`fadeInAlpha` - non-ambient, so the DebugDriver is busy during them, but never during a bubble's hold, which is a timestamp, not a tween); G5o3/G5o5 move the rest. No `AB_SDK_ABI` bump: new
   classes, `ScreenStack` appended (`busy_` keeps its offset), `Context`'s layout untouched. Tests:
   `tests/gui/test_ab_gui_tween.cpp`.
 - **`abgui::Action` / `abgui::ActionMap`** (`actions.h`, G3f) - what the player wants, not which button: `Confirm`,
