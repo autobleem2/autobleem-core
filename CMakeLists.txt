@@ -170,11 +170,14 @@ target_link_libraries(ab_installer ab_core)
 # no AutoBleem code (no ab_core/ab_classic) and no SDL: it links the ableem ui library only. Headers as <ab_gui/...>.
 if (AB_CORE_UI)
 add_library(ab_gui STATIC
+        ab_gui/include/ab_gui/actions.h
         ab_gui/include/ab_gui/context.h
         ab_gui/include/ab_gui/footer_shorten.h
+        ab_gui/include/ab_gui/hold_repeat.h
         ab_gui/include/ab_gui/panel.h
         ab_gui/include/ab_gui/screen_stack.h
         ab_gui/include/ab_gui/style.h
+        ab_gui/src/actions.cpp
         ab_gui/src/context.cpp
         ab_gui/src/panel.cpp
         ab_gui/src/screen_stack.cpp

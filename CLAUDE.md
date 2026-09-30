@@ -277,6 +277,16 @@ include path to the extensions.
   splash picture, the resume's black frame) go through it too - **a new screen never calls `clear()`/`present()`
   itself**. A frame started inside another's drawing is presented at once as a frame of its own. The launcher links
   ab_gui `--whole-archive` since then (header templates call it). Tests: `tests/gui/test_ab_gui_screen_stack.cpp`.
+- **`abgui::Action` / `abgui::ActionMap`** (`actions.h`, G3f) - what the player wants, not which button: `Confirm`,
+  `Back`, `Option`, `Extra`, `Menu`, `View`, `PrevTab`/`NextTab`, `PageUp`/`PageDown`, `Up/Down/Left/Right`,
+  `First`/`Last`. `ActionMap` turns a pad button (`fromButton`), a key (`fromKey`) or an `ableem::Event`
+  (`fromEvent` -> action + pressed/released) into one. The default is today's: the pad (Cross Confirm, Circle Back,
+  Triangle Option, Square Extra, Start Menu, Select View, L1/R1 PrevTab/NextTab, L2/R2 PageUp/PageDown, the d-pad)
+  and the keyboard as `ableem::KeyboardMap` maps it (Enter, Backspace/Esc, Tab, F1/F2, PgUp/PgDn, Home/End, arrows,
+  Space). First/Last have no default button (L1/R1 are the tabs' or the list's ends - the screen decides); `bind`
+  gives them one. `setSwapConfirmBack(true)` exchanges Confirm and Back on the pad's buttons only (default off).
+  **Nothing uses it yet** (G3g wires it). `abgui::HoldRepeat`/`DpadHold` (`hold_repeat.h`) are the moved shared
+  hold-repeat pace; `gui/hold_repeat.h` keeps the global names as aliases. Tests: `tests/gui/test_ab_gui_actions.cpp`.
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to
