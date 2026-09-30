@@ -590,9 +590,12 @@ TEST_CASE("Style::footer through a Context (G5r8): the footer frame replaces the
     // 56x54 body + a 4 px bleed: 64 x 62
     CHECK(set.frame(renderer, "footer").texture.size().w == 64);
     CHECK(set.frame(renderer, "footer").texture.size().h == 62);
+    // only the footer frame is counted: a hint's key with no glyph in this bare Context asks for the `chip` frame
+    // (G5d) as well, which is not what this case is about
     vector<string> asked;
     ctx.frameProvider = [&](const string &name) {
-        asked.push_back(name);
+        if (name == "footer")
+            asked.push_back(name);
         return set.frame(renderer, name);
     };
     style.footer(ctx, band, "|@X| Select", true);
