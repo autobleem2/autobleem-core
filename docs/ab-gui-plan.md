@@ -467,6 +467,10 @@ screenshots of them stay in `!autobleem\out\` (private).
     theme's `launcher.spinner` strip (G5p) centred at (640, 480) of the 1280x720 picture - RetroArch reports no
     progress, so no bar. The designer's new `retroarch.jpg` (RA icon over "RetroArch", no "loading..." text, no
     baked spinner) ships with it; a theme without a strip = the code ring of dots.
+18. **Every panel opened from the launcher draws over the carousel snapshot** (the owner, 2026-09-30; G5r5): not only
+    Memory Cards and the card picker (C5) - Options, Game Manager, the editors, Extensions, Processors, the Store,
+    PSC-Bios and every other screen started from the launcher take the one launcher snapshot (without the hint band
+    and the bubbles) through the Context's `backdropDrawer`, instead of the theme's background and logo.
     **CA1 (done):** the geometry is core's header-only `core/model/cover_light.h` (`CoverLight::glowBox`,
     `shineSlice`; `tests/core/test_cover_light.cpp`), drawn by the launcher's `Carousel::drawGlow/drawShine`. The
     **shine** is the designer's `sheen.png` (+`@2x`, autobleem-design `launcher/covers/out/`) shipped as the
