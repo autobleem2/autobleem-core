@@ -149,6 +149,7 @@ data), the extension runtime, the game-aware screens in ab_ui and everything in 
 | G3 | widgets move: `List` from `GuiMenuBase`, `ActionMenu`, `Confirm`, `Keyboard`, `FactsPage`, `TextPage`, `Busy`; `Context` replaces the `Gui`/`AppBase` look-ups; actions + ActionMap under the old hooks | none | the same diff; one **ABI bump** at the end, the Store and PSC-Bios rebuilt once |
 | G4 | frames (9-slice + hi-res images) for the `Style`'s primitives, `launcher.frames` in `theme.json`, `docs/theme-format.md` - sub-steps a-g below | only with a theme that sets frames (`ab2.0.0`) | default/ab2 diff unchanged; ab2.0.0 against its mockups |
 | G5 | evoui's own pieces on the primitives (badges, Play, menu tiles, the hint bar, the banner/bubble, the cover glow) | only with such a theme | as G4 |
+| G6 | **after G5** - the bridge for 1.0 themes: a converted 1.0 theme looks tidy on today's screens (evoui first) - derived colour roles, a generic frame set, evoui's missing pieces; sub-steps below | only on converted 1.0 themes | a chosen test set of community themes, shots before/after, the owner's look |
 | later | FocusGroup beyond lists, GlyphSets, Confirm/Back swap | new options | per feature |
 
 Every step is checked on the pcusb-test VM through the DebugDriver (screenshots before/after), then on a device
@@ -250,6 +251,29 @@ all of it).
 G4a-e are each small enough for one brief; G4a is the senior one (the model and where it lives), b-e are mechanical
 over it. `docs/theme-format.md` (launcher) gets its `launcher.frames` section in G4a and a row per frame as each step
 lands.
+
+### G6 - the bridge for 1.0 themes (the owner, 2026-09-30; starts when G5 is done)
+
+**Why.** The 1.0 community made dozens of themes (the owner's pack: 42 themes - 44 `theme.ini`, 22 `colors.ini`,
+none with a `theme.json`). `ThemeConverter` still turns one into a `theme.json` in place (launcher
+`docs/theme-format.md`, "Converting an old theme": `theme.ini` keys -> `classic.*`, `colors.ini` -> `launcher.colors
+{text,secondary}`, 17 PSC images -> `launcher.*`), so it loads - but it was built for the 1.0 screens. On 2.0 the
+**EvolutionUI** is the problem: a 1.0 theme has a background, footer, Play button and settings panel, and nothing for
+the rest (menu tiles, badges, the meta panel, the system menu's colours), so it falls back to `default`'s pieces and
+code-drawn panels in default colours over the theme's own art. G6 makes a converted theme **tidy, not perfect**:
+consistent colours, readable text, framed panels that suit the background.
+
+**Rule for the pack.** Most of the pack is fan art of other people's brands (films, games, comics). It is **test
+material only**: copies live on the laptop / VM sandboxes, never in a repository, a package, the Store or the site;
+screenshots of them stay in `!autobleem\out\` (private).
+
+| Step | What | Check |
+|---|---|---|
+| **G6a** | **Survey.** Every pack theme (copies) through `theme_convert`, then onto a VM sandbox of its own: shots of the carousel, the game menu, the Quick and System menus, Options, the keyboard, a Confirm. A table per theme: what breaks (unreadable text, clashing colours, default pieces over the theme's art, 1.0 positions that miss 2.0's layout, low-res art at 1080p). Proposes **5-6 test themes** that cover the spread (dark/light/busy background, own font, own button icons, a colours.ini-less one). | the owner picks the test set from the contact sheet |
+| **G6b** | **The bridge design.** (1) Colour roles derived from the 1.0 data (`Text_fg`, `Main_bg`, `Key_bg`, `Label_bg`, `colors.ini` fg/sec, the background's own palette when those are missing) into the UIREV-29 roles (`row`, `rowSelected`, `heading`, `edge`, `selectionBand`, ...) with a contrast check against the background; (2) a **generic bridge frame set** - neutral greyscale 9-slice frames (G4's `tint`, so they take the derived colours) drawn by the designer for panel, selection, heading, key, field; (3) evoui's missing pieces: which 1.0 images can stand in, which come from the bridge set instead of `default`; (4) which 1.0 positions 2.0 honours. | the owner's OK on the design + the designer's bridge frames |
+| **G6c** | **In the converter, not at run time**: `ThemeConverter` writes the derived `launcher.colors` roles and `launcher.frames` pointing at the bridge set (shipped once, e.g. in `default`'s folder or the resources), so a converted theme is a plain 2.0 theme; a version stamp in the written `theme.json` lets an already-converted theme be upgraded once. Tests on the converter with small fixture themes (our own, not the pack's). | converter tests; the 58-screen diff 0 on default/ab2 |
+| **G6d** | **The test set on the VM**, shots before/after per theme; then the Pi (1080p) | the owner judges the shots |
+| **G6e** | The whole pack once more: a list of themes that still look poor and why (not fixed per theme - a note for the community on what a 2.0 theme adds) | a report |
 
 ## 12. The owner's decisions (2026-09-30)
 
