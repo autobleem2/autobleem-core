@@ -308,4 +308,27 @@ bool resolveThemeIconHalo(const std::string &themeDir, const std::string &defaul
 // logical size, and whatever measures the picture's pixels (Texture::opaqueBounds, an outline) reads the 1x file.
 std::string themeImageFile(const std::string &file, float outputScale, float &pixelScale);
 
+//******************
+// ThemeSpinner (launcher.spinner, ab_gui G5p)
+//******************
+// The busy spinner as a frame strip: ONE image with `frames` animation frames side by side, played at `fps` where the
+// code-drawn ring of dots is (abgui::Busy, Style::spinner). Kept out of ThemeSpec for ThemeFrame's reason, and - like
+// frames - the theme's own key only: never merged over the default theme's, so a theme without it keeps the ring.
+struct ThemeSpinner {
+    std::string image;   // the 1x strip (frames * frame width wide)
+    std::string image2x; // the @2x strip ("" none)
+    int frames = 0;      // how many frames the strip holds; 0 = no spinner
+    int fps = 0;         // frames per second
+    static constexpr int DefaultFps = 24; // when the theme gives none (or a number below 1)
+};
+
+// launcher.spinner of the theme.json at `path`, the file names as written: { "image", "image2x", "frames", "fps" }.
+// False (`out` untouched) when the block is missing or not an object, has neither image, or `frames` is not a whole
+// number of at least 1. `fps` below 1 or unset is DefaultFps. Never throws.
+bool readThemeSpinner(const std::string &path, ThemeSpinner &out);
+// the spinner of the theme in `dir` (its own theme.json only), the images resolved as loadThemeFrames resolves them
+// (`image` in the folder, `image2x` given and in the folder, else "<image's stem>@2x<ext>" next to the image). False -
+// the ring of dots - when there is no block or neither file exists (logged).
+bool loadThemeSpinner(const std::string &dir, ThemeSpinner &out);
+
 } // namespace ableem

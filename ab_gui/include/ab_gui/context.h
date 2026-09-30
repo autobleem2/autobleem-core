@@ -15,6 +15,7 @@
 #include <ab_gui/actions.h>
 #include <ab_gui/frame.h>
 #include <ab_gui/screen_stack.h>
+#include <ab_gui/spinner.h>
 #include <ab_gui/style.h>
 
 #include <ableem/ui/font.h>
@@ -199,6 +200,14 @@ public:
     IconProvider iconHaloProvider;
     ableem::Texture icon(const std::string &name) const;
     ableem::Texture iconHalo(const std::string &name) const;
+
+    // Appended (step G5p): the busy spinner as the current look's frame strip (spinner.h) - what Style::spinner draws
+    // in place of the ring of dots. AutoBleem's is Gui's SpinnerStrip, filled from the theme's own launcher.spinner
+    // (never merged from the default theme). Asked at draw time like every provider; unset, or an invalid SpinnerAnim
+    // back, means no strip: the ring of dots is drawn as it always was.
+    using SpinnerProvider = std::function<SpinnerAnim()>;
+    SpinnerProvider spinnerProvider;
+    SpinnerAnim spinnerAnim() const;
 };
 
 } // namespace abgui

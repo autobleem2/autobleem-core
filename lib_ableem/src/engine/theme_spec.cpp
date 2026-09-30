@@ -936,4 +936,51 @@ string themeImageFile(const string &file, float outputScale, float &pixelScale) 
     return hiRes;
 }
 
+//*******************************
+// readThemeSpinner / loadThemeSpinner
+//*******************************
+constexpr int ThemeSpinner::DefaultFps;
+
+bool readThemeSpinner(const string &path, ThemeSpinner &out) {
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return false;
+    const json *block = child(launcher, "spinner");
+    if (!block || !block->is_object())
+        return false;
+    ThemeSpinner s;
+    readStr(*block, "image", s.image);
+    readStr(*block, "image2x", s.image2x);
+    if (s.image.empty() && s.image2x.empty())
+        return false;
+    const json *frames = child(*block, "frames");
+    if (!frames || !frames->is_number_integer() || frames->get<int>() < 1)
+        return false;
+    s.frames = frames->get<int>();
+    const json *fps = child(*block, "fps");
+    s.fps = fps && fps->is_number_integer() && fps->get<int>() >= 1 ? fps->get<int>() : ThemeSpinner::DefaultFps;
+    out = s;
+    return true;
+}
+
+bool loadThemeSpinner(const string &dir, ThemeSpinner &out) {
+    ThemeSpinner s;
+    if (!readThemeSpinner(dir + sep + "theme.json", s))
+        return false;
+    const string image = existing(dir, s.image);
+    string image2x;
+    if (!s.image2x.empty())
+        image2x = existing(dir, s.image2x);
+    else if (!image.empty() && DirEntry::exists(at2x(image)))
+        image2x = at2x(image);
+    if (image.empty() && image2x.empty()) {
+        PLOG_WARNING << "Theme spinner: no image in " << dir << " - the ring of dots is drawn instead";
+        return false;
+    }
+    s.image = image;
+    s.image2x = image2x;
+    out = s;
+    return true;
+}
+
 } // namespace ableem

@@ -12,6 +12,7 @@
 #include "panel_style.h"
 #include <ab_gui/context.h>
 #include <ab_gui/icon.h>
+#include <ab_gui/spinner.h>
 
 #include <functional>
 #include "text_renderer.h"
@@ -157,4 +158,8 @@ private:
     // evoimg/ files, ThemeAssets::iconSpecs): refilled by loadAssets(), their textures and halos dropped by
     // releaseDisplay(), handed out as the Context's iconProvider/iconHaloProvider. Appended last, as frames_ was
     abgui::IconSet icons_;
+    // the current theme's busy spinner strip (ab_gui G5p: its own theme.json's launcher.spinner, never the default's):
+    // refilled by loadAssets(), its texture dropped by releaseDisplay(), handed out as the Context's spinnerProvider.
+    // Appended last, as icons_ was
+    abgui::SpinnerStrip spinner_;
 };

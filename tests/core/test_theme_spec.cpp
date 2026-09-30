@@ -829,3 +829,101 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
     CHECK(ableem::resolveThemeIconHalo(dir, dir));   // the halo stays on: it shows under the test colours
     CHECK(ableem::loadThemeFrames(dir).size() == 10); // the frames are untouched by the block
 }
+
+TEST_CASE("readThemeSpinner: launcher.spinner - image, frames, fps; no fps is the default, bad blocks are none") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("full.json",
+                  "{ \"launcher\": { \"spinner\": { \"image\": \"images/spinner.png\", \"frames\": 24,"
+                  " \"fps\": 24 } } }");
+    tmp.writeFile("both.json", "{ \"launcher\": { \"spinner\": { \"image\": \"a.png\", \"image2x\": \"b.png\","
+                               " \"frames\": 8, \"fps\": 12 } } }");
+    tmp.writeFile("nofps.json", "{ \"launcher\": { \"spinner\": { \"image\": \"a.png\", \"frames\": 4 } } }");
+    tmp.writeFile("zerofps.json",
+                  "{ \"launcher\": { \"spinner\": { \"image\": \"a.png\", \"frames\": 4, \"fps\": 0 } } }");
+    tmp.writeFile("noframes.json", "{ \"launcher\": { \"spinner\": { \"image\": \"a.png\", \"fps\": 24 } } }");
+    tmp.writeFile("zeroframes.json", "{ \"launcher\": { \"spinner\": { \"image\": \"a.png\", \"frames\": 0 } } }");
+    tmp.writeFile("textframes.json", "{ \"launcher\": { \"spinner\": { \"image\": \"a.png\", \"frames\": \"8\" } } }");
+    tmp.writeFile("noimage.json", "{ \"launcher\": { \"spinner\": { \"frames\": 8, \"fps\": 24 } } }");
+    tmp.writeFile("notobject.json", "{ \"launcher\": { \"spinner\": \"spinner.png\" } }");
+    tmp.writeFile("plain.json", "{ \"launcher\": { } }");
+    tmp.writeFile("bad.json", "{ nope");
+
+    ableem::ThemeSpinner s;
+    REQUIRE(ableem::readThemeSpinner(tmp.at("full.json"), s));
+    CHECK(s.image == "images/spinner.png");
+    CHECK(s.image2x.empty());
+    CHECK(s.frames == 24);
+    CHECK(s.fps == 24);
+
+    REQUIRE(ableem::readThemeSpinner(tmp.at("both.json"), s));
+    CHECK(s.image == "a.png");
+    CHECK(s.image2x == "b.png");
+    CHECK(s.frames == 8);
+    CHECK(s.fps == 12);
+
+    REQUIRE(ableem::readThemeSpinner(tmp.at("nofps.json"), s));
+    CHECK(s.frames == 4);
+    CHECK(s.fps == ableem::ThemeSpinner::DefaultFps);
+    REQUIRE(ableem::readThemeSpinner(tmp.at("zerofps.json"), s));
+    CHECK(s.fps == ableem::ThemeSpinner::DefaultFps);
+
+    // every refusal leaves `out` as it was
+    s.frames = 99;
+    for (const char *file : {"noframes.json", "zeroframes.json", "textframes.json", "noimage.json", "notobject.json",
+                             "plain.json", "bad.json", "none.json"}) {
+        CHECK_FALSE_MESSAGE(ableem::readThemeSpinner(tmp.at(file), s), file);
+        CHECK(s.frames == 99);
+    }
+}
+
+TEST_CASE("loadThemeSpinner: the images resolved in the theme's folder, the @2x found next to the 1x, no file = none") {
+    TempDir tmp("theme_spec");
+    const string block = "{ \"launcher\": { \"spinner\": { \"image\": \"images/spinner.png\","
+                         " \"frames\": 6, \"fps\": 10 } } }";
+    tmp.writeFile("both/theme.json", block);
+    tmp.writeFile("both/images/spinner.png", "x");
+    tmp.writeFile("both/images/spinner@2x.png", "x");
+    tmp.writeFile("only1x/theme.json", block);
+    tmp.writeFile("only1x/images/spinner.png", "x");
+    tmp.writeFile("only2x/theme.json", block);
+    tmp.writeFile("only2x/images/spinner@2x.png", "x");
+    tmp.writeFile("named/theme.json", "{ \"launcher\": { \"spinner\": { \"image\": \"s.png\", \"image2x\": \"big.png\","
+                                      " \"frames\": 2 } } }");
+    tmp.writeFile("named/s.png", "x");
+    tmp.writeFile("named/s@2x.png", "x"); // not the one named
+    tmp.writeFile("named/big.png", "x");
+    tmp.writeFile("nofile/theme.json", block);
+    tmp.writeFile("plain/theme.json", "{ \"format\": 1 }");
+
+    ableem::ThemeSpinner s;
+    REQUIRE(ableem::loadThemeSpinner(tmp.at("both"), s));
+    CHECK(s.image == tmp.at("both") + "/images/spinner.png");
+    CHECK(s.image2x == tmp.at("both") + "/images/spinner@2x.png");
+    CHECK(s.frames == 6);
+    CHECK(s.fps == 10);
+
+    REQUIRE(ableem::loadThemeSpinner(tmp.at("only1x"), s));
+    CHECK_FALSE(s.image.empty());
+    CHECK(s.image2x.empty());
+
+    REQUIRE(ableem::loadThemeSpinner(tmp.at("only2x"), s));
+    CHECK(s.image.empty());
+    CHECK(s.image2x == tmp.at("only2x") + "/images/spinner@2x.png");
+
+    REQUIRE(ableem::loadThemeSpinner(tmp.at("named"), s));
+    CHECK(s.image2x == tmp.at("named") + "/big.png");
+
+    CHECK_FALSE(ableem::loadThemeSpinner(tmp.at("nofile"), s)); // declared, no file: the ring of dots
+    CHECK_FALSE(ableem::loadThemeSpinner(tmp.at("plain"), s));
+    CHECK_FALSE(ableem::loadThemeSpinner(tmp.at("nothing"), s));
+}
+
+TEST_CASE("the test theme's spinner (tests/data/frame-test-theme): 8 frames at 8 fps, with its @2x") {
+    const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
+    ableem::ThemeSpinner s;
+    REQUIRE(ableem::loadThemeSpinner(dir, s));
+    CHECK(s.image == dir + "/spinner/spinner.png");
+    CHECK(s.image2x == dir + "/spinner/spinner@2x.png");
+    CHECK(s.frames == 8);
+    CHECK(s.fps == 8);
+}
