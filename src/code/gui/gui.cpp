@@ -347,8 +347,11 @@ void Gui::display(bool resume) {
     loadAssets();
 
     if (!resume) {
-        GuiSplash splashScreen(*this);
-        splashScreen.show();
+        // Options -> Interface -> "Splash screen": off skips the boot splash (AB_NO_SPLASH does too)
+        if (AppBase::get().config().inifile.values["splashscreen"] != "false") {
+            GuiSplash splashScreen(*this);
+            splashScreen.show();
+        }
         hideMouseCursor();
     }
 }
