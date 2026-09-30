@@ -148,4 +148,8 @@ private:
     void wireUiContext();
     // where every frame of the classic screens and Gui's own is presented - uiContext().stack()
     abgui::ScreenStack stack_;
+    // the current theme's frames (its own theme.json's launcher.frames, ab_gui G4): refilled by loadAssets(), their
+    // textures dropped by releaseDisplay(), handed out as the Context's frameProvider. Last on purpose: appended, so
+    // every member an extension reaches through gui.h's inline code keeps its offset (AB_SDK_ABI stays 7)
+    abgui::FrameSet frames_;
 };

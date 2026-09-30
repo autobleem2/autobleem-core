@@ -715,4 +715,94 @@ vector<const string *> ThemeSpec::fileFields() const {
     return vector<const string *>(mutableFields.begin(), mutableFields.end());
 }
 
+//*******************************
+// readThemeFrames / loadThemeFrames
+//*******************************
+namespace {
+
+// a number (all four) or { "left", "top", "right", "bottom" } (each optional); anything else leaves `out` alone
+void readInsets(const json &j, const char *key, ThemeInsets &out) {
+    const json *v = child(j, key);
+    if (!v)
+        return;
+    if (v->is_number_integer()) {
+        const int n = v->get<int>();
+        out.left = out.top = out.right = out.bottom = n;
+        return;
+    }
+    readInt(*v, "left", out.left);
+    readInt(*v, "top", out.top);
+    readInt(*v, "right", out.right);
+    readInt(*v, "bottom", out.bottom);
+}
+
+// "frames/panel.png" -> "frames/panel@2x.png" (the dot of the file name, not of a folder)
+string at2x(const string &file) {
+    const size_t slash = file.find_last_of("/\\");
+    const size_t dot = file.find_last_of('.');
+    if (dot == string::npos || (slash != string::npos && dot < slash))
+        return file + "@2x";
+    return file.substr(0, dot) + "@2x" + file.substr(dot);
+}
+
+} // namespace
+
+vector<ThemeFrame> readThemeFrames(const string &path) {
+    vector<ThemeFrame> frames;
+    ifstream in(path, ifstream::binary);
+    if (!in.is_open())
+        return frames;
+    json j;
+    try {
+        in >> j;
+    } catch (const json::exception &) {
+        return frames; // ThemeSpec::load has logged it
+    }
+    const json *launcher = child(j, "launcher");
+    const json *block = launcher ? child(*launcher, "frames") : nullptr;
+    if (!block || !block->is_object())
+        return frames;
+    for (auto it = block->begin(); it != block->end(); ++it) {
+        if (!it->is_object())
+            continue;
+        ThemeFrame f;
+        f.name = it.key();
+        readStr(*it, "image", f.image);
+        readStr(*it, "image2x", f.image2x);
+        if (f.image.empty() && f.image2x.empty())
+            continue;
+        readInsets(*it, "slice", f.slice);
+        readInsets(*it, "bleed", f.bleed);
+        const json *fill = child(*it, "fill");
+        if (fill && fill->is_boolean())
+            f.fill = fill->get<bool>();
+        readStr(*it, "tint", f.tint);
+        frames.push_back(f);
+    }
+    return frames;
+}
+
+vector<ThemeFrame> loadThemeFrames(const string &dir) {
+    vector<ThemeFrame> frames;
+    for (ThemeFrame f : readThemeFrames(dir + sep + "theme.json")) {
+        const string named = f.image.empty() ? string() : dir + sep + f.image;
+        const string image = !named.empty() && DirEntry::exists(named) ? named : string();
+        string image2x;
+        if (!f.image2x.empty()) {
+            if (DirEntry::exists(dir + sep + f.image2x))
+                image2x = dir + sep + f.image2x;
+        } else if (!named.empty() && DirEntry::exists(at2x(named))) {
+            image2x = at2x(named);
+        }
+        if (image.empty() && image2x.empty()) {
+            PLOG_WARNING << "Theme frame '" << f.name << "': no image in " << dir << " - drawn by the code instead";
+            continue;
+        }
+        f.image = image;
+        f.image2x = image2x;
+        frames.push_back(f);
+    }
+    return frames;
+}
+
 } // namespace ableem

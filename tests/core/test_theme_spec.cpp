@@ -9,6 +9,7 @@
 #include <ableem/engine/theme_spec.h>
 
 #include <string>
+#include <vector>
 
 using ableem::ThemeColor;
 using ableem::ThemeSpec;
@@ -402,4 +403,139 @@ TEST_CASE("resolveFiles: the theme's own file, else the fallback's, else nothing
     CHECK(mine.launcher.arrow == tmp.at("base/images/arrow.png"));
     CHECK(mine.launcher.footer.empty());
     CHECK(mine.sounds.cursor.empty());
+}
+
+//*******************************
+// launcher.frames (ab_gui G4a)
+//*******************************
+namespace {
+const ableem::ThemeFrame *frameNamed(const std::vector<ableem::ThemeFrame> &frames, const string &name) {
+    for (const ableem::ThemeFrame &f : frames)
+        if (f.name == name)
+            return &f;
+    return nullptr;
+}
+} // namespace
+
+TEST_CASE("readThemeFrames: launcher.frames by name - slice and bleed a number or four sides, fill, tint") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile(
+        "theme.json",
+        "{ \"launcher\": { \"colors\": { \"text\": \"#ffffff\" }, \"frames\": {"
+        " \"panel\": { \"image\": \"frames/panel.png\", \"slice\": 36, \"bleed\": 12 },"
+        " \"selection\": { \"image\": \"frames/sel.png\", \"image2x\": \"hi/sel.png\","
+        "   \"slice\": { \"left\": 12, \"top\": 10, \"right\": 11, \"bottom\": 9 }, \"bleed\": { \"left\": 4 },"
+        "   \"fill\": false, \"tint\": \"selectionBand\" },"
+        " \"heading\": { \"slice\": 6 },"
+        " \"key\": \"frames/key.png\","
+        " \"field\": { \"image\": \"frames/field.png\", \"slice\": \"wide\", \"fill\": 0 } } } }");
+    const std::vector<ableem::ThemeFrame> frames = ableem::readThemeFrames(tmp.at("theme.json"));
+    REQUIRE(frames.size() == 3); // heading has no image, key is not an object
+
+    const ableem::ThemeFrame *panel = frameNamed(frames, "panel");
+    REQUIRE(panel != nullptr);
+    CHECK(panel->image == "frames/panel.png");
+    CHECK(panel->image2x.empty());
+    CHECK(panel->slice.left == 36);
+    CHECK(panel->slice.top == 36);
+    CHECK(panel->slice.right == 36);
+    CHECK(panel->slice.bottom == 36);
+    CHECK(panel->bleed.left == 12);
+    CHECK(panel->bleed.bottom == 12);
+    CHECK(panel->fill);
+    CHECK(panel->tint.empty());
+
+    const ableem::ThemeFrame *sel = frameNamed(frames, "selection");
+    REQUIRE(sel != nullptr);
+    CHECK(sel->image2x == "hi/sel.png");
+    CHECK(sel->slice.left == 12);
+    CHECK(sel->slice.top == 10);
+    CHECK(sel->slice.right == 11);
+    CHECK(sel->slice.bottom == 9);
+    CHECK(sel->bleed.left == 4);
+    CHECK(sel->bleed.top == 0);
+    CHECK_FALSE(sel->fill);
+    CHECK(sel->tint == "selectionBand");
+
+    const ableem::ThemeFrame *field = frameNamed(frames, "field");
+    REQUIRE(field != nullptr);
+    CHECK(field->slice.left == 0); // a slice of the wrong type is not set
+    CHECK(field->fill);            // nor a fill that is not a boolean
+}
+
+TEST_CASE("readThemeFrames: no block, a bad file or no file - no frames") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("plain.json", "{ \"launcher\": { \"colors\": { \"text\": \"#ffffff\" } } }");
+    tmp.writeFile("bad.json", "{ \"launcher\": { \"frames\": ");
+    tmp.writeFile("array.json", "{ \"launcher\": { \"frames\": [ { \"image\": \"a.png\" } ] } }");
+    CHECK(ableem::readThemeFrames(tmp.at("plain.json")).empty());
+    CHECK(ableem::readThemeFrames(tmp.at("bad.json")).empty());
+    CHECK(ableem::readThemeFrames(tmp.at("array.json")).empty());
+    CHECK(ableem::readThemeFrames(tmp.at("none.json")).empty());
+}
+
+TEST_CASE("loadThemeFrames: the images resolved in the theme's folder, the @2x found next to the 1x") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("t/theme.json",
+                  "{ \"launcher\": { \"frames\": {"
+                  " \"panel\": { \"image\": \"frames/panel.png\", \"slice\": 24 },"
+                  " \"key\": { \"image\": \"frames/key.png\" },"
+                  " \"field\": { \"image\": \"frames/field.png\", \"image2x\": \"frames/big-field.png\" },"
+                  " \"heading\": { \"image\": \"frames/heading.png\" },"
+                  " \"selection\": { \"image\": \"frames/selection.png\" },"
+                  " \"keyLit\": { \"image2x\": \"frames/lit.png\" },"
+                  " \"keySelected\": { \"image\": \"frames/gone.png\", \"image2x\": \"frames/gone2.png\" } } } }");
+    tmp.writeFile("t/frames/panel.png", "x");
+    tmp.writeFile("t/frames/panel@2x.png", "x");
+    tmp.writeFile("t/frames/key.png", "x"); // no @2x
+    tmp.writeFile("t/frames/field.png", "x");
+    tmp.writeFile("t/frames/field@2x.png", "x"); // not the one named
+    tmp.writeFile("t/frames/big-field.png", "x");
+    tmp.writeFile("t/frames/selection@2x.png", "x"); // only the @2x of a named 1x
+    tmp.writeFile("t/frames/lit.png", "x");
+    const string dir = tmp.at("t");
+    const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
+
+    const ableem::ThemeFrame *panel = frameNamed(frames, "panel");
+    REQUIRE(panel != nullptr);
+    CHECK(panel->image == dir + "/frames/panel.png");
+    CHECK(panel->image2x == dir + "/frames/panel@2x.png");
+    CHECK(panel->slice.left == 24);
+
+    const ableem::ThemeFrame *key = frameNamed(frames, "key");
+    REQUIRE(key != nullptr);
+    CHECK(key->image == dir + "/frames/key.png");
+    CHECK(key->image2x.empty());
+
+    const ableem::ThemeFrame *field = frameNamed(frames, "field");
+    REQUIRE(field != nullptr);
+    CHECK(field->image2x == dir + "/frames/big-field.png");
+
+    CHECK(frameNamed(frames, "heading") == nullptr); // its image is not there
+    const ableem::ThemeFrame *selection = frameNamed(frames, "selection");
+    REQUIRE(selection != nullptr);
+    CHECK(selection->image.empty());
+    CHECK(selection->image2x == dir + "/frames/selection@2x.png");
+    const ableem::ThemeFrame *lit = frameNamed(frames, "keyLit");
+    REQUIRE(lit != nullptr);
+    CHECK(lit->image.empty());
+    CHECK(lit->image2x == dir + "/frames/lit.png");
+    CHECK(frameNamed(frames, "keySelected") == nullptr);
+    CHECK(frames.size() == 5);
+
+    // a theme without the block (every shipped theme today) has none, and neither has a folder without theme.json
+    tmp.writeFile("plain/theme.json", "{ \"format\": 1 }");
+    CHECK(ableem::loadThemeFrames(tmp.at("plain")).empty());
+    CHECK(ableem::loadThemeFrames(tmp.at("nothing")).empty());
+}
+
+TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a check expects") {
+    const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
+    const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
+    REQUIRE(frames.size() == 1);
+    CHECK(frames[0].name == "panel");
+    CHECK(frames[0].image == dir + "/frames/panel.png");
+    CHECK(frames[0].image2x == dir + "/frames/panel@2x.png");
+    CHECK(frames[0].slice.top == 24);
+    CHECK(frames[0].bleed.right == 8);
 }

@@ -165,7 +165,47 @@ void Style::sheet(ableem::Renderer &renderer, const Rect &panel) const {
 }
 
 void Style::sheet(Context &ctx, const Rect &panel) const {
-    sheet(ctx.renderer(), panel);
+    if (!drawFrame(ctx, "panel", panel))
+        sheet(ctx.renderer(), panel);
+}
+
+//*******************************
+// Style::colorByName / drawFrame
+//*******************************
+bool Style::colorByName(const string &name, Color &out) const {
+    static const struct {
+        const char *name;
+        Color Style::*color;
+    } colours[] = {
+        {"text", &Style::text},
+        {"secondary", &Style::secondary},
+        {"hint", &Style::hint},
+        {"row", &Style::row},
+        {"rowSelected", &Style::rowSelected},
+        {"heading", &Style::heading},
+        {"value", &Style::value},
+        {"description", &Style::description},
+        {"footer", &Style::footerText},
+        {"selectionBand", &Style::selectionBand},
+        {"edge", &Style::edge},
+    };
+    for (const auto &c : colours)
+        if (name == c.name) {
+            out = this->*(c.color);
+            return true;
+        }
+    return false;
+}
+
+bool Style::drawFrame(Context &ctx, const string &name, const Rect &box) const {
+    const Frame frame = ctx.frame(name);
+    if (!frame.valid())
+        return false;
+    Color tint(255, 255, 255, 255);
+    if (!frame.tint.empty() && colorByName(frame.tint, tint))
+        tint.a = 255; // the colour multiplies the image's; its alpha is the image's own
+    abgui::drawFrame(ctx.renderer(), frame, box, tint);
+    return true;
 }
 
 //*******************************

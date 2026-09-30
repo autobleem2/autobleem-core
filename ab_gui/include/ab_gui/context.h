@@ -13,6 +13,7 @@
 #pragma once
 
 #include <ab_gui/actions.h>
+#include <ab_gui/frame.h>
 #include <ab_gui/screen_stack.h>
 #include <ab_gui/style.h>
 
@@ -179,6 +180,15 @@ public:
 private:
     bool compact_ = false;
     ableem::Rect compactRect_;
+
+    // Appended (step G4a): the frames of the current look by name ("panel", ...) - what Style::drawFrame asks for
+    // before it draws a primitive's code-drawn shape. AutoBleem's is Gui's FrameSet, filled from the theme's own
+    // launcher.frames. Like every provider it is asked at draw time (the textures go with the display); unset, or an
+    // invalid Frame back, means no frame: the primitive draws as it always did.
+public:
+    using FrameProvider = std::function<Frame(const std::string &)>;
+    FrameProvider frameProvider;
+    Frame frame(const std::string &name) const;
 };
 
 } // namespace abgui

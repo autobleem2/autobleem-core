@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "launcher": {
+    "frames": {
+      "panel": { "image": "frames/panel.png", "slice": 24, "bleed": 8 }
+    }
+  }
+}

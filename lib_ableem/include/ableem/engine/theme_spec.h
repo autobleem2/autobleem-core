@@ -238,4 +238,32 @@ struct ThemeSpec {
     std::vector<const std::string *> fileFields() const;
 };
 
+//******************
+// ThemeFrame (launcher.frames, ab_gui G4)
+//******************
+// A 9-slice frame a theme draws a panel, a selection, a key... with instead of the code-drawn box
+// (autobleem-core docs/ab-gui-frames-spec.md). Kept out of ThemeSpec on purpose: ThemeSpec and LauncherTheme are
+// laid out in the extensions' SDK, and frames are the theme's own - never merged over the default theme's.
+struct ThemeInsets { // logical px: a number in theme.json sets all four
+    int left = 0, top = 0, right = 0, bottom = 0;
+};
+
+struct ThemeFrame {
+    std::string name;    // "panel", "selection", "heading", "key", "keyFunction", "keyLit", "keySelected", "field"
+    std::string image;   // the 1x PNG
+    std::string image2x; // the @2x PNG ("" none)
+    ThemeInsets slice;   // the cut lines from the image's outer edge
+    ThemeInsets bleed;   // how far the image reaches outside the box
+    bool fill = true;    // false: the centre is not drawn
+    std::string tint;    // a launcher.colors role the image is multiplied by; "" its own colours
+};
+
+// launcher.frames of the theme.json at `path`, by name, the file names as written. An entry with neither image, or
+// not an object, is skipped; a missing or invalid file gives none. Never throws.
+std::vector<ThemeFrame> readThemeFrames(const std::string &path);
+// the frames of the theme in `dir` (its own theme.json only), each image an absolute path or "": `image` when it is in
+// the folder; `image2x` when given and in the folder, else "<image's stem>@2x<ext>" when that is next to the image. A
+// frame with neither file is dropped (logged).
+std::vector<ThemeFrame> loadThemeFrames(const std::string &dir);
+
 } // namespace ableem

@@ -415,6 +415,21 @@ include path to the extensions.
   `GuiKeyboard` is it as a classic screen since G3z (the Store and PSC-Bios construct it); its static `pageName` keeps
   the `_()` literals for the language tools. Tests: `tests/gui/test_ab_gui_keyboard.cpp`.
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
+- **Frames** (`frame.h`, G4a; the plan's "G4 sub-steps", the artist's side `docs/ab-gui-frames-spec.md`) - a 9-slice PNG a
+  primitive draws instead of its code-drawn box: `FrameSpec` (the 1x/@2x files, `slice` and `bleed` as logical
+  `Insets`, `fill`, `tint` - a Style colour's name, `Style::colorByName`), the pure `framePieces()`/`frameFits()` (the
+  nine source/destination rects; corners shrink in proportion in a box too small for them; an image with no pixel
+  between its cut lines is refused), `drawFrame()`, and `FrameSet` (the specs by name, each image loaded on its first
+  `frame(renderer, name)` - the @2x one above output scale 1, `pickFile` - and dropped by `release()`). The Context
+  hands them out (`frameProvider`/`frame(name)`, appended); `Style::drawFrame(ctx, name, box)` draws one and says
+  whether there was one, and a primitive's **Context** overload asks first: `sheet()` the `panel` frame (the Renderer
+  overloads never draw frames). **Opt-in**: no frame by that name = the old drawing, call for call. **Kept out of
+  `Style`, `ThemeSpec` and `ThemeAssets` on purpose** (their layouts are the SDK's - no ABI bump): `Gui` owns the
+  `FrameSet` (`frames_`, appended after `stack_`), fills it in `loadAssets()` from `ableem::loadThemeFrames(
+  theme().loadedPath())` - the engine's reader of **the theme's own** `launcher.frames` (never merged over `default`),
+  `@2x` found next to the 1x - and releases it in `releaseDisplay()`. A test theme with a panel frame (cyan rim at 1x,
+  orange at @2x): `tests/data/frame-test-theme/` (`make_test_frame.py` draws it). Tests:
+  `tests/gui/test_ab_gui_frame.cpp`, `tests/core/test_theme_spec.cpp` (the reader).
 - **`PanelStyle` is an `abgui::Style`** (since G3z; an adapter holding its own colours until then): the colour roles,
   metrics and every primitive on a Renderer or a Context are the Style's; PanelStyle adds the old constants
   (`HeaderHeight`...), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, `style()`/`fromStyle()`, and the

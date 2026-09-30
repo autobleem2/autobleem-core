@@ -134,4 +134,11 @@ ableem::Rect Context::currentPanelRect() const {
     return compact_ ? compactRect_ : panelRect();
 }
 
+//*******************************
+// Context::frame
+//*******************************
+Frame Context::frame(const string &name) const {
+    return frameProvider ? frameProvider(name) : Frame();
+}
+
 } // namespace abgui

@@ -90,6 +90,10 @@ if (AB_CORE_UI)
     # typed text, the USB keyboard's keys - with the keyboard-as-pad off while it shows and back on every way out, through
     # a headless GuiBase (those cases skip themselves without a renderer)
     ab_add_test(test_ab_gui_keyboard gui/test_ab_gui_keyboard.cpp LIBS ab_gui)
+    # ab_gui's frames (G4a): the 9-slice pieces, the 1x/@2x pick, the tint's colour names (pure), and the FrameSet loading
+    # tests/data/frame-test-theme's panel and Style::drawFrame/sheet through a Context on a headless GuiBase (those cases
+    # skip themselves without a renderer)
+    ab_add_test(test_ab_gui_frame gui/test_ab_gui_frame.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

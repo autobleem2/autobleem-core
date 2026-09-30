@@ -153,6 +153,17 @@ public:
     // a row's text / its value, selected or not
     const ableem::Color &rowColor(bool selected) const { return selected ? rowSelected : row; }
     const ableem::Color &valueColor(bool selected) const { return selected ? rowSelected : value; }
+    // a colour of the style by its name as a theme writes it - "text", "secondary", "hint", "row", "rowSelected",
+    // "heading", "value", "description", "footer", "selectionBand", "edge"; false (out untouched) for any other
+    bool colorByName(const std::string &name, ableem::Color &out) const;
+
+    //*******************************
+    // frames (G4, frame.h)
+    //*******************************
+    // the frame `name` of the Context (Context::frame) drawn into `box`, tinted by the style's colour its tint names
+    // (an unknown name: its own colours); false, and nothing drawn, when the Context has no such frame - the caller
+    // then draws its code-drawn shape. The primitives' Context overloads ask for theirs: sheet() "panel" (G4a)
+    bool drawFrame(Context &ctx, const std::string &name, const ableem::Rect &box) const;
 
     //*******************************
     // the primitives
@@ -160,7 +171,7 @@ public:
     // the screen behind the panel, darkened
     void dim(ableem::Renderer &renderer) const;
     void dim(Context &ctx) const;
-    // the sheet and its edge
+    // the sheet and its edge; through the Context, the "panel" frame instead when there is one
     void sheet(ableem::Renderer &renderer, const ableem::Rect &panel) const;
     void sheet(Context &ctx, const ableem::Rect &panel) const;
     // a one-pixel rule across the panel, inset, at y

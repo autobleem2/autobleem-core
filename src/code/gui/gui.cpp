@@ -231,6 +231,31 @@ void Gui::wireUiContext() {
     uiContext_.panelSwitch = [this](const Rect *rect) { text_.setPanelOverride(rect); };
     // every frame through the one stack: clear, draw, present (step G3c)
     uiContext_.setStack(stack_);
+    // the theme's frames by name (step G4a): none unless the theme's own theme.json has launcher.frames
+    uiContext_.frameProvider = [this](const string &name) { return frames_.frame(renderer(), name); };
+}
+
+//*******************************
+// themeFrames
+//*******************************
+// the frames of the theme in `dir` as the FrameSet takes them: only that theme's own - never the default theme's, so a
+// theme without launcher.frames draws exactly as before
+static map<string, abgui::FrameSpec> themeFrames(const string &dir) {
+    map<string, abgui::FrameSpec> specs;
+    for (const ableem::ThemeFrame &f : ableem::loadThemeFrames(dir)) {
+        abgui::FrameSpec spec;
+        spec.file = f.image;
+        spec.file2x = f.image2x;
+        spec.slice = abgui::Insets(f.slice.left, f.slice.top, f.slice.right, f.slice.bottom);
+        spec.bleed = abgui::Insets(f.bleed.left, f.bleed.top, f.bleed.right, f.bleed.bottom);
+        spec.fill = f.fill;
+        spec.tint = f.tint;
+        specs[f.name] = spec;
+    }
+    if (!specs.empty()) {
+        PLOG_INFO << "Theme frames: " << specs.size() << " from " << dir;
+    }
+    return specs;
 }
 
 //*******************************
@@ -255,6 +280,7 @@ void Gui::splash(const string &message) {
 void Gui::loadAssets(bool reloadMusic) {
     text_.clearTextCache(); // keyed on the font handles about to be replaced
     assets_.load();
+    frames_.assign(themeFrames(AppBase::get().theme().loadedPath())); // the textures load when first drawn
     AppBase::get().audio().loadTheme(reloadMusic);
 
     // the classic screens' text halo, on unless the theme says otherwise; the launcher sets its own
@@ -335,7 +361,8 @@ void Gui::finish() {
 //*******************************
 void Gui::releaseDisplay() {
     text_.clearTextCache();
-    assets_.unload(); // before the renderer goes: SDL frees the textures with it
+    assets_.unload();  // before the renderer goes: SDL frees the textures with it
+    frames_.release(); // the same for the frames' textures (the specs stay; they load again when next drawn)
     GuiBase::releaseDisplay();
 }
 
