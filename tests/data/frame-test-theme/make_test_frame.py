@@ -24,6 +24,9 @@
 # field (G4e): 56x56 - the field's 48x48 box with a 4 px glow, a 2 px rim, square corners. Green at 1x, teal at @2x.
 # theme.json: slice 16, bleed 4.
 #
+# badge (G5b): 40x40 - the 32x32 plate behind a meta-row badge with a 4 px glow, a 2 px rim, cut corners. Gold at 1x,
+# violet at @2x. theme.json: slice 12, bleed 4.
+#
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
 # selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
 # key_selected.png (48x48 each), field.png (56x56) and the @2x of all of them next to this script.
@@ -102,6 +105,13 @@ def field_shape():
     return Shape(size, size, bleed, poly, 2, (255, 255, 255, 45), 90)
 
 
+def badge_shape():
+    size, bleed, cut = 40, 4, 6
+    x0, y0, x1, y1 = bleed, bleed, size - bleed, size - bleed
+    poly = [(x0 + cut, y0), (x1, y0), (x1, y1 - cut), (x1 - cut, y1), (x0, y1), (x0, y0 + cut)]
+    return Shape(size, size, bleed, poly, 2, (255, 255, 255, 70), 120)
+
+
 def render(shape, scale, rim):
     w, h = shape.width * scale, shape.height * scale
     ss = 4
@@ -155,6 +165,7 @@ def main():
         ("key_lit", key_shape(110, 80), (255, 240, 200), (140, 90, 40)),
         ("key_selected", key_shape(150, 170), (255, 40, 40), (255, 150, 200)),
         ("field", field_shape(), (0, 220, 80), (0, 160, 160)),
+        ("badge", badge_shape(), (255, 200, 0), (170, 80, 255)),
     ]
     for name, shape, rim1, rim2 in keys:
         write_png(os.path.join(out, name + ".png"), *render(shape, 1, rim1))

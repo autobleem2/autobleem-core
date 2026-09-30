@@ -533,8 +533,8 @@ TEST_CASE("loadThemeFrames: the images resolved in the theme's folder, the @2x f
 TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a check expects") {
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
-    // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e)
-    REQUIRE(frames.size() == 8);
+    // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b)
+    REQUIRE(frames.size() == 9);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
     const ableem::ThemeFrame *heading = nullptr;
@@ -571,6 +571,17 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(heading->slice.bottom == 6);
     CHECK(heading->bleed.left == 0);
     CHECK(heading->tint.empty());
+    // G5b: the badge plate - slice 12 all round, a 4 px bleed, drawn behind a meta-row badge
+    const ableem::ThemeFrame *badge = nullptr;
+    for (const ableem::ThemeFrame &f : frames)
+        if (f.name == "badge")
+            badge = &f;
+    REQUIRE(badge != nullptr);
+    CHECK(badge->image == dir + "/frames/badge.png");
+    CHECK(badge->image2x == dir + "/frames/badge@2x.png");
+    CHECK(badge->slice.left == 12);
+    CHECK(badge->slice.bottom == 12);
+    CHECK(badge->bleed.top == 4);
 }
 
 TEST_CASE("themeImageFile: the @2x next to a theme image above scale 1, else the image itself (G4f)") {
@@ -805,5 +816,5 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
         CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
     }
     CHECK(ableem::resolveThemeIconHalo(dir, dir));   // the halo stays on: it shows under the test colours
-    CHECK(ableem::loadThemeFrames(dir).size() == 8); // the frames are untouched by the block
+    CHECK(ableem::loadThemeFrames(dir).size() == 9); // the frames are untouched by the block
 }
