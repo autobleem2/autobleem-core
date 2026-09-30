@@ -126,7 +126,7 @@ void GuiAbout::drawCredits() {
                                          XALIGN_LEFT);
     };
     centred(fonts[FONT_15_BOLD], Env::productVersion(), rect.y + rect.h + 4, style.secondary);
-    centred(fonts[FONT_15_BOLD], _("This version is brought to you by screemer."),
+    centred(fonts[FONT_15_BOLD], _("This version is brought to you by screemer. The AutoBleem team is back, baby!"),
             rect.y + rect.h + 24, style.secondary);
 
     // the credits as sections - a heading (the launcher's bold) and its names wrapped under it - flowed
