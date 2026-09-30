@@ -307,6 +307,7 @@ falls back to (`resources/evoimg/`), which also shows today's design.
 | `extension` | An extension that ships no icon, in the Extensions list (none built in) | - | 56 x 56 | 112 x 112 | G5c |
 | `battery` | The pad battery's empty outline and nub; the code fills the charge into x 2..24, y 2..11 (`text`, `hint` when low) | code-drawn | 29 x 13 | 58 x 26 | G5l |
 | `play` | Play's glyph (2.10, way B only) | - | 28 x 28 | 56 x 56 | G5j |
+| `storeInstalled` | The Store's "Installed" mark on an installed item's row: at the row's right, vertically centred, 24 px inside the list panel's right edge (decision 16); no icon = a 24 x 24 check drawn in the `edge` colour | code-drawn check | 32 x 32 | 64 x 64 | G5t |
 | `switchOn` / `switchOff` | A yes/no row's value in Options, the editors, the Store, PSC-Bios - only if the owner takes UIREV-10's switch (G5m); without them the rows say ON/OFF | - | 60 x 30 | 120 x 60 | G5m |
 
 ## 4. What the theme already has (images, no G5 code)
