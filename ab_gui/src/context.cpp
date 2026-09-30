@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// abgui::Context: the calls the drawing makes, over the program's providers. See the header.
+//
+#include <ab_gui/context.h>
+
+using namespace std;
+
+namespace abgui {
+
+//*******************************
+// Context::font
+//*******************************
+const ableem::Font &Context::font(FontRole role) const {
+    return fontProvider ? fontProvider(role) : none_;
+}
+
+//*******************************
+// Context::glyph / glyphOutline
+//*******************************
+ableem::Texture Context::glyph(const string &key) const {
+    return glyphProvider ? glyphProvider(key) : ableem::Texture();
+}
+
+ableem::Texture Context::glyphOutline(const string &key) const {
+    return glyphOutlineProvider ? glyphOutlineProvider(key) : ableem::Texture();
+}
+
+//*******************************
+// Context::drawText / textWidth
+//*******************************
+void Context::drawText(const ableem::Font &font, const string &text, int x, int y, const ableem::Color &color) const {
+    if (textDrawer) {
+        textDrawer(font, text, x, y, color);
+        return;
+    }
+    if (font.valid())
+        font.drawColor(*renderer_, x, y, color, text);
+}
+
+int Context::textWidth(const ableem::Font &font, const string &text) const {
+    if (textMeasurer)
+        return textMeasurer(font, text);
+    return font.valid() ? font.width(text) : 0;
+}
+
+//*******************************
+// Context::translate / style
+//*******************************
+string Context::translate(const string &text) const {
+    return translator ? translator(text) : text;
+}
+
+Style Context::style() const {
+    return styleProvider ? styleProvider() : Style();
+}
+
+} // namespace abgui

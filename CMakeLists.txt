@@ -164,8 +164,20 @@ add_library(ab_installer STATIC
         src/code/installer/command_downloader.cpp)
 target_link_libraries(ab_installer ab_core)
 
-# ---- ab_classic: the classic-UI framework (links ab_core + ableem) ---- (only with AB_CORE_UI)
+# ---- ab_gui: the AutoBleem User Interface Library (docs/ab-gui-plan.md) ---- (only with AB_CORE_UI)
+# The look and its primitives (abgui::Style), what they draw with (abgui::Context) - no AutoBleem code (no
+# ab_core/ab_classic) and no SDL: it links the ableem ui library only. Headers as <ab_gui/...>.
 if (AB_CORE_UI)
+add_library(ab_gui STATIC
+        ab_gui/include/ab_gui/context.h
+        ab_gui/include/ab_gui/footer_shorten.h
+        ab_gui/include/ab_gui/style.h
+        ab_gui/src/context.cpp
+        ab_gui/src/style.cpp)
+target_link_libraries(ab_gui ableem)
+target_include_directories(ab_gui PUBLIC ab_gui/include)
+
+# ---- ab_classic: the classic-UI framework (links ab_core + ableem + ab_gui) ---- (only with AB_CORE_UI)
 add_library(ab_classic STATIC
         src/code/app_base.cpp
         src/code/gui/app_audio.cpp
@@ -186,7 +198,7 @@ add_library(ab_classic STATIC
         src/code/gui/panel_style.cpp
         src/code/gui/text_renderer.cpp
         src/code/gui/theme_assets.cpp)
-target_link_libraries(ab_classic ab_core ableem)
+target_link_libraries(ab_classic ab_core ableem ab_gui)
 target_include_directories(ab_classic PUBLIC src/code)
 endif() # AB_CORE_UI
 

@@ -1,480 +1,187 @@
 //
-// PanelStyle: the shared look of the menus and dialogs. See the header.
+// PanelStyle: the shared look of the menus and dialogs - AutoBleem's adapter over abgui::Style. See the header.
 //
 #include "panel_style.h"
-#include "footer_shorten.h"
 #include "gui.h"
-#include "theme_assets.h"
+#include "text_renderer.h"
+
+#include <ab_gui/context.h>
 
 #include <ableem/engine/theme_spec.h>
 
-#include <algorithm>
-#include <cctype>
-#include <cmath>
-#include <functional>
 #include <vector>
 
 using namespace std;
-using ableem::Color;
-using ableem::Rect;
+
+namespace {
+abgui::OptionalColor optionalColor(const ableem::ThemeColor &color) {
+    return color.set ? abgui::OptionalColor(TextRenderer::toColor(color, 255)) : abgui::OptionalColor();
+}
+
+abgui::RoleColor role(const ableem::ThemeColorRole &themeRole) {
+    abgui::RoleColor r;
+    r.color = optionalColor(themeRole.color);
+    r.ref = themeRole.ref;
+    return r;
+}
+
+vector<abgui::HintItem> toStyleHints(const vector<PanelStyle::HintItem> &hints) {
+    vector<abgui::HintItem> out;
+    out.reserve(hints.size());
+    for (const PanelStyle::HintItem &h : hints)
+        out.push_back({h.icons, h.label});
+    return out;
+}
+} // namespace
+
+//*******************************
+// PanelStyle::colorRoles / styleFromTheme / fromTheme
+//*******************************
+abgui::ColorRoles PanelStyle::colorRoles(const ableem::LauncherTheme &theme) {
+    const ableem::LauncherTheme::Colors &c = theme.colors;
+    abgui::ColorRoles roles;
+    roles.text = optionalColor(c.text);
+    roles.secondary = optionalColor(c.secondary);
+    roles.hint = optionalColor(c.hint);
+    roles.selection = optionalColor(c.selection);
+    roles.row = role(c.row);
+    roles.rowSelected = role(c.rowSelected);
+    roles.heading = role(c.heading);
+    roles.value = role(c.value);
+    roles.description = role(c.description);
+    roles.footer = role(c.footer);
+    roles.selectionBand = role(c.selectionBand);
+    roles.edge = role(c.edge);
+    return roles;
+}
+
+abgui::Style PanelStyle::styleFromTheme(const ableem::LauncherTheme &theme) {
+    abgui::Style s = abgui::Style::fromColors(colorRoles(theme));
+    s.textShadow = !theme.textShadow.set || theme.textShadow;
+    return s;
+}
+
+PanelStyle PanelStyle::fromTheme(const ableem::LauncherTheme &theme) {
+    return fromStyle(styleFromTheme(theme));
+}
+
+//*******************************
+// PanelStyle::style / fromStyle
+//*******************************
+abgui::Style PanelStyle::style() const {
+    abgui::Style s;
+    s.text = text;
+    s.secondary = secondary;
+    s.hint = hint;
+    s.textShadow = textShadow;
+    s.row = row;
+    s.rowSelected = rowSelected;
+    s.heading = heading;
+    s.value = value;
+    s.description = description;
+    s.footerText = footerText;
+    s.selectionBand = selectionBand;
+    s.edge = edge;
+    return s;
+}
+
+PanelStyle PanelStyle::fromStyle(const abgui::Style &s) {
+    PanelStyle p;
+    p.text = s.text;
+    p.secondary = s.secondary;
+    p.hint = s.hint;
+    p.textShadow = s.textShadow;
+    p.row = s.row;
+    p.rowSelected = s.rowSelected;
+    p.heading = s.heading;
+    p.value = s.value;
+    p.description = s.description;
+    p.footerText = s.footerText;
+    p.selectionBand = s.selectionBand;
+    p.edge = s.edge;
+    return p;
+}
 
 //*******************************
 // PanelStyle::outlineOf
 //*******************************
 ableem::Texture PanelStyle::outlineOf(ableem::Renderer &renderer, const ableem::Image &image) {
-    if (!image.valid())
-        return ableem::Texture();
-    const ableem::Size s = image.size();
-    const int w = s.w + 5, h = s.h + 5;
-    vector<float> shape(static_cast<size_t>(w * h), 0.0f);
-    for (int y = 0; y < s.h; y++)
-        for (int x = 0; x < s.w; x++)
-            shape[static_cast<size_t>((y + 2) * w + x + 2)] = image.pixel(x, y).a / 255.0f;
-
-    static const int offsets[9][2] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}, {2, 2}};
-    const float passAlpha = 150.0f / 255.0f;
-    ableem::Texture tex = ableem::Texture::createStreaming(renderer, w, h);
-    if (!tex.valid())
-        return tex;
-    tex.setBlendMode(ableem::BlendMode::Blend);
-    {
-        ableem::PixelLock px = tex.lock();
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++) {
-                float clear = 1.0f;
-                for (const auto &o : offsets) {
-                    const int sx = x - o[0], sy = y - o[1];
-                    if (sx >= 0 && sy >= 0 && sx < w && sy < h)
-                        clear *= 1.0f - passAlpha * shape[static_cast<size_t>(sy * w + sx)];
-                }
-                px.set(x, y, ableem::Color(0, 0, 0, static_cast<unsigned char>(std::lround((1.0f - clear) * 255))));
-            }
-    }
-    return tex;
+    return abgui::Style::outlineOf(renderer, image);
 }
 
 //*******************************
-// PanelStyle::fromTheme
-//*******************************
-PanelStyle PanelStyle::fromTheme(const ableem::LauncherTheme &theme) {
-    PanelStyle s;
-    if (theme.colors.text.set)
-        s.text = TextRenderer::toColor(theme.colors.text, 255);
-    if (theme.colors.secondary.set)
-        s.secondary = TextRenderer::toColor(theme.colors.secondary, 255);
-    s.hint = theme.colors.hint.set ? TextRenderer::toColor(theme.colors.hint, 255) : s.secondary;
-    s.textShadow = !theme.textShadow.set || theme.textShadow;
-
-    // the roles: each one's colour, or the colour it names, or its fallback - resolved by name so a role may
-    // name another role ("value": "row"); a chain longer than the roles themselves is a loop, cut to text
-    using Field = ableem::ThemeColorRole ableem::LauncherTheme::Colors::*;
-    struct Def {
-        const char *key;
-        Field field;
-        const char *fallback;
-        Color PanelStyle::*out;
-    };
-    static const Def defs[] = {
-        {"row", &ableem::LauncherTheme::Colors::row, "secondary", &PanelStyle::row},
-        {"rowSelected", &ableem::LauncherTheme::Colors::rowSelected, "text", &PanelStyle::rowSelected},
-        {"heading", &ableem::LauncherTheme::Colors::heading, "secondary", &PanelStyle::heading},
-        {"value", &ableem::LauncherTheme::Colors::value, "row", &PanelStyle::value},
-        {"description", &ableem::LauncherTheme::Colors::description, "secondary", &PanelStyle::description},
-        {"footer", &ableem::LauncherTheme::Colors::footer, "text", &PanelStyle::footerText},
-        {"selectionBand", &ableem::LauncherTheme::Colors::selectionBand, "text", &PanelStyle::selectionBand},
-        {"edge", &ableem::LauncherTheme::Colors::edge, "secondary", &PanelStyle::edge},
-    };
-    const int count = static_cast<int>(sizeof(defs) / sizeof(defs[0]));
-    auto known = [&](const string &name) {
-        if (name == "text" || name == "secondary" || name == "hint" || name == "selection")
-            return true;
-        for (const Def &d : defs)
-            if (name == d.key)
-                return true;
-        return false;
-    };
-    std::function<Color(const string &, int)> byName = [&](const string &name, int depth) -> Color {
-        if (depth > count)
-            return s.text;
-        if (name == "text")
-            return s.text;
-        if (name == "secondary")
-            return s.secondary;
-        if (name == "hint")
-            return s.hint;
-        if (name == "selection")
-            return theme.colors.selection.set ? TextRenderer::toColor(theme.colors.selection, 255) : s.text;
-        for (const Def &d : defs) {
-            if (name != d.key)
-                continue;
-            const ableem::ThemeColorRole &role = theme.colors.*(d.field);
-            if (role.color.set)
-                return TextRenderer::toColor(role.color, 255);
-            if (!role.ref.empty() && role.ref != name && known(role.ref)) // a misspelt name counts as unset
-                return byName(role.ref, depth + 1);
-            return byName(d.fallback, depth + 1);
-        }
-        return s.text;
-    };
-    for (const Def &d : defs)
-        s.*(d.out) = byName(d.key, 0);
-    return s;
-}
-
-//*******************************
-// PanelStyle::dim
+// the primitives: forwarded to abgui::Style
 //*******************************
 void PanelStyle::dim(ableem::Renderer &renderer) const {
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(0, 0, 0, 110));
-    renderer.fillRect();
+    style().dim(renderer);
 }
 
-//*******************************
-// PanelStyle::sheet
-//*******************************
-void PanelStyle::sheet(ableem::Renderer &renderer, const Rect &panel) const {
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(0, 0, 0, 200));
-    renderer.fillRect(panel);
-    renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 160));
-    renderer.drawRect(panel);
+void PanelStyle::sheet(ableem::Renderer &renderer, const ableem::Rect &panel) const {
+    style().sheet(renderer, panel);
 }
 
-//*******************************
-// PanelStyle::rule
-//*******************************
-void PanelStyle::rule(ableem::Renderer &renderer, const Rect &panel, int y) const {
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 160));
-    renderer.fillRect(Rect(panel.x + RowInset, y, panel.w - 2 * RowInset, 1));
+void PanelStyle::rule(ableem::Renderer &renderer, const ableem::Rect &panel, int y) const {
+    style().rule(renderer, panel, y);
 }
 
-//*******************************
-// PanelStyle::header
-//*******************************
-int PanelStyle::header(Gui &gui, const Rect &panel, const string &title) const {
-    gui.text().renderText_WithColor(gui.assets().themeFonts[FONT_28_BOLD], title, panel.x + RowInset, panel.y + 18,
-                                    text, XALIGN_LEFT);
-    rule(gui.renderer(), panel, panel.y + HeaderHeight - 8);
-    return panel.y + HeaderHeight;
+int PanelStyle::header(Gui &gui, const ableem::Rect &panel, const string &title) const {
+    return style().header(gui.uiContext(), panel, title);
 }
 
-//*******************************
-// PanelStyle::selection
-//*******************************
-void PanelStyle::selection(ableem::Renderer &renderer, const Rect &rect) const {
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(selectionBand.r, selectionBand.g, selectionBand.b, 38));
-    renderer.fillRect(rect);
-    renderer.setDrawColor(selectionBand);
-    renderer.fillRect(Rect(rect.x, rect.y, SelectionBar, rect.h));
+void PanelStyle::selection(ableem::Renderer &renderer, const ableem::Rect &rect) const {
+    style().selection(renderer, rect);
 }
 
-//*******************************
-// PanelStyle::label
-//*******************************
-void PanelStyle::label(ableem::Renderer &renderer, const Rect &rect) const {
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 70));
-    renderer.fillRect(rect);
+void PanelStyle::label(ableem::Renderer &renderer, const ableem::Rect &rect) const {
+    style().label(renderer, rect);
 }
 
-//*******************************
-// PanelStyle::disabled
-//*******************************
-void PanelStyle::disabled(ableem::Renderer &renderer, const Rect &rect) const {
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(0, 0, 0, 150));
-    renderer.fillRect(rect);
+void PanelStyle::disabled(ableem::Renderer &renderer, const ableem::Rect &rect) const {
+    style().disabled(renderer, rect);
 }
 
-//*******************************
-// PanelStyle::scrollMarker
-//*******************************
 void PanelStyle::scrollMarker(ableem::Renderer &renderer, int cx, int cy, int direction) const {
-    // the point at cy, the rows widening away from it: an up marker grows downwards (it drew upside down
-    // until 2026-09-24 - the point sat at the far end)
-    renderer.setDrawColor(text);
-    for (int i = 0; i < 5; i++)
-        renderer.fillRect(Rect(cx - i, cy - direction * i, 2 * i + 1, 1));
+    style().scrollMarker(renderer, cx, cy, direction);
 }
 
 //*******************************
-// PanelStyle::parseHints
+// PanelStyle::parseHints / footer
 //*******************************
 vector<PanelStyle::HintItem> PanelStyle::parseHints(const string &line, string &status) {
-    auto trim = [](string s) {
-        // spaces and the "|" separators the old lines carried
-        const string junk = " |\t";
-        size_t a = s.find_first_not_of(junk);
-        size_t b = s.find_last_not_of(junk);
-        return a == string::npos ? string() : s.substr(a, b - a + 1);
-    };
     vector<HintItem> items;
-    vector<string> pendingIcons; // icons whose text was only a separator: they belong to the next hint
-    size_t pos = line.find("|@");
-    status = trim(line.substr(0, pos == string::npos ? line.size() : pos));
-    while (pos != string::npos) {
-        size_t end = line.find('|', pos + 2);
-        if (end == string::npos)
-            break;
-        string icon = line.substr(pos + 2, end - pos - 2);
-        size_t next = line.find("|@", end + 1);
-        string text = line.substr(end + 1, next == string::npos ? string::npos : next - end - 1);
-        string label = trim(text);
-        pendingIcons.push_back(icon);
-        if (label.empty() || label == "/") {
-            pos = next;
-            continue;
-        }
-        items.push_back({pendingIcons, label});
-        pendingIcons.clear();
-        pos = next;
-    }
-    if (!pendingIcons.empty())
-        items.push_back({pendingIcons, ""});
+    for (const abgui::HintItem &h : abgui::Style::parseHints(line, status))
+        items.push_back({h.icons, h.label});
     return items;
+}
+
+void PanelStyle::footer(Gui &gui, const ableem::Rect &footerRect, const vector<HintItem> &hints, const string &status,
+                        bool withRule) const {
+    style().footer(gui.uiContext(), footerRect, toStyleHints(hints), status, withRule);
+}
+
+void PanelStyle::footer(Gui &gui, const ableem::Rect &footerRect, const string &line, bool withRule) const {
+    style().footer(gui.uiContext(), footerRect, line, withRule);
 }
 
 //*******************************
 // PanelStyle::button / buttons
 //*******************************
-// the face buttons' images: the launcher's hint icons for X/O/T (the theme's buttons when a theme has
-// none), the theme's square, the launcher's own d-pad arrows (evoimg/dpad_*.png - ours, not the theme's,
-// so every theme's hint line gets the same four); an invalid texture for every other key, which is drawn
-// as a chip
-static ableem::Texture faceIcon(ThemeAssets &assets, const string &key) {
-    if (key == "X")
-        return assets.hintCross.valid() ? assets.hintCross : assets.buttonTextureMap["X"];
-    if (key == "O")
-        return assets.hintCircle.valid() ? assets.hintCircle : assets.buttonTextureMap["O"];
-    if (key == "T")
-        return assets.hintTriangle.valid() ? assets.hintTriangle : assets.buttonTextureMap["T"];
-    if (key == "S")
-        return assets.buttonTextureMap["S"];
-    if (key == "Up")
-        return assets.dpadUp;
-    if (key == "Down")
-        return assets.dpadDown;
-    if (key == "Left")
-        return assets.dpadLeft;
-    if (key == "Right")
-        return assets.dpadRight;
-    return ableem::Texture();
-}
-
-// faceIcon's outline (UIREV-2): only the launcher's own d-pad arrows need one - X/O/T/S already carry the
-// theme's own art and read fine on every theme's hint bar
-static ableem::Texture faceIconOutline(ThemeAssets &assets, const string &key) {
-    if (key == "Up")
-        return assets.dpadUpOutline;
-    if (key == "Down")
-        return assets.dpadDownOutline;
-    if (key == "Left")
-        return assets.dpadLeftOutline;
-    if (key == "Right")
-        return assets.dpadRightOutline;
-    return ableem::Texture();
-}
-
 int PanelStyle::button(Gui &gui, const string &key, int x, int y, int height) const {
-    ThemeAssets &assets = gui.assets();
-    ableem::Texture icon = faceIcon(assets, key);
-    if (icon.valid()) {
-        ableem::Size s = icon.size();
-        Rect dst(x, y + (height - s.h) / 2, s.w, s.h);
-        ableem::Texture outline = faceIconOutline(assets, key);
-        if (outline.valid()) {
-            Rect outlineDst(dst.x - 2, dst.y - 2, s.w + 5, s.h + 5);
-            gui.renderer().copy(outline, nullptr, &outlineDst);
-        }
-        gui.renderer().copy(icon, nullptr, &dst);
-        return s.w;
-    }
-    // a chip: the name in capitals, a box around it
-    string name = key;
-    for (char &c : name)
-        c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-    const ableem::Font &font = assets.themeFonts[FONT_15_BOLD];
-    const int tw = gui.text().textWidth(font, name);
-    const int chipH = height - 6;
-    const int chipW = tw + 14;
-    Rect chip(x, y + (height - chipH) / 2, chipW, chipH);
-    ableem::Renderer &renderer = gui.renderer();
-    renderer.setBlendMode(ableem::BlendMode::Blend);
-    renderer.setDrawColor(Color(255, 255, 255, 24));
-    renderer.fillRect(chip);
-    renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 200));
-    renderer.drawRect(chip);
-    gui.text().renderText_WithColor(font, name, chip.x + 7, chip.y + (chipH - font.lineHeight()) / 2, text,
-                                    XALIGN_LEFT);
-    return chipW;
+    return style().button(gui.uiContext(), key, x, y, height);
 }
 
 int PanelStyle::buttonWidth(Gui &gui, const string &key, int height) const {
-    ThemeAssets &assets = gui.assets();
-    ableem::Texture icon = faceIcon(assets, key);
-    if (icon.valid())
-        return icon.size().w;
-    (void)height;
-    string name = key;
-    for (char &c : name)
-        c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-    return gui.text().textWidth(assets.themeFonts[FONT_15_BOLD], name) + 14;
+    return style().buttonWidth(gui.uiContext(), key, height);
 }
 
 int PanelStyle::buttons(Gui &gui, const string &markers, int x, int y, int height) const {
-    return layoutButtons(gui, markers, x, y, height, true);
+    return style().buttons(gui.uiContext(), markers, x, y, height);
 }
 
 int PanelStyle::buttonsWidth(Gui &gui, const string &markers, int height) const {
-    return layoutButtons(gui, markers, 0, 0, height, false);
+    return style().buttonsWidth(gui.uiContext(), markers, height);
 }
 
 int PanelStyle::layoutButtons(Gui &gui, const string &markers, int x, int y, int height, bool draw) const {
-    const ableem::Font &font = gui.assets().themeFonts[FONT_20_BOLD];
-    const int startX = x;
-    size_t pos = 0;
-    while (pos < markers.size()) {
-        size_t open = markers.find("|@", pos);
-        // the text before the marker (a "/", a "+", or a plain word like RESET)
-        string plain = markers.substr(pos, open == string::npos ? string::npos : open - pos);
-        size_t a = plain.find_first_not_of(' ');
-        if (a != string::npos) {
-            plain = plain.substr(a, plain.find_last_not_of(' ') - a + 1);
-            if (plain == "/" || plain == "+") {
-                if (draw)
-                    gui.text().renderText_WithColor(font, plain, x + 6, y + (height - font.lineHeight()) / 2, secondary,
-                                                    XALIGN_LEFT);
-                x += gui.text().textWidth(font, plain) + 12;
-            } else {
-                x += (draw ? button(gui, plain, x, y, height) : buttonWidth(gui, plain, height)) + 6;
-            }
-        }
-        if (open == string::npos)
-            break;
-        size_t close = markers.find('|', open + 2);
-        if (close == string::npos)
-            break;
-        const string key = markers.substr(open + 2, close - open - 2);
-        x += (draw ? button(gui, key, x, y, height) : buttonWidth(gui, key, height)) + 6;
-        pos = close + 1;
-    }
-    return x - startX;
-}
-
-//*******************************
-// PanelStyle::footer
-//*******************************
-namespace {
-// the shared order of the footer's hints, by the hint's first button
-int buttonRank(const string &icon) {
-    static const char *order[] = {"X", "O", "T", "S", "Start", "Select", "L1", "R1", "L2", "R2", "Enter", "Esc", "Tab"};
-    for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); i++)
-        if (icon == order[i])
-            return static_cast<int>(i);
-    return 100;
-}
-} // namespace
-
-void PanelStyle::footer(Gui &gui, const Rect &footer, const vector<HintItem> &given, const string &status,
-                        bool withRule) const {
-    if (withRule)
-        rule(gui.renderer(), footer, footer.y);
-    vector<HintItem> hints = given;
-    stable_sort(hints.begin(), hints.end(), [](const HintItem &a, const HintItem &b) {
-        return buttonRank(a.icons.empty() ? "" : a.icons[0]) < buttonRank(b.icons.empty() ? "" : b.icons[0]);
-    });
-    ThemeAssets &assets = gui.assets();
-    TextRenderer &text = gui.text();
-    const int iconH = 30;
-    const int y = footer.y + 14;
-    const int IconOnlyGap = 16; // between hints once labels are dropped (C1: no fallback after FONT_15_BOLD)
-    // what a button takes: a face button its 30 px image, a named one its chip
-    auto buttonWidth = [&](const string &key) {
-        if (key == "X" || key == "O" || key == "T" || key == "S")
-            return 30;
-        string name = key;
-        for (char &c : name)
-            c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-        return text.textWidth(assets.themeFonts[FONT_15_BOLD], name) + 14;
-    };
-    // the status at the right edge, in the secondary colour; the hints get what is left
-    int right = footer.x + footer.w - RowInset;
-    const ableem::Font &statusFont = assets.themeFonts[FONT_22_MED];
-    if (!status.empty()) {
-        const int w = text.textWidth(statusFont, status);
-        text.renderText_WithColor(statusFont, status, right - w, y, description, XALIGN_LEFT);
-        right -= w + 36;
-    }
-    // the largest font the hints fit in, then the gap between them; `iconsOnly` drops every hint's own label
-    // (not the button chip's own text, e.g. "L2" - only h.label) once even the smallest font does not fit,
-    // so a hint is never drawn past `room` - see the fallback below
-    const int room = right - (footer.x + RowInset);
-    auto widthAt = [&](const ableem::Font &font, int gap, bool iconsOnly) {
-        int w = 0;
-        for (const HintItem &h : hints) {
-            for (const string &icon : h.icons)
-                w += buttonWidth(icon) + 6;
-            w += iconsOnly ? gap : 2 + text.textWidth(font, h.label) + gap;
-        }
-        return w - gap;
-    };
-    ableem::Font font = assets.themeFonts[FONT_22_MED];
-    int gap = 36;
-    bool iconsOnly = false;
-    if (widthAt(font, gap, false) > room) {
-        gap = 22;
-        if (widthAt(font, gap, false) > room) {
-            font = assets.themeFonts[FONT_20_BOLD];
-            if (widthAt(font, gap, false) > room) {
-                font = assets.themeFonts[FONT_15_BOLD];
-                if (widthAt(font, gap, false) > room) {
-                    // even the smallest font's labels do not fit: cut the labels ("Back" -> "B..", the longest
-                    // first) and only when even the shortest do not fit, icons only - they are fixed width, so
-                    // that always fits unless there are too many hints for even bare icons, which is outside
-                    // this fallback's job (UIREV-3) and is left to clip as before
-                    vector<string> labels;
-                    for (const HintItem &h : hints)
-                        labels.push_back(h.label);
-                    auto measureLabels = [&](const vector<string> &l) {
-                        vector<HintItem> cut = hints;
-                        for (size_t i = 0; i < cut.size(); i++)
-                            cut[i].label = l[i];
-                        hints.swap(cut);
-                        const int w = widthAt(font, gap, false);
-                        hints.swap(cut);
-                        return w;
-                    };
-                    if (ableem::shortenFooterLabels(labels, room, measureLabels)) {
-                        for (size_t i = 0; i < hints.size(); i++)
-                            hints[i].label = labels[i];
-                    } else {
-                        iconsOnly = true;
-                        gap = IconOnlyGap;
-                    }
-                }
-            }
-        }
-    }
-    const int fontH = font.lineHeight();
-    int x = footer.x + RowInset;
-    for (const HintItem &h : hints) {
-        for (const string &key : h.icons)
-            x += button(gui, key, x, y, iconH) + 6;
-        if (iconsOnly) {
-            x += gap;
-        } else {
-            x += 2;
-            text.renderText_WithColor(font, h.label, x, y + (iconH - fontH) / 2, footerText, XALIGN_LEFT);
-            x += text.textWidth(font, h.label) + gap;
-        }
-    }
-}
-
-void PanelStyle::footer(Gui &gui, const Rect &footerRect, const string &line, bool withRule) const {
-    string status;
-    vector<HintItem> items = parseHints(line, status);
-    footer(gui, footerRect, items, status, withRule);
+    return draw ? buttons(gui, markers, x, y, height) : buttonsWidth(gui, markers, height);
 }

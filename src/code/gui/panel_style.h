@@ -5,7 +5,15 @@
 // footer. The L2+R2 system menu and the update screens drew it first (2026-09); the classic screens took it
 // on 2026-09-21 through Gui::renderTextBar/renderHeader/renderStatus and TextRenderer::renderSelectionBox.
 //
+// Since G2 (docs/ab-gui-plan.md) the look itself is ab_gui's abgui::Style and PanelStyle is AutoBleem's thin
+// adapter over it: the same public API as before (the extensions call it), the theme's launcher.colors turned
+// into Style's colour roles, and every drawing call forwarded to Style with the abgui::Context that Gui owns
+// (Gui::uiContext()). Its data layout is unchanged on purpose - an extension holds a PanelStyle by value -
+// so it copies its colours into a Style per call instead of deriving from one; that goes at the next ABI bump.
+//
 #pragma once
+
+#include <ab_gui/style.h>
 
 #include <ableem/ui/renderer.h>
 #include <ableem/ui/texture.h>
@@ -22,17 +30,24 @@ class ThemeAssets;
 
 class PanelStyle {
 public:
-    // the geometry the system menu set
-    static const int HeaderHeight = 74; // the title's band, the rule 8 px above its end
-    static const int FooterHeight = 54; // the hints' band
-    static const int RowHeight = 60;    // a title-and-description row
-    static const int RowInset = 24;     // the text from the panel's edge
-    static const int Margin = 40;       // the panel from the screen's edge
-    static const int SelectionBar = 5;  // the bar at the selected row's left edge
+    // the geometry the system menu set - abgui::Style's defaults
+    static const int HeaderHeight = abgui::Style::DefaultHeaderHeight; // the title's band, the rule 8 px above its end
+    static const int FooterHeight = abgui::Style::DefaultFooterHeight; // the hints' band
+    static const int RowHeight = abgui::Style::DefaultRowHeight;       // a title-and-description row
+    static const int RowInset = abgui::Style::DefaultRowInset;         // the text from the panel's edge
+    static const int Margin = abgui::Style::DefaultMargin;             // the panel from the screen's edge
+    static const int SelectionBar = abgui::Style::DefaultSelectionBar; // the bar at the selected row's left edge
 
     // the launcher theme's colours, resolved the way GuiLauncher resolves them (white / grey where the theme
     // says nothing, the hint colour falling back to the secondary one)
     static PanelStyle fromTheme(const ableem::LauncherTheme &theme);
+    // the same as ab_gui's types: the theme's launcher.colors as Style's colour roles, and the Style built from
+    // them (textShadow from launcher.textShadow) - what Gui's abgui::Context hands its widgets
+    static abgui::ColorRoles colorRoles(const ableem::LauncherTheme &theme);
+    static abgui::Style styleFromTheme(const ableem::LauncherTheme &theme);
+    // this PanelStyle's colours in a Style with today's metrics, and back
+    abgui::Style style() const;
+    static PanelStyle fromStyle(const abgui::Style &style);
 
     ableem::Color text{255, 255, 255, 255};
     ableem::Color secondary{100, 100, 100, 255};

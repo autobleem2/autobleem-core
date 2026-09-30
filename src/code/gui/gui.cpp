@@ -90,11 +90,82 @@ string Gui::windowTitle_ = "AutoBleem";
 Gui::Gui()
     : ableem::GuiBase(windowTitle_, ScreenWidth, ScreenHeight, outputScale(), multisampleSamples(), fullscreen()),
       assets_(renderer(), AppBase::get().theme(), AppBase::get().config()),
-      text_(renderer(), AppBase::get().theme(), assets_.themeFont, assets_.buttonTextureMap) {
+      text_(renderer(), AppBase::get().theme(), assets_.themeFont, assets_.buttonTextureMap), uiContext_(renderer()) {
+    wireUiContext();
     // the pad mappings the launcher and the pscbios wizard share; probePads() reads the first that exists
     input().loadMappings(Env::padMappingFiles());
     input().probePads();
     renderer().setPerfOverlay(AppBase::get().config().inifile.values["perfoverlay"] == "true");
+}
+
+//********************
+// Gui::wireUiContext
+//********************
+// the face buttons' images: the launcher's hint icons for X/O/T (the theme's buttons when a theme has none),
+// the theme's square, the launcher's own d-pad arrows (evoimg/dpad_*.png - ours, not the theme's, so every
+// theme's hint line gets the same four); an invalid texture for every other key, which Style draws as a chip
+static Texture faceIcon(ThemeAssets &assets, const string &key) {
+    if (key == "X")
+        return assets.hintCross.valid() ? assets.hintCross : assets.buttonTextureMap["X"];
+    if (key == "O")
+        return assets.hintCircle.valid() ? assets.hintCircle : assets.buttonTextureMap["O"];
+    if (key == "T")
+        return assets.hintTriangle.valid() ? assets.hintTriangle : assets.buttonTextureMap["T"];
+    if (key == "S")
+        return assets.buttonTextureMap["S"];
+    if (key == "Up")
+        return assets.dpadUp;
+    if (key == "Down")
+        return assets.dpadDown;
+    if (key == "Left")
+        return assets.dpadLeft;
+    if (key == "Right")
+        return assets.dpadRight;
+    return Texture();
+}
+
+// faceIcon's outline (UIREV-2): only the launcher's own d-pad arrows need one - X/O/T/S already carry the
+// theme's own art and read fine on every theme's hint bar
+static Texture faceIconOutline(ThemeAssets &assets, const string &key) {
+    if (key == "Up")
+        return assets.dpadUpOutline;
+    if (key == "Down")
+        return assets.dpadDownOutline;
+    if (key == "Left")
+        return assets.dpadLeftOutline;
+    if (key == "Right")
+        return assets.dpadRightOutline;
+    return Texture();
+}
+
+// every provider reads assets_/text_/the theme when it is called, never before: the fonts and textures are
+// replaced on a theme load and dropped while a game has the display
+void Gui::wireUiContext() {
+    uiContext_.fontProvider = [this](abgui::FontRole role) -> const ableem::Font & {
+        switch (role) {
+        case abgui::FontRole::Title:
+            return assets_.themeFonts[FONT_28_BOLD];
+        case abgui::FontRole::Row:
+            return assets_.themeFonts[FONT_22_MED];
+        case abgui::FontRole::RowSmall:
+            return assets_.themeFonts[FONT_20_BOLD];
+        case abgui::FontRole::Small:
+            return assets_.themeFonts[FONT_15_BOLD];
+        case abgui::FontRole::Classic:
+            return assets_.themeFont;
+        }
+        return assets_.themeFonts[FONT_22_MED];
+    };
+    uiContext_.glyphProvider = [this](const string &key) { return faceIcon(assets_, key); };
+    uiContext_.glyphOutlineProvider = [this](const string &key) { return faceIconOutline(assets_, key); };
+    uiContext_.textDrawer = [this](const ableem::Font &font, const string &line, int x, int y, const Color &color) {
+        text_.renderText_WithColor(font, line, x, y, color, XALIGN_LEFT);
+    };
+    uiContext_.textMeasurer = [this](const ableem::Font &font, const string &line) {
+        return text_.textWidth(font, line);
+    };
+    uiContext_.translator = [](const string &line) { return ableem::translate(line); };
+    uiContext_.styleProvider = []() { return PanelStyle::styleFromTheme(AppBase::get().theme().launcher()); };
 }
 
 //*******************************

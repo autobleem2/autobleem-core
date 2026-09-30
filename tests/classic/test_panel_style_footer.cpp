@@ -1,18 +1,18 @@
 //
-// PanelStyle::footer() (panel_style.cpp ~356-399) - UIREV-3: the largest-font-that-fits fallback (FONT_22_MED
-// gap 36 -> gap 22 -> FONT_20_BOLD -> FONT_15_BOLD) never checked whether even the smallest font still fit,
-// so a footer whose hints stayed too wide at FONT_15_BOLD just drew past `right` and overlapped whatever sat
-// there - the counter, on the German Memory Cards screen (C1 High, !autobleem\out\ui-review\report.md:80:
-// "footer runs under the counter ('Seite' under 'Karte 1/3')"). The fix adds one more step: when
-// FONT_15_BOLD/gap 22 still does not fit, drop every hint's own label (not a button chip's own text such as
-// "L2" - see the header's comment on HintItem) and draw icons alone, which are fixed width and so always fit
+// PanelStyle::footer() (abgui::Style::footer since G2, ab_gui/src/style.cpp) - UIREV-3: the largest-font-that-
+// fits fallback (FONT_22_MED gap 36 -> gap 22 -> FONT_20_BOLD -> FONT_15_BOLD) never checked whether even the
+// smallest font still fit, so a footer whose hints stayed too wide at FONT_15_BOLD just drew past `right` and
+// overlapped whatever sat there - the counter, on the German Memory Cards screen (C1 High,
+// !autobleem\out\ui-review\report.md:80: "footer runs under the counter ('Seite' under 'Karte 1/3')"). The fix adds one
+// more step: when FONT_15_BOLD/gap 22 still does not fit, drop every hint's own label (not a button chip's own text
+// such as "L2" - see the header's comment on HintItem) and draw icons alone, which are fixed width and so always fit
 // (short of a pathological hint list for even bare icons, left to clip as before - out of this task's scope).
 //
 // PanelStyle::footer() is not header-only (unlike GuiMenuBase, see test_menu_base_navigation.cpp) - it needs
 // a live Gui/ThemeAssets/TextRenderer with real loaded theme fonts to measure text width, which needs an
 // AppBase over a real theme/resources tree this repository does not ship (autobleem-core is the library, not
 // the launcher). So, the same way test_menu_base_navigation.cpp does for GuiMenuBase's selection math, this
-// suite drives a small local model of widthAt()'s formula (mirrored line for line from panel_style.cpp,
+// suite drives a small local model of widthAt()'s formula (mirrored line for line from ab_gui/src/style.cpp,
 // including the button-chip-width and icons-only branches) instead of a real PanelStyle/Gui.
 //
 // The one thing a local model cannot give us is real glyph metrics, so `charWidth(fontPx)` below is a
@@ -29,7 +29,7 @@
 //
 #include "doctest/doctest.h"
 
-#include "gui/footer_shorten.h"
+#include <ab_gui/footer_shorten.h>
 
 #include <algorithm>
 #include <cctype>
@@ -46,7 +46,7 @@ struct HintItem {
     string label;
 };
 
-// mirrors panel_style.cpp's file-local buttonRank()
+// mirrors ab_gui/src/style.cpp's file-local buttonRank()
 int buttonRank(const string &icon) {
     static const char *order[] = {"X", "O", "T", "S", "Start", "Select", "L1", "R1", "L2", "R2", "Enter", "Esc", "Tab"};
     for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); i++)
@@ -73,7 +73,7 @@ int textWidth(int fontPx, const string &s) {
     return static_cast<int>(utf8Length(s)) * charWidth(fontPx);
 }
 
-// mirrors panel_style.cpp's footer() local buttonWidth lambda: a face button (X/O/T/S) is the fixed 30 px
+// mirrors ab_gui/src/style.cpp's footer() local buttonWidth lambda: a face button (X/O/T/S) is the fixed 30 px
 // icon, a named one (L2, R2, ...) is a chip - its uppercased name at FONT_15_BOLD (15 px) plus 14 px padding
 const int Font15 = 15, Font20 = 20, Font22 = 22;
 int buttonWidth(const string &key) {
@@ -88,7 +88,7 @@ int buttonWidth(const string &key) {
 // mirrors the fixed footer() panel geometry: RowInset (24), the 36 px gap after the status text
 const int RowInset = 24;
 
-// mirrors panel_style.cpp's widthAt() lambda, `font` given as its point size
+// mirrors ab_gui/src/style.cpp's widthAt() lambda, `font` given as its point size
 int widthAt(const vector<HintItem> &hints, int fontPx, int gap, bool iconsOnly) {
     int w = 0;
     for (const HintItem &h : hints) {
@@ -107,7 +107,7 @@ struct FooterPlan {
     bool iconsOnly;
     vector<string> labels; // the labels as drawn (cut when the shortening step was needed)
 };
-const int IconOnlyGap = 16; // matches the fix's panel_style.cpp constant
+const int IconOnlyGap = 16; // matches the fix's ab_gui/src/style.cpp constant
 
 FooterPlan planFooter(const vector<HintItem> &hints, int room) {
     int fontPx = Font22, gap = 36;
@@ -128,7 +128,7 @@ FooterPlan planFooter(const vector<HintItem> &hints, int room) {
                             cut[i].label = l[i];
                         return widthAt(cut, Font15, gap, false);
                     };
-                    if (ableem::shortenFooterLabels(labels, room, measure))
+                    if (abgui::shortenFooterLabels(labels, room, measure))
                         return FooterPlan{Font15, gap, false, labels};
                     return FooterPlan{0, IconOnlyGap, true, {}};
                 }
@@ -276,13 +276,13 @@ int simpleMeasure(const vector<string> &labels) {
 
 TEST_CASE("shortenFooterLabels: fits -> unchanged") {
     vector<string> labels = {"Play", "Back"};
-    CHECK(ableem::shortenFooterLabels(labels, 100, simpleMeasure));
+    CHECK(abgui::shortenFooterLabels(labels, 100, simpleMeasure));
     CHECK(labels == vector<string>{"Play", "Back"});
 }
 
 TEST_CASE("shortenFooterLabels: slightly too wide -> only the longest label is cut, ending in ..") {
     vector<string> labels = {"Play", "Delete game"}; // 14 + 21 = 35
-    CHECK(ableem::shortenFooterLabels(labels, 34, simpleMeasure));
+    CHECK(abgui::shortenFooterLabels(labels, 34, simpleMeasure));
     CHECK(labels[0] == "Play");
     CHECK(labels[1] == "Delete g.."); // one cut: 8 letters + 2 dots = 10 (was 11)
     CHECK(simpleMeasure(labels) == 34);
@@ -290,7 +290,7 @@ TEST_CASE("shortenFooterLabels: slightly too wide -> only the longest label is c
 
 TEST_CASE("shortenFooterLabels: cuts go to the longest as it is now, and stop at once when it fits") {
     vector<string> labels = {"Rename", "Delete game"}; // 16 + 21 = 37
-    CHECK(ableem::shortenFooterLabels(labels, 33, simpleMeasure));
+    CHECK(abgui::shortenFooterLabels(labels, 33, simpleMeasure));
     CHECK(labels[0] == "Rename");
     CHECK(labels[1] == "Delet.."); // Delete g.. -> Delete.. (trailing space dropped) -> Delet..
     CHECK(simpleMeasure(labels) == 33);
@@ -298,35 +298,35 @@ TEST_CASE("shortenFooterLabels: cuts go to the longest as it is now, and stop at
 
 TEST_CASE("shortenFooterLabels: UTF-8 is cut on code points") {
     vector<string> labels = {"Zmień", "Wstecz"}; // 15 + 16 = 31
-    CHECK(ableem::shortenFooterLabels(labels, 29, simpleMeasure));
+    CHECK(abgui::shortenFooterLabels(labels, 29, simpleMeasure));
     CHECK(labels[0] == "Zmień");
     CHECK(labels[1] == "Ws..");
     labels = {"Zmień się"}; // 19; the cuts run through the multibyte "ń" and "ę"
-    CHECK(ableem::shortenFooterLabels(labels, 17, simpleMeasure));
+    CHECK(abgui::shortenFooterLabels(labels, 17, simpleMeasure));
     CHECK(labels[0] == "Zmień..");
     labels = {"Zmień się"};
-    CHECK(ableem::shortenFooterLabels(labels, 16, simpleMeasure));
+    CHECK(abgui::shortenFooterLabels(labels, 16, simpleMeasure));
     CHECK(labels[0] == "Zmie..");
     labels = {"Łódź"};
-    CHECK_FALSE(ableem::shortenFooterLabels(labels, 5, simpleMeasure)); // 4 letters cannot gain
+    CHECK_FALSE(abgui::shortenFooterLabels(labels, 5, simpleMeasure)); // 4 letters cannot gain
     CHECK(labels[0] == "Łódź");
 }
 
 TEST_CASE("shortenFooterLabels: a label never goes below two letters plus the dots") {
     vector<string> labels = {"Wstecz", "Zapisz"};
-    CHECK_FALSE(ableem::shortenFooterLabels(labels, 10, simpleMeasure)); // needs icons only
+    CHECK_FALSE(abgui::shortenFooterLabels(labels, 10, simpleMeasure)); // needs icons only
     CHECK(labels[0] == "Ws..");
     CHECK(labels[1] == "Za..");
 }
 
 TEST_CASE("shortenFooterLabels: a trailing space is dropped before the dots") {
     vector<string> labels = {"Play in RetroArch"};
-    CHECK(ableem::shortenFooterLabels(labels, 16, simpleMeasure));
+    CHECK(abgui::shortenFooterLabels(labels, 16, simpleMeasure));
     CHECK(labels[0] == "Play..");
 }
 
 TEST_CASE("shortenFooterLabels: short labels are left alone (a cut would not gain)") {
     vector<string> labels = {"Esc", "Back"};
-    CHECK_FALSE(ableem::shortenFooterLabels(labels, 5, simpleMeasure));
+    CHECK_FALSE(abgui::shortenFooterLabels(labels, 5, simpleMeasure));
     CHECK(labels == vector<string>{"Esc", "Back"});
 }

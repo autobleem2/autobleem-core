@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Footer label shortening: when a footer's hints do not fit even in the smallest font, the labels are cut
-// ("Back" -> "B..") before the footer falls back to bare button chips. Pure string/width logic - the width
-// measure is passed in, so it is tested without a font (tests/classic/test_panel_style_footer.cpp).
+// ("Back" -> "B..") before the footer falls back to bare button chips (abgui::Style::footer). Pure
+// string/width logic - the width measure is passed in, so it is tested without a font
+// (tests/classic/test_panel_style_footer.cpp).
 //
 #pragma once
 
@@ -10,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace ableem {
+namespace abgui {
 
 // code points in a UTF-8 string (continuation bytes 10xxxxxx are not counted)
 inline size_t footerUtf8Length(const std::string &s) {
@@ -75,4 +77,4 @@ inline bool shortenFooterLabels(std::vector<std::string> &labels, int room,
     }
 }
 
-} // namespace ableem
+} // namespace abgui

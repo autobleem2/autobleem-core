@@ -41,9 +41,13 @@ if (AB_CORE_UI)
     # UIREV-3: PanelStyle::footer()'s icons-only fallback once even FONT_15_BOLD is too wide, driven through
     # a local model of widthAt() - the real class needs a live Gui/ThemeAssets over a theme/resources tree
     # this repo does not ship (see the file's opening comment), the same reason as the suite above
-    ab_add_test(test_panel_style_footer classic/test_panel_style_footer.cpp)
+    # (the label shortening is ab_gui's footer_shorten.h since G2 - the header only, the link is for its path)
+    ab_add_test(test_panel_style_footer classic/test_panel_style_footer.cpp LIBS ab_gui)
     # UIREV-29: the theme's style roles as PanelStyle::fromTheme resolves them (static - no Gui needed)
     ab_add_test(test_panel_style_roles classic/test_panel_style_roles.cpp LIBS ab_classic)
+    # ab_gui's Style on its own (G2): the defaults, the colour roles from a plain ColorRoles block, the hint
+    # protocol - all static or plain data, no renderer needed
+    ab_add_test(test_ab_gui_style gui/test_ab_gui_style.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

@@ -10,6 +10,7 @@
 #include "../core/services/system.h"
 #include "gui_font.h"
 #include "panel_style.h"
+#include <ab_gui/context.h>
 
 #include <functional>
 #include "text_renderer.h"
@@ -96,6 +97,10 @@ public:
 
     // the shared look, resolved from the current theme
     PanelStyle panelStyle();
+    // AutoBleem's abgui::Context (ab_gui, docs/ab-gui-plan.md): the renderer, and as providers asked at draw time
+    // the launcher's fonts by role, the button glyphs, the text renderer, _() and the current theme's Style.
+    // Nothing in it is cached, so it stays valid across a theme reload and the display's release for a game.
+    abgui::Context &uiContext() { return uiContext_; }
 
     // A busy state for a long job that runs on the main thread (applying settings, reloading the theme,
     // deleting a game): beginBusy keeps the screen as it is - `redraw` renders and presents it once, and
@@ -145,4 +150,7 @@ private:
     std::string busyMessage_;
     ableem::Texture busyBackdrop_;
     unsigned int busyStarted_ = 0, busyLastFrame_ = 0;
+    // last on purpose: the members above keep their offsets for the extensions (the inline assets()/text())
+    abgui::Context uiContext_;
+    void wireUiContext();
 };
