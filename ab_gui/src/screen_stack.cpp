@@ -36,9 +36,9 @@ private:
 } // namespace
 
 ScreenStack::ScreenStack(ableem::Renderer &renderer)
-    : own_(new RendererDisplay(renderer)), display_(own_.get()), busy_(*this) {}
+    : own_(new RendererDisplay(renderer)), display_(own_.get()), busy_(*this), tweens_(new Tweens) {}
 
-ScreenStack::ScreenStack(Display &display) : display_(&display), busy_(*this) {}
+ScreenStack::ScreenStack(Display &display) : display_(&display), busy_(*this), tweens_(new Tweens) {}
 
 ScreenStack::~ScreenStack() = default;
 
@@ -54,6 +54,9 @@ void ScreenStack::frame(const ableem::Color &clearColor, const Draw &draw) {
 }
 
 void ScreenStack::run(const ableem::Color *clearColor, const Draw &draw) {
+    // the tweens to this frame's time (G5o1), outside the frame: an end callback may start one of its own
+    if (depth_ == 0)
+        tweens_->update();
     {
         DepthScope scope(depth_);
         if (clearColor)

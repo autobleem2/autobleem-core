@@ -127,10 +127,12 @@ public:
 
     // Appended (step G3c): the screen stack every frame goes through - clear, the screen's drawing, present
     // (ScreenStack::frame). The program owns it (AutoBleem's Gui) and sets it; hasStack() says whether one is set.
-    // Setting it binds the stack's busy spinner (stack().busy(), step G3l) to this Context.
+    // Setting it binds the stack's busy spinner (stack().busy(), step G3l) and its tweens' clock (stack().tweens(),
+    // step G5o1: this Context's ticks()) to this Context.
     void setStack(ScreenStack &stack) {
         stack_ = &stack;
         stack.busy().bind(*this);
+        stack.tweens().bind(*this);
     }
     bool hasStack() const { return stack_ != nullptr; }
     ScreenStack &stack() const { return *stack_; }

@@ -13,9 +13,14 @@
 //
 // The stack also owns the program's one busy spinner (busy(), step G3l): its frames are the stack's too.
 //
+// And the program's one set of running tweens (tweens(), step G5o1 - tween.h): every outermost frame advances them
+// to the clock first, before the frame is begun (so an end callback that opens a screen does not run inside it), and
+// the screen draws the frame's values. With no tween running that is nothing.
+//
 #pragma once
 
 #include <ab_gui/busy.h>
+#include <ab_gui/tween.h>
 
 #include <ableem/ui/renderer.h>
 #include <ableem/ui/types.h>
@@ -75,6 +80,16 @@ private:
     int depth_ = 0;
     unsigned long presented_ = 0;
     Busy busy_;
+
+    // Appended (step G5o1), after every member above so their offsets stay: the program's running tweens (tween.h),
+    // timed by the Context this stack is set on (Context::setStack binds them) and advanced before every outermost
+    // frame. Held through a pointer, so the Tweens can grow without the stack's size changing again.
+public:
+    Tweens &tweens() { return *tweens_; }
+    const Tweens &tweens() const { return *tweens_; }
+
+private:
+    std::unique_ptr<Tweens> tweens_;
 };
 
 } // namespace abgui

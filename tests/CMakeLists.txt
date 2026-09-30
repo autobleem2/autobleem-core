@@ -115,6 +115,11 @@ if (AB_CORE_UI)
     # ab_gui's hint bar (G5e): the launcher's two hint lines' layout - the line rects, the font/gap/drop rules and the
     # whole layout against a frozen copy of the old GuiLauncher::layoutHints() (pure)
     ab_add_test(test_ab_gui_hint_bar gui/test_ab_gui_hint_bar.cpp LIBS ab_gui)
+    # ab_gui's tweens (G5o1): every easing at sample times against core/model/timing.h's easeOutCubic/pulseWave and the
+    # textbook formulas, delay/loop/yoyo, the timeline's order and callbacks, cancel/finish, the owner token (a tween
+    # whose float died never writes), the DebugDriver's busy count and the frame need, and the ScreenStack advancing
+    # them before each outermost frame (pure, on a recording display)
+    ab_add_test(test_ab_gui_tween gui/test_ab_gui_tween.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)
