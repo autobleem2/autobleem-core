@@ -31,7 +31,7 @@ ab_add_test(test_extension_catalog core/test_extension_catalog.cpp)
 if (AB_CORE_UI)
     # the runtime is ab_classic's (it knows Extension), tested with in-process fake plugins
     ab_add_test(test_extension_runtime classic/test_extension_runtime.cpp LIBS ab_classic)
-    ab_add_test(test_hold_repeat classic/test_hold_repeat.cpp)
+    ab_add_test(test_hold_repeat classic/test_hold_repeat.cpp LIBS ab_gui)
     # GuiTextPage's line layout (splitItem is pure; the class is ab_classic's)
     ab_add_test(test_text_page classic/test_text_page.cpp LIBS ab_classic)
     # UIREV-2: doHome()/doEnd()'s skip-past-a-heading fix, driven through a local model of GuiMenuBase's
@@ -87,7 +87,7 @@ if (AB_CORE_UI)
     # CMakeLists.txt) - this suite tests ableem's own Input class, not a consumer of it.
     ab_add_test(test_input_flush classic/test_input_flush.cpp LIBS ableem)
     # CONSOLE-13: the busy rule - nothing held and no hold-repeat carried over a busy job - the same way
-    ab_add_test(test_busy_input classic/test_busy_input.cpp LIBS ableem)
+    ab_add_test(test_busy_input classic/test_busy_input.cpp LIBS ableem ab_gui)
     # ab_add_test() links its target with the plain (non-keyword) signature, so this must match it.
     # lib_ableem/CMakeLists.txt's own SDL2 imported target is directory-scoped there, not visible here -
     # this repeats its discovery for these two test targets.
