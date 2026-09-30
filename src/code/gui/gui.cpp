@@ -15,6 +15,7 @@
 #include <cassert>
 #include <ableem/engine/log.h>
 #include <ableem/ui/debug_driver.h>
+#include <ab_gui/panel.h>
 
 using namespace std;
 using ableem::Button;
@@ -189,6 +190,24 @@ void Gui::wireUiContext() {
         }
     };
     // the clock stays unset: the widgets time by the platform's ticks, as the screens do today
+
+    // the theme's background picture over black (what renderBackground draws)
+    uiContext_.backdropDrawer = [this]() {
+        renderer().setDrawColor(Color(0x00, 0x00, 0x00, 0x00));
+        renderer().clear();
+        renderer().copy(assets_.backgroundImg, nullptr, &assets_.backgroundRect);
+    };
+    // the full classic panel: the theme's menu panel, its bottom at least at the foot of the theme's status line
+    // (where the footer band ends: the hints sat footerTop (14) below its top, at the status line's text y). A
+    // compact panel is Gui's own state (setCompactPanel), never this rect.
+    uiContext_.panelProvider = []() {
+        const auto &classic = AppBase::get().theme().classic();
+        Rect panel(classic.menuPanel.x, classic.menuPanel.y, classic.menuPanel.w, classic.menuPanel.h);
+        const int statusFoot = classic.statusBar.textY + PanelStyle::FooterHeight - 14;
+        if (statusFoot > panel.y + panel.h)
+            panel.h = statusFoot - panel.y;
+        return panel;
+    };
 }
 
 //*******************************
@@ -411,10 +430,9 @@ void Gui::renderFreeSpace() {
 //*******************************
 // Gui::renderBackground
 //*******************************
+// the Context's backdrop (wireUiContext: the theme's background picture over black)
 void Gui::renderBackground() {
-    renderer().setDrawColor(Color(0x00, 0x00, 0x00, 0x00));
-    renderer().clear();
-    renderer().copy(assets_.backgroundImg, nullptr, &assets_.backgroundRect);
+    uiContext_.drawBackdrop();
 }
 
 //*******************************
@@ -452,10 +470,14 @@ PanelStyle Gui::panelStyle() {
     return PanelStyle::fromTheme(AppBase::get().theme().launcher());
 }
 
+// the panel's geometry and drawing are ab_gui's abgui::Panel (step G3b); the compact panel stays Gui's state
+// (compact_/compactPanel_, which TextRenderer's rows read as their panel) until the widgets draw their own
+static abgui::Panel currentPanel(Gui &gui) {
+    return abgui::Panel(gui.classicPanel(), gui.uiContext().style());
+}
+
 void Gui::setCompactPanel(int rows, const ableem::Font &font) {
-    const int width = 800;
-    const int height = PanelStyle::HeaderHeight + std::max(1, rows) * font.lineHeight() + 8 + PanelStyle::FooterHeight;
-    compactPanel_ = Rect((ScreenWidth - width) / 2, (ScreenHeight - height) / 2, width, height);
+    compactPanel_ = abgui::Panel::compact(uiContext_, rows, font).rect();
     compact_ = true;
     text_.setPanelOverride(&compactPanel_);
 }
@@ -468,61 +490,45 @@ void Gui::clearCompactPanel() {
 Rect Gui::classicPanel() {
     if (compact_)
         return compactPanel_;
-    Rect panel = text_.getOpscreenRectOfTheme();
-    // the footer band ends where the theme's status line used to end
-    const int statusFoot = AppBase::get().theme().classic().statusBar.textY + PanelStyle::FooterHeight - 14;
-    if (statusFoot > panel.y + panel.h)
-        panel.h = statusFoot - panel.y;
-    return panel;
+    // the Context's panel rect (wireUiContext: the theme's menu panel down to the status line's foot)
+    return uiContext_.panelRect();
 }
 
 Rect Gui::classicContent() {
-    Rect panel = classicPanel();
-    return Rect(panel.x, panel.y + PanelStyle::HeaderHeight, panel.w,
-                panel.h - PanelStyle::HeaderHeight - PanelStyle::FooterHeight);
+    return currentPanel(*this).content();
 }
 
 Rect Gui::classicFooter() {
-    Rect panel = classicPanel();
-    return Rect(panel.x, panel.y + panel.h - PanelStyle::FooterHeight, panel.w, PanelStyle::FooterHeight);
+    return currentPanel(*this).footer();
 }
 
 int Gui::classicRowsThatFit(const ableem::Font &font) {
-    const int lineHeight = font.valid() ? font.lineHeight() : assets_.themeFont.lineHeight();
-    return std::max(1, (classicContent().h - 4) / std::max(1, lineHeight));
+    return currentPanel(*this).rowsThatFit(uiContext_, font);
 }
 
 void Gui::renderScrollMarkers(bool moreAbove, bool moreBelow) {
-    PanelStyle style = panelStyle();
-    Rect content = classicContent();
-    const int cx = content.x + content.w - PanelStyle::RowInset;
-    if (moreAbove)
-        style.scrollMarker(renderer(), cx, content.y - 4, -1);
-    if (moreBelow)
-        style.scrollMarker(renderer(), cx, content.y + content.h - 6, 1);
+    currentPanel(*this).scrollMarkers(uiContext_, moreAbove, moreBelow);
 }
 
 //*******************************
 // Gui::renderTextBar
 //*******************************
 void Gui::renderTextBar() {
-    PanelStyle style = panelStyle();
-    style.dim(renderer());
-    style.sheet(renderer(), classicPanel());
+    currentPanel(*this).sheet(uiContext_);
 }
 
 //*******************************
 // Gui::renderHeader
 //*******************************
 int Gui::renderHeader(const string &title) {
-    return panelStyle().header(*this, classicPanel(), title);
+    return currentPanel(*this).header(uiContext_, title);
 }
 
 //*******************************
 // Gui::renderStatus
 //*******************************
 void Gui::renderStatus(const string &text, int /*posy*/) {
-    panelStyle().footer(*this, classicFooter(), text);
+    currentPanel(*this).footer(uiContext_, text);
 }
 
 //*******************************

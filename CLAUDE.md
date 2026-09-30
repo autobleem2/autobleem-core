@@ -259,9 +259,17 @@ include path to the extensions.
   `Style`. Since G3a also the `Input` and `Platform` (the three-argument constructor; `hasInput()`/`input()`),
   `ticks()`/`delay()` (a settable `clock` wins over the platform's ticks) and `play(UiSound)` over a `soundPlayer`
   (Cursor, Cancel, HomeUp, HomeDown, Resume) - what the widgets moving into ab_gui reach instead of `gui->`/`app.`;
+  since G3b the `backdropDrawer` (`drawBackdrop()`) and the `panelProvider` (`panelRect()`, the full classic panel);
   new members are appended at the end. `Gui` owns AutoBleem's (`Gui::uiContext()`, wired in
-  `Gui::wireUiContext()` to `ThemeAssets`, `TextRenderer`, `_()`, the theme and `AppAudio`'s five sounds). The G3
-  sub-steps and their ABI rule are in `docs/ab-gui-plan.md` ("G3 sub-steps").
+  `Gui::wireUiContext()` to `ThemeAssets`, `TextRenderer`, `_()`, the theme, `AppAudio`'s five sounds, the theme's
+  background and its menu panel down to the status line's foot). The G3 sub-steps and their ABI rule are in
+  `docs/ab-gui-plan.md` ("G3 sub-steps").
+- **`abgui::Panel`** (`panel.h`, G3b) - the classic panel as a rect + a `Style`: `Panel::full(ctx)`,
+  `Panel::compact(ctx, rows, font)` (800 wide, centred), `content()`, `footer()`, `rowsThatFit`, and the drawing
+  (`sheet` = dim + sheet, `header`, `footer(ctx, line)`, `scrollMarkers`). `Gui::classicPanel/classicContent/
+  classicFooter/classicRowsThatFit/setCompactPanel/renderTextBar/renderHeader/renderStatus/renderScrollMarkers` and
+  `renderBackground` forward to it and the Context; the compact panel's on/off state is still `Gui`'s. Tests:
+  `tests/gui/test_ab_gui_panel.cpp` (the numbers against the old `Gui` formulas).
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to

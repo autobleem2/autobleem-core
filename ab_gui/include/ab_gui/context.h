@@ -48,6 +48,10 @@ public:
     using SoundPlayer = std::function<void(UiSound)>;
     // milliseconds from some fixed start - what the widgets time hold-repeat, blinking and animations by
     using Clock = std::function<unsigned int()>;
+    // draws the screen's own background over the whole canvas (AutoBleem: the theme's background picture)
+    using BackdropDrawer = std::function<void()>;
+    // a rect of the program's in the canvas' coordinates (AutoBleem: the theme's classic menu panel)
+    using RectProvider = std::function<ableem::Rect()>;
 
     // a drawing-only Context: no input, the clock only when one is set (a test's, say), else 0
     explicit Context(ableem::Renderer &renderer) : renderer_(&renderer) {}
@@ -93,6 +97,11 @@ public:
     // waits `ms` milliseconds on the platform (a hold-repeat's few ms between looks at the queue); nothing
     // without one
     void delay(unsigned int ms) const;
+    // the screen's background through the drawer, else the canvas cleared to black (step G3b)
+    void drawBackdrop() const;
+    // the full classic panel's rect (abgui::Panel::full) through the provider, else the canvas inset by the
+    // style's margin all round (step G3b)
+    ableem::Rect panelRect() const;
 
 private:
     ableem::Renderer *renderer_;
@@ -106,6 +115,11 @@ public:
 private:
     ableem::Input *input_ = nullptr;
     ableem::Platform *platform_ = nullptr;
+
+    // Appended (step G3b): the backdrop and the classic panel's rect.
+public:
+    BackdropDrawer backdropDrawer;
+    RectProvider panelProvider;
 };
 
 } // namespace abgui

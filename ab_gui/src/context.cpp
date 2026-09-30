@@ -77,4 +77,23 @@ void Context::delay(unsigned int ms) const {
         platform_->delay(ms);
 }
 
+//*******************************
+// Context::drawBackdrop / panelRect
+//*******************************
+void Context::drawBackdrop() const {
+    if (backdropDrawer) {
+        backdropDrawer();
+        return;
+    }
+    renderer_->setDrawColor(ableem::Color(0, 0, 0, 255));
+    renderer_->clear();
+}
+
+ableem::Rect Context::panelRect() const {
+    if (panelProvider)
+        return panelProvider();
+    const int margin = style().margin;
+    return ableem::Rect(margin, margin, renderer_->width() - 2 * margin, renderer_->height() - 2 * margin);
+}
+
 } // namespace abgui
