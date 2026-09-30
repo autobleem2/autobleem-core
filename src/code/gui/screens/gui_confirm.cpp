@@ -11,9 +11,17 @@ using namespace std;
 //*******************************
 // GuiConfirm::render
 //*******************************
+// the frame through Gui's screen stack: clear, draw(), present (docs/ab-gui-plan.md, G3c)
+void GuiConfirm::render() {
+    gui->uiContext().stack().frame([this]() { draw(); });
+}
+
+//*******************************
+// GuiConfirm::draw
+//*******************************
 // A compact dialog in the shared look (PanelStyle), centred over the dimmed screen: the header, the
 // question wrapped to the panel, the two hints
-void GuiConfirm::render() {
+void GuiConfirm::draw() {
     shared_ptr<Gui> gui(Gui::getInstance());
     gui->renderBackground();
     PanelStyle style = gui->panelStyle();
@@ -43,7 +51,6 @@ void GuiConfirm::render() {
                  "", false);
 
     gui->text().setShadow(classicShadow);
-    renderer.present();
 }
 
 //*******************************

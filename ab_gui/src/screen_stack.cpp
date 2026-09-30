@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// abgui::ScreenStack: clear, draw, present. See the header.
+//
+#include <ab_gui/screen_stack.h>
+
+namespace abgui {
+
+namespace {
+
+// the program's display: the renderer's own clear and present, so a frame through the stack is exactly the
+// calls a screen made itself - the capture (captureNextFrame) and the DebugDriver's frame cache see it the same
+class RendererDisplay : public ScreenStack::Display {
+public:
+    explicit RendererDisplay(ableem::Renderer &renderer) : renderer_(renderer) {}
+    void setClearColor(const ableem::Color &color) override { renderer_.setDrawColor(color); }
+    void clear() override { renderer_.clear(); }
+    void present() override { renderer_.present(); }
+
+private:
+    ableem::Renderer &renderer_;
+};
+
+// depth_ back down however the drawing ends
+class DepthScope {
+public:
+    explicit DepthScope(int &depth) : depth_(depth) { ++depth_; }
+    ~DepthScope() { --depth_; }
+    DepthScope(const DepthScope &) = delete;
+    DepthScope &operator=(const DepthScope &) = delete;
+
+private:
+    int &depth_;
+};
+
+} // namespace
+
+ScreenStack::ScreenStack(ableem::Renderer &renderer) : own_(new RendererDisplay(renderer)), display_(own_.get()) {}
+
+ScreenStack::ScreenStack(Display &display) : display_(&display) {}
+
+ScreenStack::~ScreenStack() = default;
+
+//*******************************
+// ScreenStack::frame
+//*******************************
+void ScreenStack::frame(const Draw &draw) {
+    run(nullptr, draw);
+}
+
+void ScreenStack::frame(const ableem::Color &clearColor, const Draw &draw) {
+    run(&clearColor, draw);
+}
+
+void ScreenStack::run(const ableem::Color *clearColor, const Draw &draw) {
+    {
+        DepthScope scope(depth_);
+        if (clearColor)
+            display_->setClearColor(*clearColor);
+        display_->clear();
+        if (draw)
+            draw();
+    }
+    display_->present();
+    presented_++;
+}
+
+} // namespace abgui

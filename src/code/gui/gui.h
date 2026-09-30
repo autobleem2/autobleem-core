@@ -101,6 +101,7 @@ public:
     // and as providers asked at draw time the launcher's fonts by role, the button glyphs, the text renderer, _(),
     // the current theme's Style and its UI sounds (AppAudio's).
     // Nothing in it is cached, so it stays valid across a theme reload and the display's release for a game.
+    // Its stack() is Gui's screen stack: a screen's render() is stack().frame(its drawing) - clear, draw, present.
     abgui::Context &uiContext() { return uiContext_; }
 
     // A busy state for a long job that runs on the main thread (applying settings, reloading the theme,
@@ -154,4 +155,7 @@ private:
     // last on purpose: the members above keep their offsets for the extensions (the inline assets()/text())
     abgui::Context uiContext_;
     void wireUiContext();
+    // appended after uiContext_ (step G3c): where every frame of the classic screens and Gui's own is presented -
+    // uiContext().stack()
+    abgui::ScreenStack stack_;
 };

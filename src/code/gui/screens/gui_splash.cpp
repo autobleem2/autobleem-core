@@ -14,12 +14,17 @@ using namespace std;
 //*******************************
 // GuiSplash::render
 //*******************************
+// the frame through Gui's screen stack: cleared to black, draw(), present (docs/ab-gui-plan.md, G3c)
 void GuiSplash::render() {
-    std::shared_ptr<Gui> gui(Gui::getInstance());
     gui->assets().backgroundImg.setBlendMode(ableem::BlendMode::Blend);
+    gui->uiContext().stack().frame(ableem::Color(0x00, 0x00, 0x00, 0x00), [this]() { draw(); });
+}
 
-    renderer.setDrawColor(ableem::Color(0x00, 0x00, 0x00, 0x00));
-    renderer.clear();
+//*******************************
+// GuiSplash::draw
+//*******************************
+void GuiSplash::draw() {
+    std::shared_ptr<Gui> gui(Gui::getInstance());
     gui->assets().backgroundImg.setAlphaMod(alpha);
     gui->assets().logo.setAlphaMod(alpha);
 
@@ -43,8 +48,6 @@ void GuiSplash::render() {
     gui->text().setAlpha(static_cast<unsigned char>(alpha)); // fades with the background and the logo
     gui->text().renderText(gui->assets().themeFont, splashText, 0, y, XALIGN_CENTER);
     gui->text().setAlpha(255);
-
-    renderer.present();
 }
 
 //*******************************

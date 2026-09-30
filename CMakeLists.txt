@@ -165,16 +165,19 @@ add_library(ab_installer STATIC
 target_link_libraries(ab_installer ab_core)
 
 # ---- ab_gui: the AutoBleem User Interface Library (docs/ab-gui-plan.md) ---- (only with AB_CORE_UI)
-# The look and its primitives (abgui::Style), the classic panel (abgui::Panel), what they draw with (abgui::Context) -
+# The look and its primitives (abgui::Style), the classic panel (abgui::Panel), what they draw with (abgui::Context),
+# where a frame is presented (abgui::ScreenStack) -
 # no AutoBleem code (no ab_core/ab_classic) and no SDL: it links the ableem ui library only. Headers as <ab_gui/...>.
 if (AB_CORE_UI)
 add_library(ab_gui STATIC
         ab_gui/include/ab_gui/context.h
         ab_gui/include/ab_gui/footer_shorten.h
         ab_gui/include/ab_gui/panel.h
+        ab_gui/include/ab_gui/screen_stack.h
         ab_gui/include/ab_gui/style.h
         ab_gui/src/context.cpp
         ab_gui/src/panel.cpp
+        ab_gui/src/screen_stack.cpp
         ab_gui/src/style.cpp)
 target_link_libraries(ab_gui ableem)
 target_include_directories(ab_gui PUBLIC ab_gui/include)

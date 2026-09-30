@@ -33,7 +33,15 @@ GuiTextPage::Item GuiTextPage::splitItem(const string &line) {
 //*******************************
 // GuiTextPage::render
 //*******************************
+// the frame through Gui's screen stack: clear, draw(), present (docs/ab-gui-plan.md, G3c)
 void GuiTextPage::render() {
+    gui->uiContext().stack().frame([this]() { draw(); });
+}
+
+//*******************************
+// GuiTextPage::draw
+//*******************************
+void GuiTextPage::draw() {
     gui->renderBackground();
     gui->renderTextBar();
     const ableem::Rect panel = gui->classicPanel();
@@ -92,7 +100,6 @@ void GuiTextPage::render() {
     if (firstLine > 0 || lastLineShown < static_cast<int>(lines.size()))
         status = "|@L2|/|@R2| " + _("Page") + "   " + status;
     gui->renderStatus(status);
-    renderer.present();
 }
 
 //*******************************

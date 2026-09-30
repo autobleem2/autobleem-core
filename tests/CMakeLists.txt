@@ -54,6 +54,10 @@ if (AB_CORE_UI)
     # ab_gui's Panel (G3b): the classic panel's geometry against the old Gui formulas (pure), and the Context's
     # backdrop and panel rect (a headless GuiBase; those cases skip themselves without a renderer)
     ab_add_test(test_ab_gui_panel gui/test_ab_gui_panel.cpp LIBS ab_gui)
+    # ab_gui's ScreenStack (G3c): clear -> draw -> present, one present a frame, nesting (pure, on a recording
+    # display), and on a headless GuiBase the frame count, the DebugDriver's frame copy and the busy capture
+    # (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_screen_stack gui/test_ab_gui_screen_stack.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

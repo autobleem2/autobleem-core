@@ -20,4 +20,7 @@ public:
     bool result = false;
 
     using GuiScreen::GuiScreen;
+
+private:
+    void draw(); // what render() puts between the stack's clear and present
 };

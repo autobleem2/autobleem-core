@@ -49,5 +49,7 @@ private:
     bool duckedThemeMusic = false;
     bool playingFallbackMusic = false;
 
+    // what render() puts between the stack's clear and present: the credits, or the game
+    void draw();
     void renderSurprise();
 };

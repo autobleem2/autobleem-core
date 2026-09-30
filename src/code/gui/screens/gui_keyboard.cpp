@@ -276,7 +276,12 @@ void GuiKeyboard::drawKey(const ableem::Rect &key, const KeyCap &cap, bool selec
     }
 }
 
+// the frame through Gui's screen stack: clear, draw(), present (docs/ab-gui-plan.md, G3c)
 void GuiKeyboard::render() {
+    gui->uiContext().stack().frame([this]() { draw(); });
+}
+
+void GuiKeyboard::draw() {
     gui->renderBackground();
     gui->renderTextBar();
     int yoffset = gui->renderHeader(label);
@@ -337,7 +342,6 @@ void GuiKeyboard::render() {
     gui->renderStatus("|@X| " + _("Select") + "  |@T| " + _("Backspace") + "  |@S| " + _("Space") + "  |@L1| " +
                       _("Shift") + "  |@R1| " + pageName(page) + "  |@L2|/|@R2| " + _("Move cursor") + "  |@Start| " +
                       _("Confirm") + "  |@O| " + _("Cancel") + " |");
-    renderer.present();
 }
 
 //*******************************

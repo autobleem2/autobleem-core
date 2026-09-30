@@ -58,8 +58,15 @@ void GuiFactsPage::scrollBy(int rows) {
 //*******************************
 // GuiFactsPage::render
 //*******************************
+// the frame through Gui's screen stack: clear, draw(), present (docs/ab-gui-plan.md, G3c)
 void GuiFactsPage::render() {
-    renderer.clear();
+    gui->uiContext().stack().frame([this]() { draw(); });
+}
+
+//*******************************
+// GuiFactsPage::draw
+//*******************************
+void GuiFactsPage::draw() {
     gui->renderBackground();
     gui->renderTextBar();
     int yoffset = gui->renderHeader(title());
@@ -109,7 +116,6 @@ void GuiFactsPage::render() {
     if (count > rowsThatFit)
         status += "   |@L1|/|@R1| " + _("First/last") + "   |@L2|/|@R2| " + _("Page");
     gui->renderStatus(status);
-    renderer.present();
 }
 
 //*******************************

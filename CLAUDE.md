@@ -270,6 +270,13 @@ include path to the extensions.
   classicFooter/classicRowsThatFit/setCompactPanel/renderTextBar/renderHeader/renderStatus/renderScrollMarkers` and
   `renderBackground` forward to it and the Context; the compact panel's on/off state is still `Gui`'s. Tests:
   `tests/gui/test_ab_gui_panel.cpp` (the numbers against the old `Gui` formulas).
+- **`abgui::ScreenStack`** (`screen_stack.h`, G3c) - screens draw, the stack presents: `frame(draw)` = clear (the
+  current draw colour), the drawing, present; `frame(colour, draw)` sets the draw colour first. `Gui` owns it
+  (appended after `uiContext_`) and hands it to its Context (`uiContext().stack()`). Every core screen's `render()`
+  is `stack().frame([this]{ draw(); })` with a non-virtual `draw()`, and `Gui`'s own frames (busy, `drawText`, the
+  splash picture, the resume's black frame) go through it too - **a new screen never calls `clear()`/`present()`
+  itself**. A frame started inside another's drawing is presented at once as a frame of its own. The launcher links
+  ab_gui `--whole-archive` since then (header templates call it). Tests: `tests/gui/test_ab_gui_screen_stack.cpp`.
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to

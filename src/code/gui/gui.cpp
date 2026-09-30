@@ -92,7 +92,7 @@ Gui::Gui()
     : ableem::GuiBase(windowTitle_, ScreenWidth, ScreenHeight, outputScale(), multisampleSamples(), fullscreen()),
       assets_(renderer(), AppBase::get().theme(), AppBase::get().config()),
       text_(renderer(), AppBase::get().theme(), assets_.themeFont, assets_.buttonTextureMap),
-      uiContext_(renderer(), input(), platform()) {
+      uiContext_(renderer(), input(), platform()), stack_(renderer()) {
     wireUiContext();
     // the pad mappings the launcher and the pscbios wizard share; probePads() reads the first that exists
     input().loadMappings(Env::padMappingFiles());
@@ -208,6 +208,8 @@ void Gui::wireUiContext() {
             panel.h = statusFoot - panel.y;
         return panel;
     };
+    // every frame through the one stack: clear, draw, present (step G3c)
+    uiContext_.setStack(stack_);
 }
 
 //*******************************
@@ -288,11 +290,7 @@ void Gui::display(bool resume) {
     if (resume) {
         // back from a game: the theme and every cover reload before the launcher can draw - the spinner
         // on black meanwhile (GuiLauncher::render ends it with its first frame)
-        beginBusy(_("Loading..."), [this]() {
-            renderer().setDrawColor(Color(0, 0, 0, 255));
-            renderer().clear();
-            renderer().present();
-        });
+        beginBusy(_("Loading..."), [this]() { stack_.frame(Color(0, 0, 0, 255), []() {}); });
     }
     loadAssets();
 
@@ -373,24 +371,24 @@ void Gui::tickBusy() {
 void Gui::drawBusyFrame() {
     busyLastFrame_ = platform().ticks();
     // the pads' events pile up meanwhile; nothing reads them until the job is done
-    renderer().setDrawColor(Color(0, 0, 0, 255));
-    renderer().clear();
-    if (busyBackdrop_.valid())
-        renderer().copy(busyBackdrop_, nullptr, nullptr);
-    PanelStyle style = panelStyle();
-    style.dim(renderer());
-    drawSpinner(ScreenWidth / 2, ScreenHeight / 2 - 20, busyMessage_);
-    if (busyTotal_ > 0) {
-        // the bar under the message, as the notification bubble draws its own
-        const int width = 400, height = 6;
-        // under the message, which drawSpinner puts 24 px below the ring (radius 30) around ScreenHeight/2 - 20
-        const int messageY = ScreenHeight / 2 - 20 + 30 + 24;
-        ableem::Rect track(ScreenWidth / 2 - width / 2, messageY + assets_.themeFonts[FONT_22_MED].lineHeight() + 12,
-                           width, height);
-        style.progress(renderer(), track, static_cast<unsigned long long>(std::max(0, std::min(busyDone_, busyTotal_))),
-                       static_cast<unsigned long long>(busyTotal_));
-    }
-    renderer().present();
+    stack_.frame(Color(0, 0, 0, 255), [this]() {
+        if (busyBackdrop_.valid())
+            renderer().copy(busyBackdrop_, nullptr, nullptr);
+        PanelStyle style = panelStyle();
+        style.dim(renderer());
+        drawSpinner(ScreenWidth / 2, ScreenHeight / 2 - 20, busyMessage_);
+        if (busyTotal_ > 0) {
+            // the bar under the message, as the notification bubble draws its own
+            const int width = 400, height = 6;
+            // under the message, which drawSpinner puts 24 px below the ring (radius 30) around ScreenHeight/2 - 20
+            const int messageY = ScreenHeight / 2 - 20 + 30 + 24;
+            ableem::Rect track(ScreenWidth / 2 - width / 2,
+                               messageY + assets_.themeFonts[FONT_22_MED].lineHeight() + 12, width, height);
+            style.progress(renderer(), track,
+                           static_cast<unsigned long long>(std::max(0, std::min(busyDone_, busyTotal_))),
+                           static_cast<unsigned long long>(busyTotal_));
+        }
+    });
 }
 
 void Gui::drawSpinner(int cx, int cy, const string &message) {
@@ -441,15 +439,14 @@ void Gui::renderBackground() {
 // One frame of a picture across the whole screen - splash/retroarch.jpg, splash/autobleem.jpg - drawn
 // on black when the file is missing, so the frame is never the carousel an emulator is about to cover.
 void Gui::showSplashPicture(const string &name) {
-    renderer().setDrawColor(Color(0, 0, 0, 255));
-    renderer().clear();
-    const string path = Env::getWorkingPath() + sep + "splash" + sep + name;
-    if (DirEntry::exists(path)) {
-        Texture picture = Texture::loadFile(renderer(), path);
-        Rect full(0, 0, ScreenWidth, ScreenHeight);
-        renderer().copy(picture, nullptr, &full);
-    }
-    renderer().present();
+    stack_.frame(Color(0, 0, 0, 255), [this, &name]() {
+        const string path = Env::getWorkingPath() + sep + "splash" + sep + name;
+        if (DirEntry::exists(path)) {
+            Texture picture = Texture::loadFile(renderer(), path);
+            Rect full(0, 0, ScreenWidth, ScreenHeight);
+            renderer().copy(picture, nullptr, &full);
+        }
+    });
 }
 
 //*******************************
@@ -535,14 +532,15 @@ void Gui::renderStatus(const string &text, int /*posy*/) {
 // Gui::drawText
 //*******************************
 void Gui::drawText(const string &text, const string &topLine) {
-    renderBackground();
-    renderLogo(false);
-    // the spinner under the logo (the logo rect is the theme's; below it, or the lower third of the screen)
-    const int below = assets_.logoRect.y + assets_.logoRect.h;
-    const int cy = std::min(ScreenHeight - 90, std::max(below + 60, ScreenHeight * 2 / 3));
-    drawSpinner(ScreenWidth / 2, cy, text);
-    if (!topLine.empty())
-        text_.renderText_WithColor(assets_.themeFonts[FONT_20_BOLD], topLine, ScreenWidth / 2, 12, panelStyle().text,
-                                   XALIGN_CENTER);
-    renderer().present();
+    stack_.frame([&]() {
+        renderBackground();
+        renderLogo(false);
+        // the spinner under the logo (the logo rect is the theme's; below it, or the lower third of the screen)
+        const int below = assets_.logoRect.y + assets_.logoRect.h;
+        const int cy = std::min(ScreenHeight - 90, std::max(below + 60, ScreenHeight * 2 / 3));
+        drawSpinner(ScreenWidth / 2, cy, text);
+        if (!topLine.empty())
+            text_.renderText_WithColor(assets_.themeFonts[FONT_20_BOLD], topLine, ScreenWidth / 2, 12,
+                                       panelStyle().text, XALIGN_CENTER);
+    });
 }

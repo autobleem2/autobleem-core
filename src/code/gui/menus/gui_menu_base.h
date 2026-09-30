@@ -30,7 +30,9 @@ public:
     explicit GuiMenuBase(ableem::GuiBase &_gui) : GuiScreen(_gui) {}
 
     void init() override;
+    // the frame through Gui's screen stack (clear, draw(), present); draw() is what the list puts on the canvas
     void render() override;
+    void draw();
 
     virtual std::string getTitle();
     virtual std::string getStatusLine(); // returns the status line at the bottom.  cross, circle, etc icons.
@@ -240,7 +242,14 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::renderSelection
 // GuiMenuBase<LineDataType>::render
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::render() {
-    renderer.clear();
+    // the stack clears and presents (docs/ab-gui-plan.md, G3c); the list only draws
+    gui->uiContext().stack().frame([this]() { draw(); });
+}
+
+//*******************************
+// GuiMenuBase<LineDataType>::draw
+//*******************************
+template <typename LineDataType> void GuiMenuBase<LineDataType>::draw() {
     gui->renderBackground();
     // a short list without a pane beside it draws as a compact panel centred on the screen
     const bool compact = getVerticalSize() <= CompactRows && selectionRightEdge == 0;
@@ -258,9 +267,8 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::render() {
     gui->renderScrollMarkers(firstVisibleIndex > 0, lastVisibleIndex < getVerticalSize() - 1);
 
     gui->renderStatus(getStatusLine());
-    renderer.present();
     if (compact)
-        gui->clearCompactPanel();
+        gui->clearCompactPanel(); // drawn: the stack presents next, and nothing there reads the panel
 }
 
 //*******************************

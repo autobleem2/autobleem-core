@@ -90,13 +90,21 @@ vector<string> GuiAbout::autobleemFoot() {
 //*******************************
 // GuiAbout::render
 //*******************************
+// the frame through Gui's screen stack: clear, the credits or the game, present (docs/ab-gui-plan.md, G3c)
 void GuiAbout::render() {
-    std::shared_ptr<Gui> gui(Gui::getInstance());
+    gui->uiContext().stack().frame([this]() {
+        if (surpriseMode)
+            renderSurprise();
+        else
+            draw();
+    });
+}
 
-    if (surpriseMode) {
-        renderSurprise();
-        return;
-    }
+//*******************************
+// GuiAbout::draw
+//*******************************
+void GuiAbout::draw() {
+    std::shared_ptr<Gui> gui(Gui::getInstance());
 
     gui->renderBackground();
 
@@ -180,7 +188,6 @@ void GuiAbout::render() {
 
     // the footer's hints without its rule: the starfield is the panel here
     style.footer(*gui, gui->classicFooter(), "|@O| " + _("Back") + " |@Start| " + _("Surprise"), false);
-    renderer.present();
 }
 
 //*******************************
@@ -203,7 +210,6 @@ void GuiAbout::renderSurprise() {
     gui->panelStyle().footer(*gui, gui->classicFooter(),
                              "|@Start| " + _("Restart") + "  |@O| " + (game.gameOver() ? _("Back") : _("Exit game")),
                              false);
-    renderer.present();
 }
 
 //*******************************

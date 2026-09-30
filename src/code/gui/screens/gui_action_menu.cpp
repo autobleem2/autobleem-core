@@ -40,8 +40,15 @@ int GuiActionMenu::visibleRows() const {
 //*******************************
 // GuiActionMenu::render
 //*******************************
+// the frame through Gui's screen stack: clear, draw(), present (docs/ab-gui-plan.md, G3c)
 void GuiActionMenu::render() {
-    renderer.clear();
+    gui->uiContext().stack().frame([this]() { draw(); });
+}
+
+//*******************************
+// GuiActionMenu::draw
+//*******************************
+void GuiActionMenu::draw() {
     // a frame to draw over (the launcher's, captured when it started an extension - GuiSystemMenu's look),
     // else the theme's background
     if (background.valid())
@@ -83,7 +90,6 @@ void GuiActionMenu::render() {
                  {{{"X"}, crossLabel.empty() ? _("Select") : crossLabel},
                   {{"O"}, circleLabel.empty() ? _("Back") : circleLabel}},
                  "", false);
-    renderer.present();
 }
 
 //*******************************

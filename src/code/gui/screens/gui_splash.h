@@ -23,4 +23,7 @@ public:
     long holdStart = 0;
 
     using GuiScreen::GuiScreen;
+
+private:
+    void draw(); // what render() puts between the stack's clear and present
 };

@@ -34,6 +34,8 @@ public:
     static Item splitItem(const std::string &line);
 
 private:
+    void draw(); // what render() puts between the stack's clear and present
+
     int firstLine = 0;     // the first line shown
     int lastLineShown = 0; // one past the last line render() fitted in
     int rowsThatFit = 1;   // rows of the font in the content rect - a page

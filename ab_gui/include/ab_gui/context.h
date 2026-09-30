@@ -12,6 +12,7 @@
 //
 #pragma once
 
+#include <ab_gui/screen_stack.h>
 #include <ab_gui/style.h>
 
 #include <ableem/ui/font.h>
@@ -120,6 +121,15 @@ private:
 public:
     BackdropDrawer backdropDrawer;
     RectProvider panelProvider;
+
+    // Appended (step G3c): the screen stack every frame goes through - clear, the screen's drawing, present
+    // (ScreenStack::frame). The program owns it (AutoBleem's Gui) and sets it; hasStack() says whether one is set.
+    void setStack(ScreenStack &stack) { stack_ = &stack; }
+    bool hasStack() const { return stack_ != nullptr; }
+    ScreenStack &stack() const { return *stack_; }
+
+private:
+    ScreenStack *stack_ = nullptr;
 };
 
 } // namespace abgui

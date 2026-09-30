@@ -40,6 +40,8 @@ public:
     void loop() override;
 
 private:
+    void draw(); // what render() puts between the stack's clear and present
+
     int firstVisible = 0;
     PanelStyle style;
     DpadHold hold; // Up/Down held: the rows go on at the shared HoldRepeat pace

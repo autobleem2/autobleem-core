@@ -40,6 +40,8 @@ protected:
     void refresh(); // rebuild the rows from collect() - also after a sub-screen that may have changed them
 
 private:
+    void draw(); // what render() puts between the stack's clear and present
+
     // one drawn line: a section heading, or a label and its value
     struct Line {
         bool heading = false;

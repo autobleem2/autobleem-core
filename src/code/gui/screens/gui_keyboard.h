@@ -70,6 +70,7 @@ private:
     void confirm();
     void cancel();
     void drawKey(const ableem::Rect &key, const KeyCap &cap, bool selected);
+    void draw(); // what render() puts between the stack's clear and present
 
     std::shared_ptr<Gui> gui;
     size_t cursorIndex = 0;
