@@ -509,7 +509,12 @@ include path to the extensions.
   member** (SDK layouts, no `AB_SDK_ABI` bump), handed out by the Context (`inactiveProvider`, `inactiveAlphas()`,
   appended after `veilProvider`), `Gui::inactiveAlphas_` (appended after `disabledVeil_`) filled in `loadAssets()`.
   `Style::progress(ctx, ...)` with `StyleAlpha` takes the `barTrack` value when the theme has one, else
-  `progressTrackAlpha`. A disabled row's text in `description` (G5t's `Style::disabledColor`) was already in every own row
+  `progressTrackAlpha`. **G5g** (progress frames): the same overload draws the theme's `progressTrack` frame into the
+  whole bar and its `progressFill` frame into `Style::progressFillWidth(...)` of it (not at 0 px), each one falling back
+  on its own to the code-drawn fill; `Busy`'s bar calls this overload now. `Style::progressBox(renderer/ctx, bar,
+  fraction)` is the Software Update prompt's outlined bar (`edge` at 120, the `text` fill 2 px in - `progressBoxFillRect`;
+  the two frames instead, the fill over the bar's whole height). Test theme: `progressTrack` (hot pink / dark green)
+  and `progressFill` (light blue / burnt orange), 16 x 8, slice 4/2 - its frames are fourteen. A disabled row's text in `description` (G5t's `Style::disabledColor`) was already in every own row
   loop (System menu, Extensions, Processors, the editor); the Store has no disabled row since G5t. `GuiTextPage`'s lines
   take the theme's `row` role when its `launcher.colors` sets one (a colour or a name), else the classic text colour as
   before (the role is unset on `default`/`ab2`). `text_renderer.cpp`'s back plate builds a default `abgui::Style()` only

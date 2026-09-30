@@ -535,8 +535,8 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
     // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip
-    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h), toast (G5f)
-    REQUIRE(frames.size() == 14);
+    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h), toast (G5f), progressTrack/progressFill (G5g)
+    REQUIRE(frames.size() == 16);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
     const ableem::ThemeFrame *heading = nullptr;
@@ -644,6 +644,24 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(toast->slice.bottom == 20);
     CHECK(toast->bleed.right == 8);
     CHECK(toast->tint.empty());
+    // G5g: the progress bar's track and fill - 16 x 8 images, slice 4 at the sides and 2 top and bottom, no bleed
+    for (const char *name : {"progressTrack", "progressFill"}) {
+        const ableem::ThemeFrame *bar = nullptr;
+        for (const ableem::ThemeFrame &f : frames)
+            if (f.name == name)
+                bar = &f;
+        REQUIRE(bar != nullptr);
+        const string file = string(name) == "progressTrack" ? "progress_track" : "progress_fill";
+        CHECK(bar->image == dir + "/frames/" + file + ".png");
+        CHECK(bar->image2x == dir + "/frames/" + file + "@2x.png");
+        CHECK(bar->slice.left == 4);
+        CHECK(bar->slice.right == 4);
+        CHECK(bar->slice.top == 2);
+        CHECK(bar->slice.bottom == 2);
+        CHECK(bar->bleed.left == 0);
+        CHECK(bar->bleed.bottom == 0);
+        CHECK(bar->tint.empty());
+    }
 }
 
 TEST_CASE("themeImageFile: the @2x next to a theme image above scale 1, else the image itself (G4f)") {
@@ -879,7 +897,7 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
         CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
     }
     CHECK(ableem::resolveThemeIconHalo(dir, dir));    // the halo stays on: it shows under the test colours
-    CHECK(ableem::loadThemeFrames(dir).size() == 14); // the frames are untouched by the block
+    CHECK(ableem::loadThemeFrames(dir).size() == 16); // the frames are untouched by the block
 }
 
 TEST_CASE("readThemeLogo: launcher.logo {file, x, y, w, h}, set only with a file and a positive size (G5q)") {

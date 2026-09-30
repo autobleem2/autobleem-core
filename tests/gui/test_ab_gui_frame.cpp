@@ -13,6 +13,7 @@
 
 #include <ableem/ui/gui_base.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <exception>
 #include <map>
@@ -708,4 +709,90 @@ TEST_CASE("Style::tabCell through a Context (G5h): the tab frame when the provid
     style.tabCell(ctx, cell);
     CHECK(asked == vector<string>{"tab"});
     CHECK(style.drawFrame(ctx, "tab", cell));
+}
+
+TEST_CASE(
+    "Style::progress and progressBox through a Context (G5g): the track and fill frames, each falling back alone") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+    const Rect bar(100, 300, 400, 6);
+
+    // no provider (every shipped theme): the two fills as always, nothing to ask
+    style.progress(ctx, bar, 5, 10);
+    style.progressBox(ctx, Rect(100, 300, 700, 22), 0.5);
+
+    // a provider with a panel frame only: both progress frames are asked for, neither is found, the old drawing runs
+    FrameSet set;
+    FrameSpec panel;
+    panel.file = testFrame("panel.png");
+    panel.slice = TestSlice;
+    panel.bleed = TestBleed;
+    map<string, FrameSpec> specs;
+    specs["panel"] = panel;
+    set.assign(specs);
+    vector<string> asked;
+    ctx.frameProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.frame(renderer, name);
+    };
+    style.progress(ctx, bar, 5, 10);
+    CHECK(asked == vector<string>{"progressTrack", "progressFill"});
+    asked.clear();
+    style.progressBox(ctx, Rect(100, 300, 700, 22), 0.5);
+    CHECK(asked == vector<string>{"progressTrack", "progressFill"});
+
+    // the test theme's two frames (16x8, slice 4/2, no bleed)
+    FrameSpec track;
+    track.file = testFrame("progress_track.png");
+    track.file2x = testFrame("progress_track@2x.png");
+    track.slice = Insets(4, 2, 4, 2);
+    FrameSpec fill;
+    fill.file = testFrame("progress_fill.png");
+    fill.file2x = testFrame("progress_fill@2x.png");
+    fill.slice = Insets(4, 2, 4, 2);
+    specs["progressTrack"] = track;
+    specs["progressFill"] = fill;
+    set.assign(specs);
+    REQUIRE(set.frame(renderer, "progressTrack").valid());
+    REQUIRE(set.frame(renderer, "progressFill").valid());
+    CHECK(set.frame(renderer, "progressTrack").texture.size().w == 16);
+    CHECK(set.frame(renderer, "progressTrack").texture.size().h == 8);
+
+    // half done: the track, then the fill (each is asked for once to see it is there, once more by the drawing)
+    const auto count = [&](const string &name) {
+        return static_cast<int>(std::count(asked.begin(), asked.end(), name));
+    };
+    asked.clear();
+    style.progress(ctx, bar, 5, 10);
+    CHECK(count("progressTrack") == 2);
+    CHECK(count("progressFill") == 2);
+    // nothing done: the fill is 0 px wide and not drawn; the track is
+    asked.clear();
+    style.progress(ctx, bar, 0, 10);
+    CHECK(count("progressTrack") == 2);
+    CHECK(count("progressFill") == 1);
+    // no total: the track only
+    asked.clear();
+    style.progress(ctx, bar, 0, 0);
+    CHECK(count("progressFill") == 1);
+    // the prompt's bar: the same, the fill over the bar's whole height
+    asked.clear();
+    style.progressBox(ctx, Rect(100, 300, 700, 22), 0.5);
+    CHECK(count("progressTrack") == 2);
+    CHECK(count("progressFill") == 2);
+    asked.clear();
+    style.progressBox(ctx, Rect(100, 300, 700, 22), 0.0);
+    CHECK(count("progressFill") == 1);
+
+    // a theme with only the fill frame keeps the code-drawn track
+    specs.erase("progressTrack");
+    set.assign(specs);
+    asked.clear();
+    style.progress(ctx, bar, 5, 10);
+    CHECK(count("progressTrack") == 1);
+    CHECK(count("progressFill") == 2);
 }

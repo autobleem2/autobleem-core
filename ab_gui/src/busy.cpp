@@ -96,10 +96,11 @@ void Busy::drawFrame() {
         const ableem::Point centre = spinnerCentre(renderer.width(), renderer.height());
         drawSpinner(centre.x, centre.y, message_, ctx_->ticks() - started_);
         if (total_ > 0) {
-            // the bar under the message, as the notification bubble draws its own
+            // the bar under the message, as the notification bubble draws its own; through the Context (G5g), so a
+            // theme's progressTrack/progressFill frames reach it
             const ableem::Rect track =
                 barRect(renderer.width(), renderer.height(), ctx_->font(FontRole::Row).lineHeight());
-            style.progress(renderer, track, static_cast<unsigned long long>(barDone(done_, total_)),
+            style.progress(*ctx_, track, static_cast<unsigned long long>(barDone(done_, total_)),
                            static_cast<unsigned long long>(total_));
         }
     });

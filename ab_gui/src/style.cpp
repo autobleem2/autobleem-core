@@ -465,10 +465,16 @@ void Style::progress(ableem::Renderer &renderer, const Rect &track, unsigned lon
     renderer.fillRect(track);
     if (total == 0)
         return;
-    const unsigned long long shown = done < total ? done : total;
-    const int width = static_cast<int>(static_cast<unsigned long long>(track.w) * shown / total);
+    const int width = progressFillWidth(track.w, done, total);
     renderer.setDrawColor(tone(fillTone, fillAlpha));
     renderer.fillRect(Rect(track.x, track.y, width, track.h));
+}
+
+int Style::progressFillWidth(int trackWidth, unsigned long long done, unsigned long long total) {
+    if (total == 0)
+        return 0;
+    const unsigned long long shown = done < total ? done : total;
+    return static_cast<int>(static_cast<unsigned long long>(trackWidth) * shown / total);
 }
 
 void Style::progress(Context &ctx, const Rect &track, unsigned long long done, unsigned long long total, Tone trackTone,
@@ -476,7 +482,74 @@ void Style::progress(Context &ctx, const Rect &track, unsigned long long done, u
     // the style's own track alpha is the theme's `barTrack` inactive alpha when it sets one (G5r9)
     if (trackAlpha == StyleAlpha)
         trackAlpha = InactiveAlphas::orToday(ctx.inactiveAlphas().barTrack, progressTrackAlpha);
-    progress(ctx.renderer(), track, done, total, trackTone, trackAlpha, fillTone, fillAlpha);
+    const bool trackFramed = ctx.frame("progressTrack").valid();
+    const bool fillFramed = ctx.frame("progressFill").valid();
+    if (!trackFramed && !fillFramed) {
+        progress(ctx.renderer(), track, done, total, trackTone, trackAlpha, fillTone, fillAlpha);
+        return;
+    }
+    ableem::Renderer &renderer = ctx.renderer();
+    if (trackFramed) {
+        drawFrame(ctx, "progressTrack", track);
+    } else {
+        renderer.setBlendMode(ableem::BlendMode::Blend);
+        renderer.setDrawColor(tone(trackTone, trackAlpha));
+        renderer.fillRect(track);
+    }
+    if (total == 0)
+        return;
+    const int width = progressFillWidth(track.w, done, total);
+    if (fillFramed) {
+        if (width > 0)
+            drawFrame(ctx, "progressFill", Rect(track.x, track.y, width, track.h));
+    } else {
+        renderer.setBlendMode(ableem::BlendMode::Blend);
+        renderer.setDrawColor(tone(fillTone, fillAlpha));
+        renderer.fillRect(Rect(track.x, track.y, width, track.h));
+    }
+}
+
+//*******************************
+// Style::progressBox
+//*******************************
+Rect Style::progressBoxFillRect(const Rect &bar, double fraction, bool framed) {
+    if (framed) {
+        const double f = fraction < 0 ? 0 : (fraction > 1 ? 1 : fraction);
+        return Rect(bar.x, bar.y, static_cast<int>(bar.w * f), bar.h);
+    }
+    return Rect(bar.x + ProgressBoxInset, bar.y + ProgressBoxInset,
+                static_cast<int>((bar.w - 2 * ProgressBoxInset) * fraction), bar.h - 2 * ProgressBoxInset);
+}
+
+void Style::progressBox(ableem::Renderer &renderer, const Rect &bar, double fraction) const {
+    renderer.setDrawColor(Color(edge.r, edge.g, edge.b, ProgressBoxEdgeAlpha));
+    renderer.drawRect(bar);
+    renderer.setDrawColor(text);
+    renderer.fillRect(progressBoxFillRect(bar, fraction, false));
+}
+
+void Style::progressBox(Context &ctx, const Rect &bar, double fraction) const {
+    const bool trackFramed = ctx.frame("progressTrack").valid();
+    const bool fillFramed = ctx.frame("progressFill").valid();
+    if (!trackFramed && !fillFramed) {
+        progressBox(ctx.renderer(), bar, fraction);
+        return;
+    }
+    ableem::Renderer &renderer = ctx.renderer();
+    if (trackFramed) {
+        drawFrame(ctx, "progressTrack", bar);
+    } else {
+        renderer.setDrawColor(Color(edge.r, edge.g, edge.b, ProgressBoxEdgeAlpha));
+        renderer.drawRect(bar);
+    }
+    if (fillFramed) {
+        const Rect fill = progressBoxFillRect(bar, fraction, true);
+        if (fill.w > 0)
+            drawFrame(ctx, "progressFill", fill);
+    } else {
+        renderer.setDrawColor(text);
+        renderer.fillRect(progressBoxFillRect(bar, fraction, false));
+    }
 }
 
 //*******************************
