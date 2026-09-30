@@ -18,6 +18,7 @@
       "hintBar": { "image": "frames/hint_bar.png", "slice": 28, "bleed": 8 },
       "tab": { "image": "frames/tab.png", "slice": 16, "bleed": 0 },
       "toast": { "image": "frames/toast.png", "slice": 20, "bleed": 8 },
+      "coverGlow": { "image": "frames/cover_glow.png", "slice": 64, "bleed": 48, "fill": false },
       "progressTrack": { "image": "frames/progress_track.png",
                          "slice": { "left": 4, "top": 2, "right": 4, "bottom": 2 }, "bleed": 0 },
       "progressFill": { "image": "frames/progress_fill.png",

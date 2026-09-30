@@ -46,6 +46,10 @@
 # cut, a dark centre at about 80% the title and detail read over. Hot pink (255, 105, 180) at 1x, dark teal (0, 100, 100)
 # at @2x. theme.json: slice 20, bleed 8.
 #
+# coverGlow (G5k): 160x160 - the art spec's glow: a 64x64 box in the middle with a 48 px bleed round it, the centre left
+# out (fill false), a 2 px rim on the box's edge and a strong glow fading outward. Aqua green (0, 255, 160) at 1x,
+# magenta (200, 0, 255) at @2x. theme.json: slice 64, bleed 48, "fill": false.
+#
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
 # selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
 # key_selected.png (48x48 each), field.png (56x56), badge.png (40x40), chip.png (32x32), footer.png (64x62), hint_bar.png (80x80), toast.png (64x64), progress_track.png and progress_fill.png (16x8) and the
@@ -172,6 +176,12 @@ def toast_shape():
     return Shape(size, size, bleed, poly, 2, (20, 16, 28, 204), 100)
 
 
+def cover_glow_shape():
+    size, bleed = 160, 48
+    poly = [(bleed, bleed), (size - bleed, bleed), (size - bleed, size - bleed), (bleed, size - bleed)]
+    return Shape(size, size, bleed, poly, 2, (255, 255, 255, 0), 200)
+
+
 def progress_shape(centre_alpha):
     w, h = 16, 8
     poly = [(0, 0), (w, 0), (w, h), (0, h)]
@@ -237,6 +247,7 @@ def main():
         ("hint_bar", hint_bar_shape(), (250, 128, 114), (128, 128, 0)),
         ("tab", tab_shape(), (90, 80, 255), (170, 110, 0)),
         ("toast", toast_shape(), (255, 105, 180), (0, 100, 100)),
+        ("cover_glow", cover_glow_shape(), (0, 255, 160), (200, 0, 255)),
         ("progress_track", progress_shape(40), (255, 105, 180), (0, 100, 0)),
         ("progress_fill", progress_shape(200), (100, 180, 255), (205, 92, 0)),
     ]

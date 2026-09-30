@@ -45,6 +45,9 @@ public:
     // them (textShadow from launcher.textShadow) - what Gui's abgui::Context hands its widgets
     static abgui::ColorRoles colorRoles(const ableem::LauncherTheme &theme);
     static abgui::Style styleFromTheme(const ableem::LauncherTheme &theme);
+    // the colour a frame's `tint` names when it is a launcher.colors colour the Style has no role for (G5k: `selection`,
+    // the cover glow's - white when the theme sets none, as the procedural glow is); false for any other name
+    static bool frameTintColor(const ableem::LauncherTheme &theme, const std::string &name, ableem::Color &out);
     // this PanelStyle as the plain Style it is, and back
     abgui::Style style() const { return *this; }
     static PanelStyle fromStyle(const abgui::Style &style);

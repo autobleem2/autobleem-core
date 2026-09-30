@@ -223,6 +223,12 @@ bleed (about 8 px under the box).
 | Centre | `"fill": false` recommended (the cover covers it; a big box or an empty box would show it) |
 | States | one; the code sets its alpha (strength and breathing) - draw it at full strength |
 | Colour | tintable with `selection` recommended (the theme's accent) - draw it white |
+
+**Scaling and tint.** The numbers above are for a face of 222 px on its long side; the code scales the slices and the
+bleed by (the face's long side / 222), so the glow keeps its proportions on a small or a big box and on the side slots.
+It is drawn at `strength x breathing` (0-100%) - no 55% is applied to a frame, the art sets its own brightness.
+`"tint": "selection"` multiplies it by `launcher.colors.selection` (white when the theme sets none); the test theme
+(`tests/data/frame-test-theme`) has the frame untinted: aqua green at 1x, magenta at @2x.
 | Smallest box | 110 x 110 (a cover half-way to a side slot; smaller ones get no glow) |
 
 ### 2.9 `plate` - the pad battery plate (G5l)

@@ -53,6 +53,14 @@ abgui::Style PanelStyle::styleFromTheme(const ableem::LauncherTheme &theme) {
     return s;
 }
 
+bool PanelStyle::frameTintColor(const ableem::LauncherTheme &theme, const std::string &name, ableem::Color &out) {
+    if (name != "selection")
+        return false;
+    out = theme.colors.selection.set ? TextRenderer::toColor(theme.colors.selection, 255)
+                                     : ableem::Color(255, 255, 255, 255);
+    return true;
+}
+
 PanelStyle PanelStyle::fromTheme(const ableem::LauncherTheme &theme) {
     return fromStyle(styleFromTheme(theme));
 }

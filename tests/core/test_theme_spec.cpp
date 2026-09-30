@@ -535,8 +535,8 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
     // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip
-    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h), toast (G5f), progressTrack/progressFill (G5g)
-    REQUIRE(frames.size() == 16);
+    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h), toast (G5f), progressTrack/progressFill (G5g), coverGlow (G5k)
+    REQUIRE(frames.size() == 17);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
     const ableem::ThemeFrame *heading = nullptr;
@@ -644,6 +644,20 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(toast->slice.bottom == 20);
     CHECK(toast->bleed.right == 8);
     CHECK(toast->tint.empty());
+    // G5k: the cover glow - a 160 x 160 image cut at 64 with a 48 px bleed, no centre, the code tints it (the test theme
+    // sets no tint, so its own aqua / magenta shows)
+    const ableem::ThemeFrame *glow = nullptr;
+    for (const ableem::ThemeFrame &f : frames)
+        if (f.name == "coverGlow")
+            glow = &f;
+    REQUIRE(glow != nullptr);
+    CHECK(glow->image == dir + "/frames/cover_glow.png");
+    CHECK(glow->image2x == dir + "/frames/cover_glow@2x.png");
+    CHECK(glow->slice.left == 64);
+    CHECK(glow->slice.bottom == 64);
+    CHECK(glow->bleed.top == 48);
+    CHECK_FALSE(glow->fill);
+    CHECK(glow->tint.empty());
     // G5g: the progress bar's track and fill - 16 x 8 images, slice 4 at the sides and 2 top and bottom, no bleed
     for (const char *name : {"progressTrack", "progressFill"}) {
         const ableem::ThemeFrame *bar = nullptr;
@@ -897,7 +911,7 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
         CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
     }
     CHECK(ableem::resolveThemeIconHalo(dir, dir));    // the halo stays on: it shows under the test colours
-    CHECK(ableem::loadThemeFrames(dir).size() == 16); // the frames are untouched by the block
+    CHECK(ableem::loadThemeFrames(dir).size() == 17); // the frames are untouched by the block
 }
 
 TEST_CASE("readThemeLogo: launcher.logo {file, x, y, w, h}, set only with a file and a positive size (G5q)") {

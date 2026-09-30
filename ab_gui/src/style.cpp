@@ -211,13 +211,23 @@ bool Style::drawFrame(Context &ctx, const string &name, const Rect &box) const {
 }
 
 bool Style::drawFrame(Context &ctx, const string &name, const Rect &box, unsigned char alpha) const {
+    return drawFrame(ctx, name, box, alpha, 1.0f);
+}
+
+bool Style::drawFrame(Context &ctx, const string &name, const Rect &box, unsigned char alpha, float scale) const {
     const Frame frame = ctx.frame(name);
     if (!frame.valid())
         return false;
     Color tint(255, 255, 255, 255);
-    if (!frame.tint.empty() && colorByName(frame.tint, tint))
-        tint.a = 255; // the colour multiplies the image's; its alpha is the image's own
-    abgui::drawFrame(ctx.renderer(), frame, box, tint, alpha);
+    if (!frame.tint.empty()) {
+        if (colorByName(frame.tint, tint))
+            tint.a = 255; // the colour multiplies the image's; its alpha is the image's own
+        else if (frame.tintResolved) {
+            tint = frame.tintColor; // a colour the program resolved (`selection`, G5k)
+            tint.a = 255;
+        }
+    }
+    abgui::drawFrame(ctx.renderer(), scaledFrame(frame, scale), box, tint, alpha);
     return true;
 }
 

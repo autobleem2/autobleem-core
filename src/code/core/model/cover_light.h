@@ -34,6 +34,16 @@ inline Box glowBox(const Box &face, float scale) {
     return box;
 }
 
+// The glow as a theme's `coverGlow` frame (G5k): the art is drawn for a face of GlowFrameFace px on its long side, so
+// the frame's slices and bleed scale with the cover - the face's longer side over that (1 at rest for a jewel case; a
+// box with no size gives 1).
+const float GlowFrameFace = 222.0f;
+
+inline float glowFrameScale(const Box &face) {
+    const float side = std::max(face.w, face.h);
+    return side > 0 ? side / GlowFrameFace : 1.0f;
+}
+
 // The shine: evoimg/sheen.png, a square of white whose alpha is one soft diagonal band (its centre line from 0.63
 // of the side at the top to 0.27 at the bottom, leaning left going down, peak alpha 40/255), drawn over the face
 // at the face's HEIGHT - scaled uniformly, so the band keeps its angle and softness on every aspect - and clipped
