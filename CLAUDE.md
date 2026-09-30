@@ -248,7 +248,10 @@ needs that the `ableem` API lacks goes into lib_ableem first). `ab_classic` link
 include path to the extensions.
 - **`abgui::Style`** (`style.h`) - the look as data (the colour roles, the metrics as fields with today's values as
   defaults, `Default*` constants) and its primitives (`dim/sheet/rule/header/selection/disabled/label/scrollMarker/
-  footer/button(s)/buttonWidth/buttonsWidth/outlineOf`, `parseHints`). `Style::fromColors(ColorRoles)` resolves the
+  footer/button(s)/buttonWidth/buttonsWidth/outlineOf`, `parseHints`; since G2c also `box/plate/key/field/caret/progress/
+  spinner/tab/vrule` with `Tone` (a colour role + an alpha, `Style::OwnAlpha`/`StyleAlpha` for "the colour's own" /
+  "the style's metric") and `KeyState` - the keyboard, busy spinner and bar, About, splash, text back rect, the detail
+  pane, the Store and PSC-Bios draw through them). `Style::fromColors(ColorRoles)` resolves the
   roles from a plain block - AutoBleem's `LauncherTheme` never reaches ab_gui.
 - **`abgui::Context`** (`context.h`) - what the drawing needs: the `Renderer`, and as providers asked at draw time
   (never cached - the display release frees fonts and textures) the fonts by `FontRole` (Title/Row/RowSmall/Small/
