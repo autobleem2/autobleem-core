@@ -88,22 +88,20 @@ vector<string> GuiAbout::autobleemFoot() {
 }
 
 //*******************************
-// GuiAbout::render
+// GuiAbout::draw
 //*******************************
-// the frame through Gui's screen stack: clear, the credits or the game, present (docs/ab-gui-plan.md, G3c)
-void GuiAbout::render() {
-    gui->uiContext().stack().frame([this]() {
-        if (surpriseMode)
-            renderSurprise();
-        else
-            draw();
-    });
+// what the stack's frame holds (docs/ab-gui-plan.md, G3c): the credits, or the game
+void GuiAbout::draw() {
+    if (surpriseMode)
+        renderSurprise();
+    else
+        drawCredits();
 }
 
 //*******************************
-// GuiAbout::draw
+// GuiAbout::drawCredits
 //*******************************
-void GuiAbout::draw() {
+void GuiAbout::drawCredits() {
     std::shared_ptr<Gui> gui(Gui::getInstance());
 
     gui->renderBackground();

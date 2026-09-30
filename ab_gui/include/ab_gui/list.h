@@ -13,7 +13,7 @@
 //
 // The list's numbers (the cursor, the page, the rows' y, the font, ...) are references: to the list's own (the first
 // constructor), or to a caller's members, worked on in place (the second) - the classic GuiMenuBase is header-only and
-// compiled into extensions, so it keeps its members and hands them in (ABI 6).
+// compiled into extensions, and the screens built on it read and set its members, so it keeps them and hands them in.
 //
 // The events go through Screen::handle(): the d-pad by its live state (up before down), a row per step at the shared
 // HoldRepeat pace while held; L1/R1 (PrevTab/NextTab) the first/last row, L2/R2 (PageUp/PageDown) a page; Confirm

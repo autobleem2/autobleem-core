@@ -268,14 +268,13 @@ include path to the extensions.
   `Panel::compact(ctx, rows, font)` (800 wide, centred), `content()`, `footer()`, `rowsThatFit`, and the drawing
   (`sheet` = dim + sheet, `header`, `footer(ctx, line)`, `scrollMarkers`). `Gui::classicPanel/classicContent/
   classicFooter/classicRowsThatFit/setCompactPanel/renderTextBar/renderHeader/renderStatus/renderScrollMarkers` and
-  `renderBackground` forward to it and the Context; the compact panel's on/off state is still `Gui`'s. Tests:
-  `tests/gui/test_ab_gui_panel.cpp` (the numbers against the old `Gui` formulas).
+  `renderBackground` forward to it and the Context; the compact panel is the Context's (G3m; `Gui`'s own copy went in
+  G3z). Tests: `tests/gui/test_ab_gui_panel.cpp` (the numbers against the old `Gui` formulas).
 - **`abgui::ScreenStack`** (`screen_stack.h`, G3c) - screens draw, the stack presents: `frame(draw)` = clear (the
   current draw colour), the drawing, present; `frame(colour, draw)` sets the draw colour first. `Gui` owns it
-  (appended after `uiContext_`) and hands it to its Context (`uiContext().stack()`). Every core screen's `render()`
-  is `stack().frame([this]{ draw(); })` with a non-virtual `draw()`, and `Gui`'s own frames (busy, `drawText`, the
-  splash picture, the resume's black frame) go through it too - **a new screen never calls `clear()`/`present()`
-  itself**. A frame started inside another's drawing is presented at once as a frame of its own. The launcher links
+  and hands it to its Context (`uiContext().stack()`). Every screen's `render()` is `abgui::Screen::render()` (since
+  G3z: `prepareFrame()`, then `stack().frame(draw)`), and `Gui`'s own frames (busy, `drawText`, the splash picture,
+  the resume's black frame) go through it too - **a screen never calls `clear()`/`present()` itself**. A frame started inside another's drawing is presented at once as a frame of its own. The launcher links
   ab_gui `--whole-archive` since then (header templates call it). Tests: `tests/gui/test_ab_gui_screen_stack.cpp`.
 - **`abgui::Action` / `abgui::ActionMap`** (`actions.h`, G3f) - what the player wants, not which button: `Confirm`,
   `Back`, `Option`, `Extra`, `Menu`, `View`, `PrevTab`/`NextTab`, `PageUp`/`PageDown`, `Up/Down/Left/Right`,
@@ -284,8 +283,10 @@ include path to the extensions.
   Triangle Option, Square Extra, Start Menu, Select View, L1/R1 PrevTab/NextTab, L2/R2 PageUp/PageDown, the d-pad)
   and the keyboard as `ableem::KeyboardMap` maps it (Enter, Backspace/Esc, Tab, F1/F2, PgUp/PgDn, Home/End, arrows,
   Space). First/Last have no default button (L1/R1 are the tabs' or the list's ends - the screen decides); `bind`
-  gives them one. `setSwapConfirmBack(true)` exchanges Confirm and Back on the pad's buttons only (default off).
-  The program's one map is the Context's `actions` (G3g); an `ActionEvent` carries the `event` it came from.
+  gives them one. `setSwapConfirmBack(true)` exchanges Confirm and Back on the pad's buttons only (default off) - a
+  pad event the keyboard-as-pad made from a key (`ableem::Event::fromKey`, which `Input` sets since G3z) keeps the
+  key's meaning. The program's one map is the Context's `actions` (G3g); an `ActionEvent` carries the `event` it came
+  from.
   `abgui::HoldRepeat`/`DpadHold` (`hold_repeat.h`) are the moved shared
   hold-repeat pace; `gui/hold_repeat.h` keeps the global names as aliases. Tests: `tests/gui/test_ab_gui_actions.cpp`.
 - **`abgui::Screen`** (`screen.h`, G3g) - the base of ab_gui's screens, `: public ableem::GuiScreen`, holding a
@@ -296,9 +297,27 @@ include path to the extensions.
   L1, Last R1 - the button's own with the default map), the d-pad `dispatchDpad()` (the live state, the old
   priority), a key its own key hook (Enter `doEnter`, whatever its action), text `doTextInput`. The switches live once,
   in `ableem::GuiScreen`'s new non-virtual `dispatchEvent/dispatchDpad/dispatchButton/dispatchKey`, which its own
-  `loop()` calls too. **Nothing derives from it yet**: the classic `GuiScreen` shim moves onto it in G3z (a base
-  change is a layout change - ABI 7). Tests: `tests/gui/test_ab_gui_screen.cpp` (the old loop and the new one, hook
-  for hook, over the same events).
+  `loop()` calls too. Since G3z `render()` first calls `virtual bool prepareFrame()` - what a screen does before its
+  frame, outside it (a refresh when due, `endBusy()`, a pad read), false = no frame this time (the screen closed in
+  it) - and clears to `frameColor` when that is set (the launcher and the splash: transparent black). **Every classic
+  screen is one** (G3z, below). Tests: `tests/gui/test_ab_gui_screen.cpp` (the old loop and the new one, hook for
+  hook, over the same events; `prepareFrame`/`frameColor` on a logging display).
+- **The classic screens on ab_gui** (G3z, `AB_SDK_ABI` 7): `gui/gui_screen.h`'s `ClassicScreen<Widget>` is any
+  ab_gui screen on `Gui::uiContext()` plus the members every classic screen file expects (`gui` - the
+  `shared_ptr<Gui>` -, `renderer`, `app`); `GuiScreen` is `ClassicScreen<abgui::Screen>`, so every classic screen
+  reads its events through the ActionMap (the default `onAction()` reaches the old hooks exactly as before) and has
+  `draw()` only - no screen overrides `render()` any more (the launcher's and the extensions' screens were
+  converted: `draw()` override, the pre-frame work in `prepareFrame()`). The widgets are the ab_gui ones under their
+  old names (the DebugDriver's screen name is the most derived class's, so it stays): `GuiConfirm` =
+  `ClassicScreen<abgui::Confirm>`, `GuiTextPage` (`<abgui::TextPage>`; the lines in the classic theme's text colour,
+  from the top at every show), `GuiKeyboard` (`<abgui::Keyboard>`; its static `pageName()` keeps the `_()` literals
+  for the language tools), `GuiActionMenu` (`<abgui::ActionMenu>`; `init()` = `open()`), `GuiFactsPage`
+  (`<abgui::FactsPage>`; the theme's font, `open()`; a page's `collect()` returns `abgui::FactsSection`s -
+  `GuiFactsPage::sectionsOf()` turns `SystemInfoService`'s `InfoSection`s into them). Their forwarding .cpp files
+  went. `GuiMenuBase` keeps its members and its per-call `GuiMenuBaseList` forwarding (header-only: an extension
+  compiles it in, so it can change without an ABI bump); its `render()` went, `draw()` is the override. `Gui` lost
+  its dead busy members and its copy of the compact panel (`classicPanel()` asks the Context). An extension built for
+  ABI 6 is refused by the stamp (`test_extension_runtime`).
 - **`abgui::TextPage`** (`text_page.h`, G3h) - the first widget on `abgui::Screen` and the pattern for the rest: a
   titled page of `lines` (wrapped to the panel at the rows' inset, a numbered item hangs - `splitItem`; a blank or, with
   `centred`, every line is one row through the Context's `lineDrawer`), scrolling a line (d-pad, arrows) or a page
@@ -308,9 +327,8 @@ include path to the extensions.
   PageUp, PageDown - the d-pad by its live state, keys as keys), `onUnmapped` the keys nobody bound. The pure parts
   are static/free and tested: `abgui::wrapText(text, width, measure)` (`TextRenderer::wrapLines` forwards to it),
   `TextPage::splitItem/canScroll/scrolled`. The line colour is `TextPage::color` (the classic theme's text colour,
-  set by `GuiTextPage`; unset: the style's text). **`GuiTextPage`'s header is untouched** (ABI 6): its `render()` and
-  `loop()` build an `abgui::TextPage` from `title`/`lines`/`centred` and forward, so `show()` (and the DebugDriver's
-  screen name, `typeid(*this)`) stays the old class. Context gained `lineDrawer`/`drawLine` (appended). Tests:
+  set by `GuiTextPage`; unset: the style's text). `GuiTextPage` is it as a classic screen since G3z (until then it
+  forwarded to a fresh one per frame). Context gained `lineDrawer`/`drawLine` (appended). Tests:
   `tests/gui/test_ab_gui_text_page.cpp` (events on a headless GuiBase, skips without a renderer), `tests/classic/
   test_text_page.cpp` (the old class's `splitItem`).
 - **`abgui::FactsPage`** (`facts_page.h`, G3i) - a read-only page of sections (a heading band each) and label/value
@@ -321,10 +339,8 @@ include path to the extensions.
   Context, its own `loop()` (refresh when due, a frame when due, events to `handle()`), `onAction` (the d-pad by its
   live state, up first; PrevTab/NextTab the first/last row, PageUp/PageDown a page, then the page's `onButton()`,
   then Back closes), `onUnmapped` (a button with no action still reaches `onButton()`). Pure and tested: `linesOf`,
-  `maxFirstVisible`, `scrolled`, `refreshDue`, `counter`, `valueColumn`. **`GuiFactsPage`'s header is untouched**
-  (ABI 6; PSC-Bios's page and Hardware Information derive from it and keep doing so): its `render()`/`loop()` build
-  a forwarding `abgui::FactsPage` from the header's state, run it and copy the state back; `init()` and
-  `refresh()` stay on the old class. Tests: `tests/gui/test_ab_gui_facts_page.cpp`.
+  `maxFirstVisible`, `scrolled`, `refreshDue`, `counter`, `valueColumn`. `GuiFactsPage` is it as a classic screen
+  since G3z (PSC-Bios's page and Hardware Information derive from it). Tests: `tests/gui/test_ab_gui_facts_page.cpp`.
 - **`abgui::Confirm`** (`confirm.h`, G3j) - a yes/no question in a compact 800 px dialog over the backdrop: the
   header (`title`, else "Please confirm"), `label` wrapped to the panel, the two answers as footer hints
   (`confirmLabel`/`cancelLabel`, else "Confirm"/"Cancel"), `result`. The `TextPage` pattern: `draw()` on a
@@ -332,9 +348,8 @@ include path to the extensions.
   every 250 ms meanwhile, events to `handle()`), `onAction` (Confirm = yes with the Cursor sound, Back = no with
   Cancel; the d-pad and other buttons nothing) and `onUnmapped` (Enter yes, Escape no). Context gained
   `shadowSwitch`/`setTextShadow` (appended; Gui wires it to the text renderer's shadow) for the halo the dialog
-  sets from its style. **`GuiConfirm`'s header is untouched** (the Store extension constructs it; `GuiKeepDisplay`
-  derives from it): `render()`/`loop()` build an `abgui::Confirm` from the header's fields and copy `result`
-  back. Tests: `tests/gui/test_ab_gui_confirm.cpp`.
+  sets from its style. `GuiConfirm` is it as a classic screen since G3z (the Store constructs it; `GuiKeepDisplay`
+  derives from it and keeps its own countdown loop). Tests: `tests/gui/test_ab_gui_confirm.cpp`.
 - **`abgui::ActionMenu`** (`action_menu.h`, G3k) - a compact 800 px panel of actions: `title` and `subtitle`,
   rows of a name over a description (`Item{title, description, heading, disabled}` - a heading is a thin band the
   cursor skips, a disabled item is under the disabled veil with its reason as description, skipped and never
@@ -342,9 +357,8 @@ include path to the extensions.
   `wrap`, `background` (a texture drawn under the dimmed panel instead of the backdrop), `result`. The `TextPage`
   pattern: `draw()` on a `Panel`, pure `selectable`/`rowHeight`/`roomForRows`/`visibleCount`/`scrolledTo`/`moved`,
   its own `loop()` (frame when due, `DpadHold` repeats, events to `handle()`), `onAction` (Confirm picks with the
-  Cursor sound, Back leaves with Cancel, the d-pad by its live state; keys do nothing). **`GuiActionMenu`'s header
-  is untouched** (ABI 6): `init()`/`render()`/`loop()` build an `abgui::ActionMenu` from the header's fields and
-  copy `selected`/`result`/the scroll back. The launcher's `GuiSystemMenu` (Quick and System menus, the DebugDriver's
+  Cursor sound, Back leaves with Cancel, the d-pad by its live state; keys do nothing). `GuiActionMenu` is it as a
+  classic screen since G3z (`init()` = `open()`). The launcher's `GuiSystemMenu` (Quick and System menus, the DebugDriver's
   `items`/`selected`) keeps its own class: its 20/14/15 px fonts and description strip are not `FontRole`s yet.
   Tests: `tests/gui/test_ab_gui_action_menu.cpp`.
 - **`abgui::Busy`** (`busy.h`, G3l) - the spinner a long job on the main thread shows, reached as
@@ -358,14 +372,14 @@ include path to the extensions.
   job). `waitScreen(message, topLine)` is the "please wait" picture: the backdrop, the Context's `logoDrawer`
   (appended in G3l; Gui wires the theme's logo), the spinner under the logo, the top line in `RowSmall`. Every frame
   goes through the stack, so a tick from inside a screen's drawing is a frame of its own. `Gui::beginBusy/busyTick/
-  setBusyProgress/endBusy/tickBusy/drawText` keep their signatures and forward; Gui's busy members stay unused until
-  G3z. Pure and tested: `frameDue`, `spinnerLead`, `spinnerCentre`, `messageTop`, `barRect`, `barDone`,
+  setBusyProgress/endBusy/tickBusy/drawText` keep their signatures and forward (Gui's old busy members went in G3z).
+  Pure and tested: `frameDue`, `spinnerLead`, `spinnerCentre`, `messageTop`, `barRect`, `barDone`,
   `waitSpinnerY`. Tests: `tests/gui/test_ab_gui_busy.cpp` (and `tests/classic/test_busy_input.cpp`, unchanged).
 - **`abgui::ListModel`** (`list_model.h`, G3m part 1) - the selection and paging of a list, pure and header-only:
   a `View` of references to the caller's own `selected`/`firstVisible`/`lastVisible` plus `maxVisible` and `size`, and
   inline static templates over a skip predicate: `adjustPageBy`, `computePagePosition`, `landOnSelectable`,
   `stepDown`/`stepUp` (with the wrap), `pageDown`/`pageUp`, `home`/`end`. `GuiMenuBase` keeps every data member
-  (ABI 6: extensions build it inline) and forwards its `adjustPageBy`/`landOnSelectable`/`computePagePosition` to the
+  (the screens built on it read and set them) and forwards its `adjustPageBy`/`landOnSelectable`/`computePagePosition` to the
   model through `modelView()`/`skipper()` (non-virtual, no layout change); the moves go through `abgui::List` since
   part 2. Tests: `tests/classic/test_menu_base_navigation.cpp`
   (the real model, plus a brute-force comparison with the frozen old code).
@@ -381,10 +395,10 @@ include path to the extensions.
   first/last, L2/R2 a page, Confirm/Back, keys as keys. Pure: `rowTop`, `textLeft`, `valueRight`, `band`,
   `switchState`, `isCompact`; the DebugDriver's `driverItems()`/`driverSelected()` (`publish()` hands them over under
   `screenName()`). **The compact panel is the Context's** (`setCompactPanel`/`clearCompactPanel`/`currentPanelRect`,
-  appended): its `panelSwitch` is how `Gui` mirrors it into `compact_`/`compactPanel_` and the text renderer's panel,
-  and `Gui::setCompactPanel/clearCompactPanel` forward to the Context. `TextRenderer`'s row functions take their
-  numbers from `List`'s geometry. **`GuiMenuBase` is a thin template over it**: every member and declaration kept (ABI
-  6), each function builds a `GuiMenuBaseList` - a `List` over the menu's members whose hooks are the menu's
+  appended): its `panelSwitch` is how `Gui` points the text renderer's rows at it (and `Gui::classicPanel()` asks
+  `currentPanelRect()`), and `Gui::setCompactPanel/clearCompactPanel` forward to the Context. `TextRenderer`'s row
+  functions take their numbers from `List`'s geometry. **`GuiMenuBase` is a thin template over it**: every member
+  kept, each function builds a `GuiMenuBaseList` - a `List` over the menu's members whose hooks are the menu's
   virtuals (`renderLineIndexOnRow` in TextRenderer's row role, `getTitle`/`getStatusLine`, the skip, `doKeyDown`/
   `doKeyUp`/`render` for a held row) - and forwards; the input stays on the classic hooks. A rebuilt extension bakes
   `List`'s layout in through that inline class. Tests: `tests/gui/test_ab_gui_list.cpp`.
@@ -398,14 +412,14 @@ include path to the extensions.
   Back cancels; the d-pad by its live state; a button plays the Cursor sound) and `onUnmapped` (typed text, and the USB
   keyboard's arrows/Home/End/Backspace/Delete/Enter/Esc as keys). Pure and tested: `keyAt`, `pageKeyLabel`, `pageName`,
   `previousChar/nextChar`, `inserted/backspaced/deletedForward`, `shown/caretIn`, `moved`, `shiftAfter`, `nextPage`.
-  **`GuiKeyboard`'s header is untouched** (ABI 6; the Store and PSC-Bios construct it): `render()`/`loop()` build an
-  `abgui::Keyboard` from the header's state and copy `result`, `cancelled` and the cursor/selection back; `init()` and
-  the statics stay on the old class (`pageName` keeps its `_()` literals for the language tools). Tests:
-  `tests/gui/test_ab_gui_keyboard.cpp`.
+  `GuiKeyboard` is it as a classic screen since G3z (the Store and PSC-Bios construct it); its static `pageName` keeps
+  the `_()` literals for the language tools. Tests: `tests/gui/test_ab_gui_keyboard.cpp`.
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
-- **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
-  hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to
-  `Style` with `gui.uiContext()`. Tests: `tests/gui/test_ab_gui_style.cpp`.
+- **`PanelStyle` is an `abgui::Style`** (since G3z; an adapter holding its own colours until then): the colour roles,
+  metrics and every primitive on a Renderer or a Context are the Style's; PanelStyle adds the old constants
+  (`HeaderHeight`...), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, `style()`/`fromStyle()`, and the
+  primitives that draw text or glyphs taking a `Gui&` (drawn with `gui.uiContext()`); `PanelStyle::HintItem` is
+  `abgui::HintItem`. Tests: `tests/gui/test_ab_gui_style.cpp`, `tests/classic/test_panel_style_roles.cpp`.
 
 ## UI styling standards (2026-09-21, the `feature/ui-fixes` pass)
 

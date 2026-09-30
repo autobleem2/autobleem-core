@@ -405,3 +405,25 @@ TEST_CASE("busy rule: a hold that reads the live d-pad state each frame stops af
     drain(mg.input());
     CHECK_FALSE(mg.input().dpadRight());
 }
+
+TEST_CASE("a pad event the keyboard-as-pad made from a key says so (Event::fromKey); a pad's own does not") {
+    MaybeGui mg;
+    if (!mg.available())
+        return;
+    // abgui::ActionMap's Confirm/Back swap leaves a key's meaning alone by this mark (G3z, AB_SDK_ABI 7)
+    REQUIRE(mg.input().keyboardAsPad());
+    pushKey(true, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    pushKey(false, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    vector<Event> seen = drain(mg.input());
+    REQUIRE(count(seen, Event::Type::ButtonDown, Button::Cross) == 1);
+    REQUIRE(count(seen, Event::Type::ButtonUp, Button::Cross) == 1);
+    for (const Event &e : seen)
+        CHECK(e.fromKey);
+
+    pushButton(true, SDL_CONTROLLER_BUTTON_A);
+    pushButton(false, SDL_CONTROLLER_BUTTON_A);
+    seen = drain(mg.input());
+    REQUIRE(count(seen, Event::Type::ButtonDown, Button::Cross) == 1);
+    for (const Event &e : seen)
+        CHECK_FALSE(e.fromKey);
+}

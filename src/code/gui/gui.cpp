@@ -226,18 +226,9 @@ void Gui::wireUiContext() {
         renderLogo(false);
         return assets_.logoRect;
     };
-    // a short list's compact panel (abgui::List, Gui::setCompactPanel): classicPanel() and the text renderer's rows
-    // follow it while it is set
-    uiContext_.panelSwitch = [this](const Rect *rect) {
-        if (rect != nullptr) {
-            compactPanel_ = *rect;
-            compact_ = true;
-            text_.setPanelOverride(&compactPanel_);
-        } else {
-            compact_ = false;
-            text_.setPanelOverride(nullptr);
-        }
-    };
+    // a short list's compact panel (abgui::List, Gui::setCompactPanel): the text renderer's rows follow it while it is
+    // set (the rect is the Context's own, valid until it is dropped); classicPanel() asks the Context
+    uiContext_.panelSwitch = [this](const Rect *rect) { text_.setPanelOverride(rect); };
     // every frame through the one stack: clear, draw, present (step G3c)
     uiContext_.setStack(stack_);
 }
@@ -352,7 +343,7 @@ void Gui::releaseDisplay() {
 // Gui::beginBusy / busyTick / endBusy / tickBusy
 //*******************************
 // ab_gui's abgui::Busy (step G3l), the stack's: the backdrop, the dimmed spinner, the message, the bar, the 40 ms
-// pace and the input flush at the end. Gui's busy members stay, unused, until the ABI step (G3z).
+// pace and the input flush at the end.
 void Gui::beginBusy(const string &message, const std::function<void()> &redraw) {
     stack_.busy().begin(message, redraw);
 }
@@ -439,8 +430,7 @@ PanelStyle Gui::panelStyle() {
 }
 
 // the panel's geometry and drawing are ab_gui's abgui::Panel (step G3b); the compact panel is the Context's
-// (abgui::List sets it, step G3m), mirrored here (compact_/compactPanel_, which TextRenderer's rows read as their
-// panel) through the Context's panelSwitch (wireUiContext) while the classic rows draw through TextRenderer
+// (abgui::List sets it, step G3m), and TextRenderer's rows follow it through the Context's panelSwitch (wireUiContext)
 static abgui::Panel currentPanel(Gui &gui) {
     return abgui::Panel(gui.classicPanel(), gui.uiContext().style());
 }
@@ -454,10 +444,9 @@ void Gui::clearCompactPanel() {
 }
 
 Rect Gui::classicPanel() {
-    if (compact_)
-        return compactPanel_;
-    // the Context's panel rect (wireUiContext: the theme's menu panel down to the status line's foot)
-    return uiContext_.panelRect();
+    // the compact panel while one is set, else the Context's panel rect (wireUiContext: the theme's menu panel down to
+    // the status line's foot)
+    return uiContext_.currentPanelRect();
 }
 
 Rect Gui::classicContent() {

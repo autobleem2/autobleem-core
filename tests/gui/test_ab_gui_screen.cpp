@@ -499,3 +499,64 @@ TEST_CASE("render() is one frame through the Context's stack") {
     CHECK(side.display.presents == 2);
     CHECK(side.stack.presented() == 2);
 }
+
+// G3z: what a screen does before its frame, and the colour it clears to
+struct Log {
+    vector<string> steps;
+};
+
+struct LoggingDisplay : ScreenStack::Display {
+    Log &log;
+    explicit LoggingDisplay(Log &l) : log(l) {}
+    void setClearColor(const ableem::Color &c) override {
+        log.steps.push_back("colour " + to_string(c.r) + "," + to_string(c.g) + "," + to_string(c.b) + "," +
+                            to_string(c.a));
+    }
+    void clear() override { log.steps.push_back("clear"); }
+    void present() override { log.steps.push_back("present"); }
+};
+
+struct PreparingScreen : abgui::Screen {
+    Log &log;
+    bool frameWanted = true;
+    PreparingScreen(GuiBase &gui, Context &ctx, Log &l) : abgui::Screen(gui, ctx), log(l) {}
+    bool prepareFrame() override {
+        log.steps.push_back("prepare");
+        return frameWanted;
+    }
+    void draw() override { log.steps.push_back("draw"); }
+};
+
+TEST_CASE("render(): prepareFrame() comes before the frame, outside it; false draws and presents nothing") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    Log log;
+    LoggingDisplay display(log);
+    ScreenStack stack(display);
+    Context ctx(g.gui->renderer(), g.gui->input(), g.gui->platform());
+    ctx.setStack(stack);
+    PreparingScreen screen(*g.gui, ctx, log);
+    screen.render();
+    CHECK(joined(log.steps) == "prepare clear draw present");
+    log.steps.clear();
+    screen.frameWanted = false;
+    screen.render();
+    CHECK(joined(log.steps) == "prepare");
+    CHECK(stack.presented() == 1);
+}
+
+TEST_CASE("render(): frameColor, when set, is the colour the frame is cleared to") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    Log log;
+    LoggingDisplay display(log);
+    ScreenStack stack(display);
+    Context ctx(g.gui->renderer(), g.gui->input(), g.gui->platform());
+    ctx.setStack(stack);
+    PreparingScreen screen(*g.gui, ctx, log);
+    screen.frameColor = abgui::OptionalColor(ableem::Color(0, 0, 0, 0));
+    screen.render();
+    CHECK(joined(log.steps) == "prepare colour 0,0,0,0 clear draw present");
+}

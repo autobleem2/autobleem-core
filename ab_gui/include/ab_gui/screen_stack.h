@@ -5,7 +5,7 @@
 // canvas, the screen draws, the stack presents - one present per frame, and no screen clears or presents itself.
 // Being the one place a frame is shown is what the transitions (7a) need later: the stack will then send a frame
 // into an off-screen target instead of the screen, with no screen changing. For now it only puts the three steps
-// in order; the screens themselves stay on the program's own loop (ableem::GuiScreen's) until G3z.
+// in order; each screen still runs its own loop (abgui::Screen's, or its own).
 //
 // A frame started while another is being drawn (a busy spinner's tick from inside a load that a screen's drawing
 // started) is a frame of its own: cleared, drawn and presented at once, as such a frame always was; the outer one

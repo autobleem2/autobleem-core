@@ -141,6 +141,29 @@ TEST_CASE("ActionMap swap: exactly Confirm and Back change places, on the pad's 
         CHECK(map.fromButton(b) == padTable(b));
 }
 
+TEST_CASE("ActionMap swap: a pad event the keyboard-as-pad made from a key keeps the key's meaning (G3z)") {
+    ActionMap map;
+    map.setSwapConfirmBack(true);
+    for (Event::Type type : {Event::Type::ButtonDown, Event::Type::ButtonUp}) {
+        Event fromPad = buttonEvent(type, Button::Cross);
+        Event fromKey = fromPad;
+        fromKey.fromKey = true; // Enter, made Cross by the keyboard-as-pad
+        CHECK(map.fromEvent(fromPad).action == Action::Back);
+        CHECK(map.fromEvent(fromKey).action == Action::Confirm);
+        fromKey.button = Button::Circle; // Esc
+        CHECK(map.fromEvent(fromKey).action == Action::Back);
+    }
+    // every other button the same either way, and without the swap a key-made event is the button's
+    for (Button b : AllButtons) {
+        Event e = buttonEvent(Event::Type::ButtonDown, b);
+        e.fromKey = true;
+        CHECK(map.fromEvent(e).action == padTable(b));
+        map.setSwapConfirmBack(false);
+        CHECK(map.fromEvent(e).action == padTable(b));
+        map.setSwapConfirmBack(true);
+    }
+}
+
 TEST_CASE("ActionMap events: press and release, by button, d-pad and key; the rest is nothing") {
     const ActionMap map;
     abgui::ActionEvent a = map.fromEvent(buttonEvent(Event::Type::ButtonDown, Button::Cross));

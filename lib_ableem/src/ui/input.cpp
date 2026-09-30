@@ -540,9 +540,11 @@ struct Input::Impl {
         }
         const bool down = out.type == Event::Type::KeyDown;
         Event pad;
+        pad.fromKey = true;
         if (m.systemChord) {
             // L2 and R2 together, let go of in the other order
             Event second;
+            second.fromKey = true;
             pad.type = second.type = down ? Event::Type::ButtonDown : Event::Type::ButtonUp;
             pad.button = down ? Button::L2 : Button::R2;
             second.button = down ? Button::R2 : Button::L2;

@@ -40,17 +40,20 @@ ActionMap::ActionMap() {
     keys_[Key::End] = Action::PageDown;
 }
 
-Action ActionMap::fromButton(Button button) const {
+Action ActionMap::bound(Button button) const {
     const auto it = buttons_.find(button);
-    if (it == buttons_.end())
-        return Action::None;
+    return it == buttons_.end() ? Action::None : it->second;
+}
+
+Action ActionMap::fromButton(Button button) const {
+    const Action action = bound(button);
     if (swap_) {
-        if (it->second == Action::Confirm)
+        if (action == Action::Confirm)
             return Action::Back;
-        if (it->second == Action::Back)
+        if (action == Action::Back)
             return Action::Confirm;
     }
-    return it->second;
+    return action;
 }
 
 Action ActionMap::fromKey(Key key, int code) const {
@@ -66,12 +69,12 @@ ActionEvent ActionMap::fromEvent(const Event &event) const {
     switch (event.type) {
     case Event::Type::ButtonDown:
     case Event::Type::DpadDown:
-        result.action = fromButton(event.button);
+        result.action = event.fromKey ? bound(event.button) : fromButton(event.button); // a key keeps its meaning
         result.pressed = true;
         break;
     case Event::Type::ButtonUp:
     case Event::Type::DpadUp:
-        result.action = fromButton(event.button);
+        result.action = event.fromKey ? bound(event.button) : fromButton(event.button);
         result.released = true;
         break;
     case Event::Type::KeyDown:

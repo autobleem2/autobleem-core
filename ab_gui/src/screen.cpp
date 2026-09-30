@@ -46,14 +46,23 @@ Button classicButton(Action action) {
 //********************
 // Screen::render
 //********************
+// prepareFrame() outside the frame (a busy frame it starts is one of its own), then the frame
 void Screen::render() {
+    if (!prepareFrame())
+        return;
     const ScreenStack::Draw drawing = [this] { draw(); };
+    auto frameOn = [&](ScreenStack &stack) {
+        if (frameColor.set)
+            stack.frame(frameColor.color, drawing);
+        else
+            stack.frame(drawing);
+    };
     if (ctx.hasStack()) {
-        ctx.stack().frame(drawing);
+        frameOn(ctx.stack());
         return;
     }
     ScreenStack own(ctx.renderer()); // a Context without a stack (a tool's, a test's): the same frame on the renderer
-    own.frame(drawing);
+    frameOn(own);
 }
 
 //********************

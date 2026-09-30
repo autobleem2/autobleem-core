@@ -105,6 +105,9 @@ struct Event {
     // `key` says; 0 for a key that has none (the arrows, F1, ...). How Ctrl+C is told apart: with Ctrl held
     // no TextInput comes
     int code = 0;
+    // ButtonDown/Up, DpadDown/Up: the keyboard-as-pad made this pad event from a key (keyboard_map.h's PC-style
+    // map) - Enter is Cross there, and a Confirm/Back swap (abgui::ActionMap) leaves a key's meaning alone
+    bool fromKey = false;
 };
 
 //******************

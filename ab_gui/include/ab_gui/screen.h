@@ -22,8 +22,14 @@
 // The default onUnmapped() is GuiScreen::dispatchEvent(): the key's hook, doTextInput(), or nothing.
 //
 // Hold-repeat is the hooks' own, as before (fastForwardUntilAnotherEvent, HoldRepeat on the live d-pad state), and the
-// busy rule is Input's (poll() and flushInputEvents()), so neither changes here. Nothing derives from Screen yet; the
-// classic GuiScreen shim moves onto it in G3z, when AB_SDK_ABI goes to 7 (a new base changes the shim's layout).
+// busy rule is Input's (poll() and flushInputEvents()), so neither changes here. Since G3z (AB_SDK_ABI 7) every screen
+// of AutoBleem is one: the classic GuiScreen shim derives from it, so a classic screen has draw() only and its frame is
+// the stack's.
+//
+// What a screen does before its frame (a refresh when due, a busy state ended, the pad read) goes in prepareFrame(),
+// outside the frame - so a busy frame it causes is a frame of its own, never one nested in the screen's; it returns
+// false when that closed the screen and no frame is to be drawn. A screen that clears to another colour than the
+// current draw colour (the launcher's carousel, the splash: transparent black) sets frameColor.
 //
 #pragma once
 
@@ -48,8 +54,13 @@ public:
 
     // the screen's picture, between the stack's clear and its present - never clear() or present() here
     virtual void draw() = 0;
-    // one frame through the Context's stack (ScreenStack::frame(draw)); without a stack, one on the renderer
+    // prepareFrame(), then one frame through the Context's stack (ScreenStack::frame(draw), cleared to frameColor when
+    // it is set); without a stack, one on the renderer
     void render() final;
+    // what the screen does before each frame, outside it; false = no frame this time (the screen closed in it)
+    virtual bool prepareFrame() { return true; }
+    // the colour the frame is cleared to; unset: the renderer's current draw colour
+    OptionalColor frameColor;
     // ableem::GuiScreen::loop with the events through the ActionMap: until menuVisible goes false, every polled
     // event (a Quit closes the screen) to handle(), then a frame when the pacer says one is due
     void loop() override;

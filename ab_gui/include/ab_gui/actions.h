@@ -19,7 +19,9 @@
 // which is the same L1/R1 as PrevTab/NextTab - the screen decides), so no button or key is bound to them by default;
 // bind() gives them one.
 //
-// The swap exchanges Confirm and Back on the pad's buttons only: a keyboard's Enter and Esc keep their meaning.
+// The swap exchanges Confirm and Back on the pad's buttons only: a keyboard's Enter and Esc keep their meaning - also
+// when the keyboard-as-pad has already made them Cross and Circle (Input marks such a pad event, Event::fromKey,
+// since G3z).
 //
 #pragma once
 
@@ -68,7 +70,8 @@ public:
     Action fromButton(ableem::Button button) const;
     // the action of a key; `code` is Event::code - Key::Other with the character ' ' is the Space bar
     Action fromKey(ableem::Key key, int code = 0) const;
-    // the action of an event: ButtonDown/Up and DpadDown/Up by the button, KeyDown/Up by the key, anything else None
+    // the action of an event: ButtonDown/Up and DpadDown/Up by the button (without the swap when the keyboard-as-pad
+    // made it from a key, Event::fromKey), KeyDown/Up by the key, anything else None
     ActionEvent fromEvent(const ableem::Event &event) const;
 
     // Confirm <-> Back on the pad's buttons (default off)
@@ -81,6 +84,8 @@ public:
     void bindSpace(Action action) { space_ = action; }
 
 private:
+    Action bound(ableem::Button button) const; // the button's action as bound, no swap
+
     std::map<ableem::Button, Action> buttons_;
     std::map<ableem::Key, Action> keys_;
     Action space_ = Action::Extra;

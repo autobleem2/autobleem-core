@@ -14,67 +14,25 @@
 // Callers set `label` (the question) and `result` (the text to start from), show() it, then read `result`
 // unless `cancelled`. `result` is UTF-8; the cursor moves by whole characters.
 //
+// ab_gui's abgui::Keyboard (docs/ab-gui-plan.md, G3n) as a classic screen (G3z): the pages, the keys, the editing,
+// the drawing and the loop are its own.
+//
 #pragma once
 
-#include <cstddef>
+#include <ab_gui/keyboard.h>
+
 #include <string>
 
-#include "../gui.h"
 #include "../gui_screen.h"
 
 //********************
 // GuiKeyboard
 //********************
-class GuiKeyboard : public GuiScreen {
+class GuiKeyboard : public ClassicScreen<abgui::Keyboard> {
 public:
-    void render() override;
-    void loop() override;
-    void init() override;
+    explicit GuiKeyboard(ableem::GuiBase &_gui) : ClassicScreen<abgui::Keyboard>(_gui) {}
 
-    std::string label = "";
-    std::string result = "";
-    bool cancelled = true;
-    bool displayAsterisksInstead = false; // a password: shown as *****
-
-    using GuiScreen::GuiScreen;
-
-    // what a key does
-    enum class KeyKind { Char, Shift, Page, Space, Backspace, Done };
-    enum class Shift { Off, Once, Lock };
-    static const int Columns = 10;
-    static const int CharRows = 4;
-    static const int Pages = 4; // letters, symbols, accents, more accents
-
-    // the key under (row, column) of a page, shifted or not: row 4 is the function row, its keys spanning
-    // columns (Shift 2, Page 2, Space 3, Backspace 1, Done 2)
-    struct KeyCap {
-        KeyKind kind = KeyKind::Char;
-        std::string text; // what a Char key types
-        int firstColumn = 0, span = 1;
-    };
-    static KeyCap keyAt(int page, int row, int column, bool shifted);
-    static std::string pageKeyLabel(int page); // the page key names the page it leads to
-    static std::string pageName(int page);     // the same, in words - the footer's R1 hint
-
-    // UTF-8 editing, by whole characters (the cursor is a byte offset on a character's start)
-    static size_t previousChar(const std::string &text, size_t at);
-    static size_t nextChar(const std::string &text, size_t at);
-
-private:
-    void type(const std::string &text);
-    void backspace();
-    void deleteForward();
-    void press(); // the selected key
-    void moveSelection(int dx, int dy);
-    void nextShift();
-    void confirm();
-    void cancel();
-    void drawKey(const ableem::Rect &key, const KeyCap &cap, bool selected);
-    void draw(); // what render() puts between the stack's clear and present
-
-    std::shared_ptr<Gui> gui;
-    size_t cursorIndex = 0;
-    int page = 0;
-    int row = 1, column = 0; // the selected key (row 4: the function row)
-    Shift shift = Shift::Off;
+    // the page R1 leads to, in words, translated - the footer's R1 hint (abgui::Keyboard::pageName is the English
+    // the keyboard hands its translator; these literals are what the language tools find)
+    static std::string pageName(int page);
 };

@@ -32,15 +32,16 @@ template <typename LineDataType> class GuiMenuBaseList;
 // The classic list. Its drawing, row geometry, input and DebugDriver publishing are ab_gui's abgui::List
 // (docs/ab-gui-plan.md, G3m): every function below hands this menu's own members to a GuiMenuBaseList (a List
 // working on them in place, its hooks this menu's virtuals) and forwards. The members stay what they were - the
-// class is compiled into extensions (ABI 6), and the screens built on it read and set them directly.
+// screens built on it read and set them directly. Header-only: an extension compiles it in, so a change here needs no
+// AB_SDK_ABI bump as long as every host symbol it calls stays. Since G3z its render() is abgui::Screen's (the stack's
+// frame, prepareFrame() before it) and its input reaches the classic hooks through the ActionMap's adapter.
 template <typename LineDataType> class GuiMenuBase : public GuiScreen {
 public:
     explicit GuiMenuBase(ableem::GuiBase &_gui) : GuiScreen(_gui) {}
 
     void init() override;
-    // the frame through Gui's screen stack (clear, draw(), present); draw() is what the list puts on the canvas
-    void render() override;
-    void draw();
+    // what the list puts on the canvas; its frame (render()) is the screen stack's
+    void draw() override;
 
     virtual std::string getTitle();
     virtual std::string getStatusLine(); // returns the status line at the bottom.  cross, circle, etc icons.
@@ -219,14 +220,6 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::renderLines() {
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::renderSelectionBox() {
     GuiMenuBaseList<LineDataType>(*this).drawSelection();
-}
-
-//*******************************
-// GuiMenuBase<LineDataType>::render
-//*******************************
-template <typename LineDataType> void GuiMenuBase<LineDataType>::render() {
-    // the stack clears and presents (docs/ab-gui-plan.md, G3c); the list only draws
-    gui->uiContext().stack().frame([this]() { draw(); });
 }
 
 //*******************************

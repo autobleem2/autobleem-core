@@ -143,18 +143,9 @@ public:
 private:
     ThemeAssets assets_;
     TextRenderer text_; // after assets_: it holds references to the theme font and the button textures
-    bool compact_ = false;
-    ableem::Rect compactPanel_;
-    // unused since step G3l (the busy state is abgui::Busy's, stack_.busy()); kept for the layout until G3z
-    bool busy_ = false;
-    int busyDone_ = 0, busyTotal_ = 0;
-    std::string busyMessage_;
-    ableem::Texture busyBackdrop_;
-    unsigned int busyStarted_ = 0, busyLastFrame_ = 0;
-    // last on purpose: the members above keep their offsets for the extensions (the inline assets()/text())
+    // AutoBleem's Context; the compact panel is its own (setCompactPanel), the busy state its stack's (abgui::Busy)
     abgui::Context uiContext_;
     void wireUiContext();
-    // appended after uiContext_ (step G3c): where every frame of the classic screens and Gui's own is presented -
-    // uiContext().stack()
+    // where every frame of the classic screens and Gui's own is presented - uiContext().stack()
     abgui::ScreenStack stack_;
 };

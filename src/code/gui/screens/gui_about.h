@@ -20,7 +20,8 @@ class GuiAbout : public GuiScreen {
 public:
     StarFx fx;
     void init() override;
-    void render() override;
+    // the credits, or the game - between the stack's clear and present
+    void draw() override;
     void loop() override;
     ableem::Texture logo;
     ableem::Font font;
@@ -49,7 +50,6 @@ private:
     bool duckedThemeMusic = false;
     bool playingFallbackMusic = false;
 
-    // what render() puts between the stack's clear and present: the credits, or the game
-    void draw();
+    void drawCredits();
     void renderSurprise();
 };

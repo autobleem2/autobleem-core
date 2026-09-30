@@ -211,8 +211,6 @@ add_library(ab_classic STATIC
         src/code/gui/gui.cpp
         src/code/gui/gui_font.cpp
         src/code/gui/screens/gui_about.cpp
-        src/code/gui/screens/gui_confirm.cpp
-        src/code/gui/screens/gui_action_menu.cpp
         src/code/gui/screens/gui_facts_page.cpp
         src/code/gui/screens/gui_hardware_info.cpp
         src/code/gui/screens/gui_keyboard.cpp

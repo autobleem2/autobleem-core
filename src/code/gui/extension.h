@@ -32,7 +32,10 @@ class AppBase;
 // 5: ThemeAssets gained the four d-pad outline textures, UIREV-2 (2026-09-29): an extension built for 4 is refused
 // 6: the theme's style roles, UIREV-29 (2026-09-29): LauncherTheme::Colors, PanelStyle and TextRenderer gained
 //    members (the roles, the row role) - an extension built for 5 is refused
-#define AB_SDK_ABI 6
+// 7: the ab_gui step G3z (docs/ab-gui-plan.md, 2026-09-30): GuiScreen is an abgui::Screen (render() final, draw() and
+//    prepareFrame()), GuiConfirm/GuiTextPage/GuiKeyboard/GuiActionMenu/GuiFactsPage are the ab_gui widgets, PanelStyle
+//    is an abgui::Style, Gui lost its dead busy and compact-panel members - an extension built for 6 is refused
+#define AB_SDK_ABI 7
 
 #define AB_SDK_STR2(x) #x
 #define AB_SDK_STR(x) AB_SDK_STR2(x)

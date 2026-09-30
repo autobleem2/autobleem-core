@@ -12,12 +12,12 @@
 using namespace std;
 
 //*******************************
-// GuiSplash::render
+// GuiSplash::prepareFrame
 //*******************************
-// the frame through Gui's screen stack: cleared to black, draw(), present (docs/ab-gui-plan.md, G3c)
-void GuiSplash::render() {
+// before each frame (the stack's, cleared to black - docs/ab-gui-plan.md, G3c): the background blends with its alpha
+bool GuiSplash::prepareFrame() {
     gui->assets().backgroundImg.setBlendMode(ableem::BlendMode::Blend);
-    gui->uiContext().stack().frame(ableem::Color(0x00, 0x00, 0x00, 0x00), [this]() { draw(); });
+    return true;
 }
 
 //*******************************
