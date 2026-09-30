@@ -285,6 +285,31 @@ for bare icons (the mockup has none).
 | Colour | either |
 | Smallest box | 30 x 30 |
 
+### 2.12 `footer` - the hint band of every panel screen (G5r8, optional)
+
+**What and where.** The band along the bottom of every panel screen - Options, the editors, Game Manager, Memory
+Cards, the System and Quick menus, Extensions, Processors, the set picker, the update prompt, Confirm, the keyboard,
+the Store, PSC-Bios, ABFlashKit: the button hints on the left, a counter at the right. **54 px** high and as wide as its
+panel (**800** for a compact one, about **1200** for a full one; the launcher's own `hintBar`, 2.2, is another piece).
+It is drawn **over the panel's own frame** (`panel`), the hints and the counter over it. Leave it out and the code draws
+today's 1 px rule along the band's top edge.
+
+**Today.** The rule only: `edge` at 78%, from 24 px in on both sides.
+
+**Over it.** Button icons (30 px) and their labels (`footer`, 22 down to 15 px), starting 24 px from the left edge and 14
+px below the band's top; the counter (`description`) ends 24 px from the right edge.
+
+| | |
+|---|---|
+| Files | `frames/footer.png` **64 x 62**, `frames/footer@2x.png` **128 x 124** |
+| Box part | 56 x 54 (4 px bleed round it) |
+| `slice` | **16** all round (4 bleed + 12 corner) - the middle stretches: across for the width, up and down for a band that is not 54 |
+| `bleed` | **4** maximum (it reaches 4 px into the rows and 4 px below the panel) |
+| Centre | stretched; the hints must read over it |
+| States | one (the same on every screen) |
+| Colour | either |
+| Smallest box | 240 x 54 (a compact panel is never narrower) |
+
 ## 3. The icons (`launcher.icons`)
 
 Sizes are the 1x canvas (logical px); the `@2x` file is exactly twice. "Built-in" is the launcher's own file a theme
@@ -344,7 +369,8 @@ the `@2x` file is not `<name>@2x.png` next to it. `iconHalo: false` drops the co
       "band":          { "image": "frames/band.png", "slice": 24 },
       "coverGlow":     { "image": "frames/cover_glow.png", "slice": 64, "bleed": 48, "fill": false,
                          "tint": "selection" },
-      "plate":         { "image": "frames/plate.png", "slice": 16, "bleed": 2 }
+      "plate":         { "image": "frames/plate.png", "slice": 16, "bleed": 2 },
+      "footer":        { "image": "frames/footer.png", "slice": 16, "bleed": 4 }
     },
     "iconHalo": false,
     "icons": {
@@ -362,7 +388,7 @@ the `@2x` file is not `<name>@2x.png` next to it. `iconHalo: false` drops the co
 }
 ```
 
-(`play` and `badge` frames, and the `play`, `extension`, `raCover`, `appCover`, `bigBox`, `switchOn`/`switchOff`
+(`play`, `badge` and `footer` frames, and the `play`, `extension`, `raCover`, `appCover`, `bigBox`, `switchOn`/`switchOff`
 icons, only when drawn - see their rows. Which pieces take effect: each as its G5 step lands.)
 
 ## 6. Delivery checklist

@@ -535,8 +535,8 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
     // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip
-    // (G5d)
-    REQUIRE(frames.size() == 10);
+    // (G5d), footer (G5r8)
+    REQUIRE(frames.size() == 11);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
     const ableem::ThemeFrame *heading = nullptr;
@@ -595,6 +595,17 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(chip->slice.left == 10);
     CHECK(chip->slice.bottom == 10);
     CHECK(chip->bleed.top == 2);
+    // G5r8: the footer band - slice 16 all round, a 4 px bleed, drawn over a panel screen's footer instead of the rule
+    const ableem::ThemeFrame *footer = nullptr;
+    for (const ableem::ThemeFrame &f : frames)
+        if (f.name == "footer")
+            footer = &f;
+    REQUIRE(footer != nullptr);
+    CHECK(footer->image == dir + "/frames/footer.png");
+    CHECK(footer->image2x == dir + "/frames/footer@2x.png");
+    CHECK(footer->slice.left == 16);
+    CHECK(footer->slice.bottom == 16);
+    CHECK(footer->bleed.top == 4);
 }
 
 TEST_CASE("themeImageFile: the @2x next to a theme image above scale 1, else the image itself (G4f)") {
@@ -830,7 +841,7 @@ TEST_CASE("the test theme's icons (tests/data/frame-test-theme): every name of t
         CHECK(icon->image2x == icon->image.substr(0, icon->image.size() - 4) + "@2x.png");
     }
     CHECK(ableem::resolveThemeIconHalo(dir, dir));    // the halo stays on: it shows under the test colours
-    CHECK(ableem::loadThemeFrames(dir).size() == 10); // the frames are untouched by the block
+    CHECK(ableem::loadThemeFrames(dir).size() == 11); // the frames are untouched by the block
 }
 
 TEST_CASE("readThemeLogo: launcher.logo {file, x, y, w, h}, set only with a file and a positive size (G5q)") {

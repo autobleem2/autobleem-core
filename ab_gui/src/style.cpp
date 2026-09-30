@@ -237,7 +237,7 @@ void Style::rule(Context &ctx, const Rect &panel, int y) const {
 //*******************************
 int Style::header(Context &ctx, const Rect &panel, const string &title) const {
     ctx.drawText(ctx.font(FontRole::Title), title, panel.x + rowInset, panel.y + titleTop, text);
-    rule(ctx.renderer(), panel, panel.y + headerHeight - 8);
+    rule(ctx, panel, panel.y + headerHeight - 8);
     return panel.y + headerHeight;
 }
 
@@ -676,8 +676,8 @@ int buttonRank(const string &icon) {
 
 void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &given, const string &status,
                    bool withRule) const {
-    if (withRule)
-        rule(ctx.renderer(), footer, footer.y);
+    if (withRule && !drawFrame(ctx, "footer", footer)) // the theme's band, else the rule along its top
+        rule(ctx, footer, footer.y);
     vector<HintItem> hints = given;
     stable_sort(hints.begin(), hints.end(), [](const HintItem &a, const HintItem &b) {
         return buttonRank(a.icons.empty() ? "" : a.icons[0]) < buttonRank(b.icons.empty() ? "" : b.icons[0]);
