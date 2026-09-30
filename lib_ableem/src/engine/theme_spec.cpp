@@ -805,4 +805,15 @@ vector<ThemeFrame> loadThemeFrames(const string &dir) {
     return frames;
 }
 
+string themeImageFile(const string &file, float outputScale, float &pixelScale) {
+    pixelScale = 1.0f;
+    if (outputScale <= 1.0f || file.empty())
+        return file; // at scale 1 the disk is not even asked
+    const string hiRes = at2x(file);
+    if (!DirEntry::exists(hiRes))
+        return file;
+    pixelScale = 2.0f;
+    return hiRes;
+}
+
 } // namespace ableem

@@ -571,3 +571,45 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(heading->bleed.left == 0);
     CHECK(heading->tint.empty());
 }
+
+TEST_CASE("themeImageFile: the @2x next to a theme image above scale 1, else the image itself (G4f)") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("t.v1/bg.png", "x");
+    tmp.writeFile("t.v1/bg@2x.png", "x");
+    tmp.writeFile("t.v1/logo.png", "x"); // no @2x
+    tmp.writeFile("t.v1/icons/cross", "x");
+    tmp.writeFile("t.v1/icons/cross@2x", "x"); // no extension: "@2x" at the end
+    const string dir = tmp.at("t.v1");
+    float scale = 0.0f;
+
+    // scale 1 (the console, a 720p window): always the 1x, even with an @2x there
+    CHECK(ableem::themeImageFile(dir + "/bg.png", 1.0f, scale) == dir + "/bg.png");
+    CHECK(scale == 1.0f);
+    // above 1 (1080p is 1.5): the @2x when there is one, drawn at pixel scale 2
+    scale = 0.0f;
+    CHECK(ableem::themeImageFile(dir + "/bg.png", 1.5f, scale) == dir + "/bg@2x.png");
+    CHECK(scale == 2.0f);
+    // ...and the 1x itself when there is none - what every shipped theme gets, so it draws as before
+    scale = 0.0f;
+    CHECK(ableem::themeImageFile(dir + "/logo.png", 1.5f, scale) == dir + "/logo.png");
+    CHECK(scale == 1.0f);
+    // the dot of the file name, not of the folder
+    CHECK(ableem::themeImageFile(dir + "/icons/cross", 2.0f, scale) == dir + "/icons/cross@2x");
+    CHECK(scale == 2.0f);
+    // no file is no file
+    CHECK(ableem::themeImageFile("", 1.5f, scale).empty());
+    CHECK(scale == 1.0f);
+}
+
+TEST_CASE("the high-resolution test theme (tests/data/hires-test-theme): every image has its @2x, picked above 1") {
+    const string dir = string(AB_TEST_DATA_DIR) + "/hires-test-theme";
+    for (const char *name : {"background.png", "cross.png", "on.png", "off.png"}) {
+        const string file = dir + "/" + name;
+        float scale = 0.0f;
+        CHECK(ableem::themeImageFile(file, 1.0f, scale) == file);
+        CHECK(scale == 1.0f);
+        const string picked = ableem::themeImageFile(file, 1.5f, scale);
+        CHECK(picked == file.substr(0, file.size() - 4) + "@2x.png");
+        CHECK(scale == 2.0f);
+    }
+}

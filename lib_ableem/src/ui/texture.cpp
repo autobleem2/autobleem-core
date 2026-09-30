@@ -52,6 +52,13 @@ Texture Texture::loadFile(Renderer &renderer, const std::string &path) {
     return Texture(t);
 }
 
+Texture Texture::loadFile(Renderer &renderer, const std::string &path, float pixelScale) {
+    Texture tex = loadFile(renderer, path);
+    if (tex.valid() && pixelScale > 0.0f)
+        tex.pixelScale_ = pixelScale;
+    return tex;
+}
+
 Rect Texture::opaqueBounds(const std::string &path) {
     SDL_Surface *loaded = IMG_Load(path.c_str());
     if (!loaded)
