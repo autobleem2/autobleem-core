@@ -1,12 +1,76 @@
 //
-// GuiFactsPage: a read-only page of facts in the classic panel. See the header.
+// GuiFactsPage: a read-only page of facts in the classic panel. The layout, the paging, the refresh rule and the keys
+// are ab_gui's abgui::FactsPage (docs/ab-gui-plan.md, G3i); this class keeps its header - PSC-Bios's opening screen
+// derives from it, built for ABI 6 - and hands its rows and its hooks to one of those for every frame and for the loop.
 //
 #include "gui_facts_page.h"
 #include "../gui.h"
 
+#include <ab_gui/facts_page.h>
+
 #include <algorithm>
+#include <functional>
 
 using namespace std;
+
+namespace {
+
+// the sections a classic page collects, as the abgui page reads them
+vector<abgui::FactsSection> sectionsOf(const vector<InfoSection> &infos) {
+    vector<abgui::FactsSection> sections;
+    for (const InfoSection &info : infos) {
+        abgui::FactsSection section;
+        section.title = info.title;
+        for (const InfoRow &row : info.rows)
+            section.rows.push_back({row.label, row.value});
+        sections.push_back(section);
+    }
+    return sections;
+}
+
+// an abgui::FactsPage whose hooks are the classic page's (protected there, so they come in as functions)
+class Forward : public abgui::FactsPage {
+public:
+    Forward(ableem::GuiBase &gui, abgui::Context &ctx) : abgui::FactsPage(gui, ctx) {}
+
+    function<string()> titleOf;
+    function<vector<InfoSection>()> collectOf;
+    function<string()> extraHintsOf;
+    function<bool(ableem::Button)> onButtonOf;
+
+protected:
+    string title() override { return titleOf(); }
+    vector<abgui::FactsSection> collect() override { return sectionsOf(collectOf()); }
+    string extraHints() override { return extraHintsOf(); }
+    bool onButton(ableem::Button button) override { return onButtonOf(button); }
+};
+
+// the classic page's rows as the abgui page keeps them, and back
+template <class ClassicLine> vector<abgui::FactsPage::Line> toRows(const vector<ClassicLine> &lines) {
+    vector<abgui::FactsPage::Line> rows;
+    for (const ClassicLine &line : lines) {
+        abgui::FactsPage::Line row;
+        row.heading = line.heading;
+        row.label = line.label;
+        row.value = line.value;
+        rows.push_back(row);
+    }
+    return rows;
+}
+
+template <class ClassicLine> vector<ClassicLine> fromRows(const vector<abgui::FactsPage::Line> &rows) {
+    vector<ClassicLine> lines;
+    for (const abgui::FactsPage::Line &row : rows) {
+        ClassicLine line;
+        line.heading = row.heading;
+        line.label = row.label;
+        line.value = row.value;
+        lines.push_back(line);
+    }
+    return lines;
+}
+
+} // namespace
 
 //*******************************
 // GuiFactsPage::init
@@ -22,151 +86,52 @@ void GuiFactsPage::init() {
 //*******************************
 void GuiFactsPage::refresh() {
     lastRefresh = gui->platform().ticks();
-    lines.clear();
-    for (const InfoSection &section : collect()) {
-        Line heading;
-        heading.heading = true;
-        heading.label = section.title;
-        lines.push_back(heading);
-        for (const InfoRow &row : section.rows) {
-            Line line;
-            line.label = row.label;
-            line.value = row.value;
-            lines.push_back(line);
-        }
-    }
+    lines = fromRows<Line>(abgui::FactsPage::linesOf(sectionsOf(collect())));
     firstVisible = min(firstVisible, maxFirstVisible());
 }
 
 //*******************************
-// GuiFactsPage::maxFirstVisible / scrollBy
+// GuiFactsPage::maxFirstVisible
 //*******************************
 int GuiFactsPage::maxFirstVisible() const {
-    return max(0, static_cast<int>(lines.size()) - rowsThatFit);
-}
-
-void GuiFactsPage::scrollBy(int rows) {
-    int target = max(0, min(maxFirstVisible(), firstVisible + rows));
-    if (target == firstVisible) {
-        app.audio().cancel.play();
-        return;
-    }
-    firstVisible = target;
-    app.audio().cursor.play();
+    return abgui::FactsPage::maxFirstVisible(static_cast<int>(lines.size()), rowsThatFit);
 }
 
 //*******************************
 // GuiFactsPage::render
 //*******************************
-// the frame through Gui's screen stack: clear, draw(), present (docs/ab-gui-plan.md, G3c)
+// one frame of the page as it stands (show() draws one before the loop); the rows the panel held is kept for the
+// next refresh and the loop
 void GuiFactsPage::render() {
-    gui->uiContext().stack().frame([this]() { draw(); });
-}
-
-//*******************************
-// GuiFactsPage::draw
-//*******************************
-void GuiFactsPage::draw() {
-    gui->renderBackground();
-    gui->renderTextBar();
-    int yoffset = gui->renderHeader(title());
-
-    // the rows go from below the header to the bottom of the panel, as in the Options menu
-    const ableem::Rect panel = gui->text().getOpscreenRectOfTheme();
-    const int fontHeight = font.lineHeight();
-    rowsThatFit = gui->classicRowsThatFit(font);
-    firstVisible = min(firstVisible, maxFirstVisible());
-
-    // the values end at the rows' right edge, a little short of the scroll markers (they sit at the panel's
-    // edge minus RowInset and would draw over a long value); one that is too long for the space right of the
-    // labels (a path) is cut to what fits
-    const int valueX = panel.w * 35 / 100;
-    const int valueRight = panel.x + panel.w - PanelStyle::RowInset - 8 - 12;
-    const int valueWidth = valueRight - panel.x - valueX;
-    const int count = static_cast<int>(lines.size());
-    for (int i = firstVisible, row = 0; i < count && row < rowsThatFit; i++, row++) {
-        const int y = yoffset + fontHeight * row;
-        const Line &line = lines[i];
-        // the theme's roles (UIREV-29): headings in heading, labels in row, values bright (rowSelected) - a
-        // page with no cursor must not read as a dimmed list
-        if (line.heading) {
-            gui->text().renderLabelBox(0, y);
-            TextRenderer::RowRoleScope role(gui->text(), TextRenderer::RowRole::Heading);
-            gui->text().renderTextLine(line.label, -y, 0, XALIGN_LEFT, 0, font);
-        } else {
-            TextRenderer::RowRoleScope role(gui->text(), TextRenderer::RowRole::FactRow);
-            gui->text().renderTextLine(line.label, -y, 0, XALIGN_LEFT, 0, font);
-            gui->text().renderRowValue(gui->text().elide(font, line.value, valueWidth), -y, 0, valueRight, font);
-        }
-    }
-
-    gui->renderScrollMarkers(firstVisible > 0, firstVisible + rowsThatFit < count);
-
-    // the text before the first hint is the footer's counter, drawn at its right edge
-    string status;
-    if (count > rowsThatFit) {
-        const int page = firstVisible / rowsThatFit + 1;
-        const int pages = (count + rowsThatFit - 1) / rowsThatFit;
-        status = _("Page") + " " + to_string(page) + "/" + to_string(pages) + "   ";
-    }
-    const string extra = extraHints();
-    if (!extra.empty())
-        status += extra + "   ";
-    status += "|@O| " + _("Back");
-    if (count > rowsThatFit)
-        status += "   |@L1|/|@R1| " + _("First/last") + "   |@L2|/|@R2| " + _("Page");
-    gui->renderStatus(status);
+    Forward page(*gui, gui->uiContext());
+    page.titleOf = [this]() { return title(); };
+    page.collectOf = [this]() { return collect(); };
+    page.extraHintsOf = [this]() { return extraHints(); };
+    page.onButtonOf = [this](ableem::Button button) { return onButton(button); };
+    page.font = font;
+    page.refreshInterval = refreshInterval;
+    page.restore(toRows(lines), firstVisible, rowsThatFit, lastRefresh);
+    page.render();
+    firstVisible = page.firstVisible();
+    rowsThatFit = page.rowsThatFit();
 }
 
 //*******************************
 // GuiFactsPage::loop
 //*******************************
 void GuiFactsPage::loop() {
-    menuVisible = true;
-    gui->input().setFrameNeed(ableem::Input::FrameNeed::Idle); // the refresh interval is far above 4 Hz
-    while (menuVisible) {
-        if (gui->platform().ticks() - lastRefresh >= refreshInterval)
-            refresh();
-        if (gui->input().frameDue())
-            render();
-
-        Event e;
-        while (gui->input().poll(e)) {
-            if (e.type == Event::Type::Quit) {
-                menuVisible = false;
-            }
-            switch (e.type) {
-            case Event::Type::DpadDown:
-            case Event::Type::DpadUp:
-                if (gui->input().dpadUp())
-                    scrollBy(-1);
-                else if (gui->input().dpadDown())
-                    scrollBy(1);
-                else if (gui->input().dpadLeft())
-                    scrollBy(-rowsThatFit);
-                else if (gui->input().dpadRight())
-                    scrollBy(rowsThatFit);
-                break;
-            case Event::Type::ButtonDown:
-                if (e.button == Button::L1) {
-                    scrollBy(-static_cast<int>(lines.size())); // the first row
-                } else if (e.button == Button::R1) {
-                    scrollBy(static_cast<int>(lines.size())); // the last (scrollBy clamps)
-                } else if (e.button == Button::L2) {
-                    scrollBy(-rowsThatFit);
-                } else if (e.button == Button::R2) {
-                    scrollBy(rowsThatFit);
-                } else if (onButton(e.button)) {
-                    // the page's own; the sub-screen it may have shown could have changed the facts
-                    refresh();
-                } else if (e.button == Button::Circle) {
-                    app.audio().cancel.play();
-                    menuVisible = false;
-                }
-                break;
-            default:
-                break;
-            }
-        }
-    }
+    Forward page(*gui, gui->uiContext());
+    page.titleOf = [this]() { return title(); };
+    page.collectOf = [this]() { return collect(); };
+    page.extraHintsOf = [this]() { return extraHints(); };
+    page.onButtonOf = [this](ableem::Button button) { return onButton(button); };
+    page.font = font;
+    page.refreshInterval = refreshInterval;
+    page.restore(toRows(lines), firstVisible, rowsThatFit, lastRefresh);
+    page.loop();
+    lines = fromRows<Line>(page.lines());
+    firstVisible = page.firstVisible();
+    rowsThatFit = page.rowsThatFit();
+    lastRefresh = page.lastRefresh();
+    menuVisible = page.menuVisible;
 }

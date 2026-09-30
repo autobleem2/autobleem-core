@@ -313,6 +313,18 @@ include path to the extensions.
   screen name, `typeid(*this)`) stays the old class. Context gained `lineDrawer`/`drawLine` (appended). Tests:
   `tests/gui/test_ab_gui_text_page.cpp` (events on a headless GuiBase, skips without a renderer), `tests/classic/
   test_text_page.cpp` (the old class's `splitItem`).
+- **`abgui::FactsPage`** (`facts_page.h`, G3i) - a read-only page of sections (a heading band each) and label/value
+  rows, the values in a column 35 % across (a long one cut with "..." - `abgui::elideText`, which
+  `TextRenderer::elide` forwards to), as many rows as the panel holds, scrolling a row at a time with markers,
+  re-read every `refreshInterval`. The hooks are protected virtuals as on the old page: `title()`, `collect()`
+  (`FactsSection`s), `extraHints()`, `onButton()`. The `TextPage` pattern: `draw()` on `Panel::full(ctx)` and the
+  Context, its own `loop()` (refresh when due, a frame when due, events to `handle()`), `onAction` (the d-pad by its
+  live state, up first; PrevTab/NextTab the first/last row, PageUp/PageDown a page, then the page's `onButton()`,
+  then Back closes), `onUnmapped` (a button with no action still reaches `onButton()`). Pure and tested: `linesOf`,
+  `maxFirstVisible`, `scrolled`, `refreshDue`, `counter`, `valueColumn`. **`GuiFactsPage`'s header is untouched**
+  (ABI 6; PSC-Bios's page and Hardware Information derive from it and keep doing so): its `render()`/`loop()` build
+  a forwarding `abgui::FactsPage` from the header's state, run it and copy the state back; `init()` and
+  `refresh()` stay on the old class. Tests: `tests/gui/test_ab_gui_facts_page.cpp`.
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to
