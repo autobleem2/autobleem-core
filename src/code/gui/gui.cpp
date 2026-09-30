@@ -226,6 +226,18 @@ void Gui::wireUiContext() {
         renderLogo(false);
         return assets_.logoRect;
     };
+    // a short list's compact panel (abgui::List, Gui::setCompactPanel): classicPanel() and the text renderer's rows
+    // follow it while it is set
+    uiContext_.panelSwitch = [this](const Rect *rect) {
+        if (rect != nullptr) {
+            compactPanel_ = *rect;
+            compact_ = true;
+            text_.setPanelOverride(&compactPanel_);
+        } else {
+            compact_ = false;
+            text_.setPanelOverride(nullptr);
+        }
+    };
     // every frame through the one stack: clear, draw, present (step G3c)
     uiContext_.setStack(stack_);
 }
@@ -426,21 +438,19 @@ PanelStyle Gui::panelStyle() {
     return PanelStyle::fromTheme(AppBase::get().theme().launcher());
 }
 
-// the panel's geometry and drawing are ab_gui's abgui::Panel (step G3b); the compact panel stays Gui's state
-// (compact_/compactPanel_, which TextRenderer's rows read as their panel) until the widgets draw their own
+// the panel's geometry and drawing are ab_gui's abgui::Panel (step G3b); the compact panel is the Context's
+// (abgui::List sets it, step G3m), mirrored here (compact_/compactPanel_, which TextRenderer's rows read as their
+// panel) through the Context's panelSwitch (wireUiContext) while the classic rows draw through TextRenderer
 static abgui::Panel currentPanel(Gui &gui) {
     return abgui::Panel(gui.classicPanel(), gui.uiContext().style());
 }
 
 void Gui::setCompactPanel(int rows, const ableem::Font &font) {
-    compactPanel_ = abgui::Panel::compact(uiContext_, rows, font).rect();
-    compact_ = true;
-    text_.setPanelOverride(&compactPanel_);
+    uiContext_.setCompactPanel(abgui::Panel::compact(uiContext_, rows, font).rect());
 }
 
 void Gui::clearCompactPanel() {
-    compact_ = false;
-    text_.setPanelOverride(nullptr);
+    uiContext_.clearCompactPanel();
 }
 
 Rect Gui::classicPanel() {

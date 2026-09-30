@@ -365,10 +365,29 @@ include path to the extensions.
   a `View` of references to the caller's own `selected`/`firstVisible`/`lastVisible` plus `maxVisible` and `size`, and
   inline static templates over a skip predicate: `adjustPageBy`, `computePagePosition`, `landOnSelectable`,
   `stepDown`/`stepUp` (with the wrap), `pageDown`/`pageUp`, `home`/`end`. `GuiMenuBase` keeps every data member
-  (ABI 6: extensions build it inline) and forwards its `adjustPageBy`/`landOnSelectable`/`computePagePosition`/
-  `doKeyDown`.. to the model through `modelView()`/`skipper()` (non-virtual, no layout change); `labelsOnly` and the
-  sounds stay in the class. Tests: `tests/classic/test_menu_base_navigation.cpp` (the real model, plus a brute-force
-  comparison with the frozen old code). Part 2 (`abgui::List`, the drawing and input) is open.
+  (ABI 6: extensions build it inline) and forwards its `adjustPageBy`/`landOnSelectable`/`computePagePosition` to the
+  model through `modelView()`/`skipper()` (non-virtual, no layout change); the moves go through `abgui::List` since
+  part 2. Tests: `tests/classic/test_menu_base_navigation.cpp`
+  (the real model, plus a brute-force comparison with the frozen old code).
+- **`abgui::List`** (`list.h`, G3m part 2) - the classic list on `abgui::Screen`: a full panel (or a compact one for up to
+  `CompactRows` (8) rows with nothing beside them), the title, the rows of the list's font one under the other, the
+  cursor's band, the scroll markers, the footer; `draw()` is the old `GuiMenuBase::draw` call for call. Its numbers are
+  references - to its own, or to a caller's members in place (`List::Refs`). The rows are its own `rows`
+  (`Row{label, value, heading, disabled}`: the value right-aligned, a `|@Check|`/`|@Uncheck|` label's value the text
+  ON/OFF, a heading's band, a disabled veil) or a subclass's (`size/isEmpty/skip/titleText/statusText/drawRow/rowName/
+  screenName` are virtual). The moves play the classic sounds (`stepDown/Up` Cursor, `pageDown` HomeUp, `pageUp/first/
+  last` HomeDown, `confirm` Cursor, `back` Cancel); `holdRows` is the blocking held d-pad at HoldRepeat's pace until
+  another event is pending (`step()`/`redraw()` virtual); `onAction`/`onUnmapped`: the d-pad by its live state, L1/R1
+  first/last, L2/R2 a page, Confirm/Back, keys as keys. Pure: `rowTop`, `textLeft`, `valueRight`, `band`,
+  `switchState`, `isCompact`; the DebugDriver's `driverItems()`/`driverSelected()` (`publish()` hands them over under
+  `screenName()`). **The compact panel is the Context's** (`setCompactPanel`/`clearCompactPanel`/`currentPanelRect`,
+  appended): its `panelSwitch` is how `Gui` mirrors it into `compact_`/`compactPanel_` and the text renderer's panel,
+  and `Gui::setCompactPanel/clearCompactPanel` forward to the Context. `TextRenderer`'s row functions take their
+  numbers from `List`'s geometry. **`GuiMenuBase` is a thin template over it**: every member and declaration kept (ABI
+  6), each function builds a `GuiMenuBaseList` - a `List` over the menu's members whose hooks are the menu's
+  virtuals (`renderLineIndexOnRow` in TextRenderer's row role, `getTitle`/`getStatusLine`, the skip, `doKeyDown`/
+  `doKeyUp`/`render` for a held row) - and forwards; the input stays on the classic hooks. A rebuilt extension bakes
+  `List`'s layout in through that inline class. Tests: `tests/gui/test_ab_gui_list.cpp`.
 - `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
 - **`PanelStyle` is ab_classic's adapter** over it: the same API and the same data layout as before (extensions
   hold one by value), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, every drawing call forwarded to

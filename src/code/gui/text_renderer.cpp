@@ -4,6 +4,7 @@
 #include "text_renderer.h"
 #include "panel_style.h"
 #include <ab_gui/facts_page.h>
+#include <ab_gui/list.h>
 #include <ab_gui/text_page.h>
 #include "../core/services/system.h"
 
@@ -23,6 +24,13 @@ using ableem::Rect;
 using ableem::Size;
 
 #define SCREEN_WIDTH ableem::GuiBase::ScreenWidth
+
+// the classic rows' geometry is abgui::List's (G3m part 2), at the default metrics (PanelStyle::RowInset is
+// abgui::Style::DefaultRowInset)
+static const abgui::Style &rowMetrics() {
+    static const abgui::Style metrics;
+    return metrics;
+}
 
 //*******************************
 // TextRenderer::toColor
@@ -387,14 +395,8 @@ int TextRenderer::renderTextLine(const string &text, int line, int yoffset, XAli
         font = themeFont_; // default to themeFont
 
     Rect opscreen = getOpscreenRectOfTheme();
-    int fontHeight = font.lineHeight();
-    int x = opscreen.x + PanelStyle::RowInset + 8 + xoffset; // level with the header's title
-    int y = (fontHeight * line) + yoffset;
-
-    if (line < 0) {
-        line = -line;
-        y = line;
-    }
+    int x = abgui::List::textLeft(opscreen, rowMetrics(), xoffset); // level with the header's title
+    int y = abgui::List::rowTop(line, yoffset, font.lineHeight());  // an absolute y when line < 0
 
     Color color;
     return renderText(font, text, x, y, xAlign, rowRoleColor(false, color) ? &color : nullptr);
@@ -440,19 +442,9 @@ int TextRenderer::renderTextLineToColumns(const string &textLeft, const string &
 //*******************************
 int TextRenderer::renderTextLineOptions(const string &_text, int line, int yoffset, XAlignment xAlign, int xoffset,
                                         int rightEdge) {
-    string text = _text;
-
-    // if there is a check or uncheck icon, flag which one and remove the emoji toekn from the string
-    int button = -1;
-    if (text.find("|@Check|") != std::string::npos) {
-        button = 1;
-    }
-    if (text.find("|@Uncheck|") != std::string::npos) {
-        button = 0;
-    }
-    if (button != -1) {
-        text = text.substr(0, text.find("|"));
-    }
+    // a check or uncheck marker: which one, and the text without it (abgui::List::switchState)
+    string text;
+    const int button = abgui::List::switchState(_text, &text);
 
     // render the text string without the check/uncheck icon
     int h = renderTextLine(text, line, yoffset, xAlign, xoffset);
@@ -474,10 +466,8 @@ void TextRenderer::renderRowValue(const string &value, int line, int yoffset, in
     if (!font.valid())
         font = themeFont_;
     Rect opscreen = getOpscreenRectOfTheme();
-    const int right = rightEdge > 0 ? rightEdge : opscreen.x + opscreen.w - PanelStyle::RowInset - 8;
-    int y = (font.lineHeight() * line) + yoffset;
-    if (line < 0)
-        y = -line;
+    const int right = abgui::List::valueRight(opscreen, rowMetrics(), rightEdge);
+    int y = abgui::List::rowTop(line, yoffset, font.lineHeight());
     Color color;
     renderText(font, value, ableem::GuiBase::ScreenWidth - right, y, XALIGN_RIGHT,
                rowRoleColor(true, color) ? &color : nullptr);
@@ -491,13 +481,8 @@ void TextRenderer::renderSelectionBox(int line, int yoffset, int xoffset, ableem
         font = themeFont_;
 
     int fontHeight = font.lineHeight();
-    Rect opscreen = getOpscreenRectOfTheme();
-    Rect rectSelection;
-    rectSelection.x = opscreen.x + 1 + xoffset;
-    rectSelection.y = yoffset + fontHeight * (line);
-    rectSelection.w = (rightEdge > 0 ? rightEdge + 12 : opscreen.x + opscreen.w - 1) - rectSelection.x;
-    rectSelection.h = fontHeight;
-
+    const Rect rectSelection =
+        abgui::List::band(getOpscreenRectOfTheme(), yoffset + fontHeight * line, fontHeight, xoffset, rightEdge);
     PanelStyle::fromTheme(theme_.launcher()).selection(renderer_, rectSelection);
 }
 
@@ -506,13 +491,8 @@ void TextRenderer::renderSelectionBox(int line, int yoffset, int xoffset, ableem
 //*******************************
 void TextRenderer::renderLabelBox(int line, int yoffset, int rightEdge) {
     int fontHeight = themeFont_.lineHeight();
-    Rect opscreen = getOpscreenRectOfTheme();
-    Rect rectSelection;
-    rectSelection.x = opscreen.x + 1;
-    rectSelection.y = yoffset + fontHeight * (line);
-    rectSelection.w = (rightEdge > 0 ? rightEdge + 12 : opscreen.x + opscreen.w - 1) - rectSelection.x;
-    rectSelection.h = fontHeight;
-
+    const Rect rectSelection =
+        abgui::List::band(getOpscreenRectOfTheme(), yoffset + fontHeight * line, fontHeight, 0, rightEdge);
     PanelStyle::fromTheme(theme_.launcher()).label(renderer_, rectSelection);
 }
 
@@ -521,13 +501,8 @@ void TextRenderer::renderLabelBox(int line, int yoffset, int rightEdge) {
 //*******************************
 void TextRenderer::renderDisabledBox(int line, int yoffset, int rightEdge) {
     int fontHeight = themeFont_.lineHeight();
-    Rect opscreen = getOpscreenRectOfTheme();
-    Rect rect;
-    rect.x = opscreen.x + 1;
-    rect.y = yoffset + fontHeight * (line);
-    rect.w = (rightEdge > 0 ? rightEdge + 12 : opscreen.x + opscreen.w - 1) - rect.x;
-    rect.h = fontHeight;
-
+    const Rect rect =
+        abgui::List::band(getOpscreenRectOfTheme(), yoffset + fontHeight * line, fontHeight, 0, rightEdge);
     PanelStyle::fromTheme(theme_.launcher()).disabled(renderer_, rect);
 }
 

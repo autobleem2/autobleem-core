@@ -3,6 +3,7 @@
 #include "../gui_screen.h"
 #include "../gui.h"
 #include "../hold_repeat.h"
+#include <ab_gui/list.h>
 #include <ab_gui/list_model.h>
 #include <ableem/ui/debug_driver.h>
 #include <algorithm>
@@ -23,9 +24,15 @@ template <typename LineDataType> std::string driverRowName(const LineDataType & 
     return std::string();
 }
 
+template <typename LineDataType> class GuiMenuBaseList;
+
 //*******************************
 // GuiMenuBase template class
 //*******************************
+// The classic list. Its drawing, row geometry, input and DebugDriver publishing are ab_gui's abgui::List
+// (docs/ab-gui-plan.md, G3m): every function below hands this menu's own members to a GuiMenuBaseList (a List
+// working on them in place, its hooks this menu's virtuals) and forwards. The members stay what they were - the
+// class is compiled into extensions (ABI 6), and the screens built on it read and set them directly.
 template <typename LineDataType> class GuiMenuBase : public GuiScreen {
 public:
     explicit GuiMenuBase(ableem::GuiBase &_gui) : GuiScreen(_gui) {}
@@ -110,20 +117,56 @@ public:
 };
 
 //*******************************
+// GuiMenuBaseList
+//*******************************
+// an abgui::List over a GuiMenuBase's own members (in place), whose hooks are the menu's virtuals: the rows are
+// renderLineIndexOnRow (in the theme's row / selected row colour - TextRenderer's row role), the title and footer
+// getTitle()/getStatusLine(), the headings skipSelectingThisLineWhenMovingByOne, a held row's step doKeyDown/
+// doKeyUp and its frame render() - so a screen overriding any of them keeps doing so
+template <typename LineDataType> class GuiMenuBaseList : public abgui::List {
+public:
+    explicit GuiMenuBaseList(GuiMenuBase<LineDataType> &menu)
+        : abgui::List(*menu.gui, menu.gui->uiContext(),
+                      abgui::List::Refs{menu.selected, menu.firstVisibleIndex, menu.lastVisibleIndex, menu.maxVisible,
+                                        menu.firstRow, menu.yoffset, menu.selectionBoxXOffset, menu.selectionRightEdge,
+                                        menu.firstRender, menu.labelsOnly, menu.cancelled, menu.font,
+                                        menu.menuVisible}),
+          menu_(menu) {}
+
+    int size() override { return menu_.getVerticalSize(); }
+    bool isEmpty() override { return menu_.lines.empty(); }
+    bool skip(int index) override { return menu_.skipSelectingThisLineWhenMovingByOne(index); }
+    std::string titleText() override { return menu_.getTitle(); }
+    std::string statusText() override { return menu_.getStatusLine(); }
+    void drawRow(int index, int line, bool isSelected) override {
+        // the row's colour role (UIREV-29): renderTextLine/renderRowValue take it from here
+        TextRenderer::RowRoleScope role(menu_.gui->text(),
+                                        isSelected ? TextRenderer::RowRole::Selected : TextRenderer::RowRole::Row);
+        menu_.renderLineIndexOnRow(index, line);
+    }
+    std::string rowName(int index) override {
+        return index < static_cast<int>(menu_.lines.size()) ? driverRowName(menu_.lines[index]) : std::string();
+    }
+    const char *screenName() override { return typeid(menu_).name(); }
+    void step(int by) override { by > 0 ? menu_.doKeyDown() : menu_.doKeyUp(); }
+    void redraw() override { menu_.render(); }
+
+private:
+    GuiMenuBase<LineDataType> &menu_;
+};
+
+//*******************************
 // void GuiMenuBase<LineDataType>::init()
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::init() {
-    gui->input().setFrameNeed(ableem::Input::FrameNeed::Idle); // a list: nothing moves between presses
     font = gui->assets().themeFont;
     if (useSmallerFont) {
         // sometimes the left column will overwrite into the right column.
         // and the second column sometimes go off the right side.
         font = gui->assets().themeFonts[FONT_15_BOLD]; // use a smaller font
     }
-    // the rows pack at the font's height and scroll a row at a time when there are more than fit
-    // (the theme's menuLines used to say how many; the panel decides now)
-    maxVisible = gui->classicRowsThatFit(font);
-    lastVisibleIndex = firstVisibleIndex + maxVisible - 1;
+    // the frame need at rest; the rows that fit the panel at the font's height (abgui::List::init)
+    GuiMenuBaseList<LineDataType>(*this).init();
 }
 
 //*******************************
@@ -155,57 +198,27 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::computePagePosi
 //*******************************
 // GuiMenuBase<LineDataType>::publishToDriver
 //*******************************
-// the DebugDriver's `items` and `selected`: every row by the text it shows (a heading with a leading '#', so an
-// index matches what is drawn), the cursor's row. Called from render() so it follows the lines however a
-// subclass fills them; the driver keeps the rows per screen and drops them when the screen closes. A '|' in a
-// row's text (an icon mark) becomes '/', the reply's separator being '|'. Skipped once the menu is closing:
-// Gui::beginBusy redraws a closed Options panel as its backdrop, and that must not publish into the screen below.
+// the DebugDriver's `items` and `selected` (abgui::List::publish): every row by the text it shows (a heading with
+// a leading '#'), the cursor's row; skipped once the menu is closing. Called from renderLines(), so it follows the
+// lines however a subclass fills them; Options calls it from its own render().
 template <typename LineDataType> void GuiMenuBase<LineDataType>::publishToDriver() {
-    if (!menuVisible || !ableem::DebugDriver::active())
-        return;
-    std::vector<std::string> names;
-    const int size = getVerticalSize();
-    names.reserve(size > 0 ? size : 0);
-    for (int i = 0; i < size; i++) {
-        std::string name = i < static_cast<int>(lines.size()) ? driverRowName(lines[i]) : std::string();
-        std::replace(name.begin(), name.end(), '|', '/');
-        names.push_back((skipSelectingThisLineWhenMovingByOne(i) ? "#" : "") + name);
-    }
-    ableem::DebugDriver::publish(typeid(*this).name(), names, labelsOnly || size == 0 ? -1 : selected);
+    GuiMenuBaseList<LineDataType>(*this).publish();
 }
 
 //*******************************
 // GuiMenuBase<LineDataType>::renderLines
 //*******************************
+// the DebugDriver's rows, then each row on the page through renderLineIndexOnRow (abgui::List::drawRows) - here,
+// not only in draw(): Game Manager draws with its own render()
 template <typename LineDataType> void GuiMenuBase<LineDataType>::renderLines() {
-    publishToDriver(); // here, not in render(): Options and Game Manager draw with their own render()
-    if (selected >= 0 && getVerticalSize() > 0) {
-        // every row in the theme's row colour, the selected one in rowSelected (UIREV-29) - a subclass's
-        // renderLineIndexOnRow draws through renderTextLine/renderRowValue, which take it from here
-        TextRenderer &text = gui->text();
-        const TextRenderer::RowRole before = text.rowRole();
-        int row = firstRow;
-        for (int i = firstVisibleIndex; i <= lastVisibleIndex; i++) {
-            if (i < 0 || i >= getVerticalSize()) {
-                break;
-            }
-            text.setRowRole(!labelsOnly && i == selected ? TextRenderer::RowRole::Selected
-                                                         : TextRenderer::RowRole::Row);
-            renderLineIndexOnRow(i, row); // call virtual that knows how to display the data
-            row++;
-        }
-        text.setRowRole(before);
-    }
+    GuiMenuBaseList<LineDataType>(*this).drawRows();
 }
 
 //*******************************
 // GuiMenuBase<LineDataType>::renderSelectionBox
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::renderSelectionBox() {
-    if (!labelsOnly && getVerticalSize() > 0) {
-        gui->text().renderSelectionBox(selected - firstVisibleIndex + firstRow, yoffset, selectionBoxXOffset, font,
-                                       selectionRightEdge);
-    }
+    GuiMenuBaseList<LineDataType>(*this).drawSelection();
 }
 
 //*******************************
@@ -219,26 +232,10 @@ template <typename LineDataType> void GuiMenuBase<LineDataType>::render() {
 //*******************************
 // GuiMenuBase<LineDataType>::draw
 //*******************************
+// the backdrop, the panel (compact for a short list with nothing beside it), the header, the rows, the band, the
+// scroll markers, the footer (abgui::List::draw)
 template <typename LineDataType> void GuiMenuBase<LineDataType>::draw() {
-    gui->renderBackground();
-    // a short list without a pane beside it draws as a compact panel centred on the screen
-    const bool compact = getVerticalSize() <= CompactRows && selectionRightEdge == 0;
-    if (compact)
-        gui->setCompactPanel(getVerticalSize(), font);
-    gui->renderTextBar();
-    yoffset = gui->renderHeader(getTitle());
-
-    if (firstRender) {
-        computePagePosition();
-        firstRender = false;
-    }
-    renderLines();
-    renderSelectionBox();
-    gui->renderScrollMarkers(firstVisibleIndex > 0, lastVisibleIndex < getVerticalSize() - 1);
-
-    gui->renderStatus(getStatusLine());
-    if (compact)
-        gui->clearCompactPanel(); // drawn: the stack presents next, and nothing there reads the panel
+    GuiMenuBaseList<LineDataType>(*this).draw();
 }
 
 //*******************************
@@ -258,110 +255,52 @@ template <typename LineDataType> std::string GuiMenuBase<LineDataType>::getStatu
 }
 
 //*******************************
-// GuiMenuBase<LineDataType>::doKeyDown
+// the moves: abgui::List's (the sound, then ListModel)
 //*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyDown() {
-    app.audio().cursor.play();
-    if (!labelsOnly)
-        abgui::ListModel::stepDown(modelView(), skipper());
+    GuiMenuBaseList<LineDataType>(*this).stepDown();
 }
 
-//*******************************
-// GuiMenuBase<LineDataType>::doKeyUp
-//*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doKeyUp() {
-    app.audio().cursor.play();
-    if (!labelsOnly)
-        abgui::ListModel::stepUp(modelView(), skipper());
+    GuiMenuBaseList<LineDataType>(*this).stepUp();
 }
 
-//*******************************
-// GuiMenuBase<LineDataType>::doJoyDown
-//*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doJoyDown() {
     holdRows(1);
 }
 
-//*******************************
-// GuiMenuBase<LineDataType>::doJoyUp
-//*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doJoyUp() {
     holdRows(-1);
 }
 
-//*******************************
-// GuiMenuBase<LineDataType>::holdRows
-//*******************************
 // one step at the press, then - while nothing else comes from the pad or the keyboard - the same step again at
-// HoldRepeat's pace (the one every screen's held key uses): its delay first, then its interval, faster when
-// held long
+// HoldRepeat's pace: doKeyDown()/doKeyUp() and render() each time, so a screen's own step and frame run
 template <typename LineDataType> void GuiMenuBase<LineDataType>::holdRows(int step) {
-    HoldRepeat hold;
-    hold.press(step, gui->platform().ticks());
-    step > 0 ? doKeyDown() : doKeyUp();
-    render();
-    while (!gui->input().padEventPending()) {
-        if (hold.due(gui->platform().ticks()) != 0) {
-            step > 0 ? doKeyDown() : doKeyUp();
-            render();
-        } else {
-            gui->platform().delay(2); // a few ms of repeat timing, not a core spinning on the queue
-        }
-    }
+    GuiMenuBaseList<LineDataType>(*this).holdRows(step);
 }
 
-//*******************************
-// GuiMenuBase<LineDataType>::doPageDown
-//*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageDown() {
-    app.audio().home_up.play();
-    if (!labelsOnly)
-        abgui::ListModel::pageDown(modelView(), skipper());
+    GuiMenuBaseList<LineDataType>(*this).pageDown();
 }
 
-//*******************************
-// GuiMenuBase<LineDataType>::doPageUp
-//*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doPageUp() {
-    app.audio().home_down.play();
-    if (!labelsOnly)
-        abgui::ListModel::pageUp(modelView(), skipper());
+    GuiMenuBaseList<LineDataType>(*this).pageUp();
 }
 
-//*******************************
-// GuiMenuBase<LineDataType>::doHome
-//*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doHome() {
-    app.audio().home_down.play();
-    if (!labelsOnly)
-        abgui::ListModel::home(modelView(), skipper());
+    GuiMenuBaseList<LineDataType>(*this).first();
 }
 
-//*******************************
-// GuiMenuBase<LineDataType>::doEnd
-//*******************************
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doEnd() {
-    app.audio().home_down.play();
-    if (!labelsOnly)
-        abgui::ListModel::end(modelView(), skipper());
+    GuiMenuBaseList<LineDataType>(*this).last();
 }
 
-//*******************************
-// GuiMenuBase::doCircle_Pressed
-//*******************************
+// Circle: the Cancel sound, left cancelled
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doCircle_Pressed() {
-    app.audio().cancel.play();
-    cancelled = true;
-    menuVisible = false;
+    GuiMenuBaseList<LineDataType>(*this).back();
 }
 
-//*******************************
-// GuiMenuBase<LineDataType>::doCross_Pressed
-//*******************************
+// Cross: the Cursor sound, left (unless there are no lines)
 template <typename LineDataType> void GuiMenuBase<LineDataType>::doCross_Pressed() {
-    app.audio().cursor.play();
-    cancelled = false;
-    if (!lines.empty()) {
-        menuVisible = false;
-    }
+    GuiMenuBaseList<LineDataType>(*this).confirm();
 }

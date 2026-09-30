@@ -114,4 +114,24 @@ ableem::Rect Context::drawLogo() const {
     return logoDrawer ? logoDrawer() : ableem::Rect();
 }
 
+//*******************************
+// Context::setCompactPanel / clearCompactPanel / currentPanelRect
+//*******************************
+void Context::setCompactPanel(const ableem::Rect &rect) {
+    compactRect_ = rect;
+    compact_ = true;
+    if (panelSwitch)
+        panelSwitch(&compactRect_);
+}
+
+void Context::clearCompactPanel() {
+    compact_ = false;
+    if (panelSwitch)
+        panelSwitch(nullptr);
+}
+
+ableem::Rect Context::currentPanelRect() const {
+    return compact_ ? compactRect_ : panelRect();
+}
+
 } // namespace abgui

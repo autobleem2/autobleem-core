@@ -163,6 +163,22 @@ public:
     using LogoDrawer = std::function<ableem::Rect()>;
     LogoDrawer logoDrawer;
     ableem::Rect drawLogo() const;
+
+    // Appended (step G3m part 2): the compact panel a short list draws in (abgui::List) - while one is set it is the
+    // panel the rows are in (currentPanelRect()), and the program's own row drawing follows it: the panelSwitch is told
+    // the rect when one is set and null when it is dropped (AutoBleem's moves its text renderer's rows and Gui's
+    // classicPanel()). Unset, only the Context keeps it.
+    using PanelSwitch = std::function<void(const ableem::Rect *)>;
+    PanelSwitch panelSwitch;
+    void setCompactPanel(const ableem::Rect &rect);
+    void clearCompactPanel();
+    bool hasCompactPanel() const { return compact_; }
+    // the compact panel while one is set, else panelRect()
+    ableem::Rect currentPanelRect() const;
+
+private:
+    bool compact_ = false;
+    ableem::Rect compactRect_;
 };
 
 } // namespace abgui
