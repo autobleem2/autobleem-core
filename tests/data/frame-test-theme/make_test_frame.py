@@ -30,9 +30,14 @@
 # chip (G5d): 32x32 - the art spec's 28x28 body (2 px bleed) behind a named-key chip (START, L2+R2, ESC), a 2 px rim, all four
 # corners cut, a faint glow. Mint (120, 255, 190) at 1x, maroon (128, 0, 40) at @2x. theme.json: slice 10, bleed 2.
 #
+# hintBar (G5e): 80x80 - the art spec's 64x64 box (8 px bleed) behind the launcher's two hint lines, a 2 px rim, the
+# top-right and bottom-left corners cut, a dark centre at about 70% the hints read over, an 8 px glow. Salmon
+# (250, 128, 114) at 1x, olive (128, 128, 0) at @2x. theme.json: slice 28, bleed 8.
+#
 # Standard library only; writes frames/panel.png (64x64), panel@2x.png (128x128), selection.png (48x40),
 # selection@2x.png (96x80), heading.png (40x24), heading@2x.png (80x48), key.png, key_function.png, key_lit.png,
-# key_selected.png (48x48 each), field.png (56x56) and the @2x of all of them next to this script.
+# key_selected.png (48x48 each), field.png (56x56), badge.png (40x40), chip.png (32x32), hint_bar.png (80x80) and the
+# @2x of all of them next to this script.
 import math
 import os
 import struct
@@ -123,6 +128,13 @@ def chip_shape():
     return Shape(size, size, bleed, poly, 2, (255, 255, 255, 50), 100)
 
 
+def hint_bar_shape():
+    size, bleed, cut = 80, 8, 12
+    x0, y0, x1, y1 = bleed, bleed, size - bleed, size - bleed
+    poly = [(x0, y0), (x1 - cut, y0), (x1, y0 + cut), (x1, y1), (x0 + cut, y1), (x0, y1 - cut)]
+    return Shape(size, size, bleed, poly, 2, (24, 20, 30, 180), 110)
+
+
 def render(shape, scale, rim):
     w, h = shape.width * scale, shape.height * scale
     ss = 4
@@ -178,6 +190,7 @@ def main():
         ("field", field_shape(), (0, 220, 80), (0, 160, 160)),
         ("badge", badge_shape(), (255, 200, 0), (170, 80, 255)),
         ("chip", chip_shape(), (120, 255, 190), (128, 0, 40)),
+        ("hint_bar", hint_bar_shape(), (250, 128, 114), (128, 128, 0)),
     ]
     for name, shape, rim1, rim2 in keys:
         write_png(os.path.join(out, name + ".png"), *render(shape, 1, rim1))
