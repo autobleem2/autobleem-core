@@ -312,3 +312,35 @@ TEST_CASE("tone: a role's colour, its own alpha unless one is given, nothing for
     CHECK((white.r == 255 && white.g == 255 && white.b == 255 && white.a == 255));
     CHECK(s.tone(abgui::Tone::None).a == 0);
 }
+
+TEST_CASE("the footer's shared order (G5r3): the d-pad right after the face buttons, before Start and the shoulders") {
+    CHECK(Style::hintRank("X") < Style::hintRank("O"));
+    CHECK(Style::hintRank("S") < Style::hintRank("Left"));
+    CHECK(Style::hintRank("Left") < Style::hintRank("Start"));
+    CHECK(Style::hintRank("Left") < Style::hintRank("L1"));
+    CHECK(Style::hintRank("Left") < Style::hintRank("L2"));
+    CHECK(Style::hintRank("Left") == Style::hintRank("Left"));
+    CHECK(Style::hintRank("Right") > Style::hintRank("Left"));
+    CHECK(Style::hintRank("R2") < Style::hintRank("Enter"));
+    CHECK(Style::hintRank("Nonsense") == 100); // unknown keys stay last
+
+    // a status line written in the order Options writes it (paging first), sorted
+    std::string status;
+    const std::vector<HintItem> given =
+        Style::parseHints("|@L2|/|@R2| Page  |@L1|/|@R1| First/last  |@Left|/|@Right| Choose  |@O| Back  |@X| Change", status);
+    const std::vector<HintItem> sorted = Style::sortedHints(given);
+    REQUIRE(sorted.size() == 5);
+    CHECK(sorted[0].icons == std::vector<std::string>{"X"});
+    CHECK(sorted[1].icons == std::vector<std::string>{"O"});
+    CHECK(sorted[2].icons == (std::vector<std::string>{"Left", "Right"}));
+    CHECK(sorted[2].label == "Choose");
+    CHECK(sorted[3].icons == (std::vector<std::string>{"L1", "R1"}));
+    CHECK(sorted[4].icons == (std::vector<std::string>{"L2", "R2"}));
+
+    // the sort is stable: equal ranks keep the given order
+    const std::vector<HintItem> same = {{{"Foo"}, "a"}, {{"Bar"}, "b"}, {{"X"}, "c"}};
+    const std::vector<HintItem> out = Style::sortedHints(same);
+    CHECK(out[0].label == "c");
+    CHECK(out[1].label == "a");
+    CHECK(out[2].label == "b");
+}

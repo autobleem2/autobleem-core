@@ -909,3 +909,42 @@ TEST_CASE("scaledFrame (G5k): the slices and bleed follow the factor, the cut st
     CHECK(copy.tintResolved);
     CHECK(copy.tintColor.g == 20);
 }
+
+TEST_CASE("Style::hintIconsWidth (G5r3): every key is measured by Style::buttonWidth - its glyph when the theme has one") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+
+    // no glyphs: every key, the face buttons too, is a chip - the key's real width, not a fixed 30
+    abgui::HintItem face{{"X"}, "Change"};
+    abgui::HintItem dpad{{"Left", "Right"}, "Choose"};
+    abgui::HintItem shoulder{{"L2", "R2"}, "Page"};
+    CHECK(style.hintIconsWidth(ctx, face) == style.buttonWidth(ctx, "X", 30) + 6);
+    CHECK(style.hintIconsWidth(ctx, dpad) ==
+          style.buttonWidth(ctx, "Left", 30) + 6 + style.buttonWidth(ctx, "Right", 30) + 6);
+    CHECK(style.hintIconsWidth(ctx, shoulder) ==
+          style.buttonWidth(ctx, "L2", 30) + 6 + style.buttonWidth(ctx, "R2", 30) + 6);
+
+    // a theme's glyphs: a 30 px face image, 18 px d-pad arrows and a 52 x 26 L2 image - the footer counts exactly these
+    auto sized = [&](int w, int h) { return ableem::Texture::createTarget(renderer, w, h); };
+    ableem::Texture xImage = sized(30, 30), arrow = sized(18, 18), l2Image = sized(52, 26);
+    REQUIRE(xImage.valid());
+    REQUIRE(arrow.valid());
+    REQUIRE(l2Image.valid());
+    ctx.glyphProvider = [&](const string &key) {
+        if (key == "X")
+            return xImage;
+        if (key == "Left" || key == "Right")
+            return arrow;
+        if (key == "L2")
+            return l2Image;
+        return ableem::Texture();
+    };
+    CHECK(style.hintIconsWidth(ctx, face) == 30 + 6);
+    CHECK(style.hintIconsWidth(ctx, dpad) == 18 + 6 + 18 + 6);
+    // L2 has the image, R2 has none and stays a chip
+    CHECK(style.hintIconsWidth(ctx, shoulder) == 52 + 6 + style.buttonWidth(ctx, "R2", 30) + 6);
+}

@@ -775,34 +775,38 @@ int Style::layoutButtons(Context &ctx, const string &markers, int x, int y, int 
 //*******************************
 // Style::footer
 //*******************************
-namespace {
-// the shared order of the footer's hints, by the hint's first button
-int buttonRank(const string &icon) {
-    static const char *order[] = {"X", "O", "T", "S", "Start", "Select", "L1", "R1", "L2", "R2", "Enter", "Esc", "Tab"};
+int Style::hintRank(const string &icon) {
+    // the d-pad (G5r3) comes right after the face buttons, before Start/Select and the shoulders
+    static const char *order[] = {"X",     "O",  "T",  "S",  "Left", "Right", "Up",    "Down", "Start",
+                                  "Select", "L1", "R1", "L2", "R2",   "Enter", "Esc", "Tab"};
     for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); i++)
         if (icon == order[i])
             return static_cast<int>(i);
     return 100;
 }
-} // namespace
+
+vector<HintItem> Style::sortedHints(vector<HintItem> hints) {
+    stable_sort(hints.begin(), hints.end(), [](const HintItem &a, const HintItem &b) {
+        return hintRank(a.icons.empty() ? "" : a.icons[0]) < hintRank(b.icons.empty() ? "" : b.icons[0]);
+    });
+    return hints;
+}
+
+int Style::hintIconsWidth(Context &ctx, const HintItem &hint, int height) const {
+    int w = 0;
+    for (const string &icon : hint.icons)
+        w += buttonWidth(ctx, icon, height) + 6;
+    return w;
+}
 
 void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &given, const string &status,
                    bool withRule) const {
     if (withRule && !drawFrame(ctx, "footer", footer)) // the theme's band, else the rule along its top
         rule(ctx, footer, footer.y);
-    vector<HintItem> hints = given;
-    stable_sort(hints.begin(), hints.end(), [](const HintItem &a, const HintItem &b) {
-        return buttonRank(a.icons.empty() ? "" : a.icons[0]) < buttonRank(b.icons.empty() ? "" : b.icons[0]);
-    });
+    vector<HintItem> hints = sortedHints(given);
     const int iconH = buttonHeight;
     const int y = footer.y + footerTop;
     const int IconOnlyGap = 16; // between hints once labels are dropped (C1: no fallback after the Small font)
-    // what a button takes: a face button its image (buttonHeight square), a named one its chip
-    auto buttonWidth = [&](const string &key) {
-        if (key == "X" || key == "O" || key == "T" || key == "S")
-            return buttonHeight;
-        return ctx.textWidth(ctx.font(FontRole::Small), upper(key)) + 14;
-    };
     // the status at the right edge, in the description colour; the hints get what is left
     int right = footer.x + footer.w - rowInset;
     const ableem::Font &statusFont = ctx.font(FontRole::Row);
@@ -818,8 +822,7 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
     auto widthAt = [&](const ableem::Font &font, int gap, bool iconsOnly) {
         int w = 0;
         for (const HintItem &h : hints) {
-            for (const string &icon : h.icons)
-                w += buttonWidth(icon) + 6;
+            w += hintIconsWidth(ctx, h, iconH); // each key's real width: its glyph when the theme has one, else the chip
             w += iconsOnly ? gap : 2 + ctx.textWidth(font, h.label) + gap;
         }
         return w - gap;
