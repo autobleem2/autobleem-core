@@ -5,6 +5,9 @@
 
 #include "core/model/picture_mask.h"
 
+#include <cstdint>
+#include <initializer_list>
+
 TEST_CASE("PictureMask::multiplyAlpha: 255 leaves the alpha, 0 removes it, in between is the rounded product") {
     using PictureMask::multiplyAlpha;
     for (int a : {0, 1, 100, 254, 255}) {
