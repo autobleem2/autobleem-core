@@ -42,8 +42,9 @@ private:
     SurpriseGame game;
     SurpriseSprites sprites;
     SurpriseHud hud;        // the Oxanium lettering and plates
-    KonamiCode konami;      // fed every press during a game; completing it is SurpriseGame::enableInfiniteLives
+    KonamiCode konami;      // fed every press on the game's title; completing it is SurpriseGame::armGodMode
     int savedHighScore = 0; // mirrors config.ini's "surprisehighscore"; written back only when beaten
+                            // (the ten-row table is "surprisescores", SurpriseGame::seedScores/scoresText)
 
     // the game always has some music: the theme's track is ducked to 50% if it was already playing, or -
     // when the theme/config has no music at all (a silent theme, or "nomusic") - this bundled track takes
@@ -55,4 +56,5 @@ private:
     void loadGameAssets(); // on the first Start, not at open
     void drawCredits();
     void renderSurprise();
+    static StarFx::Style flyingStyle(float speed); // the game's star field at the game's speed
 };

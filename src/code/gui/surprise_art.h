@@ -65,6 +65,9 @@ public:
         FinalScore,
         FinalHi,
         Push,
+        GodMode,    // the Konami code's splash on the title
+        Scores,     // the high score table's heading
+        EntryScore, // the score being entered
         Count
     };
 

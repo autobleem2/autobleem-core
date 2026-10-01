@@ -215,8 +215,10 @@ void StarFx::render(unsigned int nowTicks) {
             level = TWINKLE_LEVELS - 1;
 
         float drawX = s.x + sinf(s.driftPhase) * s.driftAmount;
-        buckets[bucketIndex(s.tier, s.tint, level)].emplace_back(
-            static_cast<int>(drawX), static_cast<int>(s.y), static_cast<int>(s.size) + 1, static_cast<int>(s.size) + 1);
+        const float streak = s.tier >= TIER_COUNT / 2 ? style.streakScale : 1.0f;
+        buckets[bucketIndex(s.tier, s.tint, level)].emplace_back(static_cast<int>(drawX), static_cast<int>(s.y),
+                                                                 static_cast<int>(s.size) + 1,
+                                                                 static_cast<int>((s.size + 1) * streak));
     }
 
     for (int t = 0; t < TIER_COUNT; t++) {

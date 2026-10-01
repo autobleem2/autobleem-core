@@ -29,6 +29,7 @@ public:
         float brightnessScale = 1.0f; // multiplies every star's colour (0..1 makes the field darker)
         int cometOdds = 800;          // a comet spawn is tried once per frame with a 1-in-this chance
         int maxComets = 1;            // how many may be on screen at once
+        float streakScale = 1.0f;     // the nearer half of the stars is this many times taller: streaks at speed
     };
 
     StarFx();
