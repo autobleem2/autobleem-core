@@ -25,6 +25,7 @@ constexpr int Busy::MessageGap;
 constexpr int Busy::BarWidth;
 constexpr int Busy::BarHeight;
 constexpr int Busy::BarGap;
+constexpr int Busy::ToastPad;
 constexpr int Busy::WaitSpinnerGap;
 constexpr int Busy::WaitSpinnerFoot;
 constexpr int Busy::WaitTopLineY;
@@ -94,6 +95,10 @@ void Busy::drawFrame() {
         const Style style = ctx_->style();
         style.dim(*ctx_);
         const ableem::Point centre = spinnerCentre(renderer.width(), renderer.height());
+        // the ring and message sit on the theme's toast frame, so they never lie bare over the screen's rows
+        const ableem::Font &font = ctx_->font(FontRole::Row);
+        style.toast(*ctx_, toastRect(renderer.width(), renderer.height(), ctx_->textWidth(font, message_),
+                                     font.lineHeight(), total_ > 0));
         drawSpinner(centre.x, centre.y, message_, ctx_->ticks() - started_);
         if (total_ > 0) {
             // the bar under the message, as the notification bubble draws its own; through the Context (G5g), so a
@@ -163,6 +168,19 @@ int Busy::messageTop(int cy) {
 ableem::Rect Busy::barRect(int canvasWidth, int canvasHeight, int lineHeight) {
     const int messageY = messageTop(spinnerCentre(canvasWidth, canvasHeight).y);
     return ableem::Rect(canvasWidth / 2 - BarWidth / 2, messageY + lineHeight + BarGap, BarWidth, BarHeight);
+}
+
+ableem::Rect Busy::toastRect(int canvasWidth, int canvasHeight, int messageWidth, int lineHeight, bool hasBar) {
+    const int cy = spinnerCentre(canvasWidth, canvasHeight).y;
+    int bottom = messageTop(cy) + lineHeight;
+    int width = max(2 * SpinnerRadius, messageWidth);
+    if (hasBar) {
+        bottom += BarGap + BarHeight;
+        width = max(width, BarWidth);
+    }
+    const int top = cy - SpinnerRadius;
+    const int w = width + 2 * ToastPad;
+    return ableem::Rect(canvasWidth / 2 - w / 2, top - ToastPad, w, bottom - top + 2 * ToastPad);
 }
 
 int Busy::barDone(int done, int total) {

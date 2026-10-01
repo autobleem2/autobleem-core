@@ -177,6 +177,18 @@ TEST_CASE("the ring, the message and the bar sit where the old busy frame put th
     CHECK(sameRect(Busy::barRect(1280, 720, 26), Rect(440, 432, 400, 6)));
 }
 
+TEST_CASE("the toast frame surrounds the ring, the message and the bar") {
+    // 1280 x 720: ring centre y 340, ring top 310, message top 394
+    const Rect plain = Busy::toastRect(1280, 720, 200, 26, false);
+    CHECK(sameRect(plain, Rect(640 - 124, 310 - 24, 248, (394 + 26 - 310) + 48)));
+    // a short message: the ring's diameter is the minimum width
+    CHECK(Busy::toastRect(1280, 720, 10, 26, false).w == 60 + 48);
+    // a bar makes it as wide as the bar and as tall as the bar's foot
+    const Rect bar = Busy::toastRect(1280, 720, 200, 26, true);
+    CHECK(bar.w == 400 + 48);
+    CHECK(bar.y + bar.h == 394 + 26 + 12 + 6 + 24);
+}
+
 TEST_CASE("the bar shows done clamped to 0..total") {
     CHECK(Busy::barDone(0, 10) == 0);
     CHECK(Busy::barDone(4, 10) == 4);
