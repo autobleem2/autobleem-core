@@ -13,7 +13,11 @@
 #include <cstring>
 #include <cstdlib>
 #include <cassert>
+#include <ableem/engine/ext_trace.h>
 #include <ableem/engine/log.h>
+#include <ableem/ui/debug_driver.h>
+#include <ab_gui/panel.h>
+#include "../core/model/picture_mask.h"
 
 using namespace std;
 using ableem::Button;
@@ -89,11 +93,208 @@ string Gui::windowTitle_ = "AutoBleem";
 Gui::Gui()
     : ableem::GuiBase(windowTitle_, ScreenWidth, ScreenHeight, outputScale(), multisampleSamples(), fullscreen()),
       assets_(renderer(), AppBase::get().theme(), AppBase::get().config()),
-      text_(renderer(), AppBase::get().theme(), assets_.themeFont, assets_.buttonTextureMap) {
+      text_(renderer(), AppBase::get().theme(), assets_.themeFont, assets_.buttonTextureMap),
+      uiContext_(renderer(), input(), platform()), stack_(renderer()) {
+    wireUiContext();
     // the pad mappings the launcher and the pscbios wizard share; probePads() reads the first that exists
     input().loadMappings(Env::padMappingFiles());
     input().probePads();
     renderer().setPerfOverlay(AppBase::get().config().inifile.values["perfoverlay"] == "true");
+}
+
+//********************
+// Gui::wireUiContext
+//********************
+// the face buttons' images: the launcher's hint icons for X/O/T/S (the theme's buttons when a theme has none),
+// the d-pad arrows of the icon table (ThemeAssets' dpad*: the theme's launcher.icons, else the
+// default's, else the launcher's own evoimg/dpad_*.png - ab_gui G5a); an invalid texture for every other key, which
+// Style draws as a chip
+static Texture faceIcon(ThemeAssets &assets, const string &key) {
+    if (key == "X")
+        return assets.hintCross.valid() ? assets.hintCross : assets.buttonTextureMap["X"];
+    if (key == "O")
+        return assets.hintCircle.valid() ? assets.hintCircle : assets.buttonTextureMap["O"];
+    if (key == "T")
+        return assets.hintTriangle.valid() ? assets.hintTriangle : assets.buttonTextureMap["T"];
+    if (key == "S")
+        return assets.hintSquare.valid() ? assets.hintSquare : assets.buttonTextureMap["S"];
+    if (key == "Up")
+        return assets.dpadUp;
+    if (key == "Down")
+        return assets.dpadDown;
+    if (key == "Left")
+        return assets.dpadLeft;
+    if (key == "Right")
+        return assets.dpadRight;
+    return Texture();
+}
+
+// faceIcon's outline (UIREV-2): only the d-pad arrows need one - X/O/T/S already carry the theme's own art and read
+// fine on every theme's hint bar; none when the theme's icons carry their own glow ("iconHalo": false, G5a)
+static Texture faceIconOutline(ThemeAssets &assets, const string &key) {
+    if (key == "Up")
+        return assets.dpadUpOutline;
+    if (key == "Down")
+        return assets.dpadDownOutline;
+    if (key == "Left")
+        return assets.dpadLeftOutline;
+    if (key == "Right")
+        return assets.dpadRightOutline;
+    return Texture();
+}
+
+// every provider reads assets_/text_/the theme when it is called, never before: the fonts and textures are
+// replaced on a theme load and dropped while a game has the display
+void Gui::wireUiContext() {
+    TextRenderer::setSwitchContext(&uiContext_); // the theme's switch images for renderTextLineOptions (G5m)
+    uiContext_.fontProvider = [this](abgui::FontRole role) -> const ableem::Font & {
+        switch (role) {
+        case abgui::FontRole::Title:
+            return assets_.themeFonts[FONT_28_BOLD];
+        case abgui::FontRole::Row:
+            return assets_.themeFonts[FONT_22_MED];
+        case abgui::FontRole::RowSmall:
+            return assets_.themeFonts[FONT_20_BOLD];
+        case abgui::FontRole::Small:
+            return assets_.themeFonts[FONT_15_BOLD];
+        case abgui::FontRole::Classic:
+            return assets_.themeFont;
+        }
+        return assets_.themeFonts[FONT_22_MED];
+    };
+    uiContext_.glyphProvider = [this](const string &key) { return faceIcon(assets_, key); };
+    uiContext_.glyphOutlineProvider = [this](const string &key) { return faceIconOutline(assets_, key); };
+    uiContext_.textDrawer = [this](const ableem::Font &font, const string &line, int x, int y, const Color &color) {
+        text_.renderText_WithColor(font, line, x, y, color, XALIGN_LEFT);
+    };
+    // a plain line in the font's own colour (a text page's blank and centred lines): the renderer's renderText
+    uiContext_.lineDrawer = [this](const ableem::Font &font, const string &line, int x, int y,
+                                   abgui::Context::LineAlign align) {
+        text_.renderText(font, line, x, y, align == abgui::Context::LineAlign::Centre ? XALIGN_CENTER : XALIGN_LEFT);
+    };
+    // the halo under the text on or off, the previous state back (a dialog sets its style's and restores the theme's)
+    uiContext_.shadowSwitch = [this](bool on) {
+        TextRenderer::Shadow shadow = text_.shadow();
+        const bool was = shadow.enabled;
+        shadow.enabled = on;
+        text_.setShadow(shadow);
+        return was;
+    };
+    uiContext_.textMeasurer = [this](const ableem::Font &font, const string &line) {
+        return text_.textWidth(font, line);
+    };
+    uiContext_.translator = [](const string &line) { return ableem::translate(line); };
+    uiContext_.styleProvider = []() { return PanelStyle::styleFromTheme(AppBase::get().theme().launcher()); };
+    // the theme's five UI sounds (AppAudio reloads them with the theme - asked for at the moment one plays)
+    uiContext_.soundPlayer = [](abgui::UiSound sound) {
+        AppAudio &audio = AppBase::get().audio();
+        switch (sound) {
+        case abgui::UiSound::Cursor:
+            audio.cursor.play();
+            break;
+        case abgui::UiSound::Cancel:
+            audio.cancel.play();
+            break;
+        case abgui::UiSound::HomeUp:
+            audio.home_up.play();
+            break;
+        case abgui::UiSound::HomeDown:
+            audio.home_down.play();
+            break;
+        case abgui::UiSound::Resume:
+            audio.resume.play();
+            break;
+        }
+    };
+    // the clock stays unset: the widgets time by the platform's ticks, as the screens do today
+
+    // the launcher's snapshot while a screen opened from it runs (G5r5), else the theme's background picture over black
+    // (what renderBackground draws) - also when the snapshot's pixels were lost with the render targets
+    uiContext_.backdropDrawer = [this]() {
+        if (backdrop_.draw(renderer()))
+            return;
+        ableem::ext_trace::note("backdrop FALLBACK: transparent clear + theme background");
+        renderer().setDrawColor(Color(0x00, 0x00, 0x00, 0x00));
+        renderer().clear();
+        renderer().copy(assets_.backgroundImg, nullptr, &assets_.backgroundRect);
+    };
+    // the full classic panel: the theme's menu panel, its bottom at least at the foot of the theme's status line
+    // (where the footer band ends: the hints sat footerTop (14) below its top, at the status line's text y). A
+    // compact panel is Gui's own state (setCompactPanel), never this rect.
+    uiContext_.panelProvider = []() {
+        const auto &classic = AppBase::get().theme().classic();
+        Rect panel(classic.menuPanel.x, classic.menuPanel.y, classic.menuPanel.w, classic.menuPanel.h);
+        const int statusFoot = classic.statusBar.textY + PanelStyle::FooterHeight - 14;
+        if (statusFoot > panel.y + panel.h)
+            panel.h = statusFoot - panel.y;
+        return panel;
+    };
+    // the theme's logo at its place, and that place (the "please wait" picture's spinner goes under it)
+    // (over the launcher's snapshot, which carries its own logo element, none is drawn - the place is still handed out)
+    uiContext_.logoDrawer = [this]() {
+        if (!backdrop_.held())
+            renderLogo(false);
+        return assets_.logoRect;
+    };
+    // a short list's compact panel (abgui::List, Gui::setCompactPanel): the text renderer's rows follow it while it is
+    // set (the rect is the Context's own, valid until it is dropped); classicPanel() asks the Context
+    uiContext_.panelSwitch = [this](const Rect *rect) { text_.setPanelOverride(rect); };
+    // every frame through the one stack: clear, draw, present (step G3c)
+    uiContext_.setStack(stack_);
+    // the theme's frames by name (step G4a): none unless the theme's own theme.json has launcher.frames
+    uiContext_.frameProvider = [this](const string &name) { return frames_.frame(renderer(), name); };
+    // the theme's icons by name and their halos (step G5a): every name falls back to the default's, then the built-in
+    uiContext_.iconProvider = [this](const string &name) { return icons_.icon(renderer(), name); };
+    uiContext_.iconHaloProvider = [this](const string &name) { return icons_.halo(renderer(), name); };
+    // the theme's own busy spinner strip (step G5p): none unless its theme.json has launcher.spinner - the ring of dots
+    uiContext_.spinnerProvider = [this]() { return spinner_.anim(renderer()); };
+    // the theme's own `disabled` role (step G5t): unset unless its theme.json has launcher.colors.disabled
+    uiContext_.veilProvider = [this]() { return disabledVeil_; };
+    // the theme's own inactive-state alphas (step G5r9): every value unset unless its theme.json has launcher.inactive
+    uiContext_.inactiveProvider = [this]() { return inactiveAlphas_; };
+}
+
+//*******************************
+// themeSpinner
+//*******************************
+// the spinner strip of the theme in `dir` as the SpinnerStrip takes it: only that theme's own - never the default
+// theme's, so a theme without launcher.spinner keeps the code-drawn ring
+static abgui::SpinnerSpec themeSpinner(const string &dir) {
+    abgui::SpinnerSpec spec;
+    ableem::ThemeSpinner s;
+    if (ableem::loadThemeSpinner(dir, s)) {
+        spec.file = s.image;
+        spec.file2x = s.image2x;
+        spec.frames = s.frames;
+        spec.fps = s.fps;
+        PLOG_INFO << "Theme spinner: " << s.frames << " frames at " << s.fps << " fps from " << dir;
+    }
+    return spec;
+}
+
+//*******************************
+// themeFrames
+//*******************************
+// the frames of the theme in `dir` as the FrameSet takes them: only that theme's own - never the default theme's, so a
+// theme without launcher.frames draws exactly as before
+static map<string, abgui::FrameSpec> themeFrames(const string &dir, const ableem::LauncherTheme &launcher) {
+    map<string, abgui::FrameSpec> specs;
+    for (const ableem::ThemeFrame &f : ableem::loadThemeFrames(dir)) {
+        abgui::FrameSpec spec;
+        spec.file = f.image;
+        spec.file2x = f.image2x;
+        spec.slice = abgui::Insets(f.slice.left, f.slice.top, f.slice.right, f.slice.bottom);
+        spec.bleed = abgui::Insets(f.bleed.left, f.bleed.top, f.bleed.right, f.bleed.bottom);
+        spec.fill = f.fill;
+        spec.tint = f.tint;
+        // a tint that is a launcher.colors colour with no Style role (`selection`, the cover glow's): resolved here
+        spec.tintResolved = PanelStyle::frameTintColor(launcher, f.tint, spec.tintColor);
+        specs[f.name] = spec;
+    }
+    if (!specs.empty()) {
+        PLOG_INFO << "Theme frames: " << specs.size() << " from " << dir;
+    }
+    return specs;
 }
 
 //*******************************
@@ -118,6 +319,28 @@ void Gui::splash(const string &message) {
 void Gui::loadAssets(bool reloadMusic) {
     text_.clearTextCache(); // keyed on the font handles about to be replaced
     assets_.load();
+    frames_.assign(themeFrames(AppBase::get().theme().loadedPath(),
+                               AppBase::get().theme().launcher())); // the textures load when first drawn
+    icons_.assign(ThemeAssets::iconSpecs(AppBase::get().theme()), ThemeAssets::iconHalo(AppBase::get().theme()));
+    // the theme's own launcher logo and resume picture mask (G5q, G5s): nothing when it sets none
+    const ableem::ThemeLauncherLogo logo = ableem::loadThemeLogo(AppBase::get().theme().loadedPath());
+    launcherLogo_ = logo.set ? ThemeAssets::loadImage(renderer(), logo.file) : Texture();
+    launcherLogoRect_ = launcherLogo_.valid() ? Rect(logo.x, logo.y, logo.w, logo.h) : Rect();
+    resumeMask_ = ThemeAssets::loadImage(renderer(), ableem::loadThemeResumeMask(AppBase::get().theme().loadedPath()));
+    spinner_.assign(themeSpinner(AppBase::get().theme().loadedPath())); // the strip loads when first drawn
+    // the theme's own `disabled` role (G5t): the veil's colour and alpha - nothing when it sets none
+    const ableem::ThemeDisabledVeil veil = ableem::loadThemeDisabledVeil(AppBase::get().theme().loadedPath());
+    disabledVeil_ = abgui::DisabledVeil();
+    if (veil.set) {
+        disabledVeil_.set = true;
+        disabledVeil_.color = Color(veil.color.r, veil.color.g, veil.color.b, 255);
+        disabledVeil_.alpha = static_cast<unsigned char>(veil.alpha);
+    }
+    // the theme's own inactive-state alphas (G5r9): nothing set when it has no launcher.inactive
+    const ableem::ThemeInactiveAlphas inactive = ableem::loadThemeInactiveAlphas(AppBase::get().theme().loadedPath());
+    inactiveAlphas_.resume = inactive.resume;
+    inactiveAlphas_.tab = inactive.tab;
+    inactiveAlphas_.barTrack = inactive.barTrack;
     AppBase::get().audio().loadTheme(reloadMusic);
 
     // the classic screens' text halo, on unless the theme says otherwise; the launcher sets its own
@@ -128,6 +351,49 @@ void Gui::loadAssets(bool reloadMusic) {
     text_.setShadow(shadow);
     text_.setFonts(&assets_.themeFonts);
     text_.setCheckIconRightMargin(assets_.checkIconRightMargin);
+}
+
+//*******************************
+// Gui::resumePictureWindow
+//*******************************
+Rect Gui::resumePictureWindow() {
+    Rect window(25, 33, 68, 52);
+    const auto &picture = AppBase::get().theme().launcher().menuIcons.resumePicture;
+    if (picture.set)
+        window = Rect(picture.x, picture.y, picture.w, picture.h);
+    return window;
+}
+
+//*******************************
+// Gui::maskedResumePicture
+//*******************************
+// The mask is multiplied in once, here, not per frame: the picture is drawn over the whole target without blending
+// (its colours and an opaque alpha), then the mask over it in BlendMode::Mask (colours kept, alpha = picture alpha x
+// mask alpha). The result is straight-alpha, drawn with the normal blend like any picture.
+Texture Gui::maskedResumePicture(const Texture &picture) {
+    if (!picture.valid() || !resumeMask_.valid())
+        return picture;
+    const Rect window = resumePictureWindow();
+    const PictureMask::Size size = PictureMask::composeSize(window.w, window.h);
+    if (size.w <= 0 || size.h <= 0)
+        return picture;
+    Texture target = Texture::createTarget(renderer(), size.w, size.h);
+    if (!target.valid())
+        return picture;
+    renderer().pushTarget(&target);
+    renderer().setBlendMode(ableem::BlendMode::None);
+    Texture source = picture; // a shared handle: the blend mode is put back below
+    source.setBlendMode(ableem::BlendMode::None);
+    renderer().setDrawColor(Color(0, 0, 0, 0));
+    renderer().fillRect();
+    renderer().copy(source, nullptr, nullptr);
+    source.setBlendMode(ableem::BlendMode::Blend);
+    resumeMask_.setBlendMode(ableem::BlendMode::Mask);
+    renderer().copy(resumeMask_, nullptr, nullptr);
+    renderer().popTarget();
+    renderer().setBlendMode(ableem::BlendMode::Blend);
+    target.setBlendMode(ableem::BlendMode::Blend);
+    return target;
 }
 
 //*******************************
@@ -174,17 +440,16 @@ void Gui::display(bool resume) {
     if (resume) {
         // back from a game: the theme and every cover reload before the launcher can draw - the spinner
         // on black meanwhile (GuiLauncher::render ends it with its first frame)
-        beginBusy(_("Loading..."), [this]() {
-            renderer().setDrawColor(Color(0, 0, 0, 255));
-            renderer().clear();
-            renderer().present();
-        });
+        beginBusy(_("Loading..."), [this]() { stack_.frame(Color(0, 0, 0, 255), []() {}); });
     }
     loadAssets();
 
     if (!resume) {
-        GuiSplash splashScreen(*this);
-        splashScreen.show();
+        // Options -> Interface -> "Splash screen": off skips the boot splash (AB_NO_SPLASH does too)
+        if (AppBase::get().config().inifile.values["splashscreen"] != "false") {
+            GuiSplash splashScreen(*this);
+            splashScreen.show();
+        }
         hideMouseCursor();
     }
 }
@@ -202,101 +467,39 @@ void Gui::finish() {
 //*******************************
 void Gui::releaseDisplay() {
     text_.clearTextCache();
-    assets_.unload(); // before the renderer goes: SDL frees the textures with it
+    backdrop_.clear();         // the launcher's snapshot is a texture of the renderer that goes
+    assets_.unload();          // before the renderer goes: SDL frees the textures with it
+    frames_.release();         // the same for the frames' textures (the specs stay; they load again when next drawn)
+    icons_.release();          // and the icons' textures and halos
+    launcherLogo_ = Texture(); // and the logo and the resume mask
+    resumeMask_ = Texture();
+    spinner_.release(); // and the spinner strip's
     GuiBase::releaseDisplay();
 }
 
 //*******************************
 // Gui::beginBusy / busyTick / endBusy / tickBusy
 //*******************************
+// ab_gui's abgui::Busy (step G3l), the stack's: the backdrop, the dimmed spinner, the message, the bar, the 40 ms
+// pace and the input flush at the end.
 void Gui::beginBusy(const string &message, const std::function<void()> &redraw) {
-    busyMessage_ = message;
-    busyDone_ = busyTotal_ = 0;
-    renderer().captureNextFrame();
-    redraw(); // presents, and the capture is that frame
-    busyBackdrop_ = renderer().lastCapture();
-    busy_ = true;
-    busyStarted_ = platform().ticks();
-    busyLastFrame_ = 0;
-    drawBusyFrame();
+    stack_.busy().begin(message, redraw);
 }
 
 void Gui::busyTick() {
-    if (!busy_)
-        return;
-    const unsigned int now = platform().ticks();
-    if (busyLastFrame_ != 0 && now - busyLastFrame_ < 40)
-        return;
-    drawBusyFrame();
+    stack_.busy().tick();
 }
 
 void Gui::endBusy() {
-    // CONSOLE-11: drawBusyFrame() reads no input while the job runs, so whatever the pads/keyboard queued
-    // meanwhile piled up (see its own comment); a Cross pressed because the spinner looked stuck was left
-    // queued and handled as a real press the moment the next poll() ran - on the console, Options' ~12 s
-    // reload started a game the player never meant to start. Flush only on the busy -> not busy transition
-    // (render() calls endBusy() every frame, including every idle one where nothing is queued to lose).
-    if (busy_)
-        input().flushInputEvents();
-    busy_ = false;
-    busyBackdrop_ = Texture();
+    stack_.busy().end();
 }
 
 void Gui::setBusyProgress(int done, int total) {
-    busyDone_ = done;
-    busyTotal_ = total;
-    busyLastFrame_ = 0; // the next tick draws it
+    stack_.busy().setProgress(done, total);
 }
 
 void Gui::tickBusy() {
     getInstance()->busyTick();
-}
-
-void Gui::drawBusyFrame() {
-    busyLastFrame_ = platform().ticks();
-    // the pads' events pile up meanwhile; nothing reads them until the job is done
-    renderer().setDrawColor(Color(0, 0, 0, 255));
-    renderer().clear();
-    if (busyBackdrop_.valid())
-        renderer().copy(busyBackdrop_, nullptr, nullptr);
-    PanelStyle style = panelStyle();
-    style.dim(renderer());
-    drawSpinner(ScreenWidth / 2, ScreenHeight / 2 - 20, busyMessage_);
-    if (busyTotal_ > 0) {
-        // the bar under the message, as the notification bubble draws its own
-        const int width = 400, height = 6;
-        // under the message, which drawSpinner puts 24 px below the ring (radius 30) around ScreenHeight/2 - 20
-        const int messageY = ScreenHeight / 2 - 20 + 30 + 24;
-        ableem::Rect track(ScreenWidth / 2 - width / 2, messageY + assets_.themeFonts[FONT_22_MED].lineHeight() + 12,
-                           width, height);
-        renderer().setBlendMode(ableem::BlendMode::Blend);
-        renderer().setDrawColor(Color(style.secondary.r, style.secondary.g, style.secondary.b, 120));
-        renderer().fillRect(track);
-        renderer().setDrawColor(style.text);
-        renderer().fillRect(
-            ableem::Rect(track.x, track.y, width * std::min(busyDone_, busyTotal_) / busyTotal_, height));
-    }
-    renderer().present();
-}
-
-void Gui::drawSpinner(int cx, int cy, const string &message) {
-    // twelve dots on a ring, the brightest leading, turning a dot every 70 ms
-    PanelStyle style = panelStyle();
-    const int radius = 30, dot = 8;
-    const int lead = static_cast<int>(platform().ticks() / 70) % 12;
-    renderer().setBlendMode(ableem::BlendMode::Blend);
-    for (int i = 0; i < 12; i++) {
-        const int behind = (lead - i + 12) % 12; // 0 for the leading dot, 11 for the one just ahead of it
-        const int alpha = 255 - behind * 19;
-        const double a = i * 3.14159265 / 6.0;
-        const int x = cx + static_cast<int>(radius * cos(a)) - dot / 2;
-        const int y = cy + static_cast<int>(radius * sin(a)) - dot / 2;
-        renderer().setDrawColor(Color(style.text.r, style.text.g, style.text.b, static_cast<unsigned char>(alpha)));
-        renderer().fillRect(Rect(x, y, dot, dot));
-    }
-    if (!message.empty())
-        text_.renderText_WithColor(assets_.themeFonts[FONT_22_MED], message, cx, cy + radius + 24, style.text,
-                                   XALIGN_CENTER);
 }
 
 //*******************************
@@ -315,7 +518,7 @@ void Gui::renderFreeSpace() {
         space = System::getAvailableSpace();
         spaceAt = now;
     }
-    const string line = _("Free space") + " : " + space;
+    const string line = _("Free space") + ": " + space;
     const ableem::Font &font = assets_.themeFonts[FONT_22_MED];
     const int y = panel.y + 18 + (assets_.themeFonts[FONT_28_BOLD].lineHeight() - font.lineHeight()) / 2;
     text_.renderText_WithColor(font, line, panel.x + panel.w - PanelStyle::RowInset - text_.textWidth(font, line), y,
@@ -325,10 +528,24 @@ void Gui::renderFreeSpace() {
 //*******************************
 // Gui::renderBackground
 //*******************************
+// the Context's backdrop (wireUiContext: the theme's background picture over black)
 void Gui::renderBackground() {
-    renderer().setDrawColor(Color(0x00, 0x00, 0x00, 0x00));
-    renderer().clear();
-    renderer().copy(assets_.backgroundImg, nullptr, &assets_.backgroundRect);
+    uiContext_.drawBackdrop();
+}
+
+//*******************************
+// Gui::setLauncherBackdrop / clearLauncherBackdrop / hasLauncherBackdrop
+//*******************************
+void Gui::setLauncherBackdrop(const Texture &frame) {
+    backdrop_.set(frame, renderer().targetsLost());
+}
+
+void Gui::clearLauncherBackdrop() {
+    backdrop_.clear();
+}
+
+bool Gui::hasLauncherBackdrop() const {
+    return backdrop_.held();
 }
 
 //*******************************
@@ -337,15 +554,14 @@ void Gui::renderBackground() {
 // One frame of a picture across the whole screen - splash/retroarch.jpg, splash/autobleem.jpg - drawn
 // on black when the file is missing, so the frame is never the carousel an emulator is about to cover.
 void Gui::showSplashPicture(const string &name) {
-    renderer().setDrawColor(Color(0, 0, 0, 255));
-    renderer().clear();
-    const string path = Env::getWorkingPath() + sep + "splash" + sep + name;
-    if (DirEntry::exists(path)) {
-        Texture picture = Texture::loadFile(renderer(), path);
-        Rect full(0, 0, ScreenWidth, ScreenHeight);
-        renderer().copy(picture, nullptr, &full);
-    }
-    renderer().present();
+    stack_.frame(Color(0, 0, 0, 255), [this, &name]() {
+        const string path = Env::getWorkingPath() + sep + "splash" + sep + name;
+        if (DirEntry::exists(path)) {
+            Texture picture = Texture::loadFile(renderer(), path);
+            Rect full(0, 0, ScreenWidth, ScreenHeight);
+            renderer().copy(picture, nullptr, &full);
+        }
+    });
 }
 
 //*******************************
@@ -366,91 +582,67 @@ PanelStyle Gui::panelStyle() {
     return PanelStyle::fromTheme(AppBase::get().theme().launcher());
 }
 
-void Gui::setCompactPanel(int rows, const ableem::Font &font) {
-    const int width = 800;
-    const int height = PanelStyle::HeaderHeight + std::max(1, rows) * font.lineHeight() + 8 + PanelStyle::FooterHeight;
-    compactPanel_ = Rect((ScreenWidth - width) / 2, (ScreenHeight - height) / 2, width, height);
-    compact_ = true;
-    text_.setPanelOverride(&compactPanel_);
+// the panel's geometry and drawing are ab_gui's abgui::Panel (step G3b); the compact panel is the Context's
+// (abgui::List sets it, step G3m), and TextRenderer's rows follow it through the Context's panelSwitch (wireUiContext)
+static abgui::Panel currentPanel(Gui &gui) {
+    return abgui::Panel(gui.classicPanel(), gui.uiContext().style());
+}
+
+// a footer is one row and the window makes room for it: the panel is as wide as footerLine's footer needs
+void Gui::setCompactPanel(int rows, const ableem::Font &font, const std::string &footerLine) {
+    uiContext_.setCompactPanel(abgui::Panel::compact(uiContext_, rows, font, footerLine).rect());
 }
 
 void Gui::clearCompactPanel() {
-    compact_ = false;
-    text_.setPanelOverride(nullptr);
+    uiContext_.clearCompactPanel();
 }
 
 Rect Gui::classicPanel() {
-    if (compact_)
-        return compactPanel_;
-    Rect panel = text_.getOpscreenRectOfTheme();
-    // the footer band ends where the theme's status line used to end
-    const int statusFoot = AppBase::get().theme().classic().statusBar.textY + PanelStyle::FooterHeight - 14;
-    if (statusFoot > panel.y + panel.h)
-        panel.h = statusFoot - panel.y;
-    return panel;
+    // the compact panel while one is set, else the Context's panel rect (wireUiContext: the theme's menu panel down to
+    // the status line's foot)
+    return uiContext_.currentPanelRect();
 }
 
 Rect Gui::classicContent() {
-    Rect panel = classicPanel();
-    return Rect(panel.x, panel.y + PanelStyle::HeaderHeight, panel.w,
-                panel.h - PanelStyle::HeaderHeight - PanelStyle::FooterHeight);
+    return currentPanel(*this).content();
 }
 
 Rect Gui::classicFooter() {
-    Rect panel = classicPanel();
-    return Rect(panel.x, panel.y + panel.h - PanelStyle::FooterHeight, panel.w, PanelStyle::FooterHeight);
+    return currentPanel(*this).footer();
 }
 
 int Gui::classicRowsThatFit(const ableem::Font &font) {
-    const int lineHeight = font.valid() ? font.lineHeight() : assets_.themeFont.lineHeight();
-    return std::max(1, (classicContent().h - 4) / std::max(1, lineHeight));
+    return currentPanel(*this).rowsThatFit(uiContext_, font);
 }
 
 void Gui::renderScrollMarkers(bool moreAbove, bool moreBelow) {
-    PanelStyle style = panelStyle();
-    Rect content = classicContent();
-    const int cx = content.x + content.w - PanelStyle::RowInset;
-    if (moreAbove)
-        style.scrollMarker(renderer(), cx, content.y - 4, -1);
-    if (moreBelow)
-        style.scrollMarker(renderer(), cx, content.y + content.h - 6, 1);
+    currentPanel(*this).scrollMarkers(uiContext_, moreAbove, moreBelow);
 }
 
 //*******************************
 // Gui::renderTextBar
 //*******************************
 void Gui::renderTextBar() {
-    PanelStyle style = panelStyle();
-    style.dim(renderer());
-    style.sheet(renderer(), classicPanel());
+    currentPanel(*this).sheet(uiContext_);
 }
 
 //*******************************
 // Gui::renderHeader
 //*******************************
 int Gui::renderHeader(const string &title) {
-    return panelStyle().header(*this, classicPanel(), title);
+    return currentPanel(*this).header(uiContext_, title);
 }
 
 //*******************************
 // Gui::renderStatus
 //*******************************
 void Gui::renderStatus(const string &text, int /*posy*/) {
-    panelStyle().footer(*this, classicFooter(), text);
+    currentPanel(*this).footer(uiContext_, text);
 }
 
 //*******************************
 // Gui::drawText
 //*******************************
 void Gui::drawText(const string &text, const string &topLine) {
-    renderBackground();
-    renderLogo(false);
-    // the spinner under the logo (the logo rect is the theme's; below it, or the lower third of the screen)
-    const int below = assets_.logoRect.y + assets_.logoRect.h;
-    const int cy = std::min(ScreenHeight - 90, std::max(below + 60, ScreenHeight * 2 / 3));
-    drawSpinner(ScreenWidth / 2, cy, text);
-    if (!topLine.empty())
-        text_.renderText_WithColor(assets_.themeFonts[FONT_20_BOLD], topLine, ScreenWidth / 2, 12, panelStyle().text,
-                                   XALIGN_CENTER);
-    renderer().present();
+    stack_.busy().waitScreen(text, topLine);
 }

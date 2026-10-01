@@ -115,6 +115,18 @@ TEST_CASE("storing the picture makes the slot active and moves the screenshot in
     CHECK_FALSE(r.exists("screenshots/TEKKEN3.png")); // moved, not copied
 }
 
+TEST_CASE("timeForSlot is the kept state file's time, 0 for a slot with none") {
+    Resume r;
+    CHECK(r.service.timeForSlot(*r.game, 1) == 0);
+
+    r.pcsxExitsHavingWritten("TEKKEN3");
+    r.service.saveAfterLaunch(*r.game, 1);
+
+    const time_t t = r.service.timeForSlot(*r.game, 1);
+    CHECK(t > 0);
+    CHECK(r.service.timeForSlot(*r.game, 2) == 0);
+}
+
 TEST_CASE("slot 0's picture is the one without a number in its name") {
     Resume r;
     r.pcsxExitsHavingWritten("TEKKEN3");
@@ -216,6 +228,33 @@ TEST_CASE("a full save, resume and re-save round trip keeps the slot") {
 
     CHECK(r.service.slotIsActive(*r.game, 1));
     CHECK(r.exists("sstates/TEKKEN3.001.res"));
+}
+
+TEST_CASE("a game saved only in slots 1 and 2 still has a last picture and active slots (BUG-37)") {
+    Resume r;
+    r.pcsxExitsHavingWritten("TEKKEN3");
+    r.service.saveAfterLaunch(*r.game, 1);
+    r.service.storePictureForSlot(*r.game, 1);
+    r.pcsxExitsHavingWritten("TEKKEN3");
+    r.service.saveAfterLaunch(*r.game, 2);
+    r.service.storePictureForSlot(*r.game, 2);
+
+    CHECK_FALSE(r.service.slotIsActive(*r.game, 0));
+    CHECK(r.service.slotIsActive(*r.game, 1)); // what the "No resume points" decision asks, slot by slot
+    CHECK(r.service.slotIsActive(*r.game, 2));
+    CHECK(r.service.lastPicture(*r.game) == r.ss("screenshots/TEKKEN3.1.png.res"));
+}
+
+TEST_CASE("the last picture is slot 0's when it is kept") {
+    Resume r;
+    r.pcsxExitsHavingWritten("TEKKEN3");
+    r.service.saveAfterLaunch(*r.game, 2);
+    r.service.storePictureForSlot(*r.game, 2);
+    r.pcsxExitsHavingWritten("TEKKEN3");
+    r.service.saveAfterLaunch(*r.game, 0);
+    r.service.storePictureForSlot(*r.game, 0);
+
+    CHECK(r.service.lastPicture(*r.game) == r.ss("screenshots/TEKKEN3.png.res"));
 }
 
 TEST_CASE("a foreign entry has no resume points at all") {

@@ -8,7 +8,9 @@
 
 #include "core/services/pad_battery.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 using std::string;
 
@@ -81,6 +83,79 @@ TEST_CASE("list() answers empty for a missing or empty root") {
     TempDir tmp("pad_battery_empty");
     CHECK(PadBatteryService(tmp.path()).list().empty());
     CHECK(PadBatteryService(tmp.path() + "/does-not-exist").list().empty());
+}
+
+TEST_CASE("the fake-battery hook's spec: percents, commas, clamping, junk skipped, at most four pads") {
+    using V = std::vector<int>;
+    CHECK(PadBatteryService::parseFakeSpec("60") == V{60});
+    CHECK(PadBatteryService::parseFakeSpec("80,12") == V{80, 12});
+    CHECK(PadBatteryService::parseFakeSpec(" 80 , 12 ") == V{80, 12});
+    CHECK(PadBatteryService::parseFakeSpec("150,-5") == V{100, 0});
+    CHECK(PadBatteryService::parseFakeSpec("abc,40,,7x,9") == V{40, 9});
+    CHECK(PadBatteryService::parseFakeSpec("").empty());
+    CHECK(PadBatteryService::parseFakeSpec("x").empty());
+    CHECK(PadBatteryService::parseFakeSpec("1,2,3,4,5,6") == V{1, 2, 3, 4});
+}
+
+TEST_CASE("the fake batteries are known pads with distinct addresses, in the spec's order") {
+    std::vector<PadBatteryInfo> pads = PadBatteryService::fakeBatteries("80,5");
+    REQUIRE(pads.size() == 2);
+    CHECK(pads[0].percent == 80);
+    CHECK(pads[1].percent == 5);
+    CHECK(pads[0].known());
+    CHECK(pads[0].address != pads[1].address);
+    CHECK(pads[0].status == "Discharging");
+    CHECK(PadBatteryService::fakeBatteries("").empty());
+}
+
+TEST_CASE("the charge rect: a fixed inset inside the body, the nub left out, at least 1 px wide") {
+    // the art spec's 29 x 13 icon: body 26 wide + 3 nub, charge x 2..24, y 2..11 at 100%
+    PadBatteryCharge full = PadBatteryCharge::rect(10, 20, 29, 13, 100);
+    CHECK(full.x == 12);
+    CHECK(full.y == 22);
+    CHECK(full.w == 22);
+    CHECK(full.h == 9);
+    CHECK(PadBatteryCharge::rect(0, 0, 29, 13, 50).w == 11);
+    CHECK(PadBatteryCharge::rect(0, 0, 29, 13, 0).w == 1);
+    CHECK(PadBatteryCharge::rect(0, 0, 29, 13, -7).w == 1);
+    CHECK(PadBatteryCharge::rect(0, 0, 29, 13, 400).w == 22);
+    // a bigger icon keeps the inset and scales the charge
+    PadBatteryCharge big = PadBatteryCharge::rect(0, 0, 43, 17, 100);
+    CHECK(big.w == 36);
+    CHECK(big.h == 13);
+}
+
+TEST_CASE("the charge rect of the code-drawn glyph is what the old drawing computed") {
+    // iconW 26 + nub 3, iconH 13: fill = max(1, 22 * pct / 100), 9 tall at +2, +2
+    const int iconW = PadBatteryCharge::BodyWidth, iconH = PadBatteryCharge::BodyHeight;
+    for (int pct = 0; pct <= 100; ++pct) {
+        PadBatteryCharge c = PadBatteryCharge::rect(5, 6, iconW + PadBatteryCharge::NubWidth, iconH, pct);
+        CHECK(c.w == std::max(1, (iconW - 4) * pct / 100));
+        CHECK(c.h == iconH - 4);
+        CHECK(c.x == 7);
+        CHECK(c.y == 8);
+    }
+}
+
+TEST_CASE("the charge fill takes the theme's accent colour, white when the theme sets none") {
+    PadBatteryFill accent = PadBatteryFill::accentOrWhite(true, 200, 30, 90);
+    CHECK(accent.r == 200);
+    CHECK(accent.g == 30);
+    CHECK(accent.b == 90);
+    // a set accent that happens to be black is still the accent
+    PadBatteryFill black = PadBatteryFill::accentOrWhite(true, 0, 0, 0);
+    CHECK(black.r == 0);
+    CHECK(black.g == 0);
+    CHECK(black.b == 0);
+    // no accent: white, whatever the rgb handed in
+    PadBatteryFill none = PadBatteryFill::accentOrWhite(false, 12, 34, 56);
+    CHECK(none.r == 255);
+    CHECK(none.g == 255);
+    CHECK(none.b == 255);
+    PadBatteryFill dflt;
+    CHECK(dflt.r == 255);
+    CHECK(dflt.g == 255);
+    CHECK(dflt.b == 255);
 }
 
 TEST_CASE("Env::padBatteryPowerSupplyDir is settable and restored by EnvFixture") {

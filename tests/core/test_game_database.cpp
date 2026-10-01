@@ -6,6 +6,7 @@
 #include "doctest/doctest.h"
 
 #include "../support/game_library_fixture.h"
+#include "../support/temp_dir.h"
 
 #include <ableem/engine/game_database.h>
 
@@ -137,4 +138,51 @@ TEST_CASE("loadDiscNames returns a game's disc file names in disc order, and not
     CHECK(lib.library.usbGames().loadDiscNames(1) ==
           vector<string>{"Twisted Metal (Disc 1)", "Twisted Metal (Disc 2)"});
     CHECK(lib.library.usbGames().loadDiscNames(99).empty());
+}
+
+TEST_CASE("the column migrations skip a database with no GAME table and create nothing") {
+    TempDir tmp("dbmigrate");
+    ableem::GameDatabase db;
+    REQUIRE(db.open(tmp.at("empty.db")));
+
+    db.addFavoriteColumnIfMissing();
+    db.addHistoryColumnIfMissing();
+    db.addLastPlayedColumnIfMissing();
+    db.addPlayUsingRAColumnIfMissing();
+    db.addLightgunColumnIfMissing();
+
+    // the migrations must not have made a GAME table; CREATE then works and has no extra columns
+    CHECK(db.execute("CREATE TABLE GAME (GAME_ID integer)", "create GAME"));
+    CHECK_FALSE(db.execute("SELECT FAVORITE FROM GAME", "no FAVORITE column"));
+}
+
+TEST_CASE("the column migrations add the missing columns to an old GAME table, and again harmlessly") {
+    TempDir tmp("dbmigrate");
+    ableem::GameDatabase db;
+    REQUIRE(db.open(tmp.at("old.db")));
+    REQUIRE(db.execute("CREATE TABLE GAME (GAME_ID integer NOT NULL UNIQUE, GAME_TITLE_STRING text, HISTORY integer)",
+                       "create the old GAME"));
+
+    for (int round = 0; round < 2; round++) { // the second round finds every column there
+        db.addFavoriteColumnIfMissing();
+        db.addHistoryColumnIfMissing();
+        db.addLastPlayedColumnIfMissing();
+        db.addPlayUsingRAColumnIfMissing();
+        db.addLightgunColumnIfMissing();
+        CHECK(db.execute("SELECT FAVORITE, HISTORY, LAST_PLAYED, PLAY_USING_RA, LIGHTGUN FROM GAME", "all columns"));
+    }
+}
+
+TEST_CASE("createSchema on a regional.db made before HISTORY and LAST_PLAYED adds them") {
+    TempDir tmp("dbmigrate");
+    ableem::GameDatabase db;
+    REQUIRE(db.open(tmp.at("regional.db")));
+    REQUIRE(db.execute("CREATE TABLE GAME (GAME_ID integer NOT NULL UNIQUE, GAME_TITLE_STRING text, "
+                       "PUBLISHER_NAME text, RELEASE_YEAR integer, PLAYERS integer, RATING_IMAGE text, "
+                       "GAME_MANUAL_QR_IMAGE text, LINK_GAME_ID integer, PATH text, SSPATH text, MEMCARD text, "
+                       "PRIMARY KEY (GAME_ID))",
+                       "create the old GAME"));
+
+    CHECK(db.createSchema());
+    CHECK(db.execute("SELECT HISTORY, LAST_PLAYED FROM GAME", "history columns"));
 }

@@ -1,8 +1,8 @@
 //
-// SurpriseGame: the "Surprise" easter egg on the About screen. Start toggles it on; the starfield already
-// behind the credits keeps running as the backdrop. A small shoot-em-up: dpad moves the ship, Cross fires,
-// Start restarts on the spot, Circle goes back to the About screen. The Konami code during a game (B A =
-// Cross Circle, see KonamiCode) gives unlimited lives for that game, and the high score stops counting.
+// SurpriseGame: the "Surprise" easter egg on the About screen. Start shows its title screen, Start again begins the
+// game; the starfield already behind the credits keeps running as the backdrop. A small shoot-em-up: dpad moves the
+// ship, Cross fires, Start restarts on the spot, Circle goes back to the About screen. The Konami code during a game
+// (B A = Cross Circle, see KonamiCode) gives unlimited lives for that game, and the high score stops counting.
 //
 // Enemy waves fly in staggered from the top and then hold a continuously undulating, snake-like formation
 // (each row swaying on its own sine phase, slowly creeping downward) rather than a rigid marching block -
@@ -11,10 +11,16 @@
 // (rapid-fire/autofire, a spread shot, or a piercing "power" shot) that the ship collects by flying over it,
 // and more rarely (about 1% of kills) an extra life instead, collected the same way.
 //
-// Sprites and sound effects are Kenney's "Space Shooter Redux" (CC0 / public domain, www.kenney.nl) plus one
-// CC0 "NES Shooter Music" track by SketchyLogic (opengameart.org), copied into resources/surprise_game/ -
-// see the license.txt alongside them.
+// "BleemStrike: Reloaded" (UIREV-39): the look of an early 32-bit shooter - rendered sprites with a halo, drawn over
+// the unchanged hitboxes (surprise_layout.h), a chrome HUD in Oxanium (surprise_art.h) with the lives as one ship and
+// "x N", a title screen, a scrolling sky. The art is the designer's (autobleem-design launcher/surprise/README.md);
+// the sound effects are Kenney's "Space Shooter Redux" (CC0 / public domain, www.kenney.nl) plus one CC0 "NES Shooter
+// Music" track by SketchyLogic (opengameart.org), copied into resources/surprise_game/ - see the license.txt
+// alongside them.
 #pragma once
+
+#include "surprise_art.h"
+#include "surprise_layout.h"
 
 #include <ableem/ui/renderer.h>
 #include <ableem/ui/texture.h>
@@ -29,23 +35,29 @@ class TextRenderer;
 //******************
 // SurpriseSprites
 //******************
-// Loaded once by GuiAbout::init() and handed to every render() call - Texture is a cheap shared handle.
+// Loaded once by GuiAbout::loadGameAssets() (the first Start) and handed to every render() call - Texture is a cheap
+// shared handle.
 struct SurpriseSprites {
     ableem::Texture ship;
     ableem::Texture enemy1;
     ableem::Texture enemy2;
     ableem::Texture ufo; // the diving alien
     ableem::Texture laserPlayer;
-    ableem::Texture laserEnemy; // doubles as the "power" (piercing) player shot - a bigger, meaner-looking bolt
+    ableem::Texture laserPierce; // the "power" (piercing) player shot
+    ableem::Texture laserEnemy;  // a strip of two frames that flicker
     ableem::Texture powerupRapid;
     ableem::Texture powerupSpread;
     ableem::Texture powerupPower;
+    ableem::Texture powerupLife; // the extra life
+    ableem::Texture explosion;   // a strip of four frames
+    ableem::Texture sky;         // the seamless vertical loop behind the star field; invalid = the old dark backdrop
 };
 
 //******************
 // SurpriseSounds
 //******************
-// Loaded once by GuiAbout::init() and assigned to SurpriseGame::sounds before the first update().
+// Loaded once by GuiAbout::loadGameAssets() (the first Start) and assigned to SurpriseGame::sounds before the first
+// update().
 struct SurpriseSounds {
     ableem::Sound playerShoot;
     ableem::Sound enemyShoot;
@@ -91,8 +103,21 @@ public:
     // power-up even when fireHeld is false).
     void update(unsigned int nowTicks, bool moveLeft, bool moveRight, bool fireHeld);
 
+    // the title screen comes first: Start in it begins the game (reset()), Start in a game restarts it
+    void showTitle() { onTitle_ = true; }
+    bool onTitle() const { return onTitle_; }
+    // the real top of the hint bar under the play field (the screen's footer rect): the bottom HUD plates stay above it
+    void setBarTop(int top) { barTop_ = top; }
+    // keeps the game's clock (the sky, the alien beat) running while the title shows
+    void updateTitle(unsigned int nowTicks) { lastTicks = nowTicks; }
+
+    // the far layer: the sky, scrolled slowly; false when there is none (the caller then draws its dark backdrop)
+    bool renderSky(ableem::Renderer &renderer, const SurpriseSprites &sprites) const;
+
+    // `font` is the launcher's own face, the stand-in for an Oxanium face that did not open (LIFE LOST and GAME OVER
+    // are the HUD's lettering now)
     void render(ableem::Renderer &renderer, TextRenderer &text, const ableem::Font &font,
-                const SurpriseSprites &sprites);
+                const SurpriseSprites &sprites, SurpriseHud &hud);
 
     bool gameOver() const { return lives <= 0; }
     int currentScore() const { return score; }
@@ -110,9 +135,16 @@ public:
 private:
     struct Bullet {
         float x = 0, y = 0;
-        float vx = 0;       // horizontal drift per frame, for the spread shot's angled bolts
-        int pierceLeft = 0; // extra aliens this bolt can pass through after its first hit (the Power shot)
+        float vx = 0;            // horizontal drift per frame, for the spread shot's angled bolts
+        int pierceLeft = 0;      // extra aliens this bolt can pass through after its first hit (the Power shot)
+        bool pierceShot = false; // fired under the Power shot: drawn as the piercing bolt for its whole flight
         bool alive = false;
+    };
+
+    // a dead alien's explosion, played where it died
+    struct Explosion {
+        float x = 0, y = 0; // the alien's hitbox position
+        unsigned int startTicks = 0;
     };
 
     struct Alien {
@@ -141,12 +173,16 @@ private:
     std::vector<Bullet> playerBullets;
     std::vector<Bullet> alienBullets;
     std::vector<PowerUp> powerUps;
+    std::vector<Explosion> explosions;
 
+    bool onTitle_ = false;
+    int barTop_ = 720; // see setBarTop()
     float shipX = 0;
     int dropsSinceExtraLife = 0; // power-ups dropped since the last extra life (see maybeDropPowerUp)
     int lives = 3;
     int score = 0;
     int highScore = 0;
+    int startHighScore = 0; // the hi-score when this game began: a score above it, uncheated, is a new record
     int wave = 1;
     bool cheating = false; // the Konami code was entered this game
 
@@ -179,6 +215,9 @@ private:
     // jumping by the frozen duration in a single frame once play resumes
     unsigned int freezeUntilTicks = 0;
     unsigned int totalFrozenMs = 0;
+    bool freezeStatic = false;      // the hit came on a slow frame: the LIFE LOST plate does not animate
+    unsigned int lastDtMs = 0;      // the last update's frame time, uncapped
+    unsigned int gameOverTicks = 0; // when the last life went: the clock of the GAME OVER screen
 
     std::mt19937 rng{std::random_device{}()};
 
@@ -190,6 +229,13 @@ private:
     void handleCollisions(unsigned int nowTicks);
     void tryFire(unsigned int nowTicks);
     void maybeDropPowerUp(float x, float y);
+    void killAlien(Alien &a, unsigned int nowTicks);
+    void renderTitle(ableem::Renderer &renderer, const SurpriseSprites &sprites, SurpriseHud &hud);
+    void renderHud(ableem::Renderer &renderer, const SurpriseSprites &sprites, SurpriseHud &hud);
+    void renderLifeLost(ableem::Renderer &renderer, SurpriseHud &hud);
+    void renderGameOver(ableem::Renderer &renderer, SurpriseHud &hud);
+    bool newRecord() const { return !cheating && score > startHighScore; }
+    unsigned int sinceHit() const { return lastTicks - (freezeUntilTicks - surprise::LifeLostFreezeMs); }
     int awayFromFormationCount() const; // aliens currently diving or returning
     float restX(const Alien &a, unsigned int nowTicks) const;
     float restY(const Alien &a) const;

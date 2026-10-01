@@ -105,6 +105,9 @@ struct Event {
     // `key` says; 0 for a key that has none (the arrows, F1, ...). How Ctrl+C is told apart: with Ctrl held
     // no TextInput comes
     int code = 0;
+    // ButtonDown/Up, DpadDown/Up: the keyboard-as-pad made this pad event from a key (keyboard_map.h's PC-style
+    // map) - Enter is Cross there, and a Confirm/Back swap (abgui::ActionMap) leaves a key's meaning alone
+    bool fromKey = false;
 };
 
 //******************
@@ -156,7 +159,8 @@ public:
     Input &operator=(const Input &) = delete;
 
     // pulls one event off the queue, translating it and updating internal dpad/pad state as a side effect.
-    // returns false when the queue is empty.
+    // returns false when the queue is empty. A true with out.type None is an event consumed here (see
+    // flushInputEvents for what the busy rule keeps back that way).
     bool poll(Event &out);
     // The frame pacer (the render plan's B2). A screen says what its picture needs - Active: a frame every pass
     // (anything animating; the default, so a forgotten case costs CPU, never a stale picture), Ambient: only
@@ -182,9 +186,9 @@ public:
 
     void flushEvents(); // discard everything currently queued (SDL_PumpEvents + SDL_FlushEvents)
 
-    // CONSOLE-11: called by Gui::endBusy() when a long busy job (Applying settings..., the reload after a
-    // game) that read no input while it ran is actually over. drawBusyFrame() never calls poll() - see its
-    // own comment - so the pads' and keyboard's events pile up for as long as the job takes; on the console
+    // CONSOLE-11: called by abgui::Busy::end() (Gui::endBusy) when a long busy job (Applying settings..., the
+    // reload after a game) that read no input while it ran is actually over. A busy frame never calls poll() -
+    // see abgui::Busy - so the pads' and keyboard's events pile up for as long as the job takes; on the console
     // that reload was ~12 s, long enough that a player pressing Cross because the spinner looked stuck left
     // a queued press that the launcher then handled as "start the selected game" the instant it read input
     // again. This discards every keyboard (KEYDOWN/UP, TEXTEDITING/TEXTINPUT), joystick/game-controller
@@ -201,6 +205,15 @@ public:
     // direction half-pressed before the flush does not keep reading as held afterwards. This is
     // distinct from flushEvents() above, which discards everything unconditionally and keeps its existing
     // behaviour - other screens rely on that.
+    // CONSOLE-13, the busy rule (autobleem-main docs/decisions.md, 2026-09-27): when a job ends the input starts
+    // clean - nothing held, no hold-repeat carried over. So this also releases every press poll() has handed
+    // out and not yet the release of (a ButtonUp/DpadUp/KeyUp each, the first things poll() hands out next,
+    // padEventPending() true until they are read), whether or not the player has let go: every screen's hold,
+    // however it tracks it - on the release event, until another pad event is pending, or on the live d-pad
+    // state - ends there. From then on poll() never hands out a release of a press it did not hand out (so
+    // neither the release kept above nor the player's own later release of such a press reaches a screen
+    // again), nor a key repeat, or the text it types, of a key a screen does not hold. A press after the job
+    // is a press, as always.
     void flushInputEvents();
 
     // from now on poll() hands out a Quit event on every other call (and "nothing queued" in between, so
@@ -298,6 +311,7 @@ public:
     bool setVirtualPadControlAxis(int slot, int controllerAxis, int value);
 
 private:
+    bool pollEvent(Event &out); // what poll() reads, before the busy rule decides whether a screen sees it
     struct Impl;
     Impl *impl;
 };

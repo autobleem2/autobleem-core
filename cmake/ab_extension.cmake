@@ -44,7 +44,8 @@ function(ab_add_extension name)
             OUTPUT_NAME "${name}"
             LIBRARY_OUTPUT_DIRECTORY "${stage}/bin/${key}"
             RUNTIME_OUTPUT_DIRECTORY "${stage}/bin/${key}")
-    foreach (sdk ab_classic ab_core ableem ableem_engine)
+    # ab_gui: ab_classic's gui.h / panel_style.h include its headers (<ab_gui/...>)
+    foreach (sdk ab_classic ab_gui ab_core ableem ableem_engine)
         target_include_directories(${name} PRIVATE $<TARGET_PROPERTY:${sdk},INTERFACE_INCLUDE_DIRECTORIES>)
         target_compile_definitions(${name} PRIVATE $<TARGET_PROPERTY:${sdk},INTERFACE_COMPILE_DEFINITIONS>)
     endforeach ()

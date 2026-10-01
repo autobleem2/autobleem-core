@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "launcher": {
+    "frames": {
+      "panel": { "image": "frames/panel.png", "slice": 24, "bleed": 8 },
+      "selection": { "image": "frames/selection.png", "slice": { "left": 12, "top": 10, "right": 12, "bottom": 10 },
+                     "bleed": 4 },
+      "heading": { "image": "frames/heading.png", "slice": { "left": 12, "top": 6, "right": 12, "bottom": 6 },
+                   "bleed": 0 },
+      "key": { "image": "frames/key.png", "slice": 16, "bleed": 4 },
+      "keyFunction": { "image": "frames/key_function.png", "slice": 16, "bleed": 4 },
+      "keyLit": { "image": "frames/key_lit.png", "slice": 16, "bleed": 4 },
+      "keySelected": { "image": "frames/key_selected.png", "slice": 16, "bleed": 4 },
+      "field": { "image": "frames/field.png", "slice": 16, "bleed": 4 },
+      "badge": { "image": "frames/badge.png", "slice": 12, "bleed": 4 },
+      "chip": { "image": "frames/chip.png", "slice": 10, "bleed": 2 },
+      "footer": { "image": "frames/footer.png", "slice": 16, "bleed": 4 },
+      "hintBar": { "image": "frames/hint_bar.png", "slice": 28, "bleed": 8 },
+      "tab": { "image": "frames/tab.png", "slice": 16, "bleed": 0 },
+      "tile": { "image": "frames/tile.png", "slice": 24, "bleed": 4 },
+      "tileSelected": { "image": "frames/tile_selected.png", "slice": 24, "bleed": 4 },
+      "band": { "image": "frames/band.png", "slice": 24, "bleed": 0 },
+      "toast": { "image": "frames/toast.png", "slice": 20, "bleed": 8 },
+      "play": { "image": "frames/play.png", "slice": 32, "bleed": 8 },
+      "plate": { "image": "frames/plate.png", "slice": 16, "bleed": 2 },
+      "coverGlow": { "image": "frames/cover_glow.png", "slice": 64, "bleed": 48, "fill": false },
+      "progressTrack": { "image": "frames/progress_track.png",
+                         "slice": { "left": 4, "top": 2, "right": 4, "bottom": 2 }, "bleed": 0 },
+      "progressFill": { "image": "frames/progress_fill.png",
+                        "slice": { "left": 4, "top": 2, "right": 4, "bottom": 2 }, "bleed": 0 }
+    },
+    "logo": { "file": "images/logo.png", "x": 22, "y": 591, "w": 317, "h": 75 },
+    "menuIcons": { "resumePictureMask": "images/resume_mask.png" },
+    "icons": {
+      "players": "icons/players.png", "disc": "icons/disc.png",
+      "usb": "icons/usb.png", "internal": "icons/internal.png", "hd": "icons/hd.png", "sd": "icons/sd.png",
+      "lock": "icons/lock.png", "unlock": "icons/unlock.png", "favorite": "icons/favorite.png",
+      "retroarch": "icons/retroarch.png", "lightgun": "icons/lightgun.png", "lightgun2": "icons/lightgun2.png",
+      "dpadUp": "icons/dpad_up.png", "dpadDown": "icons/dpad_down.png",
+      "dpadLeft": "icons/dpad_left.png", "dpadRight": "icons/dpad_right.png",
+      "tabPlayStation": "icons/tab_playstation.png", "tabRetroArch": "icons/tab_retroarch.png",
+      "tabApps": "icons/tab_apps.png",
+      "raCover": "icons/ra_cover.png", "appCover": "icons/app_cover.png", "bigBox": "icons/big_box.png",
+      "extension": "icons/extension.png", "battery": "icons/battery.png", "play": "icons/play.png",
+      "switchOn": "icons/switch_on.png", "switchOff": "icons/switch_off.png",
+      "storeInstalled": "icons/store_installed.png"
+    },
+    "colors": { "row": "#ffe680", "disabled": { "color": "#7828c8", "alpha": 130 } },
+    "inactive": { "resume": 40, "tab": 50, "barTrack": 200 },
+    "spinner": { "image": "spinner/spinner.png", "frames": 8, "fps": 8 }
+  }
+}

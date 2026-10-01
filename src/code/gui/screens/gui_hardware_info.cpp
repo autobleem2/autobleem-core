@@ -31,11 +31,11 @@ static string psPlayerSlotLabel(PsPlayerSlot slot) {
 //*******************************
 // GuiHardwareInfo::collect
 //*******************************
-vector<InfoSection> GuiHardwareInfo::collect() {
+vector<abgui::FactsSection> GuiHardwareInfo::collect() {
     vector<InfoSection> sections = systemInfo.collect();
     sections.push_back(displayAndInput());
     sections.push_back(logs());
-    return sections;
+    return sectionsOf(sections);
 }
 
 //*******************************

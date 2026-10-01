@@ -86,6 +86,7 @@ endif()
 # ---- ab_core: the SDL-free model + services ----
 add_library(ab_core STATIC
         src/code/core/main.h
+        src/code/core/model/cover_light.h
         src/code/core/model/game_set.h
         src/code/core/model/ps_game.cpp
         src/code/core/model/session.h
@@ -101,11 +102,13 @@ add_library(ab_core STATIC
         src/code/core/services/processor_state.cpp
         src/code/core/services/plugin_loader.cpp
         src/code/core/services/config.cpp
+        src/code/core/services/cover_aspect.cpp
         src/code/core/services/environment.cpp
         src/code/core/services/environment_setup.cpp
         src/code/core/services/windows_host.cpp
         src/code/core/services/clock.cpp
         src/code/core/services/output_mode.cpp
+        src/code/core/services/carousel_session.cpp
         src/code/core/services/game_catalog.cpp
         src/code/core/services/game_query.cpp
         src/code/core/services/game_settings.cpp
@@ -164,8 +167,56 @@ add_library(ab_installer STATIC
         src/code/installer/command_downloader.cpp)
 target_link_libraries(ab_installer ab_core)
 
-# ---- ab_classic: the classic-UI framework (links ab_core + ableem) ---- (only with AB_CORE_UI)
+# ---- ab_gui: the AutoBleem User Interface Library (docs/ab-gui-plan.md) ---- (only with AB_CORE_UI)
+# The look and its primitives (abgui::Style), the classic panel (abgui::Panel), what they draw with (abgui::Context),
+# where a frame is presented (abgui::ScreenStack) -
+# no AutoBleem code (no ab_core/ab_classic) and no SDL: it links the ableem ui library only. Headers as <ab_gui/...>.
 if (AB_CORE_UI)
+add_library(ab_gui STATIC
+        ab_gui/include/ab_gui/actions.h
+        ab_gui/include/ab_gui/action_menu.h
+        ab_gui/include/ab_gui/busy.h
+        ab_gui/include/ab_gui/confirm.h
+        ab_gui/include/ab_gui/context.h
+        ab_gui/include/ab_gui/facts_page.h
+        ab_gui/include/ab_gui/footer_shorten.h
+        ab_gui/include/ab_gui/frame.h
+        ab_gui/include/ab_gui/hint_bar.h
+        ab_gui/include/ab_gui/hold_repeat.h
+        ab_gui/include/ab_gui/icon.h
+        ab_gui/include/ab_gui/list.h
+        ab_gui/include/ab_gui/keyboard.h
+        ab_gui/include/ab_gui/list_model.h
+        ab_gui/include/ab_gui/panel.h
+        ab_gui/include/ab_gui/screen.h
+        ab_gui/include/ab_gui/screen_stack.h
+        ab_gui/include/ab_gui/spinner.h
+        ab_gui/include/ab_gui/style.h
+        ab_gui/include/ab_gui/text_page.h
+        ab_gui/include/ab_gui/tween.h
+        ab_gui/src/actions.cpp
+        ab_gui/src/action_menu.cpp
+        ab_gui/src/backdrop.cpp
+        ab_gui/src/busy.cpp
+        ab_gui/src/confirm.cpp
+        ab_gui/src/context.cpp
+        ab_gui/src/facts_page.cpp
+        ab_gui/src/frame.cpp
+        ab_gui/src/hint_bar.cpp
+        ab_gui/src/icon.cpp
+        ab_gui/src/list.cpp
+        ab_gui/src/keyboard.cpp
+        ab_gui/src/panel.cpp
+        ab_gui/src/screen.cpp
+        ab_gui/src/screen_stack.cpp
+        ab_gui/src/spinner.cpp
+        ab_gui/src/style.cpp
+        ab_gui/src/text_page.cpp
+        ab_gui/src/tween.cpp)
+target_link_libraries(ab_gui ableem)
+target_include_directories(ab_gui PUBLIC ab_gui/include)
+
+# ---- ab_classic: the classic-UI framework (links ab_core + ableem + ab_gui) ---- (only with AB_CORE_UI)
 add_library(ab_classic STATIC
         src/code/app_base.cpp
         src/code/gui/app_audio.cpp
@@ -174,19 +225,18 @@ add_library(ab_classic STATIC
         src/code/gui/gui.cpp
         src/code/gui/gui_font.cpp
         src/code/gui/screens/gui_about.cpp
-        src/code/gui/screens/gui_confirm.cpp
-        src/code/gui/screens/gui_action_menu.cpp
         src/code/gui/screens/gui_facts_page.cpp
         src/code/gui/screens/gui_hardware_info.cpp
         src/code/gui/screens/gui_keyboard.cpp
         src/code/gui/screens/gui_splash.cpp
         src/code/gui/screens/gui_text_page.cpp
         src/code/gui/starfx.cpp
+        src/code/gui/surprise_art.cpp
         src/code/gui/surprise_game.cpp
         src/code/gui/panel_style.cpp
         src/code/gui/text_renderer.cpp
         src/code/gui/theme_assets.cpp)
-target_link_libraries(ab_classic ab_core ableem)
+target_link_libraries(ab_classic ab_core ableem ab_gui)
 target_include_directories(ab_classic PUBLIC src/code)
 endif() # AB_CORE_UI
 

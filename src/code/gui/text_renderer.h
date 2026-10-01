@@ -13,6 +13,10 @@
 #include <string>
 #include <vector>
 
+namespace abgui {
+class Context;
+}
+
 enum XAlignment { XALIGN_LEFT, XALIGN_CENTER, XALIGN_RIGHT };
 
 //********************
@@ -81,6 +85,31 @@ public:
     // how opaque the text and markers drawn from now on are (255 = as composed); a fade sets it per frame
     // and puts it back to 255 - applied at the copy, so the cached runs are not composed again per alpha
     void setAlpha(unsigned char alpha) { alpha_ = alpha; }
+
+    // The role the classic rows are drawn in (UIREV-29): renderTextLine (and the ...ToColumns/...Options
+    // forms) and renderRowValue colour their text from it - PanelStyle's row / rowSelected / heading, the
+    // value in value / rowSelected / heading; FactRow is a facts page's line (the label in row, the value in
+    // rowSelected, so a page with no cursor does not read as a dimmed list). A list sets it per row
+    // (GuiMenuBase::renderLines does for every menu built on it) and puts Plain back after its rows - Plain
+    // is the font's own colour, how every classic line was drawn before. RowRoleScope does both.
+    // Disabled (G5t) is a row that cannot be changed under a theme with a `disabled` role: the description colour
+    enum class RowRole { Plain, Row, Selected, Heading, FactRow, Disabled };
+    void setRowRole(RowRole role) { rowRole_ = role; }
+
+    // The Context whose `switchOn`/`switchOff` icons renderTextLineOptions draws (G5m, UIREV-10); Gui sets it in
+    // wireUiContext. Static - the one Gui's - so no object layout changes (SDK); null (a tool with no Gui) = ON/OFF text.
+    static void setSwitchContext(abgui::Context *ctx) { switchContext_ = ctx; }
+    RowRole rowRole() const { return rowRole_; }
+    struct RowRoleScope {
+        RowRoleScope(TextRenderer &text, RowRole role) : text_(text), saved_(text.rowRole()) { text.setRowRole(role); }
+        ~RowRoleScope() { text_.setRowRole(saved_); }
+        RowRoleScope(const RowRoleScope &) = delete;
+        RowRoleScope &operator=(const RowRoleScope &) = delete;
+
+    private:
+        TextRenderer &text_;
+        RowRole saved_;
+    };
 
     // Every run of text drawn through here is kept as a texture (the halo and the text composed once) and
     // copied thereafter, so a frame costs one copy per label instead of ten passes of one copy per glyph.
@@ -187,12 +216,21 @@ public:
     // the font's line height
     void renderSelectionBox(int line, int yoffset, int xoffset = 0, ableem::Font font = ableem::Font(),
                             int rightEdge = 0);
+    // the same through the Context (G4c): the theme's `selection` frame when it has one, else the band and the bar.
+    // A framed selection goes under the row's text - draw it before the row (selectionFramed()), not after
+    void renderSelectionBox(abgui::Context &ctx, int line, int yoffset, int xoffset = 0,
+                            ableem::Font font = ableem::Font(), int rightEdge = 0);
+    bool selectionFramed(abgui::Context &ctx) const;
 
     // a heading row between the rows: PanelStyle's faint band, to the panel's right edge or `rightEdge`
     // (a screen with a pane on the right passes where its rows stop, as for renderSelectionBox)
     void renderLabelBox(int line, int yoffset, int rightEdge = 0);
+    // the same through the Context (G4d): the theme's `heading` frame when it has one, else the faint band
+    void renderLabelBox(abgui::Context &ctx, int line, int yoffset, int rightEdge = 0);
     // a row that cannot be changed, over the row once it is drawn: PanelStyle::disabled, same extent
     void renderDisabledBox(int line, int yoffset, int rightEdge = 0);
+    // the same through the Context (G5t): the theme's `disabled` role - its colour and alpha - when it has one
+    void renderDisabledBox(abgui::Context &ctx, int line, int yoffset, int rightEdge = 0);
 
     void renderTextChar(const std::string &text, int line, int yoffset, int posx);
 
@@ -219,4 +257,8 @@ private:
     unsigned char alpha_ = 255;
     int checkIconRightMargin_ = 0;
     const ableem::Rect *panelOverride_ = nullptr;
+    // the colour of the current row role (setRowRole), or null for Plain; `value` for the right-hand value
+    bool rowRoleColor(bool value, ableem::Color &out);
+    RowRole rowRole_ = RowRole::Plain; // appended last: SDK layout (AB_SDK_ABI 6)
+    static abgui::Context *switchContext_;
 };

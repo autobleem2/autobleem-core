@@ -27,6 +27,7 @@ public:
     void load(const std::string &langDir, const std::string &languageName);
     // adds <langDir>/<current language>.txt on top of what is loaded - a tool's own translations over the
     // main GUI's, for the strings the classic screens it shares already have there
+    // (remembered: a later load() - a language change - applies it again)
     void loadMore(const std::string &langDir);
 
     std::string translate(const std::string &input);
@@ -48,6 +49,8 @@ private:
     std::string currentLanguage_ = SourceLanguage;
     std::map<std::string, std::string> translations_; // source -> translation
     std::vector<std::string> untranslated_;           // sources seen with no translation, in order of first use
+    std::vector<std::string> extraDirs_;              // loadMore() directories, applied again by every load()
+    void readFile(const std::string &langDir);
     static Lang *current_;
 };
 

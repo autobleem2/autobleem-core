@@ -21,7 +21,7 @@ public:
 
 protected:
     std::string title() override { return _("Hardware Information"); }
-    std::vector<InfoSection> collect() override;
+    std::vector<abgui::FactsSection> collect() override;
     // Square: this run's logs from RAM to System/Logs/saved-<n> (docs/quiet-stick-plan.md)
     std::string extraHints() override;
     bool onButton(ableem::Button button) override;

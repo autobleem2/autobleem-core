@@ -68,6 +68,9 @@ public:
 
     // an empty path gives an invalid Texture at once, no error logged - "no picture" is a normal answer
     static Texture loadFile(Renderer &renderer, const std::string &path);
+    // the same, for an image with `pixelScale` pixels per logical pixel (2 for an "@2x" theme image): size() gives
+    // its logical size and Renderer::copy maps a source rect in logical pixels, so it draws where the 1x one would
+    static Texture loadFile(Renderer &renderer, const std::string &path, float pixelScale);
     // the bounding box of the image file's non-transparent pixels (alpha > 0), in its own pixels - what a
     // layout aligns to when the art sits inside a transparent margin; the whole image when it cannot be
     // read or has no alpha
@@ -80,12 +83,16 @@ public:
     static Texture createTarget(Renderer &renderer, int w, int h);
     // a texture whose pixels can be locked and written directly (used by the memory card editor)
     static Texture createStreaming(Renderer &renderer, int w, int h);
+    // the same, scaled with nearest filtering whatever the scale-quality hint is (whole-pixel icons)
+    static Texture createStreamingNearest(Renderer &renderer, int w, int h);
 
     bool valid() const;
-    // in logical pixels for a render target (what createTarget was asked for), in its own for anything else
+    // in logical pixels for a render target (what createTarget was asked for) and a high-resolution image (its
+    // pixels over loadFile's pixelScale), in its own for anything else
     Size size() const;
-    // texture pixels per logical pixel: the renderer's output scale for a render target, 1 for everything
-    // else - Renderer::copy scales a source rect by it, so a target is addressed like the screen
+    // texture pixels per logical pixel: the renderer's output scale for a render target, what loadFile was given
+    // for a high-resolution image, 1 for everything else - Renderer::copy scales a source rect by it, so either is
+    // addressed like the screen
     float pixelScale() const { return pixelScale_; }
 
     void setBlendMode(BlendMode mode);

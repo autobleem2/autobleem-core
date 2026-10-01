@@ -140,6 +140,7 @@ int createProcessAndWait(const wstring &commandLine, const wstring &dir, const s
 // console's power button all come here. sync() first, so the last log lines and any ini just written
 // reach the USB stick before the halt.
 void System::powerOff() {
+    PLOG_INFO << "Quit: System::powerOff()";
 #if defined(AB_PLATFORM_PSC) || defined(AB_APPLIANCE)
     System::execUnixCommand("shutdown -h now");
     sync();

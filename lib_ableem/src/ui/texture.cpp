@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <string>
 #include <ableem/engine/log.h>
 
 namespace ableem {
@@ -50,6 +51,13 @@ Texture Texture::loadFile(Renderer &renderer, const std::string &path) {
         PLOG_ERROR << "Could not load texture: " << path << " (" << IMG_GetError() << ")";
     }
     return Texture(t);
+}
+
+Texture Texture::loadFile(Renderer &renderer, const std::string &path, float pixelScale) {
+    Texture tex = loadFile(renderer, path);
+    if (tex.valid() && pixelScale > 0.0f)
+        tex.pixelScale_ = pixelScale;
+    return tex;
 }
 
 Rect Texture::opaqueBounds(const std::string &path) {
@@ -174,6 +182,16 @@ Texture Texture::createStreaming(Renderer &renderer, int w, int h) {
     return Texture(t);
 }
 
+Texture Texture::createStreamingNearest(Renderer &renderer, int w, int h) {
+    // SDL 2.0.18 has no per-texture scale mode: the hint at creation time decides, so set it, create, restore
+    const char *quality = SDL_GetHint(SDL_HINT_RENDER_SCALE_QUALITY);
+    const std::string previousQuality = quality ? quality : "";
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+    Texture texture = createStreaming(renderer, w, h);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, previousQuality.empty() ? nullptr : previousQuality.c_str());
+    return texture;
+}
+
 bool Texture::valid() const {
     return handle != nullptr;
 }
@@ -206,6 +224,9 @@ void Texture::setBlendMode(BlendMode mode) {
         break;
     case BlendMode::Premultiplied:
         m = premultipliedBlendMode();
+        break;
+    case BlendMode::Mask:
+        m = maskBlendMode();
         break;
     case BlendMode::Blend:
     default:

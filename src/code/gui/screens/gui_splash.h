@@ -10,7 +10,13 @@
 //********************
 class GuiSplash : public GuiScreen {
 public:
-    void render() override;
+    // every frame cleared to transparent black
+    explicit GuiSplash(ableem::GuiBase &_gui) : GuiScreen(_gui) {
+        frameColor = abgui::OptionalColor(ableem::Color(0x00, 0x00, 0x00, 0x00));
+    }
+
+    bool prepareFrame() override;
+    void draw() override; // the background, the logo and the version, faded by `alpha`
     void loop() override;
 
     int alpha = 0;
@@ -21,6 +27,4 @@ public:
     enum class Phase { Settle, FadeIn, Hold, FadeOut };
     Phase phase = Phase::Settle;
     long holdStart = 0;
-
-    using GuiScreen::GuiScreen;
 };

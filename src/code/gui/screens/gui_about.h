@@ -20,7 +20,8 @@ class GuiAbout : public GuiScreen {
 public:
     StarFx fx;
     void init() override;
-    void render() override;
+    // the credits, or the game - between the stack's clear and present
+    void draw() override;
     void loop() override;
     ableem::Texture logo;
     ableem::Font font;
@@ -34,11 +35,13 @@ public:
     static std::vector<std::string> autobleemCredits();
 
 private:
-    // the "Surprise" easter egg: Start swaps the credits for a small shoot-em-up over the same starfield
+    // the "Surprise" easter egg ("BleemStrike: Reloaded"): Start swaps the credits for its title screen, Start again
+    // for a small shoot-em-up over the same starfield
     bool surpriseMode = false;
     bool crossHeld = false;
     SurpriseGame game;
     SurpriseSprites sprites;
+    SurpriseHud hud;        // the Oxanium lettering and plates
     KonamiCode konami;      // fed every press during a game; completing it is SurpriseGame::enableInfiniteLives
     int savedHighScore = 0; // mirrors config.ini's "surprisehighscore"; written back only when beaten
 
@@ -49,5 +52,7 @@ private:
     bool duckedThemeMusic = false;
     bool playingFallbackMusic = false;
 
+    void loadGameAssets(); // on the first Start, not at open
+    void drawCredits();
     void renderSurprise();
 };

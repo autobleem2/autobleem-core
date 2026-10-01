@@ -62,6 +62,19 @@ Config::Config() {
     if (inifile.values["showingtimeout"] == "") {
         inifile.values["showingtimeout"] = DefaultShowingTimeoutText;
     }
+    // "Notification timeout" (Options -> Interface): 0 = the informational bubbles do not show. Until 2026-09-29 a
+    // stored 0 meant "stay up", so a config.ini that never went through this once has its 0 converted to the
+    // default; the marker records it, so a 0 chosen afterwards stays 0
+    if (inifile.values["showingtimeoutmigrated"] != "1") {
+        if (inifile.values["showingtimeout"] == "0") {
+            inifile.values["showingtimeout"] = DefaultShowingTimeoutText;
+        }
+        inifile.values["showingtimeoutmigrated"] = "1";
+    }
+    // "Splash screen" (Options -> Interface): the boot splash, on unless switched off
+    if (inifile.values["splashscreen"] != "false") {
+        inifile.values["splashscreen"] = "true";
+    }
 
     // Options -> Display (OutputMode): auto | 720 | 1080 | <w>x<h>; the console 720 unless 1080 was kept
     if (inifile.values[OutputMode::ConfigKey] == "") {
@@ -93,7 +106,8 @@ Config::Config() {
     if (updates == "") {
         updates = Version::isBetweenTags() ? "nightly" : Version::isPreRelease() ? "testing" : "release";
     }
-    // the classic screens' font: the default (Open Sans - Fonts::DefaultClassicFont) on every theme, unless
+    // the classic screens' font (G5n): the default is the theme's launcher.fonts medium, else Open Sans
+    // (Fonts::DefaultClassicFont), unless
     // "themefont" ("Use Default Font") is off and "font" names a .ttf/.otf from retroarch/fonts or
     // resources/fonts. A theme's own classic font is not read since 2026-09-29; "--" (it) became the default.
     if (inifile.values["themefont"] == "") {

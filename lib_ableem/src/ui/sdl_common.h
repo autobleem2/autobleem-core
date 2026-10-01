@@ -34,3 +34,16 @@ inline SDL_BlendMode premultipliedBlendMode() {
     return SDL_BLENDMODE_BLEND;
 #endif
 }
+
+// BlendMode::Mask: colour = dst, alpha = dst alpha * src alpha. Before SDL 2.0.6 the nearest is SDL_BLENDMODE_MOD
+// (dst colour * src colour - a white mask leaves the picture alone).
+inline SDL_BlendMode maskBlendMode() {
+#if SDL_VERSION_ATLEAST(2, 0, 6)
+    static const SDL_BlendMode mode =
+        SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_ADD,
+                                   SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_SRC_ALPHA, SDL_BLENDOPERATION_ADD);
+    return mode;
+#else
+    return SDL_BLENDMODE_MOD;
+#endif
+}

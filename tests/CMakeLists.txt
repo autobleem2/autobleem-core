@@ -12,10 +12,15 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/harness.cmake)
 
 ab_add_test(test_cd_image core/test_cd_image.cpp)
 ab_add_test(test_clock core/test_clock.cpp)
+ab_add_test(test_cover_aspect core/test_cover_aspect.cpp)
+ab_add_test(test_cover_light core/test_cover_light.cpp)
+ab_add_test(test_picture_mask core/test_picture_mask.cpp)
 ab_add_test(test_output_mode core/test_output_mode.cpp)
+ab_add_test(test_carousel_session core/test_carousel_session.cpp)
 ab_add_test(test_process_stats core/test_process_stats.cpp)
 ab_add_test(test_config core/test_config.cpp)
 ab_add_test(test_disc_suffix core/test_disc_suffix.cpp)
+ab_add_test(test_strings core/test_strings.cpp)
 ab_add_test(test_keyboard core/test_keyboard.cpp)
 ab_add_test(test_pbp_image core/test_pbp_image.cpp)
 ab_add_test(test_environment_setup core/test_environment_setup.cpp)
@@ -31,9 +36,102 @@ ab_add_test(test_extension_catalog core/test_extension_catalog.cpp)
 if (AB_CORE_UI)
     # the runtime is ab_classic's (it knows Extension), tested with in-process fake plugins
     ab_add_test(test_extension_runtime classic/test_extension_runtime.cpp LIBS ab_classic)
-    ab_add_test(test_hold_repeat classic/test_hold_repeat.cpp)
+    ab_add_test(test_hold_repeat classic/test_hold_repeat.cpp LIBS ab_gui)
+    # UIREV-39: the surprise game's pure layout numbers (gui/surprise_layout.h, header-only)
+    ab_add_test(test_surprise_layout classic/test_surprise_layout.cpp LIBS ab_classic)
     # GuiTextPage's line layout (splitItem is pure; the class is ab_classic's)
     ab_add_test(test_text_page classic/test_text_page.cpp LIBS ab_classic)
+    # UIREV-2: doHome()/doEnd()'s skip-past-a-heading fix, driven through a local model of GuiMenuBase's
+    # selection math - the real class needs a live AppBase/Gui over a theme/resources tree this repo does not
+    # ship (see the file's opening comment), the same reason no other classic-menu test builds one
+    ab_add_test(test_menu_base_navigation classic/test_menu_base_navigation.cpp LIBS ab_gui)
+    # UIREV-3: PanelStyle::footer()'s icons-only fallback once even FONT_15_BOLD is too wide, driven through
+    # a local model of widthAt() - the real class needs a live Gui/ThemeAssets over a theme/resources tree
+    # this repo does not ship (see the file's opening comment), the same reason as the suite above
+    # (the label shortening is ab_gui's footer_shorten.h since G2 - the header only, the link is for its path)
+    ab_add_test(test_panel_style_footer classic/test_panel_style_footer.cpp LIBS ab_gui)
+    # UIREV-29: the theme's style roles as PanelStyle::fromTheme resolves them (static - no Gui needed)
+    ab_add_test(test_panel_style_roles classic/test_panel_style_roles.cpp LIBS ab_classic)
+    # UIREV-31 (G5n): the font pick order - user font > CJK > the theme's launcher.fonts > Open Sans (files only)
+    ab_add_test(test_font_pick classic/test_font_pick.cpp LIBS ab_classic)
+    # ab_gui's Style on its own (G2): the defaults, the colour roles from a plain ColorRoles block, the hint
+    # protocol - all static or plain data, no renderer needed
+    ab_add_test(test_ab_gui_style gui/test_ab_gui_style.cpp LIBS ab_gui)
+    # ab_gui's Context (G3a): the input, the clock and the UI sounds - through a real headless GuiBase (skips
+    # itself without a renderer, like test_busy_input)
+    ab_add_test(test_ab_gui_context gui/test_ab_gui_context.cpp LIBS ab_gui)
+    # ab_gui's Panel (G3b): the classic panel's geometry against the old Gui formulas (pure), and the Context's
+    # backdrop and panel rect (a headless GuiBase; those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_panel gui/test_ab_gui_panel.cpp LIBS ab_gui)
+    # ab_gui's ScreenStack (G3c): clear -> draw -> present, one present a frame, nesting (pure, on a recording
+    # display), and on a headless GuiBase the frame count, the DebugDriver's frame copy and the busy capture
+    # (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_screen_stack gui/test_ab_gui_screen_stack.cpp LIBS ab_gui)
+    # ab_gui's Action and ActionMap (G3f): the default map against today's pad and keyboard mapping, the Confirm/Back
+    # swap, and HoldRepeat's pace after its move into ab_gui (all pure)
+    ab_add_test(test_ab_gui_actions gui/test_ab_gui_actions.cpp LIBS ab_gui)
+    # ab_gui's Screen (G3g): its loop through the ActionMap reaches the same old hooks in the same order as
+    # ableem::GuiScreen's loop - every button, d-pad direction and key, held repeats, releases - on a headless GuiBase
+    # (skips itself without a renderer)
+    ab_add_test(test_ab_gui_screen gui/test_ab_gui_screen.cpp LIBS ab_gui)
+    # ab_gui's TextPage (G3h): the wrapping, the item layout and the scroll rule (pure), and the events through a
+    # headless GuiBase (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_text_page gui/test_ab_gui_text_page.cpp LIBS ab_gui)
+    # ab_gui's FactsPage (G3i): the rows, the paging and refresh rules, the value column and the elision (pure), and the
+    # events through a headless GuiBase (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_facts_page gui/test_ab_gui_facts_page.cpp LIBS ab_gui)
+    # ab_gui's Confirm (G3j): the dialog's layout (pure) and the events through a headless GuiBase (those cases skip
+    # themselves without a renderer)
+    ab_add_test(test_ab_gui_confirm gui/test_ab_gui_confirm.cpp LIBS ab_gui)
+    # ab_gui's ActionMenu (G3k): the row layout, the cursor over headings and disabled rows, the wrap (pure), and the events
+    # through a headless GuiBase (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_action_menu gui/test_ab_gui_action_menu.cpp LIBS ab_gui)
+    # ab_gui's Busy (G3l): the pace, the bar and the spinner's places (pure), and begin/tick/end on a recording display -
+    # nesting, the input queued during the job flushed at its end, the DebugDriver's busy flag (a headless GuiBase; those
+    # cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_busy gui/test_ab_gui_busy.cpp LIBS ab_gui)
+    # ab_gui's List (G3m part 2): the row geometry and the switch (pure), the compact panel's sizing and the Context's
+    # compact state, a draw's order and numbers on a recording Context, and the events through a headless GuiBase -
+    # the moves, the sounds, L1/R1 first/last, a held d-pad at the shared pace, the DebugDriver's items/selected (those
+    # cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_list gui/test_ab_gui_list.cpp LIBS ab_gui)
+    # ab_gui's Keyboard (G3n): the key tables, the selection's moves and the UTF-8 editing (pure), and the events - the pad,
+    # typed text, the USB keyboard's keys - with the keyboard-as-pad off while it shows and back on every way out, through
+    # a headless GuiBase (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_keyboard gui/test_ab_gui_keyboard.cpp LIBS ab_gui)
+    # ab_gui's frames (G4a): the 9-slice pieces, the 1x/@2x pick, the tint's colour names (pure), and the FrameSet loading
+    # tests/data/frame-test-theme's panel and Style::drawFrame/sheet through a Context on a headless GuiBase (those cases
+    # skip themselves without a renderer)
+    ab_add_test(test_ab_gui_frame gui/test_ab_gui_frame.cpp LIBS ab_gui)
+    # ab_gui's icons (G5a): the shared 1x/@2x pick and the IconSet's specs (pure), and on a headless GuiBase the test
+    # theme's icons and halos loading, the Context's icon providers, Style::drawFrame at an alpha and drawFirstFrame
+    # (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_icon gui/test_ab_gui_icon.cpp LIBS ab_gui)
+    # ab_gui's spinner strip (G5p): the frame index, the frame and destination rects, the SpinnerStrip's specs and the
+    # Context's provider (pure), and on a headless GuiBase the test theme's strip loading and Style::spinner drawing it
+    # (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_spinner gui/test_ab_gui_spinner.cpp LIBS ab_gui)
+    # ab_gui's row-badge and centred-box rects, the `disabled` role's veil and the colour a disabled row's text takes
+    # (G5t; the rects pure, the Context cases skip themselves without a renderer); G5r9: the inactive-state alphas
+    # (InactiveAlphas' unset = today rule, pure, and the Context's provider)
+    ab_add_test(test_ab_gui_layout gui/test_ab_gui_layout.cpp LIBS ab_gui)
+    # ab_gui's backdrop snapshot (G5r5): the launcher frame the opened screens draw over - kept/lost rules (pure) and
+    # the draw on a headless GuiBase (those cases skip themselves without a renderer)
+    ab_add_test(test_ab_gui_backdrop gui/test_ab_gui_backdrop.cpp LIBS ab_gui)
+    # ab_gui's hint bar (G5e): the launcher's two hint lines' layout - the line rects, the font/gap/drop rules and the
+    # whole layout against a frozen copy of the old GuiLauncher::layoutHints() (pure)
+    ab_add_test(test_ab_gui_hint_bar gui/test_ab_gui_hint_bar.cpp LIBS ab_gui)
+    # ab_gui's tweens (G5o1): every easing at sample times against core/model/timing.h's easeOutCubic/pulseWave and the
+    # textbook formulas, delay/loop/yoyo, the timeline's order and callbacks, cancel/finish, the owner token (a tween
+    # whose float died never writes), the DebugDriver's busy count and the frame need, and the ScreenStack advancing
+    # them before each outermost frame (pure, on a recording display)
+    ab_add_test(test_ab_gui_tween gui/test_ab_gui_tween.cpp LIBS ab_gui)
+    # the ambient motion on tweens (G5o2): Play's pulse, the arrow's bob and the glow's breathing at sample times against
+    # pulseWave and sin(ticks / 900), the ambient rules (never busy, frame need Ambient, owner) - pure
+    ab_add_test(test_ab_gui_ambient gui/test_ab_gui_ambient.cpp LIBS ab_gui)
+    # the bubble's slides and the fade-in on non-ambient tweens (G5o4): the old state machine and timers against the
+    # tween versions at every frame, a show()/hide() part-way, only the slides busy (not the hold) - pure
+    ab_add_test(test_ab_gui_transitions gui/test_ab_gui_transitions.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)
@@ -52,16 +150,20 @@ if (AB_CORE_UI)
     # it links SDL directly, the one exception to "nothing SDL-shaped in a consumer" (see lib_ableem's own
     # CMakeLists.txt) - this suite tests ableem's own Input class, not a consumer of it.
     ab_add_test(test_input_flush classic/test_input_flush.cpp LIBS ableem)
+    # CONSOLE-13: the busy rule - nothing held and no hold-repeat carried over a busy job - the same way
+    ab_add_test(test_busy_input classic/test_busy_input.cpp LIBS ableem ab_gui)
     # ab_add_test() links its target with the plain (non-keyword) signature, so this must match it.
     # lib_ableem/CMakeLists.txt's own SDL2 imported target is directory-scoped there, not visible here -
-    # this repeats its discovery for this one test target.
+    # this repeats its discovery for these two test targets.
     if (MINGW)
         find_package(PkgConfig REQUIRED)
         pkg_check_modules(AB_TEST_SDL REQUIRED IMPORTED_TARGET sdl2)
         target_link_libraries(test_input_flush PkgConfig::AB_TEST_SDL)
+        target_link_libraries(test_busy_input PkgConfig::AB_TEST_SDL)
     else()
         find_package(SDL2 REQUIRED)
         target_link_libraries(test_input_flush SDL2)
+        target_link_libraries(test_busy_input SDL2)
     endif()
 endif()
 ab_add_test(test_game_catalog core/test_game_catalog.cpp)
