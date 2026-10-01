@@ -149,6 +149,7 @@ private:
     sqlite3 *db = nullptr;
     bool deleteGameIdFromOneTable(int id, const char *sql);
     bool executeCreateStatement(const char *sql, const std::string &name);
+    void addGameColumnIfMissing(const char *sql, const char *column, const std::string &name);
     bool executeStatement(const char *sql, const std::string &outMsg, const std::string &errorMsg);
 };
 

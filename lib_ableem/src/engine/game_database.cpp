@@ -982,8 +982,8 @@ bool GameDatabase::clearAllTables() {
 bool GameDatabase::createSchema() {
     if (!executeCreateStatement(CREATE_GAME_SQL, "GAME"))
         return false;
-    executeCreateStatement(ADD_HISTORY_COLUMN, "History column");         // add column to existing table
-    executeCreateStatement(ADD_LAST_PLAYED_COLUMN, "Last_Played column"); // add column to existing table
+    addGameColumnIfMissing(ADD_HISTORY_COLUMN, "HISTORY", "History column");             // an older regional.db
+    addGameColumnIfMissing(ADD_LAST_PLAYED_COLUMN, "LAST_PLAYED", "Last_Played column"); // lacks these
     if (!executeCreateStatement(CREATE_DISC_SQL, "DISC"))
         return false;
     if (!executeCreateStatement(CREATE_LANGUAGE_SPECIFIC_SQL, "LANGUAGE_SPECIFIC"))
@@ -999,10 +999,38 @@ bool GameDatabase::createSchema() {
 }
 
 //*******************************
+// GameDatabase::addGameColumnIfMissing
+//*******************************
+// ALTER TABLE GAME ADD COLUMN only when GAME exists and lacks the column. A database without a GAME table (the
+// Pi's internal.db: no console database to start from) or one that already has the column needs nothing, and
+// says nothing; a statement that fails when it was needed is still an error.
+void GameDatabase::addGameColumnIfMissing(const char *sql, const char *column, const string &name) {
+    bool tableExists = false;
+    bool columnExists = false;
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(db, "PRAGMA table_info(GAME)", -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            tableExists = true; // one row per column; a missing table gives none
+            const unsigned char *colName = sqlite3_column_text(stmt, 1);
+            if (colName && sqlite3_stricmp(reinterpret_cast<const char *>(colName), column) == 0)
+                columnExists = true;
+        }
+    }
+    sqlite3_finalize(stmt);
+    if (!tableExists) {
+        PLOG_DEBUG << "No GAME table, " << name << " not added";
+        return;
+    }
+    if (columnExists)
+        return;
+    executeCreateStatement(sql, name);
+}
+
+//*******************************
 // GameDatabase::addFavoriteColumnIfMissing
 //*******************************
 void GameDatabase::addFavoriteColumnIfMissing() {
-    executeCreateStatement(ADD_FAVORITE_COLUMN, "Favorite column");
+    addGameColumnIfMissing(ADD_FAVORITE_COLUMN, "FAVORITE", "Favorite column");
 }
 
 //*******************************
@@ -1021,28 +1049,28 @@ bool GameDatabase::updateLightgun(int id, int lightgun) {
 // GameDatabase::addLightgunColumnIfMissing
 //*******************************
 void GameDatabase::addLightgunColumnIfMissing() {
-    executeCreateStatement(ADD_LIGHTGUN_COLUMN, "Lightgun column");
+    addGameColumnIfMissing(ADD_LIGHTGUN_COLUMN, "LIGHTGUN", "Lightgun column");
 }
 
 //*******************************
 // GameDatabase::addPlayUsingRAColumnIfMissing
 //*******************************
 void GameDatabase::addPlayUsingRAColumnIfMissing() {
-    executeCreateStatement(ADD_PLAY_USING_RA_COLUMN, "Play Using RA column");
+    addGameColumnIfMissing(ADD_PLAY_USING_RA_COLUMN, "PLAY_USING_RA", "Play Using RA column");
 }
 
 //*******************************
 // GameDatabase::addHistoryColumnIfMissing
 //*******************************
 void GameDatabase::addHistoryColumnIfMissing() {
-    executeCreateStatement(ADD_HISTORY_COLUMN, "History column");
+    addGameColumnIfMissing(ADD_HISTORY_COLUMN, "HISTORY", "History column");
 }
 
 //*******************************
 // GameDatabase::addLastPlayedColumnIfMissing
 //*******************************
 void GameDatabase::addLastPlayedColumnIfMissing() {
-    executeCreateStatement(ADD_LAST_PLAYED_COLUMN, "Last_Played column");
+    addGameColumnIfMissing(ADD_LAST_PLAYED_COLUMN, "LAST_PLAYED", "Last_Played column");
 }
 
 //*******************************
