@@ -679,10 +679,9 @@ void SurpriseGame::renderHud(ableem::Renderer &renderer, const SurpriseSprites &
     hud.shadowText(renderer, f.semi20, "x", 90, 668 + dy, Align::Left, ableem::Color(200, 205, 225, 255));
     // during the freeze the counter (already showing the new count) blinks red every other 125 ms
     const bool frozen = !gameOver() && lastTicks < freezeUntilTicks;
-    const ableem::Color livesTint = frozen && surprise::livesBlinkRed(sinceHit()) ? ableem::Color(255, 90, 90, 255)
-                                                                                  : ableem::Color(255, 255, 255, 255);
+    const bool blinkRed = frozen && surprise::livesBlinkRed(sinceHit());
     hud.chrome(renderer, Slot::Lives, f.number, cheating ? string(InfinitySign) : to_string(max(0, lives)),
-               Gradient::Ice, 3, 110, 660 + dy, Align::Left, ableem::Color(0, 0, 0, 0), 0.0f, livesTint);
+               blinkRed ? Gradient::Red : Gradient::Ice, 3, 110, 660 + dy, Align::Left);
 
     // bottom right: the power-up in force - its icon, its name in its colour and the time left as ten segments
     if (activePowerUp != PowerUpType::None && !gameOver()) {

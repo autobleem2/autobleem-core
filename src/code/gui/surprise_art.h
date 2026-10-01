@@ -50,7 +50,7 @@ struct SurpriseFx {
 class SurpriseHud {
 public:
     // the multi-stop vertical gradients of the README (stops in surprise_art.cpp)
-    enum class Gradient { Chrome, Gold, Ice, Pink };
+    enum class Gradient { Chrome, Gold, Ice, Pink, Red };
     // one cached lettering per place on screen
     enum class Slot {
         Score,
