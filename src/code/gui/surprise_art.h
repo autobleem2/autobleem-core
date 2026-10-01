@@ -34,6 +34,17 @@ struct SurpriseFonts {
 };
 
 //******************
+// SurpriseFx
+//******************
+// How a lettering or a plate is put on the screen when it fades or pops: `alpha` over everything (the colours follow
+// it, the lettering being premultiplied), `scale` about (pivotX, pivotY) - 1.0 is the plain integer copy.
+struct SurpriseFx {
+    unsigned char alpha = 255;
+    float scale = 1.0f;
+    int pivotX = 0, pivotY = 0;
+};
+
+//******************
 // SurpriseHud
 //******************
 class SurpriseHud {
@@ -41,7 +52,23 @@ public:
     // the multi-stop vertical gradients of the README (stops in surprise_art.cpp)
     enum class Gradient { Chrome, Gold, Ice, Pink };
     // one cached lettering per place on screen
-    enum class Slot { Score, HiScore, Wave, Lives, TitleMain, TitleSub, TitlePush, Count };
+    enum class Slot {
+        Score,
+        HiScore,
+        Wave,
+        Lives,
+        TitleMain,
+        TitleSub,
+        TitlePush,
+        LifeLost,
+        GameOver,
+        FinalScore,
+        FinalHi,
+        Push,
+        Count
+    };
+
+    using Fx = SurpriseFx;
 
     SurpriseFonts fonts;
 
@@ -58,10 +85,15 @@ public:
     int chrome(ableem::Renderer &renderer, Slot slot, const ableem::Font &font, const std::string &text,
                Gradient gradient, int outline, int x, int y, ableem::Align align,
                ableem::Color glow = ableem::Color(0, 0, 0, 0), float skew = 0.0f,
-               ableem::Color tint = ableem::Color(255, 255, 255, 255));
+               ableem::Color tint = ableem::Color(255, 255, 255, 255), const Fx &fx = Fx());
+
+    // only the glow of a lettering (the colour, built and cached on its own under `slot`), drawn at `alpha` - what a
+    // pulsing glow needs while the lettering itself (drawn by chrome() with no glow) stays steady
+    void glowLayer(ableem::Renderer &renderer, Slot slot, const ableem::Font &font, const std::string &text,
+                   ableem::Color glow, int x, int y, ableem::Align align, unsigned char alpha);
 
     // a smoked-glass plate of the README: a 3 px metal rim, a light top-left edge, a cyan hairline, cut corners
-    void plate(ableem::Renderer &renderer, int x, int y, int w, int h);
+    void plate(ableem::Renderer &renderer, int x, int y, int w, int h, const Fx &fx = Fx());
 
     // the power-up timer: `total` slanted 12x8 segments every 18 px from (x, y), the first `lit` in `on`, the rest
     // `off`
