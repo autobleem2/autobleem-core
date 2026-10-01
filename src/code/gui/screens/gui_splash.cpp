@@ -33,8 +33,10 @@ bool GuiSplash::prepareFrame() {
         holding_ = true;
         holdStart_ = now;
     }
-    if (now - holdStart_ >= static_cast<unsigned int>(SplashHoldDuration))
-        menuVisible = false; // no fade out: the launcher drops in over this picture
+    if (now - holdStart_ >= static_cast<unsigned int>(SplashHoldDuration)) {
+        ctx.stack().keepPictureOnClose(*this); // no fade out: the launcher drops in over this picture
+        menuVisible = false;
+    }
     return true;
 }
 
