@@ -1,8 +1,8 @@
 //
 // SurpriseGame: the "Surprise" easter egg on the About screen. Start shows its title screen, Start again begins the
-// game; the starfield already behind the credits keeps running as the backdrop. A small shoot-em-up: dpad moves the ship, Cross fires,
-// Start restarts on the spot, Circle goes back to the About screen. The Konami code during a game (B A =
-// Cross Circle, see KonamiCode) gives unlimited lives for that game, and the high score stops counting.
+// game; the starfield already behind the credits keeps running as the backdrop. A small shoot-em-up: dpad moves the
+// ship, Cross fires, Start restarts on the spot, Circle goes back to the About screen. The Konami code during a game
+// (B A = Cross Circle, see KonamiCode) gives unlimited lives for that game, and the high score stops counting.
 //
 // Enemy waves fly in staggered from the top and then hold a continuously undulating, snake-like formation
 // (each row swaying on its own sine phase, slowly creeping downward) rather than a rigid marching block -

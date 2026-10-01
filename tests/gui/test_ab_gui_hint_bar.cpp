@@ -16,6 +16,8 @@
 using namespace std;
 using abgui::HintBar;
 using abgui::HintBarLayout;
+using abgui::HintGridLayout;
+using abgui::HintGridMeasure;
 using abgui::HintLineLayout;
 using abgui::HintMeasure;
 using ableem::Rect;
