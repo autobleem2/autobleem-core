@@ -195,7 +195,7 @@ TEST_CASE("a full theme survives a save/load round trip") {
 
     // every file field made the trip - the one list in fileFields() is what everything else iterates
     CHECK(in.referencedFiles() == out.referencedFiles());
-    CHECK(in.referencedFiles().size() == 42);
+    CHECK(in.referencedFiles().size() == 43);
 
     // the file reads in section order, not alphabetically
     string text = tmp.readFile("theme.json");
@@ -282,7 +282,7 @@ TEST_CASE("mergeOver takes the base's value for everything the theme leaves out"
     CHECK(partial.launcher.metaPanel == "images/meta_panel.png");
     CHECK(partial.sounds.cursor == "sounds/cursor.wav");
     CHECK(partial.launcher.colors.hint.toHex() == "#ffffff"); // the base's, like any other colour
-    CHECK(partial.referencedFiles().size() == 42);
+    CHECK(partial.referencedFiles().size() == 43);
 }
 
 TEST_CASE("a hint colour the theme and the base both leave out stays unset after the merge") {

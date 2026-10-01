@@ -130,8 +130,9 @@ void ThemeAssets::load() {
     const string &bold = pick.bold;
     string classicFont = pick.classic;
     const bool cjk = Fonts::cjkFontFor(config_.inifile.values["language"]) != "";
-    if (cjk)
+    if (cjk) {
         PLOG_INFO << "Language " << config_.inifile.values["language"] << ": every font is " << classicFont;
+    }
     classicFontFile_ = classicFont;
     PLOG_INFO << "Classic font: " << classicFont;
     Gui::tickBusy();

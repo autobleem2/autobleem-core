@@ -957,6 +957,9 @@ TEST_CASE("Style::buttonWidth (G5 hints): a chip is at least ChipMinWidth wide, 
     abgui::Context ctx(renderer);
     const abgui::Style style;
 
+    // a fake measurer (the test context has no font): 8 px a character
+    ctx.textMeasurer = [](const ableem::Font &, const string &text) { return 8 * static_cast<int>(text.size()); };
+
     // no pictures: a text chip, any "A+B" name works the same way - one chip, wider than a single key's
     CHECK(style.buttonWidth(ctx, "L2", 30) >= abgui::Style::ChipMinWidth);
     CHECK(style.buttonWidth(ctx, "L2+Select", 30) > style.buttonWidth(ctx, "L2", 30));
