@@ -290,6 +290,16 @@ std::string Platform::displayModeString() const {
     return text;
 }
 
+Size Platform::windowDisplaySize() const {
+    Size s;
+    SDL_DisplayMode mode;
+    if (impl->window && SDL_GetWindowDisplayMode(impl->window, &mode) == 0) {
+        s.w = mode.w;
+        s.h = mode.h;
+    }
+    return s;
+}
+
 bool Platform::isDevHost() const {
 #ifdef ABLEEM_DEV_HOST
     return true;
