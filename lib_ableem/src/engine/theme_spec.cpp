@@ -337,6 +337,7 @@ bool ThemeSpec::load(const string &path) {
             readStr(*h, "cross", launcher.hints.cross);
             readStr(*h, "circle", launcher.hints.circle);
             readStr(*h, "triangle", launcher.hints.triangle);
+            readStr(*h, "square", launcher.hints.square);
         }
         if (const json *m = child(*l, "menuIcons")) {
             readStr(*m, "settings", launcher.menuIcons.settings);
@@ -502,6 +503,7 @@ bool ThemeSpec::save(const string &path) const {
             putStr(h, "cross", launcher.hints.cross);
             putStr(h, "circle", launcher.hints.circle);
             putStr(h, "triangle", launcher.hints.triangle);
+            putStr(h, "square", launcher.hints.square);
             putObject(l, "hints", h);
         }
         {
@@ -694,6 +696,7 @@ vector<string *> ThemeSpec::fileFields() {
         &l.hints.cross,
         &l.hints.circle,
         &l.hints.triangle,
+        &l.hints.square,
         &l.menuIcons.settings,
         &l.menuIcons.guide,
         &l.menuIcons.memcard,

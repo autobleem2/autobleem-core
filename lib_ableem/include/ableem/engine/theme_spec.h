@@ -158,7 +158,7 @@ struct LauncherTheme {
     std::string arrow;
 
     struct Hints {
-        std::string cross, circle, triangle;
+        std::string cross, circle, triangle, square;
     } hints; // the button hints in the footer
     // the frame the footer's hint row is laid out in (centred, at the largest font that fits); unset means
     // the pill most themes paint at the bottom right, x 560..1240, y 624..696

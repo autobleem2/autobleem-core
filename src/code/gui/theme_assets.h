@@ -73,7 +73,7 @@ public:
     ableem::Texture bigBoxFrame;
     std::map<std::string, ableem::Texture> buttonTextureMap; // "X", "O", "Start", "Check", ... -> its texture
     // the launcher's footer hints (theme.json launcher.hints), what PanelStyle draws in a panel's footer
-    ableem::Texture hintCross, hintCircle, hintTriangle;
+    ableem::Texture hintCross, hintCircle, hintTriangle, hintSquare;
     // the d-pad hint chips: the icon table's dpadUp/dpadDown/dpadLeft/dpadRight (iconSpecs - the theme's
     // launcher.icons, else the default's, else the launcher's evoimg/dpad_*.png, tools/make_evoimg_icons.py; ab_gui
     // G5a). What PanelStyle::faceIcon draws for "|@Up|"/"|@Down|"/"|@Left|"/"|@Right|"

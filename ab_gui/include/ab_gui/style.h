@@ -120,6 +120,12 @@ public:
     static constexpr int DefaultRowInset = 24;     // the text from the panel's edge
     static constexpr int DefaultMargin = 40;       // the panel from the screen's edge
     static constexpr int DefaultSelectionBar = 5;  // the bar at the selected row's left edge
+    // a button chip (a key without a picture): one size everywhere - 22 px tall, at least 28 wide, the name 7 px in;
+    // a combination of keys with pictures (Left+Right) is one chip around them, PictureGap apart
+    static constexpr int ChipHeight = 22;
+    static constexpr int ChipMinWidth = 28;
+    static constexpr int ChipPadding = 7;
+    static constexpr int PictureGap = 2;
 
     // the colours resolved from the program's block: each role its own colour, or the colour it names, or its
     // fallback; a name nobody knows counts as unset, and a chain of names longer than the roles is a loop, cut
@@ -356,9 +362,11 @@ public:
     // one button at (x, y), `height` tall: a key with a glyph (Context::glyph - the face buttons, the d-pad)
     // as its image, with its outline under it when there is one; every other key (Start, Select, L1..R2, Esc,
     // or any word such as RESET) as a chip - a small dark box with a light edge and the name in Small bold
-    // capitals. Returns the width drawn.
+    // capitals; a combination ("L2+R2", "Select+Start": every "A+B" name is one chip) is one chip with the whole
+    // name, or - when every part has a picture ("Left+Right") - one chip around the pictures. Every button is
+    // centred on the line y + height / 2. Returns the width drawn.
     int button(Context &ctx, const std::string &key, int x, int y, int height = 30) const;
-    // a marker string as a button guide writes it - "|@L2| + |@Select|", "|@X| / |@O|", "RESET" - drawn as
+    // a marker string as a button guide writes it - "|@L2+Select|", "|@X| / |@O|", "RESET" - drawn as
     // icons, chips and the text between them; returns the width
     int buttons(Context &ctx, const std::string &markers, int x, int y, int height = 30) const;
     // the width the two above would draw, without drawing - for laying a row out first
@@ -366,6 +374,8 @@ public:
     int buttonsWidth(Context &ctx, const std::string &markers, int height = 30) const;
 
 private:
+    struct PictureChip;
+    bool pictureChip(Context &ctx, const std::string &key, int height, PictureChip &out) const;
     int layoutButtons(Context &ctx, const std::string &markers, int x, int y, int height, bool draw) const;
 };
 

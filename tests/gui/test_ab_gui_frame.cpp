@@ -948,3 +948,37 @@ TEST_CASE("Style::hintIconsWidth (G5r3): every key is measured by Style::buttonW
     // L2 has the image, R2 has none and stays a chip
     CHECK(style.hintIconsWidth(ctx, shoulder) == 52 + 6 + style.buttonWidth(ctx, "R2", 30) + 6);
 }
+
+TEST_CASE("Style::buttonWidth (G5 hints): a chip is at least ChipMinWidth wide, a combination of keys with pictures is one chip") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+
+    // no pictures: a text chip, any "A+B" name works the same way - one chip, wider than a single key's
+    CHECK(style.buttonWidth(ctx, "L2", 30) >= abgui::Style::ChipMinWidth);
+    CHECK(style.buttonWidth(ctx, "L2+Select", 30) > style.buttonWidth(ctx, "L2", 30));
+    CHECK(style.buttonWidth(ctx, "Select+Start", 30) > style.buttonWidth(ctx, "Select", 30));
+    CHECK(style.button(ctx, "L2+Select", 20, 20, 30) == style.buttonWidth(ctx, "L2+Select", 30));
+
+    // both parts with a picture: the pictures side by side in one chip (padding each side, PictureGap between)
+    auto sized = [&](int w, int h) { return ableem::Texture::createTarget(renderer, w, h); };
+    ableem::Texture arrow = sized(18, 18);
+    REQUIRE(arrow.valid());
+    ctx.glyphProvider = [&](const string &key) { return key == "Left" || key == "Right" ? arrow : ableem::Texture(); };
+    const int pair = 18 + abgui::Style::PictureGap + 18 + 2 * abgui::Style::ChipPadding;
+    CHECK(style.buttonWidth(ctx, "Left+Right", 30) == pair);
+    CHECK(style.button(ctx, "Left+Right", 20, 20, 30) == pair);
+    // one part without a picture: the whole name as text
+    CHECK(style.buttonWidth(ctx, "Left+Select", 30) > abgui::Style::ChipMinWidth);
+
+    // a picture taller than the row is scaled down to it, in proportion
+    ableem::Texture tall = sized(40, 40);
+    REQUIRE(tall.valid());
+    ctx.glyphProvider = [&](const string &key) { return key == "X" ? tall : ableem::Texture(); };
+    CHECK(style.buttonWidth(ctx, "X", 30) == 30);
+    CHECK(style.buttonWidth(ctx, "X", 40) == 40);
+    CHECK(style.buttonWidth(ctx, "X", 50) == 40);
+}

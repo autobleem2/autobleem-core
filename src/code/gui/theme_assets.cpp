@@ -29,7 +29,7 @@ void ThemeAssets::unload() {
     cdJewel = Texture();
     bigBoxFrame = Texture();
     buttonTextureMap.clear();
-    hintCross = hintCircle = hintTriangle = Texture();
+    hintCross = hintCircle = hintTriangle = hintSquare = Texture();
     dpadUp = dpadDown = dpadLeft = dpadRight = Texture();
     dpadUpOutline = dpadDownOutline = dpadLeftOutline = dpadRightOutline = Texture();
 }
@@ -98,6 +98,7 @@ void ThemeAssets::load() {
     hintCross = loadImage(renderer_, launcher.hints.cross);
     hintCircle = loadImage(renderer_, launcher.hints.circle);
     hintTriangle = loadImage(renderer_, launcher.hints.triangle);
+    hintSquare = loadImage(renderer_, launcher.hints.square);
     // the d-pad arrows from the icon table (ab_gui G5a): the theme's launcher.icons dpadUp..., else the default's, else
     // the built-in evoimg/dpad_*.png - on a theme without the block the very files and calls of before (abgui::loadIcon
     // loads a 1x file exactly as loadImage did, an @2x next to it above scale 1 the same way too)

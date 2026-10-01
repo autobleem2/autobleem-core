@@ -104,8 +104,8 @@ Gui::Gui()
 //********************
 // Gui::wireUiContext
 //********************
-// the face buttons' images: the launcher's hint icons for X/O/T (the theme's buttons when a theme has none),
-// the theme's square, the d-pad arrows of the icon table (ThemeAssets' dpad*: the theme's launcher.icons, else the
+// the face buttons' images: the launcher's hint icons for X/O/T/S (the theme's buttons when a theme has none),
+// the d-pad arrows of the icon table (ThemeAssets' dpad*: the theme's launcher.icons, else the
 // default's, else the launcher's own evoimg/dpad_*.png - ab_gui G5a); an invalid texture for every other key, which
 // Style draws as a chip
 static Texture faceIcon(ThemeAssets &assets, const string &key) {
@@ -116,7 +116,7 @@ static Texture faceIcon(ThemeAssets &assets, const string &key) {
     if (key == "T")
         return assets.hintTriangle.valid() ? assets.hintTriangle : assets.buttonTextureMap["T"];
     if (key == "S")
-        return assets.buttonTextureMap["S"];
+        return assets.hintSquare.valid() ? assets.hintSquare : assets.buttonTextureMap["S"];
     if (key == "Up")
         return assets.dpadUp;
     if (key == "Down")

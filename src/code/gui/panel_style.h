@@ -83,7 +83,7 @@ public:
     // RESET) as a chip - a small dark box with a light edge and the name in small bold capitals - so a
     // "START" reads at the size of the icons next to it. Returns the width drawn.
     int button(Gui &gui, const std::string &key, int x, int y, int height = 30) const;
-    // a marker string as the button guide writes it - "|@L2| + |@Select|", "|@X| / |@O|", "RESET" - drawn as
+    // a marker string as the button guide writes it - "|@L2+Select|", "|@X| / |@O|", "RESET" - drawn as
     // icons, chips and the text between them; returns the width
     int buttons(Gui &gui, const std::string &markers, int x, int y, int height = 30) const;
     // the width the two above would draw, without drawing - for laying a row out first

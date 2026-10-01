@@ -92,6 +92,7 @@ ThemeSpec fullSpec() {
     l.hints.cross = "images/hint_cross.png";
     l.hints.circle = "images/hint_circle.png";
     l.hints.triangle = "images/hint_triangle.png";
+    l.hints.square = "images/hint_square.png";
     l.menuIcons.settings = "images/menu_settings.png";
     l.menuIcons.guide = "images/menu_guide.png";
     l.menuIcons.memcard = "images/menu_memcard.png";

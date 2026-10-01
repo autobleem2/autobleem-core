@@ -26,6 +26,10 @@ constexpr int Style::DefaultRowHeight;
 constexpr int Style::DefaultRowInset;
 constexpr int Style::DefaultMargin;
 constexpr int Style::DefaultSelectionBar;
+constexpr int Style::ChipHeight;
+constexpr int Style::ChipMinWidth;
+constexpr int Style::ChipPadding;
+constexpr int Style::PictureGap;
 constexpr int Style::OwnAlpha;
 constexpr int Style::StyleAlpha;
 constexpr int InactiveAlphas::Unset;
@@ -680,6 +684,9 @@ vector<HintItem> Style::parseHints(const string &line, string &status) {
             pos = next;
             continue;
         }
+        // the two arrows of a Left/Right pair are one chip, however the line wrote them
+        if (pendingIcons.size() == 2 && pendingIcons[0] == "Left" && pendingIcons[1] == "Right")
+            pendingIcons = {"Left+Right"};
         items.push_back({pendingIcons, label});
         pendingIcons.clear();
         pos = next;
@@ -692,12 +699,77 @@ vector<HintItem> Style::parseHints(const string &line, string &status) {
 //*******************************
 // Style::button / buttons
 //*******************************
+// the parts of a combined key: "Left+Right" -> {"Left", "Right"}; one part for a plain key
+static vector<string> keyParts(const string &key) {
+    vector<string> parts;
+    size_t from = 0;
+    while (true) {
+        const size_t plus = key.find('+', from);
+        if (plus == string::npos || plus == 0 || plus + 1 >= key.size()) {
+            parts.push_back(key.substr(from));
+            break;
+        }
+        parts.push_back(key.substr(from, plus - from));
+        from = plus + 1;
+    }
+    return parts;
+}
+
+// a combination of keys that all have a picture (Left+Right): the pictures side by side in one chip
+struct Style::PictureChip {
+    vector<string> parts;
+    vector<ableem::Texture> icons;
+    int iconsW = 0; // the pictures and the gaps between them
+    int chipW = 0;
+    int chipH = 0;
+};
+
+bool Style::pictureChip(Context &ctx, const string &key, int height, PictureChip &out) const {
+    out.parts = keyParts(key);
+    out.icons.clear();
+    if (out.parts.size() < 2)
+        return false;
+    out.iconsW = 0;
+    int tallest = 0;
+    for (const string &part : out.parts) {
+        ableem::Texture icon = ctx.glyph(part);
+        if (!icon.valid())
+            return false;
+        out.icons.push_back(icon);
+        const ableem::Size fitted = fitHeight(icon.size(), height - 4);
+        out.iconsW += fitted.w;
+        tallest = max(tallest, fitted.h);
+    }
+    out.iconsW += PictureGap * static_cast<int>(out.parts.size() - 1);
+    out.chipW = out.iconsW + 2 * ChipPadding;
+    out.chipH = min(height, max(ChipHeight, tallest + 4));
+    return true;
+}
+
+// a picture's drawn size: its own, scaled down in proportion when taller than `maxH` (two-row footers)
+static ableem::Size fitHeight(ableem::Size s, int maxH) {
+    if (maxH > 0 && s.h > maxH) {
+        s.w = max(1, (s.w * maxH + s.h / 2) / s.h);
+        s.h = maxH;
+    }
+    return s;
+}
+
+// a text chip's size: the common ChipHeight, at least ChipMinWidth wide
+static int chipWidthFor(int textW) {
+    const int pad = Style::ChipPadding;
+    const int minW = Style::ChipMinWidth;
+    return max(minW, textW + 2 * pad);
+}
+
 int Style::button(Context &ctx, const string &key, int x, int y, int height) const {
     ableem::Texture icon = ctx.glyph(key);
     ableem::Renderer &renderer = ctx.renderer();
+    // every button - picture or chip - is centred on the line y + height / 2 (an odd remainder rounds the same way)
+    const int cy = y + height / 2;
     if (icon.valid()) {
-        ableem::Size s = icon.size();
-        Rect dst(x, y + (height - s.h) / 2, s.w, s.h);
+        const ableem::Size s = fitHeight(icon.size(), height);
+        Rect dst(x, cy - s.h / 2, s.w, s.h);
         ableem::Texture outline = ctx.glyphOutline(key);
         if (outline.valid()) {
             Rect outlineDst(dst.x - 2, dst.y - 2, s.w + 5, s.h + 5);
@@ -706,13 +778,22 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
         renderer.copy(icon, nullptr, &dst);
         return s.w;
     }
-    // a chip: the name in capitals, a box around it
-    const string name = upper(key);
     const ableem::Font &font = ctx.font(FontRole::Small);
-    const int tw = ctx.textWidth(font, name);
-    const int chipH = height - 6;
-    const int chipW = tw + 14;
-    Rect chip(x, y + (height - chipH) / 2, chipW, chipH);
+    PictureChip pic;
+    int chipW;
+    int chipH;
+    string name;
+    const bool pictures = pictureChip(ctx, key, height, pic);
+    if (pictures) {
+        chipW = pic.chipW;
+        chipH = pic.chipH;
+    } else {
+        // a chip: the name in capitals, a box around it
+        name = upper(key);
+        chipW = chipWidthFor(ctx.textWidth(font, name));
+        chipH = min(ChipHeight, height);
+    }
+    Rect chip(x, cy - chipH / 2, chipW, chipH);
     // the `chip` frame is the plate under the name (G5d); a theme with none keeps the box drawn in code
     if (!drawFrame(ctx, "chip", chip)) {
         renderer.setBlendMode(ableem::BlendMode::Blend);
@@ -721,16 +802,34 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
         renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 200));
         renderer.drawRect(chip);
     }
-    ctx.drawText(font, name, chip.x + 7, chip.y + (chipH - font.lineHeight()) / 2, text);
+    if (pictures) {
+        int ix = chip.x + ChipPadding;
+        for (size_t i = 0; i < pic.icons.size(); i++) {
+            const ableem::Size s = fitHeight(pic.icons[i].size(), height - 4);
+            Rect dst(ix, cy - s.h / 2, s.w, s.h);
+            ableem::Texture outline = ctx.glyphOutline(pic.parts[i]);
+            if (outline.valid()) {
+                Rect outlineDst(dst.x - 2, dst.y - 2, s.w + 5, s.h + 5);
+                renderer.copy(outline, nullptr, &outlineDst);
+            }
+            renderer.copy(pic.icons[i], nullptr, &dst);
+            ix += s.w + PictureGap;
+        }
+        return chipW;
+    }
+    const int tw = ctx.textWidth(font, name);
+    ctx.drawText(font, name, chip.x + (chipW - tw) / 2, chip.y + (chipH - font.lineHeight()) / 2, text);
     return chipW;
 }
 
 int Style::buttonWidth(Context &ctx, const string &key, int height) const {
     ableem::Texture icon = ctx.glyph(key);
     if (icon.valid())
-        return icon.size().w;
-    (void)height;
-    return ctx.textWidth(ctx.font(FontRole::Small), upper(key)) + 14;
+        return fitHeight(icon.size(), height).w;
+    PictureChip pic;
+    if (pictureChip(ctx, key, height, pic))
+        return pic.chipW;
+    return chipWidthFor(ctx.textWidth(ctx.font(FontRole::Small), upper(key)));
 }
 
 int Style::buttons(Context &ctx, const string &markers, int x, int y, int height) const {
@@ -776,6 +875,9 @@ int Style::layoutButtons(Context &ctx, const string &markers, int x, int y, int 
 // Style::footer
 //*******************************
 int Style::hintRank(const string &icon) {
+    const size_t plus = icon.find('+');
+    if (plus != string::npos && plus > 0)
+        return hintRank(icon.substr(0, plus));
     // the d-pad (G5r3) comes right after the face buttons, before Start/Select and the shoulders
     static const char *order[] = {"X",     "O",  "T",  "S",  "Left", "Right", "Up",    "Down", "Start",
                                   "Select", "L1", "R1", "L2", "R2",   "Enter", "Esc", "Tab"};
@@ -827,9 +929,19 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
         }
         return w - gap;
     };
+    // the width of hints [from, to) on one row of `rowHeight`
+    auto rowWidth = [&](const ableem::Font &f, int g, int rowHeight, size_t from, size_t to) {
+        int w = 0;
+        for (size_t i = from; i < to; i++)
+            w += hintIconsWidth(ctx, hints[i], rowHeight) + 2 + ctx.textWidth(f, hints[i].label) + g;
+        return w - g;
+    };
     ableem::Font font = ctx.font(FontRole::Row);
     int gap = 36;
     bool iconsOnly = false;
+    bool twoRows = false; // the hints on two rows of rowH (the smallest font, labels whole)
+    int rowH = 0;
+    size_t splitAt = 0; // the first hint of the second row
     if (widthAt(font, gap, false) > room) {
         gap = 22;
         if (widthAt(font, gap, false) > room) {
@@ -837,10 +949,31 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
             if (widthAt(font, gap, false) > room) {
                 font = ctx.font(FontRole::Small);
                 if (widthAt(font, gap, false) > room) {
-                    // even the smallest font's labels do not fit: cut the labels ("Back" -> "B..", the longest
-                    // first) and only when even the shortest do not fit, icons only - they are fixed width, so
-                    // that always fits unless there are too many hints for even bare icons, which is outside
-                    // this fallback's job (UIREV-3) and is left to clip as before
+                    // even the smallest font does not fit on one line: two rows (a hint never loses its label)
+                    // when the band holds them and each row fits; else cut the labels ("Back" -> "B..", the
+                    // longest first) and only when even the shortest do not fit, icons only - they are fixed
+                    // width, so that always fits unless there are too many hints for even bare icons, which is
+                    // outside this fallback's job (UIREV-3) and is left to clip as before
+                    const int rows2H = (footer.h - 4) / 2;
+                    if (rows2H >= 20 && hints.size() >= 2) {
+                        size_t bestSplit = 0;
+                        int bestWidth = 0;
+                        for (size_t split = 1; split < hints.size(); split++) {
+                            const int w = max(rowWidth(font, gap, rows2H, 0, split),
+                                              rowWidth(font, gap, rows2H, split, hints.size()));
+                            if (bestSplit == 0 || w < bestWidth) {
+                                bestSplit = split;
+                                bestWidth = w;
+                            }
+                        }
+                        if (bestWidth <= room) {
+                            twoRows = true;
+                            rowH = rows2H;
+                            splitAt = bestSplit;
+                        }
+                    }
+                }
+                if (!twoRows && widthAt(font, gap, false) > room) {
                     vector<string> labels;
                     for (const HintItem &h : hints)
                         labels.push_back(h.label);
@@ -865,17 +998,28 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
         }
     }
     const int fontH = font.lineHeight();
-    int x = footer.x + rowInset;
-    for (const HintItem &h : hints) {
-        for (const string &key : h.icons)
-            x += button(ctx, key, x, y, iconH) + 6;
-        if (iconsOnly) {
-            x += gap;
-        } else {
-            x += 2;
-            ctx.drawText(font, h.label, x, y + (iconH - fontH) / 2, footerText);
-            x += ctx.textWidth(font, h.label) + gap;
+    // one row of hints from `from` up to `to`, its line `rowY` (top) and `rowHeight` tall: buttons and labels
+    // centred on the same line
+    auto drawRow = [&](size_t from, size_t to, int rowY, int rowHeight) {
+        int x = footer.x + rowInset;
+        for (size_t i = from; i < to; i++) {
+            const HintItem &h = hints[i];
+            for (const string &key : h.icons)
+                x += button(ctx, key, x, rowY, rowHeight) + 6;
+            if (iconsOnly) {
+                x += gap;
+            } else {
+                x += 2;
+                ctx.drawText(font, h.label, x, rowY + (rowHeight - fontH) / 2, footerText);
+                x += ctx.textWidth(font, h.label) + gap;
+            }
         }
+    };
+    if (twoRows) {
+        drawRow(0, splitAt, footer.y + 2, rowH);
+        drawRow(splitAt, hints.size(), footer.y + 2 + rowH, rowH);
+    } else {
+        drawRow(0, hints.size(), y, iconH);
     }
 }
 
