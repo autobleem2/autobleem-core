@@ -83,7 +83,16 @@ public:
     // one icon frame as IconSize*IconSize RGBA pixels, row by row: a top block's own frame, a deleted
     // block's lightened, a link block's the dimmed first frame of its save, and a free slot's a translucent
     // black square.
+    // palette colour 0 (raw 0x0000) is transparent (alpha 0); the others use the full 0..255 range
     void iconPixels(int slot, int frame, Pixel *out) const;
+
+    // how many frames the save's icon animates over, from the top block's header byte 2: 0x11 = 1, 0x12 = 2,
+    // 0x13 = 3, anything else (and a link or free slot) = 1, static
+    int iconFrameCount(int slot) const;
+    // the frame to show `elapsedMs` after the animation started at frame 0: the real BIOS's pace, 16 PAL frames
+    // (320 ms) per frame of a 2-frame icon, 11 (220 ms) of a 3-frame one, in order 1..N and wrapping
+    // (psx-spx, "Memory Card Data Format", Icon Display Flag)
+    static int iconFrameAt(int frameCount, unsigned int elapsedMs);
 
 private:
     void parseUsed();

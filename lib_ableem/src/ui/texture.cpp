@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <string>
 #include <ableem/engine/log.h>
 
 namespace ableem {
@@ -179,6 +180,16 @@ Texture Texture::createStreaming(Renderer &renderer, int w, int h) {
     SDL_Texture *t = SDL_CreateTexture(static_cast<SDL_Renderer *>(renderer.native()), SDL_PIXELFORMAT_RGBA8888,
                                        SDL_TEXTUREACCESS_STREAMING, w, h);
     return Texture(t);
+}
+
+Texture Texture::createStreamingNearest(Renderer &renderer, int w, int h) {
+    // SDL 2.0.18 has no per-texture scale mode: the hint at creation time decides, so set it, create, restore
+    const char *quality = SDL_GetHint(SDL_HINT_RENDER_SCALE_QUALITY);
+    const std::string previousQuality = quality ? quality : "";
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+    Texture texture = createStreaming(renderer, w, h);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, previousQuality.empty() ? nullptr : previousQuality.c_str());
+    return texture;
 }
 
 bool Texture::valid() const {

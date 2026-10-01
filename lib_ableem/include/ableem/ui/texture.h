@@ -83,6 +83,8 @@ public:
     static Texture createTarget(Renderer &renderer, int w, int h);
     // a texture whose pixels can be locked and written directly (used by the memory card editor)
     static Texture createStreaming(Renderer &renderer, int w, int h);
+    // the same, scaled with nearest filtering whatever the scale-quality hint is (whole-pixel icons)
+    static Texture createStreamingNearest(Renderer &renderer, int w, int h);
 
     bool valid() const;
     // in logical pixels for a render target (what createTarget was asked for) and a high-resolution image (its
