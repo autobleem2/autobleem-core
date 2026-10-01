@@ -50,19 +50,22 @@ Button classicButton(Action action) {
 void Screen::render() {
     if (!prepareFrame())
         return;
-    const ScreenStack::Draw drawing = [this] { draw(); };
-    auto frameOn = [&](ScreenStack &stack) {
-        if (frameColor.set)
-            stack.frame(frameColor.color, drawing);
-        else
-            stack.frame(drawing);
-    };
     if (ctx.hasStack()) {
-        frameOn(ctx.stack());
+        ctx.stack().screenFrame(*this); // the screen's frame - composed while its transition runs
         return;
     }
     ScreenStack own(ctx.renderer()); // a Context without a stack (a tool's, a test's): the same frame on the renderer
-    frameOn(own);
+    own.screenFrame(*this);
+}
+
+Screen::~Screen() {
+    if (ctx.hasStack())
+        ctx.stack().forget(*this);
+}
+
+void Screen::declareTransitions(const ScreenTransitions &transitions) {
+    if (ctx.hasStack())
+        ctx.stack().declare(*this, transitions);
 }
 
 //********************

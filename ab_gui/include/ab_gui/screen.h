@@ -49,8 +49,14 @@ public:
     // `gui` is the GuiBase the screen's input and platform are (ableem::GuiScreen's), `context` the program's
     // Context over the same GuiBase (AutoBleem: Gui::uiContext())
     Screen(ableem::GuiBase &gui, Context &context) : ableem::GuiScreen(gui), ctx(context) {}
+    // the stack forgets what it declared (out of line: a screen built before it existed simply never declared)
+    ~Screen() override;
 
     Context &ctx;
+
+    // the screen's in and out transitions (screen_transition.h, the plan's 7a), kept by the Context's stack - declared
+    // before show(), usually in the constructor. A screen that declares nothing cross-fades in and back
+    void declareTransitions(const ScreenTransitions &transitions);
 
     // the screen's picture, between the stack's clear and its present - never clear() or present() here
     virtual void draw() = 0;

@@ -5,6 +5,23 @@
 
 namespace ableem {
 
+class GuiScreen;
+
+//******************
+// GuiScreenObserver
+//******************
+// Told when a screen opens and closes (GuiScreen::show): the program's screen stack (ab_gui's ScreenStack, the plan's
+// 7a transitions) keeps the picture under a screen that opens and the last one of a screen that closes. One for the
+// program (GuiScreen::setObserver); none = nothing told.
+class ABLEEM_API GuiScreenObserver {
+public:
+    virtual ~GuiScreenObserver() = default;
+    // show() is about to init() the screen: the screen under it is still the one on display
+    virtual void screenOpens(GuiScreen &screen) = 0;
+    // its loop() has returned, the screen still exists: it is what is on display
+    virtual void screenCloses(GuiScreen &screen) = 0;
+};
+
 //******************
 // GuiScreen
 //******************
@@ -35,6 +52,10 @@ public:
     // init, one render, then the loop until menuVisible goes false; the screen's class name is on the
     // DebugDriver's screen stack meanwhile (its `screen` command)
     void show();
+
+    // the program's one observer of every show() (nullptr: none) - static, so no screen's layout changes
+    static void setObserver(GuiScreenObserver *observer);
+    static GuiScreenObserver *observer();
 
     // controller dpad/joystick pressed
     virtual void doJoyUp() {}

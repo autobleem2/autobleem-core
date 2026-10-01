@@ -241,6 +241,9 @@ void Gui::wireUiContext() {
     uiContext_.panelSwitch = [this](const Rect *rect) { text_.setPanelOverride(rect); };
     // every frame through the one stack: clear, draw, present (step G3c)
     uiContext_.setStack(stack_);
+    // the screen transitions (UIREV-48): the stack hears every screen open and close, and every press (which finishes a
+    // running transition); while one runs every pass draws a frame
+    stack_.attach(input());
     // the theme's frames by name (step G4a): none unless the theme's own theme.json has launcher.frames
     uiContext_.frameProvider = [this](const string &name) { return frames_.frame(renderer(), name); };
     // the theme's icons by name and their halos (step G5a): every name falls back to the default's, then the built-in
@@ -341,6 +344,8 @@ void Gui::loadAssets(bool reloadMusic) {
     inactiveAlphas_.resume = inactive.resume;
     inactiveAlphas_.tab = inactive.tab;
     inactiveAlphas_.barTrack = inactive.barTrack;
+    // Options -> Interface -> "Animations" (UIREV-48): off, every screen change is instant
+    stack_.setAnimations(AppBase::get().config().inifile.values["animations"] != "false");
     AppBase::get().audio().loadTheme(reloadMusic);
 
     // the classic screens' text halo, on unless the theme says otherwise; the launcher sets its own
@@ -446,9 +451,18 @@ void Gui::display(bool resume) {
 
     if (!resume) {
         // Options -> Interface -> "Splash screen": off skips the boot splash (AB_NO_SPLASH does too)
-        if (AppBase::get().config().inifile.values["splashscreen"] != "false") {
+        bool splash = AppBase::get().config().inifile.values["splashscreen"] != "false";
+#ifdef AB_DEBUG_HOST
+        // AB_NO_SPLASH=1: straight through - the DebugDriver's tests (tools/ab_drive.py) start that way
+        if (const char *skip = getenv("AB_NO_SPLASH"))
+            splash = splash && *skip != '1';
+#endif
+        if (splash) {
             GuiSplash splashScreen(*this);
             splashScreen.show();
+            // the plan's decision 12: after the splash the first screen (the launcher) drops in from the top; without
+            // the splash it fades in from black (the launcher's own fade-in)
+            stack_.setStartTransition(abgui::Transition::drop());
         }
         hideMouseCursor();
     }
@@ -474,6 +488,7 @@ void Gui::releaseDisplay() {
     launcherLogo_ = Texture(); // and the logo and the resume mask
     resumeMask_ = Texture();
     spinner_.release(); // and the spinner strip's
+    stack_.releaseTargets(); // and the screen transitions' two pictures
     GuiBase::releaseDisplay();
 }
 

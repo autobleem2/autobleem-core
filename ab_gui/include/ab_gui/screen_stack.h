@@ -3,9 +3,9 @@
 // abgui::ScreenStack: where a program's frames are presented - "screens draw, the stack presents"
 // (docs/ab-gui-plan.md, 7a; step G3c). A screen's render() hands its drawing to frame(): the stack clears the
 // canvas, the screen draws, the stack presents - one present per frame, and no screen clears or presents itself.
-// Being the one place a frame is shown is what the transitions (7a) need later: the stack will then send a frame
-// into an off-screen target instead of the screen, with no screen changing. For now it only puts the three steps
-// in order; each screen still runs its own loop (abgui::Screen's, or its own).
+// Being the one place a frame is shown is what the transitions (7a, UIREV-48 - the appended part at the end) use:
+// while one runs, the stack sends the screen's frame into an off-screen target and composes it with the old picture,
+// with no screen changing. Each screen still runs its own loop (abgui::Screen's, or its own).
 //
 // A frame started while another is being drawn (a busy spinner's tick from inside a load that a screen's drawing
 // started) is a frame of its own: cleared, drawn and presented at once, as such a frame always was; the outer one
@@ -20,6 +20,7 @@
 #pragma once
 
 #include <ab_gui/busy.h>
+#include <ab_gui/screen_transition.h>
 #include <ab_gui/tween.h>
 
 #include <ableem/ui/renderer.h>
@@ -28,7 +29,14 @@
 #include <functional>
 #include <memory>
 
+namespace ableem {
+class GuiScreen;
+class Input;
+} // namespace ableem
+
 namespace abgui {
+
+class Screen;
 
 //********************
 // ScreenStack
@@ -74,8 +82,6 @@ public:
     const Busy &busy() const { return busy_; }
 
 private:
-    void run(const ableem::Color *clearColor, const Draw &draw);
-
     std::unique_ptr<Display> own_; // the renderer's display, when the stack made it
     Display *display_;
     int depth_ = 0;
@@ -91,6 +97,53 @@ public:
 
 private:
     std::unique_ptr<Tweens> tweens_;
+
+    // Appended (UIREV-48, the plan's 7a): the screen transitions - screen_transition.h. Every screen declares an in and
+    // an out transition (Screen::declareTransitions; none declared = a cross-fade). When a screen opens (GuiScreen::show
+    // tells the stack through its observer, attach()) the picture of the screen under it is drawn into a render target
+    // (the old picture), and the new screen's frames go into a second target while the transition runs: the stack
+    // composes the two on the screen (alpha, offset, scale - no read-back from the GPU). When a screen closes, its last
+    // picture is the old one and the screen under it is drawn live; a screen with nothing under it plays only a Fade
+    // (to black), on its own frames, before show() returns (the splash). The transition starts with the new screen's
+    // first frame (while it loads, the old picture stays), runs as one non-ambient tween (the DebugDriver is busy - its
+    // wait_ready waits it out), and a press finishes it at once (attach()'s press observer). Any other frame (a busy
+    // job's, Gui's own) finishes it first. Off (setAnimations(false), the Options row): every change is instant and
+    // nothing is drawn twice. Held through one pointer, so the stack's layout grows by that only.
+public:
+    // what `screen` plays when it opens and closes; kept until it closes (or is destroyed)
+    void declare(const ableem::GuiScreen &screen, const ScreenTransitions &transitions);
+    void forget(const ableem::GuiScreen &screen);
+    // what `screen` declared, else defaultScreenTransitions()
+    ScreenTransitions declared(const ableem::GuiScreen &screen) const;
+    // a screen's frame (Screen::render): frame() with its drawing and its clear colour - composed with the old picture
+    // while the screen's transition runs
+    void screenFrame(Screen &screen);
+
+    // on (the default) / off: off finishes a running transition and arms none from then on
+    void setAnimations(bool on);
+    bool animations() const;
+    // the next screen that opens with no screen under it comes in with `t` instead of its own in (once): after the
+    // splash the launcher drops in from the top (the plan's decision 12)
+    void setStartTransition(const Transition &t);
+    // a transition will bring `screen` in or is bringing it in (armed for its frames, not over) - the launcher then
+    // leaves out its own fade from black
+    bool bringsIn(const ableem::GuiScreen &screen) const;
+    // a transition is running (started, not over): the frame probe attach() gives the input, and the DebugDriver busy
+    bool transitioning() const;
+    // finishes a running or armed transition at once (a press, a busy job starting)
+    void finishTransition();
+    // the program's input and screens: from now on GuiScreen::show() tells this stack when screens open and close,
+    // every press finishes a running transition, and every pass draws a frame while one runs. Once, by the program
+    // (AutoBleem's Gui); the destructor (or detach()) undoes it
+    void attach(ableem::Input &input);
+    void detach();
+    // the two render targets dropped (the display is released for a game): a transition in progress ends
+    void releaseTargets();
+
+private:
+    struct Transitions;
+    void run(const ableem::Color *clearColor, const Draw &draw, Screen *screen);
+    std::unique_ptr<Transitions> transitions_;
 };
 
 } // namespace abgui

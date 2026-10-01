@@ -33,7 +33,10 @@ namespace abgui {
 //********************
 class Keyboard : public Screen {
 public:
-    using Screen::Screen;
+    // it slides up from the bottom over the screen that asked for the text, and back down
+    Keyboard(ableem::GuiBase &gui, Context &context) : Screen(gui, context) {
+        declareTransitions(ScreenTransitions(Transition::slide(SlideFrom::Bottom)));
+    }
 
     std::string label;                    // the header
     std::string result;                   // the text

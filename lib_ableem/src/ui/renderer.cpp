@@ -460,6 +460,10 @@ void Renderer::captureNextFrameSilently() {
     impl->captureSilent = true;
 }
 
+bool Renderer::silentCapturePending() const {
+    return impl->captureRequested && impl->captureSilent;
+}
+
 Texture Renderer::lastCapture() const {
     return impl->capture;
 }

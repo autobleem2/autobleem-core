@@ -338,6 +338,20 @@ TEST_CASE("Config: the splash screen defaults on and keeps an explicit false") {
     CHECK(Config().inifile.values["splashscreen"] == "true");
 }
 
+TEST_CASE("Config: the animations (screen transitions) default on and keep an explicit false") {
+    TempDir tmp("config_animations");
+    EnvFixture env;
+    env.setWorkingPath(tmp.path());
+
+    CHECK(Config().inifile.values["animations"] == "true");
+
+    tmp.writeFile("config.ini", "[General]\nAnimations=false\n");
+    CHECK(Config().inifile.values["animations"] == "false");
+
+    tmp.writeFile("config.ini", "[General]\nAnimations=maybe\n");
+    CHECK(Config().inifile.values["animations"] == "true");
+}
+
 TEST_CASE("Config writes config.ini into the state dir when one is set apart from the working path") {
     TempDir tmp("config_state_dir");
     EnvFixture env;

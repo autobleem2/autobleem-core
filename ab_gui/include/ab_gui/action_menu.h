@@ -34,7 +34,10 @@ namespace abgui {
 //********************
 class ActionMenu : public Screen {
 public:
-    using Screen::Screen;
+    // a compact panel: it pops in and back out, as Confirm does
+    ActionMenu(ableem::GuiBase &gui, Context &context) : Screen(gui, context) {
+        declareTransitions(ScreenTransitions(Transition::pop()));
+    }
 
     struct Item {
         std::string title;

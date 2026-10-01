@@ -7,6 +7,18 @@
 
 namespace ableem {
 
+namespace {
+GuiScreenObserver *screenObserver = nullptr;
+}
+
+void GuiScreen::setObserver(GuiScreenObserver *observer) {
+    screenObserver = observer;
+}
+
+GuiScreenObserver *GuiScreen::observer() {
+    return screenObserver;
+}
+
 //*******************************
 // GuiScreen::show
 //*******************************
@@ -16,9 +28,13 @@ void GuiScreen::show() {
     // the extension hand-off trap (BUG-31): a screen shown by an extension opens and closes a window of frame lines
     if (ext_trace::inExtension())
         ext_trace::begin(std::string("screen opens ") + typeid(*this).name());
+    if (screenObserver)
+        screenObserver->screenOpens(*this); // before init(): the picture on display is still the one under it
     init();
     render();
     loop();
+    if (screenObserver)
+        screenObserver->screenCloses(*this); // the screen exists still: its picture is the one on display
     if (ext_trace::inExtension())
         ext_trace::begin(std::string("screen closed ") + typeid(*this).name());
     gui.input().popFrameNeed();
