@@ -196,7 +196,7 @@ TEST_CASE("parseHints: the status before the first marker, icons joined across a
     CHECK(status == "Card 1/12");
     REQUIRE(items.size() == 3);
     REQUIRE(items[0].icons.size() == 1);
-    CHECK(items[0].icons[0] == "L1+R1"); // the pair is one chip
+    CHECK(items[0].icons[0] == "L1/R1"); // the pair is one chip, an alternative (never L1+R1)
     CHECK(items[0].label == "Page");
     REQUIRE(items[1].icons.size() == 1);
     CHECK(items[1].icons[0] == "X");
@@ -212,7 +212,7 @@ TEST_CASE("parseHints: back-to-back markers share a hint (a L1/R1, L2/R2 pair is
     CHECK(status.empty());
     REQUIRE(items.size() == 3);
     REQUIRE(items[0].icons.size() == 1);
-    CHECK(items[0].icons[0] == "L2+R2"); // UIREV-42: the pair is one chip, however the line wrote it
+    CHECK(items[0].icons[0] == "L2/R2"); // UIREV-42: the pair is one alternative chip, however the line wrote it
     CHECK(items[0].label == "Page");
     REQUIRE(items[1].icons.size() == 2); // keys that are no pair still share the hint
     CHECK(items[1].icons[0] == "X");
@@ -334,7 +334,7 @@ TEST_CASE("the footer's shared order (G5r3): the d-pad right after the face butt
     REQUIRE(sorted.size() == 5);
     CHECK(sorted[0].icons == std::vector<std::string>{"X"});
     CHECK(sorted[1].icons == std::vector<std::string>{"O"});
-    CHECK(sorted[2].icons == (std::vector<std::string>{"Left+Right"})); // the pair is one chip
+    CHECK(sorted[2].icons == (std::vector<std::string>{"Left", "Right"})); // d-pad arrows: two chips
     CHECK(sorted[2].label == "Choose");
     CHECK(sorted[3].icons == (std::vector<std::string>{"L1+R1"}));
     CHECK(sorted[4].icons == (std::vector<std::string>{"L2+R2"}));
@@ -347,7 +347,7 @@ TEST_CASE("the footer's shared order (G5r3): the d-pad right after the face butt
     CHECK(out[2].label == "b");
 }
 
-TEST_CASE("a combination is one key (UIREV-42): \"A+B\" ranks by its first key and a Left/Right pair parses as one") {
+TEST_CASE("a combination is one key (UIREV-42), but the d-pad's arrows are never joined: Left/Right and Up/Down stay separate") {
     CHECK(Style::hintRank("Left+Right") == Style::hintRank("Left"));
     CHECK(Style::hintRank("Select+Start") == Style::hintRank("Select"));
     CHECK(Style::hintRank("L2+R2") == Style::hintRank("L2"));
@@ -358,16 +358,51 @@ TEST_CASE("a combination is one key (UIREV-42): \"A+B\" ranks by its first key a
     std::string status;
     const std::vector<HintItem> items = Style::parseHints("|@Left+Right| Choose  |@Select+Start| Menu", status);
     REQUIRE(items.size() == 2);
-    CHECK(items[0].icons == std::vector<std::string>{"Left+Right"});
-    CHECK(items[1].icons == std::vector<std::string>{"Select+Start"});
-    // the old spelling gives the same single chip; other pairs stay as they are
+    CHECK(items[0].icons == (std::vector<std::string>{"Left", "Right"})); // two arrows, one hint
+    CHECK(items[1].icons == std::vector<std::string>{"Select+Start"});    // a real combination stays one chip
+    const std::vector<HintItem> vertical = Style::parseHints("|@Up+Down| Move  |@Up||@Down| Move", status);
+    REQUIRE(vertical.size() == 2);
+    CHECK(vertical[0].icons == (std::vector<std::string>{"Up", "Down"}));
+    CHECK(vertical[1].icons == (std::vector<std::string>{"Up", "Down"}));
+    // the old spelling gives the same two arrows; the shoulder pairs stay one chip
     const std::vector<HintItem> old = Style::parseHints("|@Left|/|@Right| Choose  |@L1|/|@R1| First/last", status);
     REQUIRE(old.size() == 2);
-    CHECK(old[0].icons == std::vector<std::string>{"Left+Right"});
-    CHECK(old[1].icons == (std::vector<std::string>{"L1+R1"}));
+    CHECK(old[0].icons == (std::vector<std::string>{"Left", "Right"}));
+    CHECK(old[1].icons == (std::vector<std::string>{"L1/R1"}));
     // ... and the paging pair; a pair that is no pair stays two chips
     const std::vector<HintItem> paging = Style::parseHints("|@L2|/|@R2| Page  |@L1|/|@R2| Odd", status);
     REQUIRE(paging.size() == 2);
-    CHECK(paging[0].icons == std::vector<std::string>{"L2+R2"});
+    CHECK(paging[0].icons == std::vector<std::string>{"L2/R2"});
     CHECK(paging[1].icons == (std::vector<std::string>{"L1", "R2"}));
+}
+
+TEST_CASE("an alternative (L2/R2: either button) is one key of its own, never the combination L2+R2") {
+    std::string status;
+    // every spelling of the paging pair gives the alternative
+    const std::vector<HintItem> pair =
+        Style::parseHints("|@L2|/|@R2| Page  |@L1||@R1| First/last  |@L1/R1| Tabs", status);
+    REQUIRE(pair.size() == 3);
+    CHECK(pair[0].icons == std::vector<std::string>{"L2/R2"});
+    CHECK(pair[1].icons == std::vector<std::string>{"L1/R1"});
+    CHECK(pair[2].icons == std::vector<std::string>{"L1/R1"}); // a marker written as the alternative stays so
+    // the other order is the same alternative, in the order written (the button guide's "R1/L1 quick scroll")
+    const std::vector<HintItem> reversed = Style::parseHints("|@R1| / |@L1| Quick scroll  |@R2||@L2| Page", status);
+    REQUIRE(reversed.size() == 2);
+    CHECK(reversed[0].icons == std::vector<std::string>{"R1/L1"});
+    CHECK(reversed[1].icons == std::vector<std::string>{"R2/L2"});
+    CHECK(Style::hintRank("R1/L1") < Style::hintRank("L2/R2"));
+    // the combination - both held together - stays as written, and is another key
+    const std::vector<HintItem> chord = Style::parseHints("|@L2+R2| System", status);
+    REQUIRE(chord.size() == 1);
+    CHECK(chord[0].icons == std::vector<std::string>{"L2+R2"});
+    CHECK(chord[0].icons[0] != pair[0].icons[0]);
+    // an alternative ranks as its first key, so the footer's order is the old one
+    CHECK(Style::hintRank("L2/R2") == Style::hintRank("L2"));
+    CHECK(Style::hintRank("L1/R1") == Style::hintRank("L1"));
+    CHECK(Style::hintRank("L1/R1") < Style::hintRank("L2/R2"));
+    // the d-pad is still split, however the pair is written
+    const std::vector<HintItem> dpad = Style::parseHints("|@Left/Right| Choose  |@Left|/|@Right| Choose", status);
+    REQUIRE(dpad.size() == 2);
+    CHECK(dpad[0].icons == (std::vector<std::string>{"Left", "Right"}));
+    CHECK(dpad[1].icons == (std::vector<std::string>{"Left", "Right"}));
 }

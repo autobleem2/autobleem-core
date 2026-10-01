@@ -122,8 +122,8 @@ const char *List::screenName() {
 }
 
 string List::entryStatus() {
-    return ctx.translate("Entry") + " " + to_string(selected + 1) + "/" + to_string(size()) + "    |@L1+R1| " +
-           ctx.translate("First/last") + "   |@L2+R2| " + ctx.translate("Page") + "   |@X| " +
+    return ctx.translate("Entry") + " " + to_string(selected + 1) + "/" + to_string(size()) + "    |@L1/R1| " +
+           ctx.translate("First/last") + "   |@L2/R2| " + ctx.translate("Page") + "   |@X| " +
            ctx.translate("Select") + "   |@O| " + ctx.translate("Back") + " |";
 }
 

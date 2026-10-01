@@ -659,6 +659,27 @@ void Style::vrule(Context &ctx, int x, int y, int h, int alpha) const {
 }
 
 //*******************************
+// dPadParts
+//*******************************
+// the owner's rule ("a button combination is one button" does not cover the d-pad): "Left+Right" or "Up+Down" are
+// separate arrows, each its own chip. Returns the parts of such a key, or {} when it is any other key.
+static vector<string> dPadParts(const string &key) {
+    vector<string> parts;
+    size_t from = 0;
+    while (true) {
+        const size_t plus = key.find_first_of("+/", from);
+        const string part = key.substr(from, plus == string::npos ? string::npos : plus - from);
+        if (part != "Left" && part != "Right" && part != "Up" && part != "Down")
+            return {};
+        parts.push_back(part);
+        if (plus == string::npos)
+            break;
+        from = plus + 1;
+    }
+    return parts.size() > 1 ? parts : vector<string>();
+}
+
+//*******************************
 // Style::parseHints
 //*******************************
 vector<HintItem> Style::parseHints(const string &line, string &status) {
@@ -681,16 +702,26 @@ vector<HintItem> Style::parseHints(const string &line, string &status) {
         size_t next = line.find("|@", end + 1);
         string text = line.substr(end + 1, next == string::npos ? string::npos : next - end - 1);
         string label = trim(text);
-        pendingIcons.push_back(icon);
+        // d-pad directions are never a combination: "Left+Right" is the two arrows, each its own chip
+        const vector<string> arrows = dPadParts(icon);
+        if (arrows.empty())
+            pendingIcons.push_back(icon);
+        else
+            pendingIcons.insert(pendingIcons.end(), arrows.begin(), arrows.end());
         if (label.empty() || label == "/") {
             pos = next;
             continue;
         }
-        // the two keys of a Left/Right, L1/R1 or L2/R2 pair are one chip, however the line wrote them
-        if (pendingIcons.size() == 2 && ((pendingIcons[0] == "Left" && pendingIcons[1] == "Right") ||
-                                         (pendingIcons[0] == "L1" && pendingIcons[1] == "R1") ||
-                                         (pendingIcons[0] == "L2" && pendingIcons[1] == "R2")))
-            pendingIcons = {pendingIcons[0] + "+" + pendingIcons[1]};
+        // the two shoulder keys of an L1/R1 or L2/R2 pair are one chip, however the line wrote them - and an
+        // ALTERNATIVE ("L2/R2": either button pages), never the combination "L2+R2" (both held together); a marker
+        // that is itself "L2+R2" never gets here as two icons and stays the combination
+        // (either order: "R1/L1" keeps the order the line wrote)
+        if (pendingIcons.size() == 2 &&
+            ((pendingIcons[0] == "L1" && pendingIcons[1] == "R1") ||
+             (pendingIcons[0] == "R1" && pendingIcons[1] == "L1") ||
+             (pendingIcons[0] == "L2" && pendingIcons[1] == "R2") ||
+             (pendingIcons[0] == "R2" && pendingIcons[1] == "L2")))
+            pendingIcons = {pendingIcons[0] + "/" + pendingIcons[1]};
         items.push_back({pendingIcons, label});
         pendingIcons.clear();
         pos = next;
@@ -704,11 +735,11 @@ vector<HintItem> Style::parseHints(const string &line, string &status) {
 // Style::button / buttons
 //*******************************
 // the parts of a combined key: "Left+Right" -> {"Left", "Right"}; one part for a plain key
-static vector<string> keyParts(const string &key) {
+static vector<string> keyParts(const string &key, char separator = '+') {
     vector<string> parts;
     size_t from = 0;
     while (true) {
-        const size_t plus = key.find('+', from);
+        const size_t plus = key.find(separator, from);
         if (plus == string::npos || plus == 0 || plus + 1 >= key.size()) {
             parts.push_back(key.substr(from));
             break;
@@ -726,11 +757,16 @@ struct Style::PictureChip {
     int iconsW = 0; // the pictures and the gaps between them
     int chipW = 0;
     int chipH = 0;
+    int slashW = 0; // an alternative ("L2/R2"): the width of the small "/" between two pictures, else 0
 };
 
 bool Style::pictureChip(Context &ctx, const string &key, int height, PictureChip &out) const {
-    out.parts = keyParts(key);
+    // "A+B" is a combination, "A/B" an alternative (either button): both are one chip, the alternative with a small
+    // "/" between its pictures
+    const bool alternative = key.find('+') == string::npos && key.find('/') != string::npos;
+    out.parts = keyParts(key, alternative ? '/' : '+');
     out.icons.clear();
+    out.slashW = 0;
     if (out.parts.size() < 2)
         return false;
     out.iconsW = 0;
@@ -744,6 +780,10 @@ bool Style::pictureChip(Context &ctx, const string &key, int height, PictureChip
         tallest = max(tallest, icon.size().h);
     }
     out.iconsW += PictureGap * static_cast<int>(out.parts.size() - 1);
+    if (alternative) {
+        out.slashW = ctx.textWidth(ctx.font(FontRole::Small), "/");
+        out.iconsW += (out.slashW + PictureGap) * static_cast<int>(out.parts.size() - 1); // the "/" and its gap
+    }
     out.chipW = out.iconsW + 2 * ChipPadding;
     out.chipH = min(height, max(ChipHeight, tallest + 4));
     return true;
@@ -757,6 +797,13 @@ static int chipWidthFor(int textW) {
 }
 
 int Style::button(Context &ctx, const string &key, int x, int y, int height) const {
+    const vector<string> arrows = dPadParts(key);
+    if (!arrows.empty()) { // "Left+Right": two arrows side by side, each a button of its own
+        const int startX = x;
+        for (const string &arrow : arrows)
+            x += button(ctx, arrow, x, y, height) + 6;
+        return x - 6 - startX;
+    }
     ableem::Texture icon = ctx.glyph(key);
     ableem::Renderer &renderer = ctx.renderer();
     // every button - picture or chip - is centred on the line y + height / 2 (an odd remainder rounds the same way)
@@ -808,6 +855,10 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
             }
             renderer.copy(pic.icons[i], nullptr, &dst);
             ix += s.w + PictureGap;
+            if (pic.slashW > 0 && i + 1 < pic.icons.size()) { // an alternative: a small "/" between the pictures
+                ctx.drawText(font, "/", ix, chip.y + (chipH - font.lineHeight()) / 2, secondary);
+                ix += pic.slashW + PictureGap;
+            }
         }
         return chipW;
     }
@@ -817,6 +868,13 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
 }
 
 int Style::buttonWidth(Context &ctx, const string &key, int height) const {
+    const vector<string> arrows = dPadParts(key);
+    if (!arrows.empty()) {
+        int w = -6;
+        for (const string &arrow : arrows)
+            w += buttonWidth(ctx, arrow, height) + 6;
+        return w;
+    }
     ableem::Texture icon = ctx.glyph(key);
     if (icon.valid())
         return icon.size().w;
@@ -869,7 +927,7 @@ int Style::layoutButtons(Context &ctx, const string &markers, int x, int y, int 
 // Style::footer
 //*******************************
 int Style::hintRank(const string &icon) {
-    const size_t plus = icon.find('+');
+    const size_t plus = icon.find_first_of("+/"); // a combination or an alternative ranks as its first key
     if (plus != string::npos && plus > 0)
         return hintRank(icon.substr(0, plus));
     // the d-pad (G5r3) comes right after the face buttons, before Start/Select and the shoulders
