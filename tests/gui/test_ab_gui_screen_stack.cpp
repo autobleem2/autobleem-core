@@ -102,7 +102,7 @@ TEST_CASE("a frame is clear, the drawing, present - one present") {
         display.calls.push_back("draw");
         depthInside = stack.depth();
     });
-    CHECK(display.calls == vector<string>{"clear", "draw", "present"});
+    CHECK(display.calls == vector<string>{"color", "clear", "draw", "present"});
     CHECK(depthInside == 1);
     CHECK(stack.depth() == 0);
     CHECK(stack.presented() == 1);
@@ -111,7 +111,7 @@ TEST_CASE("a frame is clear, the drawing, present - one present") {
     display.calls.clear();
     stack.frame([&]() { display.calls.push_back("draw"); });
     stack.frame([&]() { display.calls.push_back("draw"); });
-    CHECK(display.calls == vector<string>{"clear", "draw", "present", "clear", "draw", "present"});
+    CHECK(display.calls == vector<string>{"color", "clear", "draw", "present", "color", "clear", "draw", "present"});
     CHECK(stack.presented() == 3);
 }
 
@@ -122,10 +122,11 @@ TEST_CASE("a frame with a clear colour sets it before the clear") {
     CHECK(display.calls == vector<string>{"color", "clear", "draw", "present"});
     CHECK(sameColor(display.lastColor, Color(1, 2, 3, 4)));
 
-    // without one the colour is left alone: the clear is in whatever the draw colour is (a screen's own clear())
+    // without one the clear is opaque black, never whatever colour the last drawing left set (BUG-31)
     display.calls.clear();
     stack.frame([]() {});
-    CHECK(display.calls == vector<string>{"clear", "present"});
+    CHECK(display.calls == vector<string>{"color", "clear", "present"});
+    CHECK(sameColor(display.lastColor, Color(0, 0, 0, 255)));
 }
 
 TEST_CASE("an empty drawing is still a frame: a black screen shown once") {
@@ -152,7 +153,7 @@ TEST_CASE("a frame started inside another's drawing is a frame of its own; the o
         display.calls.push_back("outer again");
     });
     CHECK(display.calls ==
-          vector<string>{"clear", "outer", "color", "clear", "inner", "present", "outer again", "present"});
+          vector<string>{"color", "clear", "outer", "color", "clear", "inner", "present", "outer again", "present"});
     CHECK(depthInner == 2);
     CHECK(depthAfterInner == 1);
     CHECK(stack.depth() == 0);
@@ -163,13 +164,13 @@ TEST_CASE("a drawing that throws is not presented, and the stack is between fram
     Recorder display;
     ScreenStack stack(display);
     CHECK_THROWS_AS(stack.frame([]() { throw runtime_error("drawing failed"); }), runtime_error);
-    CHECK(display.calls == vector<string>{"clear"});
+    CHECK(display.calls == vector<string>{"color", "clear"});
     CHECK(stack.depth() == 0);
     CHECK(stack.presented() == 0);
 
     // the next frame is a whole one
     stack.frame([]() {});
-    CHECK(display.calls == vector<string>{"clear", "clear", "present"});
+    CHECK(display.calls == vector<string>{"color", "clear", "color", "clear", "present"});
     CHECK(stack.presented() == 1);
 }
 
@@ -203,6 +204,28 @@ TEST_CASE("on a renderer: one presented frame per frame(), none while drawing, t
     stack.frame([&]() { stack.frame([]() {}); });
     CHECK(renderer.frameCount() == before + 3);
     CHECK(stack.presented() == 3);
+}
+
+TEST_CASE("on a renderer: a frame without a clear colour is cleared black, not in the colour left set (BUG-31)") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    ableem::Renderer &renderer = g.gui->renderer();
+    ScreenStack stack(renderer);
+    renderer.setDrawColor(Color(255, 255, 255, 255)); // what a hint's text or a bar's fill leaves behind
+    renderer.setFrameCache(true);
+    const unsigned long asked = renderer.requestFrameCopy();
+    stack.frame([]() {});
+    vector<unsigned char> pixels;
+    int w = 0, h = 0, pitch = 0;
+    const unsigned long copied = renderer.copyLastFrame(pixels, w, h, pitch);
+    renderer.setFrameCache(false);
+    if (copied <= asked || w != 320 || h != 240) {
+        MESSAGE("test_ab_gui_screen_stack: no frame copy from this renderer - pixel checks skipped");
+        return;
+    }
+    CHECK(rgbEqual(pixelAt(pixels, pitch, 5, 5), Color(0, 0, 0, 255)));
+    CHECK(rgbEqual(pixelAt(pixels, pitch, 160, 120), Color(0, 0, 0, 255)));
 }
 
 TEST_CASE("on a renderer: the DebugDriver's frame copy is the stack's frame - the clear under the drawing") {
@@ -258,4 +281,31 @@ TEST_CASE("on a renderer: captureNextFrame() before a frame captures that frame 
     }
     CHECK(rgbEqual(pixelAt(pixels, pitch, 20, 20), white));
     CHECK(rgbEqual(pixelAt(pixels, pitch, 200, 200), red));
+}
+
+TEST_CASE("on a renderer: a captured frame cleared transparent reaches the window as opaque black (BUG-31)") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    ableem::Renderer &renderer = g.gui->renderer();
+    ScreenStack stack(renderer);
+    renderer.setFrameCache(true);
+    const unsigned long asked = renderer.requestFrameCopy();
+    renderer.captureNextFrame();
+    stack.frame(Color(0, 0, 0, 0), [&]() {
+        renderer.setDrawColor(Color(255, 255, 255, 255));
+        renderer.fillRect(Rect(0, 0, 40, 40));
+    });
+    vector<unsigned char> pixels;
+    int w = 0, h = 0, pitch = 0;
+    const unsigned long copied = renderer.copyLastFrame(pixels, w, h, pitch);
+    renderer.setFrameCache(false);
+    if (copied <= asked || w != 320 || h != 240 || !renderer.lastCapture().valid()) {
+        MESSAGE("test_ab_gui_screen_stack: no frame copy or capture from this renderer - pixel checks skipped");
+        return;
+    }
+    const size_t at = static_cast<size_t>(200) * pitch + static_cast<size_t>(200) * 4;
+    CHECK(rgbEqual(pixelAt(pixels, pitch, 200, 200), Color(0, 0, 0, 255)));
+    CHECK(pixels[at + 3] == 255); // alpha of the window copy
+    CHECK(rgbEqual(pixelAt(pixels, pitch, 20, 20), Color(255, 255, 255, 255)));
 }

@@ -538,7 +538,7 @@ TEST_CASE("render(): prepareFrame() comes before the frame, outside it; false dr
     ctx.setStack(stack);
     PreparingScreen screen(*g.gui, ctx, log);
     screen.render();
-    CHECK(joined(log.steps) == "prepare clear draw present");
+    CHECK(joined(log.steps) == "prepare colour 0,0,0,255 clear draw present");
     log.steps.clear();
     screen.frameWanted = false;
     screen.render();

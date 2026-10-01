@@ -8,6 +8,8 @@ namespace abgui {
 
 namespace {
 
+const ableem::Color OpaqueBlack(0, 0, 0, 255);
+
 // the program's display: the renderer's own clear and present, so a frame through the stack is exactly the
 // calls a screen made itself - the capture (captureNextFrame) and the DebugDriver's frame cache see it the same
 class RendererDisplay : public ScreenStack::Display {
@@ -59,8 +61,9 @@ void ScreenStack::run(const ableem::Color *clearColor, const Draw &draw) {
         tweens_->update();
     {
         DepthScope scope(depth_);
-        if (clearColor)
-            display_->setClearColor(*clearColor);
+        // never the colour a last drawing left set (BUG-31: a hint's white or a bar's fill cleared a frame white, and
+        // that frame was presented before anything opaque covered it): a screen that wants another says so
+        display_->setClearColor(clearColor ? *clearColor : OpaqueBlack);
         display_->clear();
         if (draw)
             draw();

@@ -437,6 +437,13 @@ Texture Renderer::lastCapture() const {
 }
 
 void Renderer::present() {
+    // never present while a render target (other than the capture's own, handled below) is current: the screen would
+    // show an unfilled frame
+    if (!impl->capturing && SDL_GetRenderTarget(impl->renderer) != nullptr) {
+        PLOG_WARNING << "Renderer::present with a render target set - back to the screen first";
+        SDL_SetRenderTarget(impl->renderer, nullptr);
+        impl->targetStack.clear();
+    }
     debugShot(impl->renderer);
     if (impl->capturing) {
         // the frame is in the target: it is the capture, and what the screen shows
@@ -444,13 +451,17 @@ void Renderer::present() {
         impl->captureRequested = false;
         SDL_SetRenderTarget(impl->renderer, nullptr);
         SDL_Texture *frame = static_cast<SDL_Texture *>(impl->captureTarget.native());
-        SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE); // opaque, as a read-back frame was
         Uint8 r = 0, g = 0, b = 0, a = 0;
         SDL_GetRenderDrawColor(impl->renderer, &r, &g, &b, &a);
         SDL_SetRenderDrawColor(impl->renderer, 0, 0, 0, 255);
         SDL_RenderClear(impl->renderer);
         SDL_SetRenderDrawColor(impl->renderer, r, g, b, a);
+        // the window copy blends over the opaque black clear, so a transparent pixel of the capture (the frame is
+        // cleared to transparent black) reaches the window as opaque black - an alpha-0 pixel on a Wayland ARGB
+        // surface shows what is behind the window (BUG-31)
+        SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND);
         SDL_RenderCopy(impl->renderer, frame, nullptr, nullptr);
+        SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE); // the capture stays opaque, as a read-back frame was
         impl->capture = impl->captureTarget;
         impl->captureTarget = Texture();
     } else if (impl->captureRequested) {

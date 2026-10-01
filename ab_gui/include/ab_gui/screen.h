@@ -28,8 +28,8 @@
 //
 // What a screen does before its frame (a refresh when due, a busy state ended, the pad read) goes in prepareFrame(),
 // outside the frame - so a busy frame it causes is a frame of its own, never one nested in the screen's; it returns
-// false when that closed the screen and no frame is to be drawn. A screen that clears to another colour than the
-// current draw colour (the launcher's carousel, the splash: transparent black) sets frameColor.
+// false when that closed the screen and no frame is to be drawn. A screen that clears to another colour than opaque
+// black (the launcher's carousel, the splash: transparent black) sets frameColor.
 //
 #pragma once
 
@@ -59,7 +59,7 @@ public:
     void render() final;
     // what the screen does before each frame, outside it; false = no frame this time (the screen closed in it)
     virtual bool prepareFrame() { return true; }
-    // the colour the frame is cleared to; unset: the renderer's current draw colour
+    // the colour the frame is cleared to; unset: opaque black (never the draw colour a last drawing left, BUG-31)
     OptionalColor frameColor;
     // ableem::GuiScreen::loop with the events through the ActionMap: until menuVisible goes false, every polled
     // event (a Quit closes the screen) to handle(), then a frame when the pacer says one is due
