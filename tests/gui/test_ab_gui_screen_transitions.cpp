@@ -521,6 +521,47 @@ TEST_CASE("ScreenStack: the next screen over nothing takes the start transition 
     p.screens().screenCloses(launcher);
 }
 
+namespace {
+// a screen that shows the renderer's last capture (what a backdrop snapshot holds)
+struct ShowsCapture : abgui::Screen {
+    ShowsCapture(GuiBase &gui, Context &ctx) : abgui::Screen(gui, ctx) {}
+    void draw() override {
+        const ableem::Texture capture = ctx.renderer().lastCapture();
+        if (capture.valid())
+            ctx.renderer().copy(capture, nullptr, nullptr);
+    }
+};
+} // namespace
+
+TEST_CASE("ScreenStack: a silent snapshot of the screen under a closing menu is that screen, not the transition") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    Program p(*g.gui);
+    Solid launcher(*g.gui, p.ctx, Color(0, 255, 0, 255));
+    launcher.declareTransitions(ScreenTransitions(Transition::none()));
+    Solid menu(*g.gui, p.ctx, Color(255, 0, 255, 255));
+    menu.declareTransitions(ScreenTransitions(Transition::pop()));
+    p.screens().screenOpens(launcher);
+    launcher.render();
+    p.screens().screenOpens(menu);
+    menu.render();
+    press(*g.gui);
+    CHECK(near(centreOf(*g.gui, menu), 255, 0, 255));
+    // the menu closes and the launcher, before drawing a frame of its own, takes its backdrop snapshot (the launcher's
+    // takeBackdrop before an extension): the capture is the launcher alone
+    p.screens().screenCloses(menu);
+    g.gui->renderer().captureNextFrameSilently();
+    launcher.render();
+    ShowsCapture shows(*g.gui, p.ctx);
+    p.screens().screenOpens(shows);
+    p.stack.finishTransition();
+    CHECK(near(centreOf(*g.gui, shows), 0, 255, 0));
+    p.screens().screenCloses(shows);
+    p.stack.finishTransition();
+    p.screens().screenCloses(launcher);
+}
+
 TEST_CASE("ScreenStack: a last screen's Fade out plays to black on its own frames before it is gone") {
     MaybeGui g;
     if (!g.available())
