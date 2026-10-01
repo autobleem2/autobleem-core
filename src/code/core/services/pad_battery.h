@@ -48,6 +48,18 @@ struct PadBatteryCharge {
 };
 
 //******************
+// PadBatteryFill
+//******************
+// The colour of the charge fill above the low-battery threshold: the theme's accent (its `selection` colour, the
+// one the carousel glow and the dialogs' rules take) when the theme sets one, white when it does not. Plain ints so
+// this header stays SDL-free; the launcher turns it into its renderer colour.
+struct PadBatteryFill {
+    int r = 255, g = 255, b = 255;
+
+    static PadBatteryFill accentOrWhite(bool accentSet, int accentR, int accentG, int accentB);
+};
+
+//******************
 // PadBatteryService
 //******************
 // Stateless but for the root it reads from: list() does a handful of small file reads, cheap enough to call

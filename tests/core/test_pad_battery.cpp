@@ -137,6 +137,27 @@ TEST_CASE("the charge rect of the code-drawn glyph is what the old drawing compu
     }
 }
 
+TEST_CASE("the charge fill takes the theme's accent colour, white when the theme sets none") {
+    PadBatteryFill accent = PadBatteryFill::accentOrWhite(true, 200, 30, 90);
+    CHECK(accent.r == 200);
+    CHECK(accent.g == 30);
+    CHECK(accent.b == 90);
+    // a set accent that happens to be black is still the accent
+    PadBatteryFill black = PadBatteryFill::accentOrWhite(true, 0, 0, 0);
+    CHECK(black.r == 0);
+    CHECK(black.g == 0);
+    CHECK(black.b == 0);
+    // no accent: white, whatever the rgb handed in
+    PadBatteryFill none = PadBatteryFill::accentOrWhite(false, 12, 34, 56);
+    CHECK(none.r == 255);
+    CHECK(none.g == 255);
+    CHECK(none.b == 255);
+    PadBatteryFill dflt;
+    CHECK(dflt.r == 255);
+    CHECK(dflt.g == 255);
+    CHECK(dflt.b == 255);
+}
+
 TEST_CASE("Env::padBatteryPowerSupplyDir is settable and restored by EnvFixture") {
     EnvFixture env;
     env.setPadBatteryPowerSupplyDir("/tmp/fake-power-supply");

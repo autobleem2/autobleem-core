@@ -131,6 +131,19 @@ PadBatteryCharge PadBatteryCharge::rect(int glyphX, int glyphY, int glyphWidth, 
 }
 
 //*******************************
+// PadBatteryFill::accentOrWhite
+//*******************************
+PadBatteryFill PadBatteryFill::accentOrWhite(bool accentSet, int accentR, int accentG, int accentB) {
+    PadBatteryFill fill; // white
+    if (accentSet) {
+        fill.r = accentR;
+        fill.g = accentG;
+        fill.b = accentB;
+    }
+    return fill;
+}
+
+//*******************************
 // PadBatteryService::list
 //*******************************
 vector<PadBatteryInfo> PadBatteryService::list() const {
