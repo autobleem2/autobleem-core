@@ -724,6 +724,15 @@ struct Style::PictureChip {
     int chipH = 0;
 };
 
+// a picture's drawn size: its own, scaled down in proportion when taller than `maxH` (two-row footers)
+static ableem::Size fitHeight(ableem::Size s, int maxH) {
+    if (maxH > 0 && s.h > maxH) {
+        s.w = max(1, (s.w * maxH + s.h / 2) / s.h);
+        s.h = maxH;
+    }
+    return s;
+}
+
 bool Style::pictureChip(Context &ctx, const string &key, int height, PictureChip &out) const {
     out.parts = keyParts(key);
     out.icons.clear();
@@ -744,15 +753,6 @@ bool Style::pictureChip(Context &ctx, const string &key, int height, PictureChip
     out.chipW = out.iconsW + 2 * ChipPadding;
     out.chipH = min(height, max(ChipHeight, tallest + 4));
     return true;
-}
-
-// a picture's drawn size: its own, scaled down in proportion when taller than `maxH` (two-row footers)
-static ableem::Size fitHeight(ableem::Size s, int maxH) {
-    if (maxH > 0 && s.h > maxH) {
-        s.w = max(1, (s.w * maxH + s.h / 2) / s.h);
-        s.h = maxH;
-    }
-    return s;
 }
 
 // a text chip's size: the common ChipHeight, at least ChipMinWidth wide
