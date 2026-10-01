@@ -35,7 +35,8 @@ class TextRenderer;
 //******************
 // SurpriseSprites
 //******************
-// Loaded once by GuiAbout::init() and handed to every render() call - Texture is a cheap shared handle.
+// Loaded once by GuiAbout::loadGameAssets() (the first Start) and handed to every render() call - Texture is a cheap
+// shared handle.
 struct SurpriseSprites {
     ableem::Texture ship;
     ableem::Texture enemy1;
@@ -55,7 +56,8 @@ struct SurpriseSprites {
 //******************
 // SurpriseSounds
 //******************
-// Loaded once by GuiAbout::init() and assigned to SurpriseGame::sounds before the first update().
+// Loaded once by GuiAbout::loadGameAssets() (the first Start) and assigned to SurpriseGame::sounds before the first
+// update().
 struct SurpriseSounds {
     ableem::Sound playerShoot;
     ableem::Sound enemyShoot;

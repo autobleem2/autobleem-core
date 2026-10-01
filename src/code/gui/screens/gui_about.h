@@ -52,6 +52,7 @@ private:
     bool duckedThemeMusic = false;
     bool playingFallbackMusic = false;
 
+    void loadGameAssets(); // on the first Start, not at open
     void drawCredits();
     void renderSurprise();
 };
