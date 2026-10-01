@@ -385,6 +385,12 @@ TEST_CASE("an alternative (L2/R2: either button) is one key of its own, never th
     CHECK(pair[0].icons == std::vector<std::string>{"L2/R2"});
     CHECK(pair[1].icons == std::vector<std::string>{"L1/R1"});
     CHECK(pair[2].icons == std::vector<std::string>{"L1/R1"}); // a marker written as the alternative stays so
+    // the other order is the same alternative, in the order written (the button guide's "R1/L1 quick scroll")
+    const std::vector<HintItem> reversed = Style::parseHints("|@R1| / |@L1| Quick scroll  |@R2||@L2| Page", status);
+    REQUIRE(reversed.size() == 2);
+    CHECK(reversed[0].icons == std::vector<std::string>{"R1/L1"});
+    CHECK(reversed[1].icons == std::vector<std::string>{"R2/L2"});
+    CHECK(Style::hintRank("R1/L1") < Style::hintRank("L2/R2"));
     // the combination - both held together - stays as written, and is another key
     const std::vector<HintItem> chord = Style::parseHints("|@L2+R2| System", status);
     REQUIRE(chord.size() == 1);

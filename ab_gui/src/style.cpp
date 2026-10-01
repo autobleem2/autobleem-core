@@ -715,8 +715,12 @@ vector<HintItem> Style::parseHints(const string &line, string &status) {
         // the two shoulder keys of an L1/R1 or L2/R2 pair are one chip, however the line wrote them - and an
         // ALTERNATIVE ("L2/R2": either button pages), never the combination "L2+R2" (both held together); a marker
         // that is itself "L2+R2" never gets here as two icons and stays the combination
+        // (either order: "R1/L1" keeps the order the line wrote)
         if (pendingIcons.size() == 2 &&
-            ((pendingIcons[0] == "L1" && pendingIcons[1] == "R1") || (pendingIcons[0] == "L2" && pendingIcons[1] == "R2")))
+            ((pendingIcons[0] == "L1" && pendingIcons[1] == "R1") ||
+             (pendingIcons[0] == "R1" && pendingIcons[1] == "L1") ||
+             (pendingIcons[0] == "L2" && pendingIcons[1] == "R2") ||
+             (pendingIcons[0] == "R2" && pendingIcons[1] == "L2")))
             pendingIcons = {pendingIcons[0] + "/" + pendingIcons[1]};
         items.push_back({pendingIcons, label});
         pendingIcons.clear();
