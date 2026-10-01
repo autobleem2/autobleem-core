@@ -42,7 +42,12 @@ const std::vector<Stop> &stopsOf(SurpriseHud::Gradient gradient) {
                                           {1.0f, Color(120, 220, 255)}};
     static const std::vector<Stop> pink = {
         {0.0f, Color(255, 220, 250)}, {0.5f, Color(255, 60, 190)}, {1.0f, Color(150, 20, 120)}};
+    // the lives counter's blink frame (the mockup's red digit: light top, #eb323c, dark foot)
+    static const std::vector<Stop> red = {
+        {0.0f, Color(255, 210, 210)}, {0.5f, Color(235, 50, 60)}, {1.0f, Color(150, 20, 30)}};
     switch (gradient) {
+    case SurpriseHud::Gradient::Red:
+        return red;
     case SurpriseHud::Gradient::Gold:
         return gold;
     case SurpriseHud::Gradient::Ice:
