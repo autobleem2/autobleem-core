@@ -4,46 +4,61 @@
 
 #include "gui_about.h"
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 #include "../gui.h"
 #include "../../core/services/environment.h"
 
 const std::string GuiAbout::HeadingMark = "";
 
+namespace {
+
+// AB_TRACE_ABOUT=1: the ms of each stage of opening the About screen and of the game's first frames, to the log
+// (off by default; one getenv, read once)
+bool traceAbout() {
+    static const bool on = [] {
+        const char *v = getenv("AB_TRACE_ABOUT");
+        return v && *v && strcmp(v, "0") != 0;
+    }();
+    return on;
+}
+
+// logs the time since its construction, under `name`, when it goes out of scope
+class AboutStage {
+public:
+    explicit AboutStage(const char *stageName) : name(stageName), begin(std::chrono::steady_clock::now()) {}
+    ~AboutStage() {
+        if (traceAbout()) {
+            const double ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
+            PLOG_INFO << "AB_TRACE_ABOUT " << name << ": " << ms << " ms";
+        }
+    }
+    AboutStage(const AboutStage &) = delete;
+    AboutStage &operator=(const AboutStage &) = delete;
+
+private:
+    const char *name;
+    std::chrono::steady_clock::time_point begin;
+};
+
+} // namespace
+
 void GuiAbout::init() {
+    AboutStage whole("init total");
     std::shared_ptr<Gui> gui(Gui::getInstance());
     fx.renderer = &renderer;
     // the credits' small font: the launcher's medium face (about.ttf, an SST copy, went with the Sony fonts)
-    font = Fonts::openNewSharedCachedFont(Env::getPathToFontsDir() + sep + "OpenSans-Medium.ttf", 15, renderer);
-    logo = ableem::Texture::loadFile(renderer, Env::getWorkingPath() + sep + "ablogo.png");
-
-    string sdir = Env::getWorkingPath() + sep + "surprise_game" + sep;
-    sprites.ship = ableem::Texture::loadFile(renderer, sdir + "ship.png");
-    sprites.enemy1 = ableem::Texture::loadFile(renderer, sdir + "enemy1.png");
-    sprites.enemy2 = ableem::Texture::loadFile(renderer, sdir + "enemy2.png");
-    sprites.ufo = ableem::Texture::loadFile(renderer, sdir + "ufo.png");
-    sprites.laserPlayer = ableem::Texture::loadFile(renderer, sdir + "laser_player.png");
-    sprites.laserPierce = ableem::Texture::loadFile(renderer, sdir + "laser_pierce.png");
-    sprites.laserEnemy = ableem::Texture::loadFile(renderer, sdir + "laser_enemy.png");
-    sprites.powerupRapid = ableem::Texture::loadFile(renderer, sdir + "powerup_rapid.png");
-    sprites.powerupSpread = ableem::Texture::loadFile(renderer, sdir + "powerup_spread.png");
-    sprites.powerupPower = ableem::Texture::loadFile(renderer, sdir + "powerup_power.png");
-    sprites.powerupLife = ableem::Texture::loadFile(renderer, sdir + "powerup_life.png");
-    sprites.explosion = ableem::Texture::loadFile(renderer, sdir + "explosion.png");
-    sprites.sky = ableem::Texture::loadFile(renderer, sdir + "sky.jpg"); // missing = the old dark backdrop
-
-    // the game's own lettering: Oxanium (a language the theme's fonts cannot draw gets the CJK font for all of it);
-    // the credits' face stands in for a file that did not open
-    hud.fonts.load(renderer, Env::getPathToFontsDir(), Fonts::cjkFontFor(app.config().inifile.values["language"]));
-    hud.fallback = font;
-
-    game.sounds.playerShoot = ableem::Sound::load(sdir + "sfx_player_shoot.ogg");
-    game.sounds.enemyShoot = ableem::Sound::load(sdir + "sfx_enemy_shoot.ogg");
-    game.sounds.explosion = ableem::Sound::load(sdir + "sfx_explosion.ogg");
-    game.sounds.playerHit = ableem::Sound::load(sdir + "sfx_player_hit.ogg");
-    game.sounds.waveClear = ableem::Sound::load(sdir + "sfx_wave_clear.ogg");
-    game.sounds.powerup = ableem::Sound::load(sdir + "sfx_powerup.ogg");
-    surpriseMusic = ableem::Music::load(sdir + "music.ogg");
+    {
+        AboutStage stage("init credits font");
+        font = Fonts::openNewSharedCachedFont(Env::getPathToFontsDir() + sep + "OpenSans-Medium.ttf", 15, renderer);
+    }
+    {
+        AboutStage stage("init logo");
+        logo = ableem::Texture::loadFile(renderer, Env::getWorkingPath() + sep + "ablogo.png");
+    }
 
     savedHighScore = Strings::toInt(app.config().inifile.values["surprisehighscore"]);
     game.seedHighScore(savedHighScore);
@@ -51,6 +66,56 @@ void GuiAbout::init() {
     if (credits.empty()) {
         credits = autobleemCredits();
         foot = autobleemFoot();
+    }
+}
+
+//*******************************
+// GuiAbout::loadGameAssets
+//*******************************
+// the surprise game's sprites, lettering and sounds: loaded when Start first asks for the game, not when About opens
+// (they were ~90% of its open time and the credits draw none of them); a later Start finds them there
+void GuiAbout::loadGameAssets() {
+    if (sprites.ship.valid())
+        return;
+    AboutStage whole("START load game assets");
+    string sdir = Env::getWorkingPath() + sep + "surprise_game" + sep;
+    {
+        AboutStage spritesStage("init sprites (12 png)");
+        sprites.ship = ableem::Texture::loadFile(renderer, sdir + "ship.png");
+        sprites.enemy1 = ableem::Texture::loadFile(renderer, sdir + "enemy1.png");
+        sprites.enemy2 = ableem::Texture::loadFile(renderer, sdir + "enemy2.png");
+        sprites.ufo = ableem::Texture::loadFile(renderer, sdir + "ufo.png");
+        sprites.laserPlayer = ableem::Texture::loadFile(renderer, sdir + "laser_player.png");
+        sprites.laserPierce = ableem::Texture::loadFile(renderer, sdir + "laser_pierce.png");
+        sprites.laserEnemy = ableem::Texture::loadFile(renderer, sdir + "laser_enemy.png");
+        sprites.powerupRapid = ableem::Texture::loadFile(renderer, sdir + "powerup_rapid.png");
+        sprites.powerupSpread = ableem::Texture::loadFile(renderer, sdir + "powerup_spread.png");
+        sprites.powerupPower = ableem::Texture::loadFile(renderer, sdir + "powerup_power.png");
+        sprites.powerupLife = ableem::Texture::loadFile(renderer, sdir + "powerup_life.png");
+        sprites.explosion = ableem::Texture::loadFile(renderer, sdir + "explosion.png");
+        {
+            AboutStage stage("init sky.jpg");
+            sprites.sky = ableem::Texture::loadFile(renderer, sdir + "sky.jpg"); // missing = the old dark backdrop
+        }
+    }
+
+    // the game's own lettering: Oxanium (a language the theme's fonts cannot draw gets the CJK font for all of it);
+    // the credits' face stands in for a file that did not open
+    {
+        AboutStage stage("init Oxanium fonts");
+        hud.fonts.load(renderer, Env::getPathToFontsDir(), Fonts::cjkFontFor(app.config().inifile.values["language"]));
+        hud.fallback = font;
+    }
+
+    {
+        AboutStage soundsStage("init sounds+music");
+        game.sounds.playerShoot = ableem::Sound::load(sdir + "sfx_player_shoot.ogg");
+        game.sounds.enemyShoot = ableem::Sound::load(sdir + "sfx_enemy_shoot.ogg");
+        game.sounds.explosion = ableem::Sound::load(sdir + "sfx_explosion.ogg");
+        game.sounds.playerHit = ableem::Sound::load(sdir + "sfx_player_hit.ogg");
+        game.sounds.waveClear = ableem::Sound::load(sdir + "sfx_wave_clear.ogg");
+        game.sounds.powerup = ableem::Sound::load(sdir + "sfx_powerup.ogg");
+        surpriseMusic = ableem::Music::load(sdir + "music.ogg");
     }
 }
 
@@ -267,6 +332,9 @@ void GuiAbout::loop() {
     menuVisible = true;
     surpriseMode = false;
     crossHeld = false;
+    // AB_TRACE_ABOUT: the first frames after each change of what the screen shows (credits, title, game)
+    const char *traceMode = "credits";
+    int traceFrames = 0;
     while (menuVisible) {
         unsigned int ticks = gui->platform().ticks();
 
@@ -281,7 +349,16 @@ void GuiAbout::loop() {
                 savedHighScore = game.currentHighScore();
         }
 
-        render();
+        if (traceAbout() && traceFrames < 5) {
+            const auto begin = std::chrono::steady_clock::now();
+            render();
+            const double ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
+            PLOG_INFO << "AB_TRACE_ABOUT first frames, " << traceMode << " #" << traceFrames << ": " << ms << " ms";
+            traceFrames++;
+        } else {
+            render();
+        }
         Event e;
         while (gui->input().poll(e)) {
             // this is for pc Only
@@ -299,11 +376,17 @@ void GuiAbout::loop() {
                 if (e.button == Button::Start) {
                     if (surpriseMode) {
                         // on the title Start begins the game, in the game it restarts it
+                        traceMode = "game";
+                        traceFrames = 0;
                         game.reset(ticks);
                         crossHeld = false;
                         app.audio().cursor.play();
                     } else {
+                        loadGameAssets();
+                        ticks = gui->platform().ticks(); // the load took a while: the title starts from now
                         surpriseMode = true;
+                        traceMode = "title";
+                        traceFrames = 0;
                         crossHeld = false;
                         game.reset(ticks);
                         game.showTitle();
