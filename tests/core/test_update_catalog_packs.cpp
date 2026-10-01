@@ -4,6 +4,7 @@
 #include <ableem/engine/update_catalog.h>
 
 using namespace std;
+using ableem::ChannelCatalog;
 using ableem::PackCatalog;
 using ableem::PscRetroArchCatalog;
 using ableem::ReleaseCatalog;
@@ -71,4 +72,88 @@ TEST_CASE("PscRetroArchCatalog reads psc/retroarch/latest.json") {
     CHECK(ra.zip.size == 5129326);
     CHECK(ra.manifestUrl == "https://site/psc/retroarch/v1.22.2-4/manifest.json");
     CHECK_FALSE(PscRetroArchCatalog().parse(R"({"version": "v1"})"));
+}
+
+//******************
+// ChannelCatalog: channels.json
+//******************
+namespace {
+const char *const ChannelsJson = R"json({"version": 1, "channels": [
+    {"id": "release", "label": "Release", "index": "releases/latest.json", "images": "pc/images/release.json", "unstable": false},
+    {"id": "testing", "label": "Testing", "index": "releases/unstable.json", "unstable": false},
+    {"id": "nightly", "label": "Nightly", "index": "nightly/latest.json", "unstable": true},
+    {"id": "preview", "label": "Preview (feature-x)", "index": "preview/latest.json", "unstable": true}]})json";
+}
+
+TEST_CASE("ChannelCatalog reads channels.json in its order, with the labels and the unstable flags") {
+    ChannelCatalog c;
+    REQUIRE(c.parse(ChannelsJson));
+    REQUIRE(c.channels.size() == 4);
+    CHECK(c.channels[0].id == "release");
+    CHECK(c.channels[0].images == "pc/images/release.json");
+    CHECK_FALSE(c.channels[0].unstable);
+    CHECK(c.channels[3].id == "preview");
+    CHECK(c.channels[3].label == "Preview (feature-x)");
+    CHECK(c.channels[3].unstable);
+    REQUIRE(c.find("nightly"));
+    CHECK(c.find("nightly")->index == "nightly/latest.json");
+    CHECK_FALSE(c.find("beta"));
+}
+
+TEST_CASE("ChannelCatalog skips what is unusable and refuses a file with nothing usable") {
+    ChannelCatalog c;
+    // a duplicate, an id-less entry, a path out of the site and an absolute URL are dropped; a leading / is trimmed
+    REQUIRE(c.parse(R"({"channels": [{"id": "a", "index": "/a/latest.json"}, {"id": "a", "index": "x.json"},
+        {"index": "y.json"}, {"id": "b", "index": "../etc/passwd"}, {"id": "c", "index": "http://evil/x.json"},
+        {"id": "d", "index": "d/latest.json", "images": "http://evil/i.json"}, "junk", {"id": "e", "index": "e.json"}]})"));
+    REQUIRE(c.channels.size() == 2);
+    CHECK(c.channels[0].index == "a/latest.json");
+    CHECK(c.channels[0].label == "a");
+    CHECK(c.channels[1].id == "e");
+
+    ChannelCatalog kept = ChannelCatalog::builtIn();
+    CHECK_FALSE(kept.parse("not json"));
+    CHECK_FALSE(kept.parse(R"({"channels": []})"));
+    CHECK_FALSE(kept.parse(R"({"channels": [{"id": "x"}]})"));
+    CHECK_FALSE(kept.parse(R"([1, 2])"));
+    CHECK(kept.channels.size() == 3); // a failed parse leaves what it had
+}
+
+TEST_CASE("ChannelCatalog: the built-in three are what the programs always knew") {
+    const ChannelCatalog b = ChannelCatalog::builtIn();
+    REQUIRE(b.channels.size() == 3);
+    CHECK(b.channels[2].unstable);
+    CHECK(b.lists("release", false) == vector<string>{"releases/latest.json"});
+    CHECK(b.lists("testing", false) == vector<string>{"releases/unstable.json", "releases/latest.json"});
+    CHECK(b.lists("nightly", false) ==
+          vector<string>{"nightly/latest.json", "releases/unstable.json", "releases/latest.json"});
+    CHECK(b.lists("nightly", true) ==
+          vector<string>{"nightly/latest.json", "pc/images/testing.json", "pc/images/release.json"});
+    CHECK(b.lists("testing", true) == vector<string>{"pc/images/testing.json", "pc/images/release.json"});
+}
+
+TEST_CASE("ChannelCatalog: a channel falls back through the stable ones before it, never through an unstable one") {
+    ChannelCatalog c;
+    REQUIRE(c.parse(ChannelsJson));
+    CHECK(c.lists("preview", false) ==
+          vector<string>{"preview/latest.json", "releases/unstable.json", "releases/latest.json"});
+    CHECK(c.lists("preview", true) ==
+          vector<string>{"preview/latest.json", "releases/unstable.json", "pc/images/release.json"});
+    CHECK(c.lists("nightly", false).front() == "nightly/latest.json");
+    CHECK(c.lists("unknown", false).empty());
+}
+
+TEST_CASE("ChannelCatalog: the default channel follows how the program was built, else the first listed") {
+    ChannelCatalog c;
+    REQUIRE(c.parse(ChannelsJson));
+    CHECK(c.defaultFor("v2.0.0", false, false) == "release");
+    CHECK(c.defaultFor("v2.0.0-alpha2", false, true) == "testing");
+    CHECK(c.defaultFor("v2.0.0-alpha2-6-gba7365c", true, true) == "nightly");
+    CHECK(c.defaultFor("preview-feature-ab-gui-a880c7", true, false) == "preview");
+    // the wanted channel is not listed (no preview on the site, a site without nightly): the first entry
+    ChannelCatalog small;
+    REQUIRE(small.parse(R"({"channels": [{"id": "release", "index": "releases/latest.json"}]})"));
+    CHECK(small.defaultFor("preview-x", true, false) == "release");
+    CHECK(small.defaultFor("v2.0.0-1-gabc", true, false) == "release");
+    CHECK(ChannelCatalog().defaultFor("v2.0.0", false, false).empty());
 }

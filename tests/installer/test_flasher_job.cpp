@@ -239,3 +239,33 @@ TEST_CASE("each channel finds its image, standing in for one another as the inst
     CHECK_FALSE(FlasherJob::channelImage(Site, "testing", empty, tmp.path() + "/scratch", ci, error));
     CHECK(error.find("no PC stick image") != string::npos);
 }
+
+TEST_CASE("a channel from channels.json is read through the lists it names, in the run too") {
+    TempDir tmp("flasher_listed");
+    FakeSite site;
+    const string imageSha = Sha256::ofFile(dataDir + "/test_image.xz");
+    tmp.writeFile("preview.json", R"({"version": "preview-x-abc123", "images": {"pc-i386": )" +
+                                      imageEntry("autobleem-preview-x-abc123-pcusb-i386.img.xz", imageSha) + "}}");
+    site.files[string(Site) + "/preview/latest.json"] = tmp.path() + "/preview.json";
+    site.files[string(Site) + "/img/autobleem-preview-x-abc123-pcusb-i386.img.xz"] = dataDir + "/test_image.xz";
+
+    ChannelImage ci;
+    string error;
+    // a name the built-in lists do not know has nothing; with its list it has
+    CHECK_FALSE(FlasherJob::channelImage(Site, "preview", site, tmp.path() + "/scratch", ci, error));
+    REQUIRE_MESSAGE(FlasherJob::channelImage(Site, "preview", {"preview/latest.json", "pc/images/release.json"}, site,
+                                             tmp.path() + "/scratch", ci, error),
+                    error);
+    CHECK(ci.version == "preview-x-abc123");
+    CHECK(ci.channel == "preview");
+
+    MemoryDisk disk(16u << 20);
+    Recorder rec;
+    FlashOptions o;
+    o.channel = "preview";
+    o.channelIndexes = {"preview/latest.json"};
+    o.repoUrl = Site;
+    o.scratchDir = tmp.path() + "/scratch";
+    REQUIRE_MESSAGE(FlasherJob::run(o, site, disk, rec, nullptr, error), error);
+    CHECK(diskHoldsImage(disk));
+}

@@ -190,6 +190,104 @@ bool PscRetroArchCatalog::load(const string &path) {
 }
 
 //*******************************
+// ChannelCatalog
+//*******************************
+namespace {
+
+// a path on the site: relative, no way out of it
+bool sitePath(const string &path) {
+    return !path.empty() && path.find("..") == string::npos && path.find("://") == string::npos &&
+           path.find('\\') == string::npos;
+}
+
+string trimSlash(const string &path) {
+    size_t at = 0;
+    while (at < path.size() && path[at] == '/')
+        at++;
+    return path.substr(at);
+}
+
+} // namespace
+
+bool ChannelCatalog::parse(const string &jsonText) {
+    json j = parseOrNull(jsonText);
+    if (!j.is_object())
+        return false;
+    auto list = j.find("channels");
+    if (list == j.end() || !list->is_array())
+        return false;
+    vector<ChannelEntry> found;
+    for (const json &item : *list) {
+        if (!item.is_object())
+            continue;
+        ChannelEntry e;
+        e.id = str(item, "id");
+        e.index = trimSlash(str(item, "index"));
+        e.images = trimSlash(str(item, "images"));
+        e.label = str(item, "label", e.id);
+        auto un = item.find("unstable");
+        e.unstable = un != item.end() && un->is_boolean() && un->get<bool>();
+        bool dup = false;
+        for (const ChannelEntry &o : found)
+            dup = dup || o.id == e.id;
+        if (e.id.empty() || dup || !sitePath(e.index) || (!e.images.empty() && !sitePath(e.images)))
+            continue;
+        found.push_back(e);
+    }
+    if (found.empty())
+        return false;
+    channels = found;
+    return true;
+}
+
+ChannelCatalog ChannelCatalog::builtIn() {
+    ChannelCatalog c;
+    c.channels = {{"release", "Release", "releases/latest.json", "pc/images/release.json", false},
+                  {"testing", "Testing", "releases/unstable.json", "pc/images/testing.json", false},
+                  {"nightly", "Nightly", "nightly/latest.json", "", true}};
+    return c;
+}
+
+const ChannelEntry *ChannelCatalog::find(const string &id) const {
+    for (const ChannelEntry &e : channels)
+        if (e.id == id)
+            return &e;
+    return nullptr;
+}
+
+vector<string> ChannelCatalog::lists(const string &id, bool images) const {
+    vector<string> out;
+    size_t at = 0;
+    while (at < channels.size() && channels[at].id != id)
+        at++;
+    if (at == channels.size())
+        return out;
+    auto add = [&](const ChannelEntry &e) {
+        const string &path = images && !e.images.empty() ? e.images : e.index;
+        for (const string &o : out)
+            if (o == path)
+                return;
+        out.push_back(path);
+    };
+    add(channels[at]);
+    for (size_t i = at; i-- > 0;)
+        if (!channels[i].unstable)
+            add(channels[i]);
+    return out;
+}
+
+string ChannelCatalog::wantedFor(const string &version, bool betweenTags, bool preRelease) {
+    return version.rfind("preview-", 0) == 0 ? "preview" : betweenTags ? "nightly" : preRelease ? "testing" : "release";
+}
+
+string ChannelCatalog::defaultFor(const string &version, bool betweenTags, bool preRelease) const {
+    const string want = wantedFor(version, betweenTags, preRelease);
+    if (find(want))
+        return want;
+    return channels.empty() ? string() : channels.front().id;
+}
+
+//*******************************
 // UpdateState
 //*******************************
 bool UpdateState::load(const string &path) {

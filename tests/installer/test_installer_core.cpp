@@ -716,6 +716,22 @@ TEST_CASE("a channel: the stick package and UpdateRoms come from that channel's 
         CHECK(fx.site.count("nightly/latest.json") == 1);
         CHECK(fx.tmp.readFile("stick/VERSION") == "v2.0.0-pre0-abc1234\n");
     }
+    SUBCASE("a channel from channels.json is read through the lists it names, the run included") {
+        fx.site.files[string(Site) + "/preview/latest.json"] = fx.site.files[string(Site) + "/releases/unstable.json"];
+        fx.site.files.erase(string(Site) + "/releases/unstable.json");
+        ChannelRelease rel;
+        string error;
+        CHECK_FALSE(InstallerJob::channelRelease(Site, "preview", fx.site, fx.tmp.path(), rel, error));
+        REQUIRE_MESSAGE(InstallerJob::channelRelease(Site, "preview", {"preview/latest.json", "releases/latest.json"},
+                                                     fx.site, fx.tmp.path(), rel, error),
+                        error);
+        CHECK(rel.channel == "preview");
+        CHECK(rel.version == "v2.0.0-pre0-abc1234");
+        fx.options.channel = "preview";
+        fx.options.channelIndexes = {"preview/latest.json"};
+        REQUIRE_MESSAGE(fx.run(error), error);
+        CHECK(fx.out.said("the preview channel: AutoBleem v2.0.0-pre0-abc1234"));
+    }
     SUBCASE("release: a list without a stick package is no install") {
         fx.options.channel = "release"; // the fixture's latest.json carries only an old "psc" zip
         string error;

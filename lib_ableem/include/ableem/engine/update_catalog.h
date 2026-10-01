@@ -3,6 +3,8 @@
 // the engine because the app includes no JSON library of its own.
 //
 //   releases/latest.json, releases/unstable.json   -> ReleaseCatalog   (tools/repo_index.py writes them)
+//   channels.json                                  -> ChannelCatalog  (tools/repo_index.py writes it: the release
+//                                                     channels the PC installers offer)
 //   rpi/retroarch/latest.json                      -> RetroArchCatalog
 //   <usb>/System/update.json                       -> UpdateState     (last check, skipped/postponed)
 //   <usb>/System/Updates/pending.json              -> PendingUpdate   (what the launcher downloaded and
@@ -12,6 +14,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace ableem {
 
@@ -42,6 +45,39 @@ struct ReleaseCatalog {
     bool load(const std::string &path);
     const UpdateFile *fileFor(const std::string &platformKey) const;
     const UpdateFile *imageFor(const std::string &arch) const;
+};
+
+//******************
+// ChannelCatalog
+//******************
+// The release channels the site offers the PC installers, channels.json: [{id, label, index, images, unstable}] in
+// the order to show them (stable first). `index` is the channel's own latest.json (the stick package: a release.json
+// shape); `images` is where the PC stick image is when that is another file (pc/images/release.json), else `index`.
+// A channel that has no package of its own stands in with the stable channels listed before it (lists()).
+struct ChannelEntry {
+    std::string id;
+    std::string label;
+    std::string index;
+    std::string images;
+    bool unstable = false;
+};
+
+struct ChannelCatalog {
+    std::vector<ChannelEntry> channels;
+
+    // false (and nothing kept) for a file that is not a channels.json or lists no usable channel
+    bool parse(const std::string &jsonText);
+    // the three channels the programs knew before channels.json: release, testing, nightly
+    static ChannelCatalog builtIn();
+    const ChannelEntry *find(const std::string &id) const;
+    // the lists a channel reads, in order: its own, then the stable channels before it, nearest first. `images`
+    // asks for the PC stick images' files. Empty for an id the catalog does not list.
+    std::vector<std::string> lists(const std::string &id, bool images) const;
+    // the channel id a program built as `version` wants: "preview-..." -> preview, between tags -> nightly, a
+    // pre-release tag -> testing, else release
+    static std::string wantedFor(const std::string &version, bool betweenTags, bool preRelease);
+    // that channel when the catalog lists it, else its first channel ("" when empty)
+    std::string defaultFor(const std::string &version, bool betweenTags, bool preRelease) const;
 };
 
 //******************
