@@ -32,10 +32,10 @@ Config::Config() {
     if (inifile.values["language"] == "") {
         inifile.values["language"] = "English";
     }
-    // the shipped config.ini says ab2 too; this is for a config.ini that is missing or came back empty (an
+    // the shipped config.ini says ab2.0.0 too; this is for a config.ini that is missing or came back empty (an
     // unclean unmount on the first Pi boot did that) - the launcher should still come up in its own theme
     if (inifile.values["theme"] == "") {
-        inifile.values["theme"] = "ab2";
+        inifile.values["theme"] = "ab2.0.0";
     }
     if (inifile.values["aspect"] == "") {
         inifile.values["aspect"] = "false";

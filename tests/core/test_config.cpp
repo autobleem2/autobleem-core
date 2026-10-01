@@ -130,7 +130,7 @@ TEST_CASE("Config keeps what the file already says") {
     CHECK(config.inifile.values["aspect"] == "false");
 }
 
-TEST_CASE("Config over an empty config.ini gives the shipped defaults, ab2 included") {
+TEST_CASE("Config over an empty config.ini gives the shipped defaults, ab2.0.0 included") {
     // what an unclean unmount left on the first Pi boot: the file exists and holds nothing
     TempDir tmp("config_empty");
     EnvFixture env;
@@ -139,10 +139,10 @@ TEST_CASE("Config over an empty config.ini gives the shipped defaults, ab2 inclu
 
     Config config;
 
-    CHECK(config.inifile.values["theme"] == "ab2");
+    CHECK(config.inifile.values["theme"] == "ab2.0.0");
     CHECK(config.inifile.values["language"] == "English");
     // and the file written back is a real one again (atomically: no .tmp left behind)
-    CHECK(tmp.readFile("config.ini").find("Theme=ab2") != std::string::npos);
+    CHECK(tmp.readFile("config.ini").find("Theme=ab2.0.0") != std::string::npos);
     CHECK_FALSE(DirEntry::exists(tmp.path() + sep + "config.ini.tmp"));
 }
 

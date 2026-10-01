@@ -80,7 +80,7 @@ string makePackage(TempDir &tmp, const string &version) {
     TarBuilder b;
     b.dir("./Autobleem").dir("./Autobleem/bin").dir("./Autobleem/bin/autobleem");
     b.file("./Autobleem/bin/autobleem/autobleem-gui", "ELF " + version, 0755);
-    b.file("./Autobleem/bin/autobleem/config.ini", "theme=ab2\nlanguage=English\n");
+    b.file("./Autobleem/bin/autobleem/config.ini", "theme=ab2.0.0\nlanguage=English\n");
     b.file("./Autobleem/bin/autobleem/platform/roms_systems.cfg",
            "# the systems\nNintendo - Nintendo Entertainment System\n  \nSega - Mega Drive - Genesis\r\n");
     b.file("./Autobleem/bin/emu/pcsx-ab", "ELF pcsx", 0755);
