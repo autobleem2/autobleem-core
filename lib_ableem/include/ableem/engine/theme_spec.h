@@ -394,4 +394,10 @@ bool readThemeSpinner(const std::string &path, ThemeSpinner &out);
 // the ring of dots - when there is no block or neither file exists (logged).
 bool loadThemeSpinner(const std::string &dir, ThemeSpinner &out);
 
+// The top-level `"hidden": true` of a theme.json: the theme stays installed and loads when a config.ini names it, but
+// the Options theme picker (and its random pick) does not list it. Not merged from the default theme. False for a
+// missing file, bad JSON, a missing key or a non-boolean value. Never throws.
+bool readThemeHidden(const std::string &path);
+bool loadThemeHidden(const std::string &dir); // the theme.json in `dir`
+
 } // namespace ableem

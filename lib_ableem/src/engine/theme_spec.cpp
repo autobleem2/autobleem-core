@@ -1114,4 +1114,25 @@ bool loadThemeSpinner(const string &dir, ThemeSpinner &out) {
     return true;
 }
 
+//*******************************
+// readThemeHidden / loadThemeHidden
+//*******************************
+bool readThemeHidden(const string &path) {
+    ifstream in(path, ifstream::binary);
+    if (!in.is_open())
+        return false;
+    json j;
+    try {
+        in >> j;
+    } catch (const json::exception &) {
+        return false;
+    }
+    const json *hidden = child(j, "hidden");
+    return hidden && hidden->is_boolean() && hidden->get<bool>();
+}
+
+bool loadThemeHidden(const string &dir) {
+    return readThemeHidden(dir + sep + "theme.json");
+}
+
 } // namespace ableem

@@ -1242,3 +1242,25 @@ TEST_CASE("loadThemeInactiveAlphas and the test theme's inactive block (tests/da
     REQUIRE(spec.load(string(AB_TEST_DATA_DIR) + "/frame-test-theme/theme.json"));
     CHECK(spec.launcher.colors.row.color.set);
 }
+
+TEST_CASE("readThemeHidden: only a top-level boolean true hides a theme") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("hidden.json", "{ \"format\": 1, \"hidden\": true }");
+    tmp.writeFile("shown.json", "{ \"format\": 1, \"hidden\": false }");
+    tmp.writeFile("none.json", "{ \"format\": 1 }");
+    tmp.writeFile("text.json", "{ \"hidden\": \"true\" }");
+    tmp.writeFile("nested.json", "{ \"launcher\": { \"hidden\": true } }");
+    tmp.writeFile("bad.json", "{ nope");
+    CHECK(ableem::readThemeHidden(tmp.at("hidden.json")));
+    for (const char *file : {"shown.json", "none.json", "text.json", "nested.json", "bad.json", "missing.json"})
+        CHECK_FALSE_MESSAGE(ableem::readThemeHidden(tmp.at(file)), file);
+}
+
+TEST_CASE("loadThemeHidden: reads the theme.json in the folder") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("a/theme.json", "{ \"hidden\": true }");
+    tmp.writeFile("b/theme.json", "{ }");
+    CHECK(ableem::loadThemeHidden(tmp.at("a")));
+    CHECK_FALSE(ableem::loadThemeHidden(tmp.at("b")));
+    CHECK_FALSE(ableem::loadThemeHidden(tmp.at("none")));
+}
