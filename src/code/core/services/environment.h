@@ -94,9 +94,9 @@ struct Environment : ableem::Environment {
     static bool retroArchInstalled();
 
     // PlatformConfig's download_command: how this platform fetches a URL to a file (%u, %o), "" when it
-    // cannot - what OnlineAssets runs
+    // cannot - what OnlineAssets runs; %r (the launcher's own folder, where abfetch is) replaced
     static void setDownloadCommand(const std::string &command);
-    static const std::string &downloadCommand();
+    static std::string downloadCommand();
     // PlatformConfig's repo_url and update_download_command: the download repository the online update
     // checks, and the command that fetches a package from it (no short timeout); "" = no update here.
     // retroarch_catalog is where that repository lists this platform's RetroArch builds
