@@ -37,6 +37,29 @@ constexpr int Style::StyleAlpha;
 constexpr int InactiveAlphas::Unset;
 
 namespace {
+// the widest a footer's status can get on this list: in a counter "n/m" the n becomes m (the list's last row), then
+// every digit an 8 - "Game 3/24" reserves "Game 88/88". The footer leaves the hints that much room whatever row is
+// selected, so their size never jumps while the list scrolls and the counter is never covered (UIREV-3, the owner)
+string widestStatus(const string &status) {
+    string out = status;
+    for (size_t slash = out.find('/'); slash != string::npos; slash = out.find('/', slash + 1)) {
+        size_t start = slash;
+        while (start > 0 && isdigit(static_cast<unsigned char>(out[start - 1])))
+            start--;
+        size_t end = slash + 1;
+        while (end < out.size() && isdigit(static_cast<unsigned char>(out[end])))
+            end++;
+        if (start == slash || end == slash + 1)
+            continue; // not a counter
+        out.replace(start, slash - start, out.substr(slash + 1, end - slash - 1));
+        slash = start + (end - slash - 1);
+    }
+    for (char &c : out)
+        if (isdigit(static_cast<unsigned char>(c)))
+            c = '8';
+    return out;
+}
+
 string upper(const string &key) {
     string name = key;
     for (char &c : name)
@@ -982,7 +1005,7 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
     if (!status.empty()) {
         const int w = ctx.textWidth(statusFont, status);
         ctx.drawText(statusFont, status, right - w, y, description);
-        right -= w + FooterStatusGap;
+        right -= max(w, ctx.textWidth(statusFont, widestStatus(status))) + FooterStatusGap;
     }
     // the largest font the hints fit in, then the gap between them; `iconsOnly` drops every hint's own label
     // (not the button chip's own text, e.g. "L2" - only h.label) once even the smallest font does not fit,
