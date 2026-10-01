@@ -112,25 +112,45 @@ void GuiAbout::drawCredits() {
 
     fx.render(gui->platform().ticks());
 
-    // the logo and the version at the top, centred
-    ableem::Rect rect;
-    rect.x = SCREEN_WIDTH / 2 - 100;
-    rect.y = 5;
-    rect.w = 200;
-    rect.h = 141;
-    renderer.copy(logo, nullptr, &rect);
+    // UIREV-38: the screen draws in the theme's fonts and colour roles (no fixed fonts: every language's longest
+    // heading and foot line fits - measured, see the design) and the credits sit on the theme's `panel` frame
     PanelStyle style = gui->panelStyle();
-    Fonts &fonts = ThemeAssets::fixedFonts();
+    Fonts &fonts = gui->assets().themeFonts;
+    const ableem::Font &versionFont = fonts.atSize(FONT_MED, 16);
+    const ableem::Font &lineFont = fonts.atSize(FONT_MED, 17);
+    const ableem::Font &headingFont = fonts.atSize(FONT_BOLD, 18);
+    const ableem::Font &textFont = fonts.atSize(FONT_MED, 15);
     auto centred = [&](const ableem::Font &f, const string &text, int y, const ableem::Color &color) {
         gui->text().renderText_WithColor(f, text, SCREEN_WIDTH / 2 - gui->text().textWidth(f, text) / 2, y, color,
                                          XALIGN_LEFT);
     };
-    centred(fonts[FONT_15_BOLD], Env::productVersion(), rect.y + rect.h + 4, style.secondary);
-    centred(fonts[FONT_15_BOLD], _("This version is brought to you by screemer. The AutoBleem team is back, baby!"),
-            rect.y + rect.h + 24, style.secondary);
 
-    // the credits as sections - a heading (the launcher's bold) and its names wrapped under it - flowed
-    // into two columns, the left one first
+    // the logo, centred: the theme's launcher.logo 400 wide (its height by its own aspect); a theme without one
+    // keeps the old ablogo.png as it was
+    int logoBottom;
+    if (gui->launcherLogo().valid() && gui->launcherLogoRect().w > 0) {
+        const ableem::Rect &place = gui->launcherLogoRect();
+        const int logoWidth = 400;
+        ableem::Rect rect;
+        rect.w = logoWidth;
+        rect.h = max(1, logoWidth * place.h / place.w);
+        rect.x = (SCREEN_WIDTH - rect.w) / 2;
+        rect.y = 30;
+        renderer.copy(gui->launcherLogo(), nullptr, &rect);
+        logoBottom = rect.y + rect.h;
+    } else {
+        ableem::Rect rect(SCREEN_WIDTH / 2 - 100, 5, 200, 141);
+        renderer.copy(logo, nullptr, &rect);
+        logoBottom = rect.y + rect.h;
+    }
+    const int versionTop = logoBottom + 14;
+    centred(versionFont, Env::productVersion(), versionTop, style.secondary);
+    const int creditTop = versionTop + 24;
+    centred(lineFont, _("This version is brought to you by screemer. The AutoBleem team is back, baby!"), creditTop,
+            style.text);
+
+    // the credits as sections - a heading and its names wrapped under it - in two columns on the panel; the
+    // sections stay in order and the split is where the taller column is shortest
     struct Section {
         string heading;
         vector<string> lines;
@@ -144,43 +164,57 @@ void GuiAbout::drawCredits() {
         else
             sections.push_back({"", {s}});
     }
-    const ableem::Font &headingFont = fonts[FONT_20_BOLD];
-    const ableem::Font &textFont = fonts[FONT_15_BOLD];
-    const int columnGap = 40;
-    const int columnWidth = (SCREEN_WIDTH - 2 * 80 - columnGap) / 2;
-    const int top = rect.y + rect.h + 54;
-    const int footTop = SCREEN_HEIGHT - PanelStyle::FooterHeight - 24 - static_cast<int>(foot.size()) * 20;
+    const int panelX = 64, panelWidth = SCREEN_WIDTH - 2 * panelX;
+    const int columnGap = 48, columnWidth = 520;
+    const int panelTop = creditTop + 36;
     auto sectionHeight = [&](const Section &sec) {
         int h = sec.heading.empty() ? 0 : 26;
         for (const string &line : sec.lines)
             h += max(20, gui->text().wrappedHeight(textFont, line, columnWidth));
         return h + 14;
     };
-    int total = 0;
+    vector<int> heights;
     for (const Section &sec : sections)
-        total += sectionHeight(sec);
-    int x = 80, y = top;
-    int placed = 0;
-    for (const Section &sec : sections) {
-        // the right column starts once the left holds half the height
-        if (x == 80 && placed >= (total + 1) / 2) {
-            x = 80 + columnWidth + columnGap;
-            y = top;
+        heights.push_back(sectionHeight(sec));
+    int total = 0;
+    for (int h : heights)
+        total += h;
+    // the first section of the right column (== size: no right column)
+    size_t split = sections.size();
+    int columnHeight = total;
+    int before = 0;
+    for (size_t k = 1; k < sections.size(); k++) {
+        before += heights[k - 1];
+        const int taller = max(before, total - before);
+        if (taller < columnHeight) {
+            columnHeight = taller;
+            split = k;
+        }
+    }
+    const int panelHeight = columnHeight + 34;
+    style.drawFrame(gui->uiContext(), "panel", ableem::Rect(panelX, panelTop, panelWidth, panelHeight));
+
+    const int leftX = panelX + 32;
+    int x = leftX, y = panelTop + 24;
+    for (size_t i = 0; i < sections.size(); i++) {
+        const Section &sec = sections[i];
+        if (i == split) {
+            x = leftX + columnWidth + columnGap;
+            y = panelTop + 24;
         }
         if (!sec.heading.empty()) {
-            gui->text().renderText_WithColor(headingFont, sec.heading, x, y, style.text, XALIGN_LEFT);
+            gui->text().renderText_WithColor(headingFont, sec.heading, x, y, style.heading, XALIGN_LEFT);
             y += 26;
         }
         for (const string &line : sec.lines)
-            y += max(20, gui->text().renderWrappedText(textFont, line, x, y, columnWidth, style.secondary));
+            y += max(20, gui->text().renderWrappedText(textFont, line, x, y, columnWidth, style.hint));
         y += 14;
-        placed += sectionHeight(sec);
     }
 
-    // the foot: support, copyright, licence - centred above the footer
-    y = footTop;
+    // the foot: support, copyright, licence - centred under the panel
+    y = panelTop + panelHeight + 22;
     for (const string &line : foot) {
-        centred(textFont, line, y, style.text);
+        centred(textFont, line, y, style.secondary);
         y += 20;
     }
 
