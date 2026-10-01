@@ -104,7 +104,8 @@ private:
     // (the old picture), and the new screen's frames go into a second target while the transition runs: the stack
     // composes the two on the screen (alpha, offset, scale - no read-back from the GPU). When a screen closes, its last
     // picture is the old one and the screen under it is drawn live; a screen with nothing under it plays only a Fade
-    // (to black), on its own frames, before show() returns (the splash). The transition starts with the new screen's
+    // (to black), on its own frames, before show() returns; with any other out its last picture stays as the old one,
+    // which the next start transition comes in over (the launcher over the splash). The transition starts with the new screen's
     // first frame (while it loads, the old picture stays), runs as one non-ambient tween (the DebugDriver is busy - its
     // wait_ready waits it out), and a press finishes it at once (attach()'s press observer). Any other frame (a busy
     // job's, Gui's own) finishes it first. Off (setAnimations(false), the Options row): every change is instant and

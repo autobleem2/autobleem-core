@@ -213,13 +213,15 @@ void ScreenStack::Transitions::composeOnScreen(bool withOld, bool withNew) {
 void ScreenStack::Transitions::screenOpens(ableem::GuiScreen &screen) {
     const bool nothingUnder = open.empty();
     Transition t = stack.declared(screen).in;
-    if (nothingUnder && startSet) {
+    const bool startNow = nothingUnder && startSet;
+    if (startNow) {
         t = start; // once: the launcher after the splash
         startSet = false;
     }
     // what is on display now: the picture of a screen that closed, when nothing was presented since - else the screen
-    // under this one, drawn again
-    const bool oldOnDisplay = oldUsable() && oldAt == shown;
+    // under this one, drawn again. The start transition takes the last screen's picture even when a busy frame came in
+    // between (the launcher drops in over the splash's picture, never over black)
+    const bool oldOnDisplay = oldUsable() && (oldAt == shown || startNow);
     player.finish();
     Screen *under = nothingUnder ? nullptr : open.back().drawer;
     open.push_back(Open{&screen, nullptr});
@@ -248,6 +250,12 @@ void ScreenStack::Transitions::screenCloses(ableem::GuiScreen &screen) {
     }
     hasOld = false;
     const Transition t = stack.declared(screen).closing();
+    if (open.empty() && player.enabled() && drawer && t.kind != TransitionKind::Fade) {
+        // nothing under it and no fade: its last picture stays on display - kept as the old picture, so the next
+        // screen's start transition comes in over it (the launcher drops in over the splash)
+        captureOld(*drawer);
+        return;
+    }
     if (!player.enabled() || !t.moves())
         return;
     if (open.empty()) {
