@@ -72,11 +72,13 @@ struct HintGridLayout {
     int chipY[2] = {0, 0};
     int itemX[Columns] = {0, 0, 0, 0};    // where an item's buttons start, absolute
     int itemRoom[Columns] = {0, 0, 0, 0}; // the width an item may take (a label wider than this is elided)
+    int columnPad = 0;                    // GridColumnPad or GridTightPad: what a column has beyond its widest item
 };
 
 class HintBar {
 public:
     static constexpr int GridColumnPad = 22; // a column is its widest item + this
+    static constexpr int GridTightPad = 14;  // the padding when a language needs more than the roomy one allows
     static constexpr int GridItemInset = 12; // an item starts this far in from its column's left edge
 
     static constexpr int Inset = 16;            // the free room at each end of a line
@@ -103,10 +105,11 @@ public:
     static HintBarLayout layout(const ableem::Rect &bar, std::size_t count1, const HintMeasure &measure1,
                                 std::size_t count2, const HintMeasure &measure2);
 
-    // the fixed grid (UIREV-36): the largest of FontSizes at which the four columns (widest item + GridColumnPad each)
-    // fit the bar's width less Inset on each side, the spare width shared evenly; an item at its column's left +
-    // GridItemInset. When even the smallest size does not fit, the columns shrink in proportion and `itemRoom` says
-    // how much an item may take - the caller elides a label, never drops an item.
+    // the fixed grid (UIREV-36): the first of these steps at which the four columns (widest item + the step's padding
+    // each) fit the bar's width less Inset on each side - 22, 20, 18, 16, 14 px with GridColumnPad, then 14, 13, 12 px
+    // with GridTightPad - the spare width shared evenly; an item at its column's left + GridItemInset. When even the
+    // last step does not fit, the columns shrink in proportion and `itemRoom` says how much an item may take - the
+    // caller elides a label, never drops an item.
     static HintGridLayout layoutGrid(const ableem::Rect &bar, const HintGridMeasure &measure);
 };
 

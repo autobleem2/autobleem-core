@@ -357,7 +357,7 @@ TEST_CASE("the grid: the columns never leave the bar (the last item room ends in
 TEST_CASE("the grid: when even 14 px does not fit the columns shrink and an item is told its room") {
     const Rect bar(0, 600, 400, 72);
     const HintGridLayout g = HintBar::layoutGrid(bar, gridMeasure({400, 400, 400, 400}));
-    CHECK(g.fontSize == 14);
+    CHECK(g.fontSize == 12); // the last step
     for (int c = 0; c < HintGridLayout::Columns; c++)
         CHECK(g.itemRoom[c] >= 0);
     CHECK(g.itemX[3] + g.itemRoom[3] <= bar.w - HintBar::Inset);
@@ -379,4 +379,36 @@ TEST_CASE("the grid does not depend on the state: the same measure gives the sam
         CHECK(a.itemRoom[c] == b.itemRoom[c]);
     }
     CHECK(a.fontSize == b.fontSize);
+}
+
+TEST_CASE("the grid: a long German line on an 800 px bar keeps every label whole") {
+    // widths at 22 px of the widest item per column (the buttons, 6, and e.g. "In RetroArch spielen", "Angezeigte
+    // Spiele", "Zurueck zu den Spielen"): 14 px with the roomy padding needs 785 > 768, with the tight one 753
+    const Rect bar(464, 622, 800, 74);
+    const vector<int> widths = {300, 300, 200, 300};
+    const HintGridLayout g = HintBar::layoutGrid(bar, gridMeasure(widths));
+    CHECK(g.fontSize == 14);
+    CHECK(g.columnPad == HintBar::GridTightPad);
+    for (int c = 0; c < HintGridLayout::Columns; c++) {
+        CAPTURE(c);
+        CHECK(g.itemRoom[c] >= widths[static_cast<size_t>(c)] * 14 / 22); // the widest item fits: nothing elided
+    }
+    CHECK(g.itemX[3] + g.itemRoom[3] <= bar.x + bar.w - HintBar::Inset);
+}
+
+TEST_CASE("the grid: the font steps below 14 before any label would be elided") {
+    const Rect bar(464, 622, 800, 74);
+    // at 14 px four columns of 184 + the tight padding are 792 > 768; at 13 px 4 x 171 + 56 = 740 fits
+    const vector<int> widths = {290, 290, 290, 290};
+    const HintGridLayout g = HintBar::layoutGrid(bar, gridMeasure(widths));
+    CHECK(g.fontSize == 13);
+    for (int c = 0; c < HintGridLayout::Columns; c++)
+        CHECK(g.itemRoom[c] >= widths[static_cast<size_t>(c)] * g.fontSize / 22);
+}
+
+TEST_CASE("the grid: a roomy language keeps the roomy padding and its font") {
+    const Rect bar(464, 622, 800, 74);
+    const HintGridLayout g = HintBar::layoutGrid(bar, gridMeasure({150, 100, 120, 130}));
+    CHECK(g.fontSize == 22);
+    CHECK(g.columnPad == HintBar::GridColumnPad);
 }

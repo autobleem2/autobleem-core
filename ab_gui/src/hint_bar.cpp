@@ -18,6 +18,7 @@ constexpr int HintBar::TightestGap;
 constexpr int HintBar::ChipHeight;
 constexpr int HintBar::TwoLineMinHeight;
 constexpr int HintBar::GridColumnPad;
+constexpr int HintBar::GridTightPad;
 constexpr int HintBar::GridItemInset;
 constexpr int HintBar::FontSizeCount;
 constexpr int HintBar::FontSizes[HintBar::FontSizeCount];
@@ -109,14 +110,24 @@ HintGridLayout HintBar::layoutGrid(const ableem::Rect &bar, const HintGridMeasur
     out.oneLine = oneLineOnly(bar);
     const int room = bar.w - 2 * Inset;
 
-    int size = FontSizes[0];
+    // font size and column padding, in the order they are tried: the roomy padding down to 14 px, then the tight one
+    // down to 12 px
+    struct Step {
+        int size;
+        int pad;
+    };
+    static const Step steps[] = {{22, GridColumnPad}, {20, GridColumnPad}, {18, GridColumnPad}, {16, GridColumnPad},
+                                 {14, GridColumnPad}, {14, GridTightPad},  {13, GridTightPad},  {12, GridTightPad}};
+    int size = steps[0].size;
+    int pad = steps[0].pad;
     int widths[columns] = {0, 0, 0, 0};
     int total = 0;
-    for (int candidate : FontSizes) {
-        size = candidate;
+    for (const Step &step : steps) {
+        size = step.size;
+        pad = step.pad;
         total = 0;
         for (int c = 0; c < columns; c++) {
-            widths[c] = measure.columnWidth(size, c) + GridColumnPad;
+            widths[c] = measure.columnWidth(size, c) + pad;
             total += widths[c];
         }
         if (total <= room)
@@ -132,11 +143,12 @@ HintGridLayout HintBar::layoutGrid(const ableem::Rect &bar, const HintGridMeasur
     const int spare = max(0, room - total);
 
     out.fontSize = size;
+    out.columnPad = pad;
     int x = bar.x + Inset;
     for (int c = 0; c < columns; c++) {
         const int width = widths[c] + spare / columns + (c < spare % columns ? 1 : 0);
         out.itemX[c] = x + GridItemInset;
-        out.itemRoom[c] = max(0, width - GridColumnPad);
+        out.itemRoom[c] = max(0, width - pad);
         x += width;
     }
 
