@@ -17,6 +17,7 @@
 #include <ableem/ui/types.h>
 
 #include <string>
+#include <vector>
 
 namespace abgui {
 
@@ -39,8 +40,18 @@ public:
     // a compact panel for a short list: CompactWidth wide, the header, `rows` (at least one) rows of `font`, a
     // CompactRowGap and the footer band tall, centred on the Context's canvas
     static Panel compact(const Context &ctx, int rows, const ableem::Font &font);
-    // the compact panel's rect on a canvasWidth x canvasHeight canvas, rows `lineHeight` tall (the pure form)
-    static ableem::Rect compactRect(const Style &style, int rows, int lineHeight, int canvasWidth, int canvasHeight);
+    // ... as wide as `footerLine`'s footer needs in one row (compactWidth)
+    static Panel compact(Context &ctx, int rows, const ableem::Font &font, const std::string &footerLine);
+    // the compact panel's rect on a canvasWidth x canvasHeight canvas, rows `lineHeight` tall, `width` wide (the pure
+    // form)
+    static ableem::Rect compactRect(const Style &style, int rows, int lineHeight, int canvasWidth, int canvasHeight,
+                                    int width = CompactWidth);
+    // a footer is ONE row and the window makes room for it: max(CompactWidth, what the footer needs at the Row font),
+    // at most the full panel's width (the canvas less the margin each side) - never below CompactWidth. The pure
+    // form takes the width the footer needs (Style::footerWidth).
+    static int compactWidth(const Style &style, int footerNeeds, int canvasWidth);
+    static int compactWidth(Context &ctx, const std::string &footerLine);
+    static int compactWidth(Context &ctx, const std::vector<HintItem> &hints, const std::string &status);
 
     const ableem::Rect &rect() const { return rect_; }
     const Style &style() const { return style_; }

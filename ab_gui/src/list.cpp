@@ -122,8 +122,8 @@ const char *List::screenName() {
 }
 
 string List::entryStatus() {
-    return ctx.translate("Entry") + " " + to_string(selected + 1) + "/" + to_string(size()) + "    |@L1|/|@R1| " +
-           ctx.translate("First/last") + "   |@L2|/|@R2| " + ctx.translate("Page") + "   |@X| " +
+    return ctx.translate("Entry") + " " + to_string(selected + 1) + "/" + to_string(size()) + "    |@L1+R1| " +
+           ctx.translate("First/last") + "   |@L2+R2| " + ctx.translate("Page") + "   |@X| " +
            ctx.translate("Select") + "   |@O| " + ctx.translate("Back") + " |";
 }
 
@@ -200,7 +200,7 @@ void List::draw() {
     ctx.drawBackdrop();
     const bool compact = isCompact(size(), selectionRightEdge);
     if (compact)
-        ctx.setCompactPanel(Panel::compact(ctx, size(), font).rect());
+        ctx.setCompactPanel(Panel::compact(ctx, size(), font, statusText()).rect());
     const Panel panel = currentPanel();
     panel.sheet(ctx);
     yoffset = panel.header(ctx, titleText());

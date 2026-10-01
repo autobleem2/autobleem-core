@@ -126,7 +126,7 @@ public:
     // A short list (Memory Cards, the memory card picker, a tool's menu) draws in a compact panel centred
     // on the screen instead of the full one, like a dialog: 800 wide, as tall as its `rows` rows of `font`
     // plus the header and the footer. Set before the screen draws, cleared after present()
-    void setCompactPanel(int rows, const ableem::Font &font);
+    void setCompactPanel(int rows, const ableem::Font &font, const std::string &footerLine = std::string());
     void clearCompactPanel();
     // the part of it between the header and the footer band: where a screen's rows go
     ableem::Rect classicContent();

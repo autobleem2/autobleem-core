@@ -317,7 +317,8 @@ void Gui::splash(const string &message) {
 void Gui::loadAssets(bool reloadMusic) {
     text_.clearTextCache(); // keyed on the font handles about to be replaced
     assets_.load();
-    frames_.assign(themeFrames(AppBase::get().theme().loadedPath(), AppBase::get().theme().launcher())); // the textures load when first drawn
+    frames_.assign(themeFrames(AppBase::get().theme().loadedPath(),
+                               AppBase::get().theme().launcher())); // the textures load when first drawn
     icons_.assign(ThemeAssets::iconSpecs(AppBase::get().theme()), ThemeAssets::iconHalo(AppBase::get().theme()));
     // the theme's own launcher logo and resume picture mask (G5q, G5s): nothing when it sets none
     const ableem::ThemeLauncherLogo logo = ableem::loadThemeLogo(AppBase::get().theme().loadedPath());
@@ -585,8 +586,9 @@ static abgui::Panel currentPanel(Gui &gui) {
     return abgui::Panel(gui.classicPanel(), gui.uiContext().style());
 }
 
-void Gui::setCompactPanel(int rows, const ableem::Font &font) {
-    uiContext_.setCompactPanel(abgui::Panel::compact(uiContext_, rows, font).rect());
+// a footer is one row and the window makes room for it: the panel is as wide as footerLine's footer needs
+void Gui::setCompactPanel(int rows, const ableem::Font &font, const std::string &footerLine) {
+    uiContext_.setCompactPanel(abgui::Panel::compact(uiContext_, rows, font, footerLine).rect());
 }
 
 void Gui::clearCompactPanel() {

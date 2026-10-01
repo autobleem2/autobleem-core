@@ -151,6 +151,28 @@ TEST_CASE("a compact panel is where the old Gui put it, on the 1280x720 canvas a
     CHECK(same(Panel::compactRect(style, 30, 33, 1280, 720), Rect(240, -203, 800, 1126)));
 }
 
+TEST_CASE("a compact panel widens for a long footer - one row, never two: max(800, what it needs), at most the canvas "
+          "less the margins") {
+    const Style style;
+    // a footer that fits 800 changes nothing
+    CHECK(Panel::compactWidth(style, 0, 1280) == 800);
+    CHECK(Panel::compactWidth(style, 800, 1280) == 800);
+    // a longer one widens the panel to it
+    CHECK(Panel::compactWidth(style, 1000, 1280) == 1000);
+    // ... up to the full panel's width (1280 - 2 x 40), then it stays (the footer then shrinks its font / labels)
+    CHECK(Panel::compactWidth(style, 1200, 1280) == 1200);
+    CHECK(Panel::compactWidth(style, 5000, 1280) == 1280 - 2 * style.margin);
+    CHECK(Panel::compactWidth(style, 5000, 1920) == 1920 - 2 * style.margin);
+    // a canvas narrower than the compact width never shrinks it
+    CHECK(Panel::compactWidth(style, 5000, 600) == 800);
+    // the rect keeps the rows' height and is centred at the wider width
+    const Rect wide = Panel::compactRect(style, 3, 33, 1280, 720, 1000);
+    CHECK(wide.w == 1000);
+    CHECK(wide.x == 140);
+    CHECK(wide.y == 242);
+    CHECK(wide.h == 235);
+}
+
 TEST_CASE("without a provider the panel is the canvas inset by the margin, and the backdrop a black clear") {
     MaybeGui g;
     if (!g.available())

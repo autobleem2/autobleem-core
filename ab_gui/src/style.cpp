@@ -30,6 +30,8 @@ constexpr int Style::ChipHeight;
 constexpr int Style::ChipMinWidth;
 constexpr int Style::ChipPadding;
 constexpr int Style::PictureGap;
+constexpr int Style::FooterGap;
+constexpr int Style::FooterStatusGap;
 constexpr int Style::OwnAlpha;
 constexpr int Style::StyleAlpha;
 constexpr int InactiveAlphas::Unset;
@@ -684,9 +686,11 @@ vector<HintItem> Style::parseHints(const string &line, string &status) {
             pos = next;
             continue;
         }
-        // the two arrows of a Left/Right pair are one chip, however the line wrote them
-        if (pendingIcons.size() == 2 && pendingIcons[0] == "Left" && pendingIcons[1] == "Right")
-            pendingIcons = {"Left+Right"};
+        // the two keys of a Left/Right, L1/R1 or L2/R2 pair are one chip, however the line wrote them
+        if (pendingIcons.size() == 2 && ((pendingIcons[0] == "Left" && pendingIcons[1] == "Right") ||
+                                         (pendingIcons[0] == "L1" && pendingIcons[1] == "R1") ||
+                                         (pendingIcons[0] == "L2" && pendingIcons[1] == "R2")))
+            pendingIcons = {pendingIcons[0] + "+" + pendingIcons[1]};
         items.push_back({pendingIcons, label});
         pendingIcons.clear();
         pos = next;
@@ -724,15 +728,6 @@ struct Style::PictureChip {
     int chipH = 0;
 };
 
-// a picture's drawn size: its own, scaled down in proportion when taller than `maxH` (two-row footers)
-static ableem::Size fitHeight(ableem::Size s, int maxH) {
-    if (maxH > 0 && s.h > maxH) {
-        s.w = max(1, (s.w * maxH + s.h / 2) / s.h);
-        s.h = maxH;
-    }
-    return s;
-}
-
 bool Style::pictureChip(Context &ctx, const string &key, int height, PictureChip &out) const {
     out.parts = keyParts(key);
     out.icons.clear();
@@ -745,9 +740,8 @@ bool Style::pictureChip(Context &ctx, const string &key, int height, PictureChip
         if (!icon.valid())
             return false;
         out.icons.push_back(icon);
-        const ableem::Size fitted = fitHeight(icon.size(), height - 4);
-        out.iconsW += fitted.w;
-        tallest = max(tallest, fitted.h);
+        out.iconsW += icon.size().w;
+        tallest = max(tallest, icon.size().h);
     }
     out.iconsW += PictureGap * static_cast<int>(out.parts.size() - 1);
     out.chipW = out.iconsW + 2 * ChipPadding;
@@ -768,7 +762,7 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
     // every button - picture or chip - is centred on the line y + height / 2 (an odd remainder rounds the same way)
     const int cy = y + height / 2;
     if (icon.valid()) {
-        const ableem::Size s = fitHeight(icon.size(), height);
+        const ableem::Size s = icon.size();
         Rect dst(x, cy - s.h / 2, s.w, s.h);
         ableem::Texture outline = ctx.glyphOutline(key);
         if (outline.valid()) {
@@ -805,7 +799,7 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
     if (pictures) {
         int ix = chip.x + ChipPadding;
         for (size_t i = 0; i < pic.icons.size(); i++) {
-            const ableem::Size s = fitHeight(pic.icons[i].size(), height - 4);
+            const ableem::Size s = pic.icons[i].size();
             Rect dst(ix, cy - s.h / 2, s.w, s.h);
             ableem::Texture outline = ctx.glyphOutline(pic.parts[i]);
             if (outline.valid()) {
@@ -825,7 +819,7 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
 int Style::buttonWidth(Context &ctx, const string &key, int height) const {
     ableem::Texture icon = ctx.glyph(key);
     if (icon.valid())
-        return fitHeight(icon.size(), height).w;
+        return icon.size().w;
     PictureChip pic;
     if (pictureChip(ctx, key, height, pic))
         return pic.chipW;
@@ -915,7 +909,7 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
     if (!status.empty()) {
         const int w = ctx.textWidth(statusFont, status);
         ctx.drawText(statusFont, status, right - w, y, description);
-        right -= w + 36;
+        right -= w + FooterStatusGap;
     }
     // the largest font the hints fit in, then the gap between them; `iconsOnly` drops every hint's own label
     // (not the button chip's own text, e.g. "L2" - only h.label) once even the smallest font does not fit,
@@ -929,19 +923,9 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
         }
         return w - gap;
     };
-    // the width of hints [from, to) on one row of `rowHeight`
-    auto rowWidth = [&](const ableem::Font &f, int g, int rowHeight, size_t from, size_t to) {
-        int w = 0;
-        for (size_t i = from; i < to; i++)
-            w += hintIconsWidth(ctx, hints[i], rowHeight) + 2 + ctx.textWidth(f, hints[i].label) + g;
-        return w - g;
-    };
     ableem::Font font = ctx.font(FontRole::Row);
-    int gap = 36;
+    int gap = FooterGap;
     bool iconsOnly = false;
-    bool twoRows = false; // the hints on two rows of rowH (the smallest font, labels whole)
-    int rowH = 0;
-    size_t splitAt = 0; // the first hint of the second row
     if (widthAt(font, gap, false) > room) {
         gap = 22;
         if (widthAt(font, gap, false) > room) {
@@ -949,31 +933,11 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
             if (widthAt(font, gap, false) > room) {
                 font = ctx.font(FontRole::Small);
                 if (widthAt(font, gap, false) > room) {
-                    // even the smallest font does not fit on one line: two rows (a hint never loses its label)
-                    // when the band holds them and each row fits; else cut the labels ("Back" -> "B..", the
-                    // longest first) and only when even the shortest do not fit, icons only - they are fixed
-                    // width, so that always fits unless there are too many hints for even bare icons, which is
-                    // outside this fallback's job (UIREV-3) and is left to clip as before
-                    const int rows2H = (footer.h - 4) / 2;
-                    if (rows2H >= 20 && hints.size() >= 2) {
-                        size_t bestSplit = 0;
-                        int bestWidth = 0;
-                        for (size_t split = 1; split < hints.size(); split++) {
-                            const int w = max(rowWidth(font, gap, rows2H, 0, split),
-                                              rowWidth(font, gap, rows2H, split, hints.size()));
-                            if (bestSplit == 0 || w < bestWidth) {
-                                bestSplit = split;
-                                bestWidth = w;
-                            }
-                        }
-                        if (bestWidth <= room) {
-                            twoRows = true;
-                            rowH = rows2H;
-                            splitAt = bestSplit;
-                        }
-                    }
-                }
-                if (!twoRows && widthAt(font, gap, false) > room) {
+                    // even the smallest font does not fit on the one row the window could give it: cut the labels
+                    // ("Back" -> "B..", the longest first) and only when even the shortest do not fit, icons only -
+                    // they are fixed width, so that always fits unless there are too many hints for even bare
+                    // icons, which is outside this fallback's job (UIREV-3) and is left to clip as before. Never
+                    // two rows: the compact panel is made wide enough first (Panel::compactWidth)
                     vector<string> labels;
                     for (const HintItem &h : hints)
                         labels.push_back(h.label);
@@ -998,29 +962,36 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
         }
     }
     const int fontH = font.lineHeight();
-    // one row of hints from `from` up to `to`, its line `rowY` (top) and `rowHeight` tall: buttons and labels
-    // centred on the same line
-    auto drawRow = [&](size_t from, size_t to, int rowY, int rowHeight) {
-        int x = footer.x + rowInset;
-        for (size_t i = from; i < to; i++) {
-            const HintItem &h = hints[i];
-            for (const string &key : h.icons)
-                x += button(ctx, key, x, rowY, rowHeight) + 6;
-            if (iconsOnly) {
-                x += gap;
-            } else {
-                x += 2;
-                ctx.drawText(font, h.label, x, rowY + (rowHeight - fontH) / 2, footerText);
-                x += ctx.textWidth(font, h.label) + gap;
-            }
+    int x = footer.x + rowInset;
+    for (const HintItem &h : hints) {
+        for (const string &key : h.icons)
+            x += button(ctx, key, x, y, iconH) + 6;
+        if (iconsOnly) {
+            x += gap;
+        } else {
+            x += 2;
+            ctx.drawText(font, h.label, x, y + (iconH - fontH) / 2, footerText);
+            x += ctx.textWidth(font, h.label) + gap;
         }
-    };
-    if (twoRows) {
-        drawRow(0, splitAt, footer.y + 2, rowH);
-        drawRow(splitAt, hints.size(), footer.y + 2 + rowH, rowH);
-    } else {
-        drawRow(0, hints.size(), y, iconH);
     }
+}
+
+int Style::footerWidth(Context &ctx, const vector<HintItem> &given, const string &status) const {
+    const vector<HintItem> hints = sortedHints(given);
+    const ableem::Font &font = ctx.font(FontRole::Row);
+    int w = 0;
+    for (const HintItem &h : hints)
+        w += hintIconsWidth(ctx, h, buttonHeight) + 2 + ctx.textWidth(font, h.label) + FooterGap;
+    w -= hints.empty() ? 0 : FooterGap;
+    if (!status.empty())
+        w += ctx.textWidth(ctx.font(FontRole::Row), status) + FooterStatusGap;
+    return w + 2 * rowInset;
+}
+
+int Style::footerWidth(Context &ctx, const string &line) const {
+    string status;
+    const vector<HintItem> items = parseHints(line, status);
+    return footerWidth(ctx, items, status);
 }
 
 void Style::footer(Context &ctx, const Rect &footerRect, const string &line, bool withRule) const {

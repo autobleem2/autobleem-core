@@ -28,8 +28,29 @@ Panel Panel::compact(const Context &ctx, int rows, const ableem::Font &font) {
     return Panel(compactRect(style, rows, font.lineHeight(), ctx.renderer().width(), ctx.renderer().height()), style);
 }
 
-Rect Panel::compactRect(const Style &style, int rows, int lineHeight, int canvasWidth, int canvasHeight) {
-    const int width = CompactWidth;
+Panel Panel::compact(Context &ctx, int rows, const ableem::Font &font, const std::string &footerLine) {
+    const Style style = ctx.style();
+    const int canvasWidth = ctx.renderer().width();
+    const int width = compactWidth(style, style.footerWidth(ctx, footerLine), canvasWidth);
+    return Panel(compactRect(style, rows, font.lineHeight(), canvasWidth, ctx.renderer().height(), width), style);
+}
+
+int Panel::compactWidth(const Style &style, int footerNeeds, int canvasWidth) {
+    const int widest = std::max(CompactWidth, canvasWidth - 2 * style.margin);
+    return std::min(std::max(CompactWidth, footerNeeds), widest);
+}
+
+int Panel::compactWidth(Context &ctx, const std::string &footerLine) {
+    const Style style = ctx.style();
+    return compactWidth(style, style.footerWidth(ctx, footerLine), ctx.renderer().width());
+}
+
+int Panel::compactWidth(Context &ctx, const std::vector<HintItem> &hints, const std::string &status) {
+    const Style style = ctx.style();
+    return compactWidth(style, style.footerWidth(ctx, hints, status), ctx.renderer().width());
+}
+
+Rect Panel::compactRect(const Style &style, int rows, int lineHeight, int canvasWidth, int canvasHeight, int width) {
     const int height = style.headerHeight + std::max(1, rows) * lineHeight + CompactRowGap + style.footerHeight;
     return Rect((canvasWidth - width) / 2, (canvasHeight - height) / 2, width, height);
 }

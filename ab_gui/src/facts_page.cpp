@@ -164,7 +164,7 @@ void FactsPage::draw() {
         status += extra + "   ";
     status += "|@O| " + ctx.translate("Back");
     if (count > rowsThatFit_)
-        status += "   |@L1|/|@R1| " + ctx.translate("First/last") + "   |@L2|/|@R2| " + ctx.translate("Page");
+        status += "   |@L1+R1| " + ctx.translate("First/last") + "   |@L2+R2| " + ctx.translate("Page");
     panel.footer(ctx, status);
 }
 

@@ -401,7 +401,7 @@ void Keyboard::draw() {
 
     panel.footer(ctx, "|@X| " + ctx.translate("Select") + "  |@T| " + ctx.translate("Backspace") + "  |@S| " +
                           ctx.translate("Space") + "  |@L1| " + ctx.translate("Shift") + "  |@R1| " +
-                          ctx.translate(pageName(page)) + "  |@L2|/|@R2| " + ctx.translate("Move cursor") +
+                          ctx.translate(pageName(page)) + "  |@L2+R2| " + ctx.translate("Move cursor") +
                           "  |@Start| " + ctx.translate("Confirm") + "  |@O| " + ctx.translate("Cancel") + " |");
 }
 

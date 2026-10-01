@@ -24,9 +24,9 @@ int Confirm::textWidth(const Style &style) {
     return Width - 2 * (style.rowInset + 8);
 }
 
-ableem::Rect Confirm::panelRect(const Style &style, int textHeight, int canvasWidth, int canvasHeight) {
+ableem::Rect Confirm::panelRect(const Style &style, int textHeight, int canvasWidth, int canvasHeight, int width) {
     const int height = style.headerHeight + TextGapTop + textHeight + TextGapBottom + style.footerHeight;
-    return ableem::Rect((canvasWidth - Width) / 2, (canvasHeight - height) / 2, Width, height);
+    return ableem::Rect((canvasWidth - width) / 2, (canvasHeight - height) / 2, width, height);
 }
 
 //*******************************
@@ -42,7 +42,12 @@ void Confirm::draw() {
     const int width = textWidth(style);
     const vector<string> rows = wrapText(label, width, [&font](const string &s) { return font.width(s); });
     const int textHeight = static_cast<int>(rows.size()) * font.lineHeight();
-    const Panel panel(panelRect(style, textHeight, ctx.renderer().width(), ctx.renderer().height()), style);
+    const vector<HintItem> hints = {{{"X"}, confirmLabel.empty() ? ctx.translate("Confirm") : confirmLabel},
+                                    {{"O"}, cancelLabel.empty() ? ctx.translate("Cancel") : cancelLabel}};
+    // the window makes room for its footer's one row
+    const Panel panel(panelRect(style, textHeight, ctx.renderer().width(), ctx.renderer().height(),
+                                Panel::compactWidth(ctx, hints, "")),
+                      style);
     panel.sheet(ctx);
 
     // the halo is the style's while the dialog draws, the program's after
@@ -55,10 +60,7 @@ void Confirm::draw() {
             ctx.drawText(font, row, x, y, style.text);
         y += font.lineHeight();
     }
-    style.footer(ctx, panel.footer(),
-                 {{{"X"}, confirmLabel.empty() ? ctx.translate("Confirm") : confirmLabel},
-                  {{"O"}, cancelLabel.empty() ? ctx.translate("Cancel") : cancelLabel}},
-                 "", false);
+    style.footer(ctx, panel.footer(), hints, "", false);
 
     ctx.setTextShadow(programShadow);
 }

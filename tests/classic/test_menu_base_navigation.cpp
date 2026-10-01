@@ -306,18 +306,18 @@ namespace {
 // identity here (no Lang loaded), which is also true for every English-language test run
 std::string statusLine(int selected, int verticalSize) {
     return "Entry" + std::string(" ") + std::to_string(selected + 1) + "/" + std::to_string(verticalSize) +
-           "    |@L1|/|@R1| " + "First/last" + "   |@L2|/|@R2| " + "Page" + "   |@X| " + "Select" + "   |@O| " +
+           "    |@L1+R1| " + "First/last" + "   |@L2+R2| " + "Page" + "   |@X| " + "Select" + "   |@O| " +
            "Back" + " |";
 }
 } // namespace
 
 TEST_CASE("getStatusLine: names L1/R1 First/last paired with L2/R2 Page, in that order") {
     const std::string status = statusLine(2, 8);
-    CHECK(status.find("|@L1|/|@R1| First/last") != std::string::npos);
-    CHECK(status.find("|@L2|/|@R2| Page") != std::string::npos);
+    CHECK(status.find("|@L1+R1| First/last") != std::string::npos);
+    CHECK(status.find("|@L2+R2| Page") != std::string::npos);
     // the owner-approved pairing order: L1/R1 before L2/R2 (PanelStyle::footer re-sorts by button rank
     // regardless, but the source order is worth pinning so a future edit doesn't silently drop one)
-    CHECK(status.find("|@L1|/|@R1|") < status.find("|@L2|/|@R2|"));
+    CHECK(status.find("|@L1+R1|") < status.find("|@L2+R2|"));
 }
 
 //*******************************

@@ -126,6 +126,9 @@ public:
     static constexpr int ChipMinWidth = 28;
     static constexpr int ChipPadding = 7;
     static constexpr int PictureGap = 2;
+    // the footer's gap between hints at its largest, and between the hints and its status
+    static constexpr int FooterGap = 36;
+    static constexpr int FooterStatusGap = 36;
 
     // the colours resolved from the program's block: each role its own colour, or the colour it names, or its
     // fallback; a name nobody knows counts as unset, and a chain of names longer than the roles is a loop, cut
@@ -329,7 +332,7 @@ public:
     void vrule(ableem::Renderer &renderer, int x, int y, int h, int alpha = StyleAlpha) const;
     void vrule(Context &ctx, int x, int y, int h, int alpha = StyleAlpha) const;
 
-    // the status-line protocol every screen writes - "Card 1/12   |@L1|/|@R1| Page  |@X| Rename  |@O| Go back |"
+    // the status-line protocol every screen writes - "Card 1/12   |@L1+R1| Page  |@X| Rename  |@O| Go back |"
     // - taken apart: the text before the first marker is the status (a counter, drawn at the footer's right
     // edge), each marker and the text up to the next one is a hint, a marker whose text is empty or a
     // separator ("/", "|") joins the next hint's icons
@@ -352,6 +355,10 @@ public:
     // what a hint's keys take in the footer, each with the 6 px after it: `buttonWidth` per key (the theme's glyph
     // when there is one, else the chip) - the width the footer's fit is decided on
     int hintIconsWidth(Context &ctx, const HintItem &hint, int height = 30) const;
+    // the width a footer of these hints and status needs in ONE row at the Row font with the largest gaps (the
+    // rowInset each side included) - what Panel::compactWidth widens a compact panel to
+    int footerWidth(Context &ctx, const std::vector<HintItem> &hints, const std::string &status) const;
+    int footerWidth(Context &ctx, const std::string &line) const;
 
     // a dark outline/halo texture from an image's own alpha shape: the shape drawn in black at alpha 150 at
     // each of the eight 1 px offsets and once more 2 px down-right. The texture is the image's size plus 5 in

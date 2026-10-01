@@ -39,7 +39,8 @@ public:
     static constexpr int TextGapBottom = 24;
     // the dialog's rect for a question `textHeight` tall on a canvasWidth x canvasHeight canvas: centred, the header,
     // the gap, the text, the gap and the footer band tall
-    static ableem::Rect panelRect(const Style &style, int textHeight, int canvasWidth, int canvasHeight);
+    static ableem::Rect panelRect(const Style &style, int textHeight, int canvasWidth, int canvasHeight,
+                                  int width = Width);
 
     void draw() override;
     // the old dialog's loop: rest for a press (a frame every 250 ms meanwhile), then every event to handle()

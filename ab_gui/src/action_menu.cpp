@@ -123,7 +123,12 @@ void ActionMenu::draw() {
     const int panelHeight = style.headerHeight + rowsHeight + style.footerHeight;
     const int width = ctx.renderer().width();
     const int height = ctx.renderer().height();
-    const Panel panel(ableem::Rect((width - Width) / 2, (height - panelHeight) / 2, Width, panelHeight), style);
+    const vector<HintItem> hints = {{{"X"}, crossLabel.empty() ? ctx.translate("Select") : crossLabel},
+                                    {{"O"}, circleLabel.empty() ? ctx.translate("Back") : circleLabel}};
+    // the window makes room for its footer's one row
+    const int panelWidth = Panel::compactWidth(ctx, hints, "");
+    const Panel panel(ableem::Rect((width - panelWidth) / 2, (height - panelHeight) / 2, panelWidth, panelHeight),
+                      style);
     panel.sheet(ctx);
     const ableem::Rect &rect = panel.rect();
 
@@ -162,10 +167,7 @@ void ActionMenu::draw() {
     if (last < static_cast<int>(items.size()))
         style.scrollMarker(ctx, markerX, rect.y + style.headerHeight + rowsHeight + 2, 1);
 
-    style.footer(ctx, panel.footer(),
-                 {{{"X"}, crossLabel.empty() ? ctx.translate("Select") : crossLabel},
-                  {{"O"}, circleLabel.empty() ? ctx.translate("Back") : circleLabel}},
-                 "", false);
+    style.footer(ctx, panel.footer(), hints, "", false);
 }
 
 //*******************************

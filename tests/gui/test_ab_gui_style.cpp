@@ -195,9 +195,8 @@ TEST_CASE("parseHints: the status before the first marker, icons joined across a
         Style::parseHints("Card 1/12   |@L1|/|@R1| Page  |@X| Rename  |@O| Go back |", status);
     CHECK(status == "Card 1/12");
     REQUIRE(items.size() == 3);
-    REQUIRE(items[0].icons.size() == 2);
-    CHECK(items[0].icons[0] == "L1");
-    CHECK(items[0].icons[1] == "R1");
+    REQUIRE(items[0].icons.size() == 1);
+    CHECK(items[0].icons[0] == "L1+R1"); // the pair is one chip
     CHECK(items[0].label == "Page");
     REQUIRE(items[1].icons.size() == 1);
     CHECK(items[1].icons[0] == "X");
@@ -327,15 +326,15 @@ TEST_CASE("the footer's shared order (G5r3): the d-pad right after the face butt
     // a status line written in the order Options writes it (paging first), sorted
     std::string status;
     const std::vector<HintItem> given =
-        Style::parseHints("|@L2|/|@R2| Page  |@L1|/|@R1| First/last  |@Left|/|@Right| Choose  |@O| Back  |@X| Change", status);
+        Style::parseHints("|@L2+R2| Page  |@L1+R1| First/last  |@Left+Right| Choose  |@O| Back  |@X| Change", status);
     const std::vector<HintItem> sorted = Style::sortedHints(given);
     REQUIRE(sorted.size() == 5);
     CHECK(sorted[0].icons == std::vector<std::string>{"X"});
     CHECK(sorted[1].icons == std::vector<std::string>{"O"});
     CHECK(sorted[2].icons == (std::vector<std::string>{"Left+Right"})); // the pair is one chip
     CHECK(sorted[2].label == "Choose");
-    CHECK(sorted[3].icons == (std::vector<std::string>{"L1", "R1"}));
-    CHECK(sorted[4].icons == (std::vector<std::string>{"L2", "R2"}));
+    CHECK(sorted[3].icons == (std::vector<std::string>{"L1+R1"}));
+    CHECK(sorted[4].icons == (std::vector<std::string>{"L2+R2"}));
 
     // the sort is stable: equal ranks keep the given order
     const std::vector<HintItem> same = {{{"Foo"}, "a"}, {{"Bar"}, "b"}, {{"X"}, "c"}};
@@ -349,6 +348,7 @@ TEST_CASE("a combination is one key (UIREV-42): \"A+B\" ranks by its first key a
     CHECK(Style::hintRank("Left+Right") == Style::hintRank("Left"));
     CHECK(Style::hintRank("Select+Start") == Style::hintRank("Select"));
     CHECK(Style::hintRank("L2+R2") == Style::hintRank("L2"));
+    CHECK(Style::hintRank("L1+R1") == Style::hintRank("L1"));
     CHECK(Style::hintRank("L2+Select") == Style::hintRank("L2"));
     CHECK(Style::hintRank("Nonsense+Start") == 100);
 
@@ -361,5 +361,10 @@ TEST_CASE("a combination is one key (UIREV-42): \"A+B\" ranks by its first key a
     const std::vector<HintItem> old = Style::parseHints("|@Left|/|@Right| Choose  |@L1|/|@R1| First/last", status);
     REQUIRE(old.size() == 2);
     CHECK(old[0].icons == std::vector<std::string>{"Left+Right"});
-    CHECK(old[1].icons == (std::vector<std::string>{"L1", "R1"}));
+    CHECK(old[1].icons == (std::vector<std::string>{"L1+R1"}));
+    // ... and the paging pair; a pair that is no pair stays two chips
+    const std::vector<HintItem> paging = Style::parseHints("|@L2|/|@R2| Page  |@L1|/|@R2| Odd", status);
+    REQUIRE(paging.size() == 2);
+    CHECK(paging[0].icons == std::vector<std::string>{"L2+R2"});
+    CHECK(paging[1].icons == (std::vector<std::string>{"L1", "R2"}));
 }

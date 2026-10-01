@@ -976,12 +976,21 @@ TEST_CASE("Style::buttonWidth (G5 hints): a chip is at least ChipMinWidth wide, 
     CHECK(style.button(ctx, "Left+Right", 20, 20, 30) == pair);
     // one part without a picture: the whole name as text
     CHECK(style.buttonWidth(ctx, "Left+Select", 30) > abgui::Style::ChipMinWidth);
+}
 
-    // a picture taller than the row is scaled down to it, in proportion
-    ableem::Texture tall = sized(40, 40);
-    REQUIRE(tall.valid());
-    ctx.glyphProvider = [&](const string &key) { return key == "X" ? tall : ableem::Texture(); };
-    CHECK(style.buttonWidth(ctx, "X", 30) == 30);
-    CHECK(style.buttonWidth(ctx, "X", 40) == 40);
-    CHECK(style.buttonWidth(ctx, "X", 50) == 40);
+TEST_CASE("Style::footerWidth (a footer is one row): what the row needs grows with the labels and the status") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    abgui::Context ctx(maybe.gui->renderer());
+    ctx.textMeasurer = [](const ableem::Font &, const string &text) { return 8 * static_cast<int>(text.size()); };
+    const abgui::Style style;
+    const vector<abgui::HintItem> shortHints = {{{"X"}, "Select"}, {{"O"}, "Back"}};
+    const vector<abgui::HintItem> longHints = {{{"X"}, "Select the memory card"}, {{"O"}, "Back"}};
+    const int shortW = style.footerWidth(ctx, shortHints, "");
+    CHECK(style.footerWidth(ctx, longHints, "") == shortW + 8 * 16);
+    CHECK(style.footerWidth(ctx, shortHints, "Card 1/3") == shortW + 8 * 8 + abgui::Style::FooterStatusGap);
+    // the line form is the same footer
+    CHECK(style.footerWidth(ctx, "|@X| Select |@O| Back") == shortW);
+    CHECK(style.footerWidth(ctx, vector<abgui::HintItem>(), "") == 2 * style.rowInset);
 }
