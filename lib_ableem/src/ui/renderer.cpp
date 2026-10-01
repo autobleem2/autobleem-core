@@ -109,6 +109,9 @@ struct Renderer::Impl {
 
     // the one-off capture (see Renderer::captureNextFrame)
     bool captureRequested = false;
+    // the capture is taken without touching the window (Renderer::captureNextFrameSilently): present() keeps the
+    // frame as the capture and neither copies it to the window nor swaps the buffers (BUG-31)
+    bool captureSilent = false;
     Texture capture;
     // the frame being captured is drawn into this target instead of the screen (clear() switches to it,
     // present() copies it to the screen): no read-back of the frame from the GPU, which on the console's
@@ -446,6 +449,12 @@ unsigned long Renderer::copyLastFrame(std::vector<unsigned char> &pixels, int &w
 
 void Renderer::captureNextFrame() {
     impl->captureRequested = true;
+    impl->captureSilent = false;
+}
+
+void Renderer::captureNextFrameSilently() {
+    impl->captureRequested = true;
+    impl->captureSilent = true;
 }
 
 Texture Renderer::lastCapture() const {
@@ -476,8 +485,24 @@ void Renderer::present() {
         // the frame is in the target: it is the capture, and what the screen shows
         impl->capturing = false;
         impl->captureRequested = false;
+        const bool silent = impl->captureSilent;
+        impl->captureSilent = false;
         SDL_SetRenderTarget(impl->renderer, nullptr);
         SDL_Texture *frame = static_cast<SDL_Texture *>(impl->captureTarget.native());
+        if (silent) {
+            // a snapshot for a backdrop, not a frame to show: the window keeps what it shows (the screen the snapshot
+            // is of is not what is on it - the System menu over the carousel), so there is no copy and no swap
+            SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE);
+            impl->capture = impl->captureTarget;
+            impl->captureTarget = Texture();
+            if (ext_trace::active())
+                ext_trace::note("capture taken " + std::to_string(impl->capture.size().w) + "x" +
+                                std::to_string(impl->capture.size().h) + " (silent: no window copy, no present)");
+            impl->stats.copies = 0; // per frame, for the overlay
+            impl->stats.switches = 0;
+            impl->stats.lastTexture = nullptr;
+            return;
+        }
         Uint8 r = 0, g = 0, b = 0, a = 0;
         SDL_GetRenderDrawColor(impl->renderer, &r, &g, &b, &a);
         SDL_SetRenderDrawColor(impl->renderer, 0, 0, 0, 255);
@@ -497,6 +522,7 @@ void Renderer::present() {
     } else if (impl->captureRequested) {
         // a frame that never called clear(): read it back
         impl->captureRequested = false;
+        impl->captureSilent = false; // nothing to keep off the window: the frame is on it
         int w = 0, h = 0;
         if (SDL_GetRendererOutputSize(impl->renderer, &w, &h) == 0) {
             std::vector<unsigned char> pixels(static_cast<size_t>(w) * h * 4);

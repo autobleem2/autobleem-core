@@ -309,3 +309,33 @@ TEST_CASE("on a renderer: a captured frame cleared transparent reaches the windo
     CHECK(pixels[at + 3] == 255); // alpha of the window copy
     CHECK(rgbEqual(pixelAt(pixels, pitch, 20, 20), Color(255, 255, 255, 255)));
 }
+
+TEST_CASE("on a renderer: a silent capture keeps the frame as the capture and presents nothing (BUG-31)") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    ableem::Renderer &renderer = g.gui->renderer();
+    ScreenStack stack(renderer);
+    const ableem::Texture before = renderer.lastCapture();
+    const unsigned long framesBefore = renderer.frameCount();
+
+    renderer.captureNextFrameSilently();
+    stack.frame(Color(0, 0, 0, 0), [&]() {
+        renderer.setDrawColor(Color(255, 255, 255, 255));
+        renderer.fillRect(Rect(0, 0, 40, 40));
+    });
+    const ableem::Texture snapshot = renderer.lastCapture();
+    if (!snapshot.valid() || snapshot.native() == before.native()) {
+        MESSAGE("test_ab_gui_screen_stack: no GPU capture from this renderer - silent checks skipped");
+        return;
+    }
+    CHECK(renderer.frameCount() == framesBefore); // no swap, no window copy: the window was not touched
+
+    // the next ordinary frame still presents
+    stack.frame(Color(0, 0, 0, 255), []() {});
+    CHECK(renderer.frameCount() == framesBefore + 1);
+    // and a capture asked for the usual way after a silent one is not silent
+    renderer.captureNextFrame();
+    stack.frame(Color(0, 0, 0, 255), []() {});
+    CHECK(renderer.frameCount() == framesBefore + 2);
+}
