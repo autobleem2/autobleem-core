@@ -305,3 +305,76 @@ TEST_CASE("generated lines and bars: the same places, fonts and drops as the old
             checkSame(now.line2, old2);
     }
 }
+
+//*******************************
+// UIREV-36: the fixed 4 x 2 grid
+//*******************************
+namespace {
+
+// the four columns' widest items as fixed numbers of the 22 px size, scaling with the size like fakeLabelWidth
+HintGridMeasure gridMeasure(const vector<int> &widthsAt22) {
+    HintGridMeasure m;
+    m.columnWidth = [widthsAt22](int size, int column) { return widthsAt22[static_cast<size_t>(column)] * size / 22; };
+    m.lineHeight = [](int size) { return fakeLineHeight(size); };
+    return m;
+}
+
+} // namespace
+
+TEST_CASE("the grid: the largest font that fits, the spare shared evenly, items at column left + 12") {
+    const Rect bar(360, 624, 900, 64);
+    const HintGridLayout g = HintBar::layoutGrid(bar, gridMeasure({150, 100, 120, 130}));
+    CHECK_FALSE(g.oneLine);
+    CHECK(g.fontSize == 22); // 500 + 4 x 22 = 588 <= 868
+    const int spare = (900 - 32) - (500 + 4 * 22);
+    CHECK(g.itemX[0] == 360 + 16 + 12);
+    CHECK(g.itemX[1] - g.itemX[0] == 150 + 22 + spare / 4);
+    CHECK(g.itemX[2] - g.itemX[1] == 100 + 22 + spare / 4);
+    CHECK(g.itemX[3] - g.itemX[2] == 120 + 22 + spare / 4);
+    CHECK(g.itemRoom[0] == 150 + spare / 4);
+}
+
+TEST_CASE("the grid: a wider language steps the font down, one font for both lines") {
+    const Rect bar(360, 624, 900, 64);
+    const HintGridLayout g = HintBar::layoutGrid(bar, gridMeasure({250, 200, 220, 230}));
+    CHECK(g.fontSize == 18); // 22: 900 + 88 = 988 > 868; 20: 817 + 88 = 905 > 868; 18: 735 + 88 = 823 fits
+    CHECK(g.labelY[0] < g.labelY[1]);
+    CHECK(g.chipY[0] < g.chipY[1]);
+}
+
+TEST_CASE("the grid: the columns never leave the bar (the last item room ends inside the bar less the inset)") {
+    for (int w : {640, 680, 900, 1000, 1280}) {
+        const Rect bar(100, 600, w, 72);
+        const HintGridLayout g = HintBar::layoutGrid(bar, gridMeasure({160, 110, 130, 140}));
+        CAPTURE(w);
+        CHECK(g.itemX[0] >= bar.x + HintBar::Inset);
+        CHECK(g.itemX[3] + g.itemRoom[3] <= bar.x + bar.w - HintBar::Inset);
+    }
+}
+
+TEST_CASE("the grid: when even 14 px does not fit the columns shrink and an item is told its room") {
+    const Rect bar(0, 600, 400, 72);
+    const HintGridLayout g = HintBar::layoutGrid(bar, gridMeasure({400, 400, 400, 400}));
+    CHECK(g.fontSize == 14);
+    for (int c = 0; c < HintGridLayout::Columns; c++)
+        CHECK(g.itemRoom[c] >= 0);
+    CHECK(g.itemX[3] + g.itemRoom[3] <= bar.w - HintBar::Inset);
+}
+
+TEST_CASE("the grid: a bar under 48 px has line 1 only, at the bar's full height") {
+    const Rect bar(0, 650, 900, 40);
+    const HintGridLayout g = HintBar::layoutGrid(bar, gridMeasure({150, 100, 120, 130}));
+    CHECK(g.oneLine);
+    CHECK(g.chipY[0] == 650 + (40 - HintBar::ChipHeight) / 2);
+}
+
+TEST_CASE("the grid does not depend on the state: the same measure gives the same layout") {
+    const Rect bar(360, 634, 896, 76);
+    const HintGridLayout a = HintBar::layoutGrid(bar, gridMeasure({150, 100, 120, 130}));
+    const HintGridLayout b = HintBar::layoutGrid(bar, gridMeasure({150, 100, 120, 130}));
+    for (int c = 0; c < HintGridLayout::Columns; c++) {
+        CHECK(a.itemX[c] == b.itemX[c]);
+        CHECK(a.itemRoom[c] == b.itemRoom[c]);
+    }
+    CHECK(a.fontSize == b.fontSize);
+}

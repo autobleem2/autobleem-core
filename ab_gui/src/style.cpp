@@ -797,11 +797,22 @@ static int chipWidthFor(int textW) {
 }
 
 int Style::button(Context &ctx, const string &key, int x, int y, int height) const {
+    return drawButton(ctx, key, x, y, height, 255);
+}
+
+// a picture drawn at `alpha` (the handle is shared with every other drawing of it: the alpha goes back to 255)
+static void copyFaded(ableem::Renderer &renderer, ableem::Texture texture, const Rect &dst, int alpha) {
+    texture.setAlphaMod(static_cast<unsigned char>(alpha));
+    renderer.copy(texture, nullptr, &dst);
+    texture.setAlphaMod(255);
+}
+
+int Style::drawButton(Context &ctx, const string &key, int x, int y, int height, int alpha) const {
     const vector<string> arrows = dPadParts(key);
     if (!arrows.empty()) { // "Left+Right": two arrows side by side, each a button of its own
         const int startX = x;
         for (const string &arrow : arrows)
-            x += button(ctx, arrow, x, y, height) + 6;
+            x += drawButton(ctx, arrow, x, y, height, alpha) + 6;
         return x - 6 - startX;
     }
     ableem::Texture icon = ctx.glyph(key);
@@ -814,9 +825,9 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
         ableem::Texture outline = ctx.glyphOutline(key);
         if (outline.valid()) {
             Rect outlineDst(dst.x - 2, dst.y - 2, s.w + 5, s.h + 5);
-            renderer.copy(outline, nullptr, &outlineDst);
+            copyFaded(renderer, outline, outlineDst, alpha);
         }
-        renderer.copy(icon, nullptr, &dst);
+        copyFaded(renderer, icon, dst, alpha);
         return s.w;
     }
     const ableem::Font &font = ctx.font(FontRole::Small);
@@ -836,11 +847,11 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
     }
     Rect chip(x, cy - chipH / 2, chipW, chipH);
     // the `chip` frame is the plate under the name (G5d); a theme with none keeps the box drawn in code
-    if (!drawFrame(ctx, "chip", chip)) {
+    if (!drawFrame(ctx, "chip", chip, static_cast<unsigned char>(alpha))) {
         renderer.setBlendMode(ableem::BlendMode::Blend);
-        renderer.setDrawColor(Color(255, 255, 255, 24));
+        renderer.setDrawColor(Color(255, 255, 255, 24 * alpha / 255));
         renderer.fillRect(chip);
-        renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 200));
+        renderer.setDrawColor(Color(edge.r, edge.g, edge.b, 200 * alpha / 255));
         renderer.drawRect(chip);
     }
     if (pictures) {
@@ -851,9 +862,9 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
             ableem::Texture outline = ctx.glyphOutline(pic.parts[i]);
             if (outline.valid()) {
                 Rect outlineDst(dst.x - 2, dst.y - 2, s.w + 5, s.h + 5);
-                renderer.copy(outline, nullptr, &outlineDst);
+                copyFaded(renderer, outline, outlineDst, alpha);
             }
-            renderer.copy(pic.icons[i], nullptr, &dst);
+            copyFaded(renderer, pic.icons[i], dst, alpha);
             ix += s.w + PictureGap;
             if (pic.slashW > 0 && i + 1 < pic.icons.size()) { // an alternative: a small "/" between the pictures
                 ctx.drawText(font, "/", ix, chip.y + (chipH - font.lineHeight()) / 2, secondary);
@@ -885,14 +896,18 @@ int Style::buttonWidth(Context &ctx, const string &key, int height) const {
 }
 
 int Style::buttons(Context &ctx, const string &markers, int x, int y, int height) const {
-    return layoutButtons(ctx, markers, x, y, height, true);
+    return layoutButtons(ctx, markers, x, y, height, true, 255);
+}
+
+int Style::buttonsFaded(Context &ctx, const string &markers, int x, int y, int alpha, int height) const {
+    return layoutButtons(ctx, markers, x, y, height, true, max(0, min(255, alpha)));
 }
 
 int Style::buttonsWidth(Context &ctx, const string &markers, int height) const {
-    return layoutButtons(ctx, markers, 0, 0, height, false);
+    return layoutButtons(ctx, markers, 0, 0, height, false, 255);
 }
 
-int Style::layoutButtons(Context &ctx, const string &markers, int x, int y, int height, bool draw) const {
+int Style::layoutButtons(Context &ctx, const string &markers, int x, int y, int height, bool draw, int alpha) const {
     const ableem::Font &font = ctx.font(FontRole::RowSmall);
     const int startX = x;
     size_t pos = 0;
@@ -908,7 +923,7 @@ int Style::layoutButtons(Context &ctx, const string &markers, int x, int y, int 
                     ctx.drawText(font, plain, x + 6, y + (height - font.lineHeight()) / 2, secondary);
                 x += ctx.textWidth(font, plain) + 12;
             } else {
-                x += (draw ? button(ctx, plain, x, y, height) : buttonWidth(ctx, plain, height)) + 6;
+                x += (draw ? drawButton(ctx, plain, x, y, height, alpha) : buttonWidth(ctx, plain, height)) + 6;
             }
         }
         if (open == string::npos)
@@ -917,7 +932,7 @@ int Style::layoutButtons(Context &ctx, const string &markers, int x, int y, int 
         if (close == string::npos)
             break;
         const string key = markers.substr(open + 2, close - open - 2);
-        x += (draw ? button(ctx, key, x, y, height) : buttonWidth(ctx, key, height)) + 6;
+        x += (draw ? drawButton(ctx, key, x, y, height, alpha) : buttonWidth(ctx, key, height)) + 6;
         pos = close + 1;
     }
     return x - startX;
