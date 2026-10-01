@@ -370,7 +370,8 @@ public:
     // as its image, with its outline under it when there is one; every other key (Start, Select, L1..R2, Esc,
     // or any word such as RESET) as a chip - a small dark box with a light edge and the name in Small bold
     // capitals; a combination ("L2+R2", "Select+Start": every "A+B" name is one chip) is one chip with the whole
-    // name, or - when every part has a picture ("Left+Right") - one chip around the pictures. Every button is
+    // name, or - when every part has a picture - one chip around the pictures; the d-pad's directions ("Left+Right",
+    // "Up+Down") are no combination: separate arrows, each its own normal-size button. Every button is
     // centred on the line y + height / 2. Returns the width drawn.
     int button(Context &ctx, const std::string &key, int x, int y, int height = 30) const;
     // a marker string as a button guide writes it - "|@L2+Select|", "|@X| / |@O|", "RESET" - drawn as

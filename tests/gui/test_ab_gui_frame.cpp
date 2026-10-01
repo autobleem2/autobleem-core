@@ -966,14 +966,15 @@ TEST_CASE("Style::buttonWidth (G5 hints): a chip is at least ChipMinWidth wide, 
     CHECK(style.buttonWidth(ctx, "Select+Start", 30) > style.buttonWidth(ctx, "Select", 30));
     CHECK(style.button(ctx, "L2+Select", 20, 20, 30) == style.buttonWidth(ctx, "L2+Select", 30));
 
-    // both parts with a picture: the pictures side by side in one chip (padding each side, PictureGap between)
+    // the d-pad's arrows are never one chip: "Left+Right" is two normal arrows side by side (6 px apart)
     auto sized = [&](int w, int h) { return ableem::Texture::createTarget(renderer, w, h); };
     ableem::Texture arrow = sized(18, 18);
     REQUIRE(arrow.valid());
     ctx.glyphProvider = [&](const string &key) { return key == "Left" || key == "Right" ? arrow : ableem::Texture(); };
-    const int pair = 18 + abgui::Style::PictureGap + 18 + 2 * abgui::Style::ChipPadding;
+    const int pair = 18 + 6 + 18;
     CHECK(style.buttonWidth(ctx, "Left+Right", 30) == pair);
     CHECK(style.button(ctx, "Left+Right", 20, 20, 30) == pair);
+    CHECK(style.buttonWidth(ctx, "Up+Down", 30) == style.buttonWidth(ctx, "Up", 30) + 6 + style.buttonWidth(ctx, "Down", 30));
     // one part without a picture: the whole name as text
     CHECK(style.buttonWidth(ctx, "Left+Select", 30) > abgui::Style::ChipMinWidth);
 }

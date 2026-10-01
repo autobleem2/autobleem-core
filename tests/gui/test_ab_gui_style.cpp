@@ -334,7 +334,7 @@ TEST_CASE("the footer's shared order (G5r3): the d-pad right after the face butt
     REQUIRE(sorted.size() == 5);
     CHECK(sorted[0].icons == std::vector<std::string>{"X"});
     CHECK(sorted[1].icons == std::vector<std::string>{"O"});
-    CHECK(sorted[2].icons == (std::vector<std::string>{"Left+Right"})); // the pair is one chip
+    CHECK(sorted[2].icons == (std::vector<std::string>{"Left", "Right"})); // d-pad arrows: two chips
     CHECK(sorted[2].label == "Choose");
     CHECK(sorted[3].icons == (std::vector<std::string>{"L1+R1"}));
     CHECK(sorted[4].icons == (std::vector<std::string>{"L2+R2"}));
@@ -347,7 +347,7 @@ TEST_CASE("the footer's shared order (G5r3): the d-pad right after the face butt
     CHECK(out[2].label == "b");
 }
 
-TEST_CASE("a combination is one key (UIREV-42): \"A+B\" ranks by its first key and a Left/Right pair parses as one") {
+TEST_CASE("a combination is one key (UIREV-42), but the d-pad's arrows are never joined: Left/Right and Up/Down stay separate") {
     CHECK(Style::hintRank("Left+Right") == Style::hintRank("Left"));
     CHECK(Style::hintRank("Select+Start") == Style::hintRank("Select"));
     CHECK(Style::hintRank("L2+R2") == Style::hintRank("L2"));
@@ -358,12 +358,16 @@ TEST_CASE("a combination is one key (UIREV-42): \"A+B\" ranks by its first key a
     std::string status;
     const std::vector<HintItem> items = Style::parseHints("|@Left+Right| Choose  |@Select+Start| Menu", status);
     REQUIRE(items.size() == 2);
-    CHECK(items[0].icons == std::vector<std::string>{"Left+Right"});
-    CHECK(items[1].icons == std::vector<std::string>{"Select+Start"});
-    // the old spelling gives the same single chip; other pairs stay as they are
+    CHECK(items[0].icons == (std::vector<std::string>{"Left", "Right"})); // two arrows, one hint
+    CHECK(items[1].icons == std::vector<std::string>{"Select+Start"});    // a real combination stays one chip
+    const std::vector<HintItem> vertical = Style::parseHints("|@Up+Down| Move  |@Up||@Down| Move", status);
+    REQUIRE(vertical.size() == 2);
+    CHECK(vertical[0].icons == (std::vector<std::string>{"Up", "Down"}));
+    CHECK(vertical[1].icons == (std::vector<std::string>{"Up", "Down"}));
+    // the old spelling gives the same two arrows; the shoulder pairs stay one chip
     const std::vector<HintItem> old = Style::parseHints("|@Left|/|@Right| Choose  |@L1|/|@R1| First/last", status);
     REQUIRE(old.size() == 2);
-    CHECK(old[0].icons == std::vector<std::string>{"Left+Right"});
+    CHECK(old[0].icons == (std::vector<std::string>{"Left", "Right"}));
     CHECK(old[1].icons == (std::vector<std::string>{"L1+R1"}));
     // ... and the paging pair; a pair that is no pair stays two chips
     const std::vector<HintItem> paging = Style::parseHints("|@L2|/|@R2| Page  |@L1|/|@R2| Odd", status);

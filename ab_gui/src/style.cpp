@@ -659,6 +659,27 @@ void Style::vrule(Context &ctx, int x, int y, int h, int alpha) const {
 }
 
 //*******************************
+// dPadParts
+//*******************************
+// the owner's rule ("a button combination is one button" does not cover the d-pad): "Left+Right" or "Up+Down" are
+// separate arrows, each its own chip. Returns the parts of such a key, or {} when it is any other key.
+static vector<string> dPadParts(const string &key) {
+    vector<string> parts;
+    size_t from = 0;
+    while (true) {
+        const size_t plus = key.find('+', from);
+        const string part = key.substr(from, plus == string::npos ? string::npos : plus - from);
+        if (part != "Left" && part != "Right" && part != "Up" && part != "Down")
+            return {};
+        parts.push_back(part);
+        if (plus == string::npos)
+            break;
+        from = plus + 1;
+    }
+    return parts.size() > 1 ? parts : vector<string>();
+}
+
+//*******************************
 // Style::parseHints
 //*******************************
 vector<HintItem> Style::parseHints(const string &line, string &status) {
@@ -681,15 +702,19 @@ vector<HintItem> Style::parseHints(const string &line, string &status) {
         size_t next = line.find("|@", end + 1);
         string text = line.substr(end + 1, next == string::npos ? string::npos : next - end - 1);
         string label = trim(text);
-        pendingIcons.push_back(icon);
+        // d-pad directions are never a combination: "Left+Right" is the two arrows, each its own chip
+        const vector<string> arrows = dPadParts(icon);
+        if (arrows.empty())
+            pendingIcons.push_back(icon);
+        else
+            pendingIcons.insert(pendingIcons.end(), arrows.begin(), arrows.end());
         if (label.empty() || label == "/") {
             pos = next;
             continue;
         }
-        // the two keys of a Left/Right, L1/R1 or L2/R2 pair are one chip, however the line wrote them
-        if (pendingIcons.size() == 2 && ((pendingIcons[0] == "Left" && pendingIcons[1] == "Right") ||
-                                         (pendingIcons[0] == "L1" && pendingIcons[1] == "R1") ||
-                                         (pendingIcons[0] == "L2" && pendingIcons[1] == "R2")))
+        // the two shoulder keys of an L1/R1 or L2/R2 pair are one chip, however the line wrote them
+        if (pendingIcons.size() == 2 &&
+            ((pendingIcons[0] == "L1" && pendingIcons[1] == "R1") || (pendingIcons[0] == "L2" && pendingIcons[1] == "R2")))
             pendingIcons = {pendingIcons[0] + "+" + pendingIcons[1]};
         items.push_back({pendingIcons, label});
         pendingIcons.clear();
@@ -757,6 +782,13 @@ static int chipWidthFor(int textW) {
 }
 
 int Style::button(Context &ctx, const string &key, int x, int y, int height) const {
+    const vector<string> arrows = dPadParts(key);
+    if (!arrows.empty()) { // "Left+Right": two arrows side by side, each a button of its own
+        const int startX = x;
+        for (const string &arrow : arrows)
+            x += button(ctx, arrow, x, y, height) + 6;
+        return x - 6 - startX;
+    }
     ableem::Texture icon = ctx.glyph(key);
     ableem::Renderer &renderer = ctx.renderer();
     // every button - picture or chip - is centred on the line y + height / 2 (an odd remainder rounds the same way)
@@ -817,6 +849,13 @@ int Style::button(Context &ctx, const string &key, int x, int y, int height) con
 }
 
 int Style::buttonWidth(Context &ctx, const string &key, int height) const {
+    const vector<string> arrows = dPadParts(key);
+    if (!arrows.empty()) {
+        int w = -6;
+        for (const string &arrow : arrows)
+            w += buttonWidth(ctx, arrow, height) + 6;
+        return w;
+    }
     ableem::Texture icon = ctx.glyph(key);
     if (icon.valid())
         return icon.size().w;
