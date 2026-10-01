@@ -104,6 +104,7 @@ const char *traceOutside() {
 
 struct Renderer::Impl {
     SDL_Renderer *renderer = nullptr;
+    SDL_Window *window = nullptr; // the window the renderer was created for (the AB_TRACE_EXT trap reads its size)
     int width = 0, height = 0; // the logical canvas
     float scale = 1.0f;        // output pixels per logical pixel
 
@@ -243,6 +244,7 @@ void Renderer::release() {
     if (impl->renderer) {
         SDL_DestroyRenderer(impl->renderer);
         impl->renderer = nullptr;
+        impl->window = nullptr;
     }
 }
 
@@ -251,6 +253,7 @@ void Renderer::recreate(Platform &platform) {
     impl->targetStack.clear();
     impl->targetsLost++; // a new renderer: nothing drawn into the old one's targets survives
     SDL_Window *window = static_cast<SDL_Window *>(platform.nativeWindow());
+    impl->window = window;
     impl->renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!impl->renderer) {
         throw std::runtime_error(std::string("SDL_CreateRenderer failed: ") + SDL_GetError());
@@ -465,8 +468,8 @@ void Renderer::present() {
     if (ext_trace::active()) {
         int ow = 0, oh = 0, ww = 0, wh = 0;
         SDL_GetRendererOutputSize(impl->renderer, &ow, &oh);
-        if (SDL_Window *window = SDL_RenderGetWindow(impl->renderer))
-            SDL_GetWindowSize(window, &ww, &wh);
+        if (impl->window)
+            SDL_GetWindowSize(impl->window, &ww, &wh);
         ext_trace::note("present canvas=" + std::to_string(impl->width) + "x" + std::to_string(impl->height) +
                         " output=" + std::to_string(ow) + "x" + std::to_string(oh) +
                         " window=" + std::to_string(ww) + "x" + std::to_string(wh) +
