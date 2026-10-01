@@ -141,7 +141,10 @@ private:
     // version read from the package, its UpdateRoms remembered for the UpdateRoms phase
     bool fromChannel(string &error) {
         ChannelRelease rel;
-        if (!InstallerJob::channelRelease(repoUrl, opt.channel, dl, scratch, rel, error))
+        if (!InstallerJob::channelRelease(repoUrl, opt.channel,
+                                          opt.channelIndexes.empty() ? InstallerJob::channelLists(opt.channel)
+                                                                     : opt.channelIndexes,
+                                          dl, scratch, rel, error))
             return false;
         say("  the " + opt.channel + " channel: AutoBleem " + rel.version);
         const string file = scratch + "/" + rel.package.name;
@@ -712,10 +715,16 @@ vector<string> InstallerJob::channelLists(const string &channel) {
 //*******************************
 bool InstallerJob::channelRelease(const string &repoUrl, const string &channel, Downloader &downloader,
                                   const string &scratchDir, ChannelRelease &out, string &error) {
+    return channelRelease(repoUrl, channel, channelLists(channel), downloader, scratchDir, out, error);
+}
+
+bool InstallerJob::channelRelease(const string &repoUrl, const string &channel, const vector<string> &lists,
+                                  Downloader &downloader, const string &scratchDir, ChannelRelease &out,
+                                  string &error) {
     out = ChannelRelease();
     out.channel = channel;
     string lastError;
-    for (const string &list : channelLists(channel)) {
+    for (const string &list : lists) {
         string text;
         ReleaseCatalog release;
         if (!downloader.fetchText(repoUrl + "/" + list, scratchDir + "/channel.json", text, lastError) ||

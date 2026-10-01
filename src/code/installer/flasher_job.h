@@ -39,8 +39,11 @@ public:
 // FlashOptions
 //******************
 struct FlashOptions {
-    std::string channel = "release"; // release | testing | nightly, when imageFile is empty
-    std::string imageFile;           // a local .img.xz instead (checked against <file>.sha256 when that is there)
+    std::string channel =
+        "release"; // a channel's id (release | testing | nightly | preview ...), when imageFile is empty
+    std::vector<std::string>
+        channelIndexes;    // that channel's lists when channels.json named them; empty = channelLists(channel)
+    std::string imageFile; // a local .img.xz instead (checked against <file>.sha256 when that is there)
     std::string repoUrl = "https://autobleem.retromenele.pl";
     std::string scratchDir; // where a channel's image is downloaded to (and kept, for the next stick)
     bool verify = true;     // read the stick back and compare
@@ -67,6 +70,10 @@ public:
     static std::vector<std::string> channelLists(const std::string &channel);
     // what the channel offers now - for the window before the run, and the run itself
     static bool channelImage(const std::string &repoUrl, const std::string &channel, Downloader &downloader,
+                             const std::string &scratchDir, ChannelImage &out, std::string &error);
+    // the same with the lists given (a channel from channels.json)
+    static bool channelImage(const std::string &repoUrl, const std::string &channel,
+                             const std::vector<std::string> &lists, Downloader &downloader,
                              const std::string &scratchDir, ChannelImage &out, std::string &error);
     // the phases a run with these options has
     static std::vector<std::string> phasesFor(const FlashOptions &options);

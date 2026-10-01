@@ -33,6 +33,8 @@ struct InstallOptions {
     // empty: "release" (releases/latest.json), "testing" (releases/unstable.json, else the release),
     // "nightly" (nightly/latest.json, else testing's, else the release's)
     std::string channel;
+    // the lists of that channel when channels.json named them (ChannelCatalog::lists); empty = channelLists(channel)
+    std::vector<std::string> channelIndexes;
     std::string repoUrl = "https://autobleem.retromenele.pl";
     std::string buildbotUrl = "https://buildbot.libretro.com/assets/frontend"; // libretro's bundles
     std::string scratchDir; // where downloads land before they are unpacked; "" = <root>/System/Install
@@ -110,6 +112,10 @@ public:
     static std::vector<std::string> channelLists(const std::string &channel);
     // what the channel offers a stick now - for the window to show before the run, and the run itself
     static bool channelRelease(const std::string &repoUrl, const std::string &channel, Downloader &downloader,
+                               const std::string &scratchDir, ChannelRelease &out, std::string &error);
+    // the same with the lists given (a channel from channels.json)
+    static bool channelRelease(const std::string &repoUrl, const std::string &channel,
+                               const std::vector<std::string> &lists, Downloader &downloader,
                                const std::string &scratchDir, ChannelRelease &out, std::string &error);
     // the stick and the package as they are
     static StickInfo inspect(const InstallOptions &options);

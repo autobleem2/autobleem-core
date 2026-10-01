@@ -69,7 +69,10 @@ private:
         if (stopped(error))
             return false;
         ChannelImage ci;
-        if (!FlasherJob::channelImage(repoUrl, opt.channel, dl, scratch, ci, error))
+        if (!FlasherJob::channelImage(repoUrl, opt.channel,
+                                      opt.channelIndexes.empty() ? FlasherJob::channelLists(opt.channel)
+                                                                 : opt.channelIndexes,
+                                      dl, scratch, ci, error))
             return false;
         say("  the " + opt.channel + " channel: AutoBleem " + ci.version);
         image = scratch + "/" + ci.image.name;
@@ -285,10 +288,15 @@ vector<string> FlasherJob::channelLists(const string &channel) {
 //*******************************
 bool FlasherJob::channelImage(const string &repoUrl, const string &channel, Downloader &downloader,
                               const string &scratchDir, ChannelImage &out, string &error) {
+    return channelImage(repoUrl, channel, channelLists(channel), downloader, scratchDir, out, error);
+}
+
+bool FlasherJob::channelImage(const string &repoUrl, const string &channel, const vector<string> &lists,
+                              Downloader &downloader, const string &scratchDir, ChannelImage &out, string &error) {
     out = ChannelImage();
     out.channel = channel;
     string lastError;
-    for (const string &list : channelLists(channel)) {
+    for (const string &list : lists) {
         string text;
         ReleaseCatalog catalog;
         if (!downloader.fetchText(repoUrl + "/" + list, scratchDir + "/channel.json", text, lastError) ||
