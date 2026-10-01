@@ -13,6 +13,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cassert>
+#include <ableem/engine/ext_trace.h>
 #include <ableem/engine/log.h>
 #include <ableem/ui/debug_driver.h>
 #include <ab_gui/panel.h>
@@ -212,6 +213,7 @@ void Gui::wireUiContext() {
     uiContext_.backdropDrawer = [this]() {
         if (backdrop_.draw(renderer()))
             return;
+        ableem::ext_trace::note("backdrop FALLBACK: transparent clear + theme background");
         renderer().setDrawColor(Color(0x00, 0x00, 0x00, 0x00));
         renderer().clear();
         renderer().copy(assets_.backgroundImg, nullptr, &assets_.backgroundRect);

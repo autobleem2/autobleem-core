@@ -1,6 +1,8 @@
 #include "ableem/ui/gui_screen.h"
 #include "ableem/ui/debug_driver.h"
 
+#include <ableem/engine/ext_trace.h>
+#include <string>
 #include <typeinfo>
 
 namespace ableem {
@@ -11,9 +13,14 @@ namespace ableem {
 void GuiScreen::show() {
     DebugDriver::pushScreen(typeid(*this).name());
     gui.input().pushFrameNeed(); // Active until the screen says otherwise (init() or its loop)
+    // the extension hand-off trap (BUG-31): a screen shown by an extension opens and closes a window of frame lines
+    if (ext_trace::inExtension())
+        ext_trace::begin(std::string("screen opens ") + typeid(*this).name());
     init();
     render();
     loop();
+    if (ext_trace::inExtension())
+        ext_trace::begin(std::string("screen closed ") + typeid(*this).name());
     gui.input().popFrameNeed();
     DebugDriver::popScreen();
 }

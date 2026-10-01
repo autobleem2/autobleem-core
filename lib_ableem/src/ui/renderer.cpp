@@ -5,6 +5,7 @@
 #include "ableem/ui/texture.h"
 #include "perf_overlay.h"
 #include "sdl_common.h"
+#include <ableem/engine/ext_trace.h>
 #include <ableem/engine/log.h>
 #include <algorithm>
 #include <atomic>
@@ -89,6 +90,15 @@ Rect scaleRect(const Rect &r, float k) {
     int x1 = static_cast<int>(std::lround((r.x + r.w) * k));
     int y1 = static_cast<int>(std::lround((r.y + r.h) * k));
     return Rect(x0, y0, x1 - x0, y1 - y0);
+}
+// the extension hand-off trap (BUG-31, ext_trace.h): where drawing goes, and whether a clear or present is outside
+// the screen stack's frame
+std::string traceTarget(SDL_Renderer *renderer) {
+    return SDL_GetRenderTarget(renderer) == nullptr ? " target=screen" : " target=texture";
+}
+
+const char *traceOutside() {
+    return ext_trace::inStackFrame() ? "" : " OUTSIDE-STACK";
 }
 } // namespace
 
@@ -312,6 +322,12 @@ void Renderer::clear() {
             impl->capturing = true;
         }
     }
+    if (ext_trace::active()) {
+        Uint8 r = 0, g = 0, b = 0, a = 0;
+        SDL_GetRenderDrawColor(impl->renderer, &r, &g, &b, &a);
+        ext_trace::note("clear rgba=" + std::to_string(r) + "," + std::to_string(g) + "," + std::to_string(b) + "," +
+                        std::to_string(a) + traceTarget(impl->renderer) + traceOutside());
+    }
     SDL_RenderClear(impl->renderer);
 }
 //*******************************
@@ -437,6 +453,17 @@ Texture Renderer::lastCapture() const {
 }
 
 void Renderer::present() {
+    if (ext_trace::active()) {
+        int ow = 0, oh = 0, ww = 0, wh = 0;
+        SDL_GetRendererOutputSize(impl->renderer, &ow, &oh);
+        if (SDL_Window *window = SDL_RenderGetWindow(impl->renderer))
+            SDL_GetWindowSize(window, &ww, &wh);
+        ext_trace::note("present canvas=" + std::to_string(impl->width) + "x" + std::to_string(impl->height) +
+                        " output=" + std::to_string(ow) + "x" + std::to_string(oh) +
+                        " window=" + std::to_string(ww) + "x" + std::to_string(wh) +
+                        (impl->capturing ? " capturing" : "") + (impl->captureRequested ? " capture-asked" : "") +
+                        traceTarget(impl->renderer) + traceOutside());
+    }
     // never present while a render target (other than the capture's own, handled below) is current: the screen would
     // show an unfilled frame
     if (!impl->capturing && SDL_GetRenderTarget(impl->renderer) != nullptr) {
@@ -464,6 +491,9 @@ void Renderer::present() {
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE); // the capture stays opaque, as a read-back frame was
         impl->capture = impl->captureTarget;
         impl->captureTarget = Texture();
+        if (ext_trace::active())
+            ext_trace::note("capture taken " + std::to_string(impl->capture.size().w) + "x" +
+                            std::to_string(impl->capture.size().h) + " (black clear + copy to the window)");
     } else if (impl->captureRequested) {
         // a frame that never called clear(): read it back
         impl->captureRequested = false;
@@ -500,6 +530,7 @@ void Renderer::present() {
         }
     }
     SDL_RenderPresent(impl->renderer);
+    ext_trace::frameDone();
     impl->capFrameRate();
     impl->overlay.afterPresent();
     Impl::Stats &st = impl->stats;
@@ -775,6 +806,8 @@ void Renderer::copyTrapezoidFaded(const Texture &tex, const Rect *src, VerticalE
 
 void Renderer::setTarget(Texture *target) {
     // "the screen" is the capture's target while a frame is being captured
+    if (ext_trace::active())
+        ext_trace::note(target ? "setTarget texture" : "setTarget screen");
     SDL_SetRenderTarget(impl->renderer, target ? static_cast<SDL_Texture *>(target->native()) : impl->screenTarget());
 }
 
@@ -791,6 +824,8 @@ void Renderer::popTarget() {
     } else {
         PLOG_WARNING << "Renderer::popTarget without a pushTarget - back to the screen";
     }
+    if (ext_trace::active())
+        ext_trace::note(previous ? "popTarget texture" : "popTarget screen");
     SDL_SetRenderTarget(impl->renderer, previous ? previous : impl->screenTarget());
 }
 
