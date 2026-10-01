@@ -73,13 +73,13 @@ ExtensionRuntime::Loaded *ExtensionRuntime::load(ExtensionInfo &extension, Refus
     const string &path = extension.manifest.program;
     string error;
     // the hand-off trap (BUG-31, ext_trace.h): the load's steps with their timings
-    if (ext_trace::enabled())
-        ext_trace::line("[" + extension.name + "] load: dlopen " + path);
-    const long openStart = ext_trace::nowMs();
+    if (ableem::ext_trace::enabled())
+        ableem::ext_trace::line("[" + extension.name + "] load: dlopen " + path);
+    const long openStart = ableem::ext_trace::nowMs();
     void *handle = loader_.open(path, error);
-    if (ext_trace::enabled())
-        ext_trace::line("[" + extension.name + "] load: dlopen " + (handle ? "ok" : "FAILED") + ", took " +
-                        to_string(ext_trace::nowMs() - openStart) + " ms");
+    if (ableem::ext_trace::enabled())
+        ableem::ext_trace::line("[" + extension.name + "] load: dlopen " + (handle ? "ok" : "FAILED") + ", took " +
+                            to_string(ableem::ext_trace::nowMs() - openStart) + " ms");
     if (handle == nullptr) {
         PLOG_ERROR << "[" << extension.name << "] cannot load " << path << ": " << error;
         extension.loadProblem = error;
@@ -112,7 +112,7 @@ ExtensionRuntime::Loaded *ExtensionRuntime::load(ExtensionInfo &extension, Refus
     Extension *created = nullptr;
     bool createdOk = false;
     {
-        ext_trace::StepTimer timer("load: init (ab_extension_create)");
+        ableem::ext_trace::StepTimer timer("load: init (ab_extension_create)");
         createdOk = guarded(l, "create", [&]() { created = create(*l.host); });
     }
     if (!createdOk || created == nullptr) {
@@ -160,13 +160,13 @@ ExtensionRuntime::Refusal ExtensionRuntime::run(const string &name, bool network
     if (loaded == nullptr)
         return why;
     PLOG_INFO << "[" << name << "] run";
-    if (ext_trace::enabled())
-        ext_trace::line("[" + name + "] run() called - its first frame is the next EXT-FIRST-FRAME");
-    ext_trace::setInExtension(true);
+    if (ableem::ext_trace::enabled())
+        ableem::ext_trace::line("[" + name + "] run() called - its first frame is the next EXT-FIRST-FRAME");
+    ableem::ext_trace::setInExtension(true);
     bool ok = guarded(*loaded, "run", [&]() { loaded->extension->run(); });
-    ext_trace::setInExtension(false);
-    if (ext_trace::enabled())
-        ext_trace::begin("[" + name + "] run() returned");
+    ableem::ext_trace::setInExtension(false);
+    if (ableem::ext_trace::enabled())
+        ableem::ext_trace::begin("[" + name + "] run() returned");
     PLOG_INFO << "[" << name << "] run ended";
     return ok ? Refusal::None : Refusal::Failed;
 }
@@ -181,13 +181,14 @@ ExtensionRuntime::Refusal ExtensionRuntime::runEntry(const string &name, const s
         return why;
     PLOG_INFO << "[" << name << "] run entry " << entry;
     bool handled = false;
-    if (ext_trace::enabled())
-        ext_trace::line("[" + name + "] runEntry(" + entry + ") called - its first frame is the next EXT-FIRST-FRAME");
-    ext_trace::setInExtension(true);
+    if (ableem::ext_trace::enabled())
+        ableem::ext_trace::line("[" + name + "] runEntry(" + entry +
+                                ") called - its first frame is the next EXT-FIRST-FRAME");
+    ableem::ext_trace::setInExtension(true);
     bool ok = guarded(*loaded, "runEntry", [&]() { handled = loaded->extension->runEntry(entry); });
-    ext_trace::setInExtension(false);
-    if (ext_trace::enabled())
-        ext_trace::begin("[" + name + "] runEntry(" + entry + ") returned");
+    ableem::ext_trace::setInExtension(false);
+    if (ableem::ext_trace::enabled())
+        ableem::ext_trace::begin("[" + name + "] runEntry(" + entry + ") returned");
     PLOG_INFO << "[" << name << "] entry " << entry << (handled ? " ended" : " not handled");
     if (!ok)
         return Refusal::Failed;
