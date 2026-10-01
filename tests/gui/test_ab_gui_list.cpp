@@ -325,10 +325,11 @@ TEST_CASE("List::draw: a short list - the backdrop, its compact panel around the
     list.maxVisible = 5;
     list.draw();
     CHECK(side.calls ==
-          vector<string>{"backdrop", "compact", "title", "row 0@0", "row 1@1*", "row 2@2", "status", "full"});
-    // the compact panel is Panel::compact's for the list's rows and font, and the rows were drawn in it
+          vector<string>{"backdrop", "status", "compact", "title", "row 0@0", "row 1@1*", "row 2@2", "status", "full"});
+    // the status line is read first: the compact panel widens for its one-row footer.
+    // The compact panel is Panel::compact's for the list's rows, font and footer line, and the rows were drawn in it
     REQUIRE(side.switched.size() == 1);
-    const Rect expected = Panel::compact(side.ctx, 3, list.font).rect();
+    const Rect expected = Panel::compact(side.ctx, 3, list.font, list.statusText()).rect();
     CHECK(sameRect(side.switched[0], expected));
     REQUIRE(list.panelAtRow.size() == 3);
     for (const Rect &r : list.panelAtRow)
@@ -404,7 +405,7 @@ TEST_CASE("List::draw: with a selection frame it is drawn before the rows (under
         list.maxVisible = 5;
         list.draw();
         CHECK(side.calls ==
-              vector<string>{"backdrop", "compact", "title", "row 0@0", "row 1@1*", "row 2@2", "status", "full"});
+              vector<string>{"backdrop", "status", "compact", "title", "row 0@0", "row 1@1*", "row 2@2", "status", "full"});
     }
 
     // a `selection` frame: drawn before the first row, so the text reads over it

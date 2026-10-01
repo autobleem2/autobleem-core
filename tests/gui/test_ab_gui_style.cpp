@@ -206,18 +206,21 @@ TEST_CASE("parseHints: the status before the first marker, icons joined across a
     CHECK(items[2].label == "Go back");
 }
 
-TEST_CASE("parseHints: back-to-back markers share a hint, a trailing marker keeps its icon") {
+TEST_CASE("parseHints: back-to-back markers share a hint (a L1/R1, L2/R2 pair is one chip), a trailing marker keeps its icon") {
     std::string status = "stale";
-    const std::vector<HintItem> items = Style::parseHints("|@L2||@R2| Page |@Start|", status);
+    const std::vector<HintItem> items = Style::parseHints("|@L2||@R2| Page |@X||@O| Pick |@Start|", status);
     CHECK(status.empty());
-    REQUIRE(items.size() == 2);
-    REQUIRE(items[0].icons.size() == 2);
-    CHECK(items[0].icons[0] == "L2");
-    CHECK(items[0].icons[1] == "R2");
+    REQUIRE(items.size() == 3);
+    REQUIRE(items[0].icons.size() == 1);
+    CHECK(items[0].icons[0] == "L2+R2"); // UIREV-42: the pair is one chip, however the line wrote it
     CHECK(items[0].label == "Page");
-    REQUIRE(items[1].icons.size() == 1);
-    CHECK(items[1].icons[0] == "Start");
-    CHECK(items[1].label.empty());
+    REQUIRE(items[1].icons.size() == 2); // keys that are no pair still share the hint
+    CHECK(items[1].icons[0] == "X");
+    CHECK(items[1].icons[1] == "O");
+    CHECK(items[1].label == "Pick");
+    REQUIRE(items[2].icons.size() == 1);
+    CHECK(items[2].icons[0] == "Start");
+    CHECK(items[2].label.empty());
 }
 
 TEST_CASE("parseHints: a line with no markers is all status") {
