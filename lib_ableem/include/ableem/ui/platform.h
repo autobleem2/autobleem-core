@@ -34,6 +34,9 @@ public:
     static std::string osName();
     std::string videoDriverName() const;
     std::string displayModeString() const;
+    // the mode the window is in right now (what displayModeString prints), {0, 0} without a window: what
+    // "Auto" really is on the screen, which the desktop's own mode is not after a mode was chosen
+    Size windowDisplaySize() const;
 
     // true when running on a development machine rather than the real target (console/RPi image).
     bool isDevHost() const;
