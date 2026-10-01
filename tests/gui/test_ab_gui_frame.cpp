@@ -995,3 +995,42 @@ TEST_CASE("Style::footerWidth (a footer is one row): what the row needs grows wi
     CHECK(style.footerWidth(ctx, "|@X| Select |@O| Back") == shortW);
     CHECK(style.footerWidth(ctx, vector<abgui::HintItem>(), "") == 2 * style.rowInset);
 }
+
+TEST_CASE("Style::buttonWidth: an alternative (L2/R2) is one chip, a text chip without pictures, one chip with a small '/' between them with") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+    ctx.textMeasurer = [](const ableem::Font &, const string &text) { return 8 * static_cast<int>(text.size()); };
+
+    // no pictures: the name "L2/R2" in one chip, as wide as that text asks - not the two chips of L2 and R2
+    const int alt = style.buttonWidth(ctx, "L2/R2", 30);
+    CHECK(alt == std::max(abgui::Style::ChipMinWidth, 8 * 5 + 2 * abgui::Style::ChipPadding));
+    CHECK(alt < style.buttonWidth(ctx, "L2", 30) + 6 + style.buttonWidth(ctx, "R2", 30));
+    CHECK(style.button(ctx, "L2/R2", 20, 20, 30) == alt);
+    // the combination is a chip of its own, drawn from its own name
+    CHECK(style.buttonWidth(ctx, "L2+R2", 30) == alt);
+
+    // pictures for both keys: one chip with the two pictures and a small "/" (8 px here) between, PictureGap each side
+    auto sized = [&](int w, int h) { return ableem::Texture::createTarget(renderer, w, h); };
+    ableem::Texture l2 = sized(40, 24), r2 = sized(36, 24);
+    REQUIRE(l2.valid());
+    REQUIRE(r2.valid());
+    ctx.glyphProvider = [&](const string &key) {
+        return key == "L2" ? l2 : key == "R2" ? r2 : ableem::Texture();
+    };
+    const int slash = 8;
+    const int picturesW = 40 + abgui::Style::PictureGap + slash + abgui::Style::PictureGap + 36;
+    CHECK(style.buttonWidth(ctx, "L2/R2", 30) == picturesW + 2 * abgui::Style::ChipPadding);
+    CHECK(style.button(ctx, "L2/R2", 20, 20, 30) == picturesW + 2 * abgui::Style::ChipPadding);
+    // the combination takes the pictures side by side with no "/"
+    CHECK(style.buttonWidth(ctx, "L2+R2", 30) ==
+          40 + abgui::Style::PictureGap + 36 + 2 * abgui::Style::ChipPadding);
+    // the d-pad's alternative spelling is still the two separate arrows
+    ableem::Texture arrow = sized(18, 18);
+    REQUIRE(arrow.valid());
+    ctx.glyphProvider = [&](const string &key) { return key == "Left" || key == "Right" ? arrow : ableem::Texture(); };
+    CHECK(style.buttonWidth(ctx, "Left/Right", 30) == 18 + 6 + 18);
+}

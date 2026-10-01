@@ -153,7 +153,7 @@ void TextPage::draw() {
     panel.scrollMarkers(ctx, firstLine_ > 0, lastLineShown_ < static_cast<int>(lines.size()));
     string status = "|@O| " + ctx.translate("Back");
     if (firstLine_ > 0 || lastLineShown_ < static_cast<int>(lines.size()))
-        status = "|@L2+R2| " + ctx.translate("Page") + "   " + status;
+        status = "|@L2/R2| " + ctx.translate("Page") + "   " + status;
     panel.footer(ctx, status);
 }
 
