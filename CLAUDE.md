@@ -42,5 +42,6 @@ touching a path uses `tests/support/env_fixture.h`; scratch trees via `tests/sup
 lib_ableem (engine: Environment, DirEntry, Lang, MemcardImage, IniFile/ConfigFileEditor/MemcardManager,
 GameDatabase, MetadataLookup, ThumbnailLookup, DiscSuffix, the scanner, SerialScanner, RetroArchPlaylist,
 CoreInfoTable, RetroArchScanner, ThemeSpec, ZipArchive/ZipWriter, Md5, Crc32; ui: Platform, output scale, MSAA,
-Renderer, Texture, Font, Sound/Music/Audio, Joystick, Input, GuiBase/GuiScreen, CMake) - UI styling standards -
+Renderer, Texture, Font, Sound/Music/Audio, Joystick, Input, GuiBase/GuiScreen, CMake) - ab_gui (the UI library) -
+UI styling standards -
 Source map: the core-owned files - Tests.
