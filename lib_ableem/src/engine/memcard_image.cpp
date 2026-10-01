@@ -427,15 +427,19 @@ void MemcardImage::ownIconPixels(int slot, int frame, Pixel *out) const {
     for (int p = 0; p < 16; p++) {
         uint8_t lo = card_[paletteAddr + p * 2];
         uint8_t hi = card_[paletteAddr + p * 2 + 1];
-        uint8_t blue = hi >> 2;
+        uint8_t blue = (hi >> 2) & 0x1F;
         uint8_t green = (((lo >> 5) | 0xF8) ^ 0xF8) + (((hi | 0xFC) ^ 0xFC) << 3);
         uint8_t red = (lo | 0xE0) ^ 0xE0;
+        // raw 0x0000 is the transparent colour
+        const uint8_t alpha = (lo == 0 && hi == 0) ? 0 : 255;
         if (slotIsDeleted_[slot]) {
             palette[p] = Pixel{static_cast<uint8_t>(red * 4 + 127), static_cast<uint8_t>(green * 4 + 127),
-                               static_cast<uint8_t>(blue * 4 + 127), 255};
+                               static_cast<uint8_t>(blue * 4 + 127), alpha};
         } else {
-            palette[p] = Pixel{static_cast<uint8_t>(red * 8), static_cast<uint8_t>(green * 8),
-                               static_cast<uint8_t>(blue * 8), 255};
+            // 5 bits to 8, white (31) = 255
+            palette[p] = Pixel{static_cast<uint8_t>((red << 3) | (red >> 2)),
+                               static_cast<uint8_t>((green << 3) | (green >> 2)),
+                               static_cast<uint8_t>((blue << 3) | (blue >> 2)), alpha};
         }
     }
 
@@ -464,13 +468,41 @@ void MemcardImage::iconPixels(int slot, int frame, Pixel *out) const {
         ownIconPixels(top, 0, out);
         for (int i = 0; i < IconSize * IconSize; i++) {
             out[i] = Pixel{static_cast<uint8_t>(out[i].r / 3), static_cast<uint8_t>(out[i].g / 3),
-                           static_cast<uint8_t>(out[i].b / 3), 255};
+                           static_cast<uint8_t>(out[i].b / 3), out[i].a};
         }
         return;
     }
     for (int i = 0; i < IconSize * IconSize; i++) {
         out[i] = Pixel{0, 0, 0, 127};
     }
+}
+
+//*******************************
+// MemcardImage::iconFrameCount
+//*******************************
+int MemcardImage::iconFrameCount(int slot) const {
+    if (!slotHasIcon_[slot])
+        return 1;
+    switch (card_[blockPosition(slot) + 2]) {
+    case 0x12:
+        return 2;
+    case 0x13:
+        return 3;
+    default: // 0x11, and anything unknown: one static frame
+        return 1;
+    }
+}
+
+//*******************************
+// MemcardImage::iconFrameAt
+//*******************************
+int MemcardImage::iconFrameAt(int frameCount, unsigned int elapsedMs) {
+    // https://problemkaputt.de/psxspx-memory-card-data-format.htm, Icon Display Flag: 2 frames change every 16 PAL
+    // frames, 3 frames every 11 (50 Hz vblanks: 320 ms and 220 ms)
+    if (frameCount < 2 || frameCount > IconFrames)
+        return 0;
+    const unsigned int step = frameCount == 2 ? 320 : 220;
+    return static_cast<int>((elapsedMs / step) % static_cast<unsigned int>(frameCount));
 }
 
 } // namespace ableem
