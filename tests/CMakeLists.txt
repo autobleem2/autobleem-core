@@ -37,6 +37,8 @@ if (AB_CORE_UI)
     # the runtime is ab_classic's (it knows Extension), tested with in-process fake plugins
     ab_add_test(test_extension_runtime classic/test_extension_runtime.cpp LIBS ab_classic)
     ab_add_test(test_hold_repeat classic/test_hold_repeat.cpp LIBS ab_gui)
+    # UIREV-39: the surprise game's pure layout numbers (gui/surprise_layout.h, header-only)
+    ab_add_test(test_surprise_layout classic/test_surprise_layout.cpp LIBS ab_classic)
     # GuiTextPage's line layout (splitItem is pure; the class is ab_classic's)
     ab_add_test(test_text_page classic/test_text_page.cpp LIBS ab_classic)
     # UIREV-2: doHome()/doEnd()'s skip-past-a-heading fix, driven through a local model of GuiMenuBase's

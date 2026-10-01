@@ -1,6 +1,6 @@
 //
-// SurpriseGame: the "Surprise" easter egg on the About screen. Start toggles it on; the starfield already
-// behind the credits keeps running as the backdrop. A small shoot-em-up: dpad moves the ship, Cross fires,
+// SurpriseGame: the "Surprise" easter egg on the About screen. Start shows its title screen, Start again begins the
+// game; the starfield already behind the credits keeps running as the backdrop. A small shoot-em-up: dpad moves the ship, Cross fires,
 // Start restarts on the spot, Circle goes back to the About screen. The Konami code during a game (B A =
 // Cross Circle, see KonamiCode) gives unlimited lives for that game, and the high score stops counting.
 //
@@ -11,10 +11,15 @@
 // (rapid-fire/autofire, a spread shot, or a piercing "power" shot) that the ship collects by flying over it,
 // and more rarely (about 1% of kills) an extra life instead, collected the same way.
 //
-// Sprites and sound effects are Kenney's "Space Shooter Redux" (CC0 / public domain, www.kenney.nl) plus one
-// CC0 "NES Shooter Music" track by SketchyLogic (opengameart.org), copied into resources/surprise_game/ -
-// see the license.txt alongside them.
+// "BleemStrike: Reloaded" (UIREV-39): the look of an early 32-bit shooter - rendered sprites with a halo, drawn over
+// the unchanged hitboxes (surprise_layout.h), a chrome HUD in Oxanium (surprise_art.h) with the lives as one ship and
+// "x N", a title screen, a scrolling sky. The art is the designer's (autobleem-design launcher/surprise/README.md);
+// the sound effects are Kenney's "Space Shooter Redux" (CC0 / public domain, www.kenney.nl) plus one CC0 "NES Shooter
+// Music" track by SketchyLogic (opengameart.org), copied into resources/surprise_game/ - see the license.txt
+// alongside them.
 #pragma once
+
+#include "surprise_art.h"
 
 #include <ableem/ui/renderer.h>
 #include <ableem/ui/texture.h>
@@ -36,10 +41,14 @@ struct SurpriseSprites {
     ableem::Texture enemy2;
     ableem::Texture ufo; // the diving alien
     ableem::Texture laserPlayer;
-    ableem::Texture laserEnemy; // doubles as the "power" (piercing) player shot - a bigger, meaner-looking bolt
+    ableem::Texture laserPierce; // the "power" (piercing) player shot
+    ableem::Texture laserEnemy;  // a strip of two frames that flicker
     ableem::Texture powerupRapid;
     ableem::Texture powerupSpread;
     ableem::Texture powerupPower;
+    ableem::Texture powerupLife; // the extra life
+    ableem::Texture explosion;   // a strip of four frames
+    ableem::Texture sky;         // the seamless vertical loop behind the star field; invalid = the old dark backdrop
 };
 
 //******************
@@ -91,8 +100,19 @@ public:
     // power-up even when fireHeld is false).
     void update(unsigned int nowTicks, bool moveLeft, bool moveRight, bool fireHeld);
 
+    // the title screen comes first: Start in it begins the game (reset()), Start in a game restarts it
+    void showTitle() { onTitle_ = true; }
+    bool onTitle() const { return onTitle_; }
+    // keeps the game's clock (the sky, the alien beat) running while the title shows
+    void updateTitle(unsigned int nowTicks) { lastTicks = nowTicks; }
+
+    // the far layer: the sky, scrolled slowly; false when there is none (the caller then draws its dark backdrop)
+    bool renderSky(ableem::Renderer &renderer, const SurpriseSprites &sprites) const;
+
+    // `font` is the launcher's own face, for what the design does not set (LIFE LOST, GAME OVER) and as the stand-in
+    // for an Oxanium face that did not open
     void render(ableem::Renderer &renderer, TextRenderer &text, const ableem::Font &font,
-                const SurpriseSprites &sprites);
+                const SurpriseSprites &sprites, SurpriseHud &hud);
 
     bool gameOver() const { return lives <= 0; }
     int currentScore() const { return score; }
@@ -110,9 +130,16 @@ public:
 private:
     struct Bullet {
         float x = 0, y = 0;
-        float vx = 0;       // horizontal drift per frame, for the spread shot's angled bolts
-        int pierceLeft = 0; // extra aliens this bolt can pass through after its first hit (the Power shot)
+        float vx = 0;            // horizontal drift per frame, for the spread shot's angled bolts
+        int pierceLeft = 0;      // extra aliens this bolt can pass through after its first hit (the Power shot)
+        bool pierceShot = false; // fired under the Power shot: drawn as the piercing bolt for its whole flight
         bool alive = false;
+    };
+
+    // a dead alien's explosion, played where it died
+    struct Explosion {
+        float x = 0, y = 0; // the alien's hitbox position
+        unsigned int startTicks = 0;
     };
 
     struct Alien {
@@ -141,7 +168,9 @@ private:
     std::vector<Bullet> playerBullets;
     std::vector<Bullet> alienBullets;
     std::vector<PowerUp> powerUps;
+    std::vector<Explosion> explosions;
 
+    bool onTitle_ = false;
     float shipX = 0;
     int dropsSinceExtraLife = 0; // power-ups dropped since the last extra life (see maybeDropPowerUp)
     int lives = 3;
@@ -190,6 +219,9 @@ private:
     void handleCollisions(unsigned int nowTicks);
     void tryFire(unsigned int nowTicks);
     void maybeDropPowerUp(float x, float y);
+    void killAlien(Alien &a, unsigned int nowTicks);
+    void renderTitle(ableem::Renderer &renderer, const SurpriseSprites &sprites, SurpriseHud &hud);
+    void renderHud(ableem::Renderer &renderer, const SurpriseSprites &sprites, SurpriseHud &hud);
     int awayFromFormationCount() const; // aliens currently diving or returning
     float restX(const Alien &a, unsigned int nowTicks) const;
     float restY(const Alien &a) const;
