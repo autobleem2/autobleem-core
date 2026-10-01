@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <ableem/engine/log.h>
+#include <sys/stat.h>
 
 using namespace std;
 
@@ -102,6 +103,21 @@ string ResumePointService::pictureForSlot(const PsGame &game, int slot) const {
         return "";
     string picture = keptPictureFile(game, name, slot);
     return DirEntry::exists(picture) ? picture : "";
+}
+
+//*******************************
+// ResumePointService::timeForSlot
+//*******************************
+time_t ResumePointService::timeForSlot(const PsGame &game, int slot) const {
+    if (game.foreign)
+        return 0;
+    string name;
+    if (!readStateNameForSlot(game, slot, &name))
+        return 0;
+    struct stat info;
+    if (stat(keptStateFile(game, name, slot).c_str(), &info) != 0)
+        return 0;
+    return info.st_mtime;
 }
 
 //*******************************
