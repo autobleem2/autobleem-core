@@ -55,8 +55,30 @@ struct HintBarLayout {
     HintLineLayout line2; // in bottomLine(bar); empty with oneLine
 };
 
+// UIREV-36: the launcher's fixed grid - 4 columns x 2 lines, every item at a home slot. What the layout asks the
+// caller: the width of each column's widest item over EVERY state (the item's buttons, IconGap and its label at that
+// font size) - so nothing moves when the state changes - and the font's line height.
+struct HintGridMeasure {
+    std::function<int(int size, int column)> columnWidth;
+    std::function<int(int size)> lineHeight;
+};
+
+// the grid, laid out once per (bar, language)
+struct HintGridLayout {
+    static constexpr int Columns = 4;
+    bool oneLine = false; // the bar is under TwoLineMinHeight px: line 1 only
+    int fontSize = 0;     // ONE for both lines
+    int labelY[2] = {0, 0};
+    int chipY[2] = {0, 0};
+    int itemX[Columns] = {0, 0, 0, 0};    // where an item's buttons start, absolute
+    int itemRoom[Columns] = {0, 0, 0, 0}; // the width an item may take (a label wider than this is elided)
+};
+
 class HintBar {
 public:
+    static constexpr int GridColumnPad = 22; // a column is its widest item + this
+    static constexpr int GridItemInset = 12; // an item starts this far in from its column's left edge
+
     static constexpr int Inset = 16;            // the free room at each end of a line
     static constexpr int IconGap = 6;           // a hint's buttons to its label
     static constexpr int WidestGap = 28;        // hint to hint, as long as the line fits at some font size
@@ -80,6 +102,12 @@ public:
     // in the bottom half - or line 1 alone in the whole bar when it is too low for two (line 2 then has no places)
     static HintBarLayout layout(const ableem::Rect &bar, std::size_t count1, const HintMeasure &measure1,
                                 std::size_t count2, const HintMeasure &measure2);
+
+    // the fixed grid (UIREV-36): the largest of FontSizes at which the four columns (widest item + GridColumnPad each)
+    // fit the bar's width less Inset on each side, the spare width shared evenly; an item at its column's left +
+    // GridItemInset. When even the smallest size does not fit, the columns shrink in proportion and `itemRoom` says
+    // how much an item may take - the caller elides a label, never drops an item.
+    static HintGridLayout layoutGrid(const ableem::Rect &bar, const HintGridMeasure &measure);
 };
 
 } // namespace abgui

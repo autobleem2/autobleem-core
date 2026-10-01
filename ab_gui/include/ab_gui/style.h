@@ -377,6 +377,10 @@ public:
     // a marker string as a button guide writes it - "|@L2+Select|", "|@X| / |@O|", "RESET" - drawn as
     // icons, chips and the text between them; returns the width
     int buttons(Context &ctx, const std::string &markers, int x, int y, int height = 30) const;
+    // the same at `alpha` (0..255) - the pictures, their outlines, the chip frame or box; the text of a chip is drawn
+    // through Context::drawText, so the program's text alpha (TextRenderer::setAlpha) fades it (UIREV-36: a hint that
+    // does nothing in this state)
+    int buttonsFaded(Context &ctx, const std::string &markers, int x, int y, int alpha, int height = 30) const;
     // the width the two above would draw, without drawing - for laying a row out first
     int buttonWidth(Context &ctx, const std::string &key, int height = 30) const;
     int buttonsWidth(Context &ctx, const std::string &markers, int height = 30) const;
@@ -384,7 +388,8 @@ public:
 private:
     struct PictureChip;
     bool pictureChip(Context &ctx, const std::string &key, int height, PictureChip &out) const;
-    int layoutButtons(Context &ctx, const std::string &markers, int x, int y, int height, bool draw) const;
+    int drawButton(Context &ctx, const std::string &key, int x, int y, int height, int alpha) const;
+    int layoutButtons(Context &ctx, const std::string &markers, int x, int y, int height, bool draw, int alpha) const;
 };
 
 } // namespace abgui

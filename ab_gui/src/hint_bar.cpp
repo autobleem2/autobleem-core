@@ -17,6 +17,8 @@ constexpr int HintBar::WidestGap;
 constexpr int HintBar::TightestGap;
 constexpr int HintBar::ChipHeight;
 constexpr int HintBar::TwoLineMinHeight;
+constexpr int HintBar::GridColumnPad;
+constexpr int HintBar::GridItemInset;
 constexpr int HintBar::FontSizeCount;
 constexpr int HintBar::FontSizes[HintBar::FontSizeCount];
 
@@ -94,6 +96,54 @@ HintBarLayout HintBar::layout(const ableem::Rect &bar, size_t count1, const Hint
     } else {
         out.line1 = layoutLine(count1, topLine(bar), false, measure1);
         out.line2 = layoutLine(count2, bottomLine(bar), true, measure2);
+    }
+    return out;
+}
+
+//*******************************
+// HintBar::layoutGrid
+//*******************************
+HintGridLayout HintBar::layoutGrid(const ableem::Rect &bar, const HintGridMeasure &measure) {
+    constexpr int columns = HintGridLayout::Columns;
+    HintGridLayout out;
+    out.oneLine = oneLineOnly(bar);
+    const int room = bar.w - 2 * Inset;
+
+    int size = FontSizes[0];
+    int widths[columns] = {0, 0, 0, 0};
+    int total = 0;
+    for (int candidate : FontSizes) {
+        size = candidate;
+        total = 0;
+        for (int c = 0; c < columns; c++) {
+            widths[c] = measure.columnWidth(size, c) + GridColumnPad;
+            total += widths[c];
+        }
+        if (total <= room)
+            break;
+    }
+    if (total > room && total > 0) { // the safety net: in proportion, the labels elide
+        for (int c = 0; c < columns; c++)
+            widths[c] = widths[c] * room / total;
+        total = 0;
+        for (int c = 0; c < columns; c++)
+            total += widths[c];
+    }
+    const int spare = max(0, room - total);
+
+    out.fontSize = size;
+    int x = bar.x + Inset;
+    for (int c = 0; c < columns; c++) {
+        const int width = widths[c] + spare / columns + (c < spare % columns ? 1 : 0);
+        out.itemX[c] = x + GridItemInset;
+        out.itemRoom[c] = max(0, width - GridColumnPad);
+        x += width;
+    }
+
+    const ableem::Rect lines[2] = {out.oneLine ? bar : topLine(bar), bottomLine(bar)};
+    for (int l = 0; l < (out.oneLine ? 1 : 2); l++) {
+        out.labelY[l] = lines[l].y + (lines[l].h - measure.lineHeight(size)) / 2;
+        out.chipY[l] = lines[l].y + (lines[l].h - ChipHeight) / 2;
     }
     return out;
 }
