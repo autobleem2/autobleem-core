@@ -51,6 +51,7 @@ public:
     static constexpr int BarWidth = 400;   // the progress bar, centred
     static constexpr int BarHeight = 6;
     static constexpr int BarGap = 12;          // the bar's top below the message's line
+    static constexpr int ToastPad = 24;        // the toast frame behind the ring and message: room round them
     static constexpr int WaitSpinnerGap = 60;  // waitScreen: the ring at least this far below the logo
     static constexpr int WaitSpinnerFoot = 90; // ... and at least this far above the canvas' bottom
     static constexpr int WaitTopLineY = 12;    // waitScreen: the top line's y
@@ -103,6 +104,9 @@ public:
     static int messageTop(int cy);
     // the progress bar's track: BarWidth x BarHeight, centred, BarGap under the message's line of lineHeight
     static ableem::Rect barRect(int canvasWidth, int canvasHeight, int lineHeight);
+    // the toast frame the busy frame draws behind the ring, the message (`messageWidth` x `lineHeight`) and the bar
+    // when there is one: centred on the canvas' middle column, ToastPad round the widest and the lowest of them
+    static ableem::Rect toastRect(int canvasWidth, int canvasHeight, int messageWidth, int lineHeight, bool hasBar);
     // the share the bar shows: done clamped to 0..total
     static int barDone(int done, int total);
     // waitScreen's ring centre y: WaitSpinnerGap below the logo (or two thirds down, whichever is lower), but

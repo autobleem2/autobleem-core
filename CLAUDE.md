@@ -401,7 +401,8 @@ include path to the extensions.
   (appended in G3l; Gui wires the theme's logo), the spinner under the logo, the top line in `RowSmall`. Every frame
   goes through the stack, so a tick from inside a screen's drawing is a frame of its own. `Gui::beginBusy/busyTick/
   setBusyProgress/endBusy/tickBusy/drawText` keep their signatures and forward (Gui's old busy members went in G3z).
-  Pure and tested: `frameDue`, `spinnerLead`, `spinnerCentre`, `messageTop`, `barRect`, `barDone`,
+  The ring and message sit on the theme's toast frame (`Style::toast` into `Busy::toastRect`, ToastPad 24 round the widest and lowest of them).
+  Pure and tested: `frameDue`, `spinnerLead`, `spinnerCentre`, `messageTop`, `barRect`, `toastRect`, `barDone`,
   `waitSpinnerY`. Tests: `tests/gui/test_ab_gui_busy.cpp` (and `tests/classic/test_busy_input.cpp`, unchanged).
   **The spinner as a theme element** (G5p, `spinner.h`; the plan's decision 13): a theme's own `launcher.spinner:
   {image, frames, fps}` (`ableem::loadThemeSpinner` - one image of N equal frames side by side, `@2x` next to it, never
