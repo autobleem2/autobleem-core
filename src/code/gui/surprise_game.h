@@ -103,6 +103,8 @@ public:
     // the title screen comes first: Start in it begins the game (reset()), Start in a game restarts it
     void showTitle() { onTitle_ = true; }
     bool onTitle() const { return onTitle_; }
+    // the real top of the hint bar under the play field (the screen's footer rect): the bottom HUD plates stay above it
+    void setBarTop(int top) { barTop_ = top; }
     // keeps the game's clock (the sky, the alien beat) running while the title shows
     void updateTitle(unsigned int nowTicks) { lastTicks = nowTicks; }
 
@@ -171,6 +173,7 @@ private:
     std::vector<Explosion> explosions;
 
     bool onTitle_ = false;
+    int barTop_ = 720; // see setBarTop()
     float shipX = 0;
     int dropsSinceExtraLife = 0; // power-ups dropped since the last extra life (see maybeDropPowerUp)
     int lives = 3;

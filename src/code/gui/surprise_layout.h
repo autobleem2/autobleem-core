@@ -90,6 +90,13 @@ inline std::string zeroPad(int value, int digits) {
     return s;
 }
 
+// the bottom HUD plates (lives, power-up timer): 58 px tall, at y 650 on the bare 720p canvas, but never reaching into
+// the hint bar - `barTop` is the real top of the bar the screen draws (Gui::classicFooter().y), `gap` the air between
+const int BottomPlateH = 58, BottomPlateY = 650, BottomPlateGap = 4;
+inline int bottomPlateY(int barTop, int gap = BottomPlateGap) {
+    return std::min(BottomPlateY, barTop - BottomPlateH - gap);
+}
+
 // the power-up timer's lit segments out of `segments`: the ones its remaining share still covers (at least one while
 // anything is left, none at 0)
 inline int timerSegments(unsigned int remainingMs, unsigned int totalMs, int segments = 10) {

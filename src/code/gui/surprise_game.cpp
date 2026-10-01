@@ -659,12 +659,15 @@ void SurpriseGame::renderHud(ableem::Renderer &renderer, const SurpriseSprites &
     hud.chrome(renderer, Slot::Wave, f.number, surprise::zeroPad(wave, 2), Gradient::Ice, 3, 1236, 42, Align::Right);
 
     // bottom left: the lives are collected, so one ship and "x N" (an infinity sign under the cheat)
-    hud.plate(renderer, 24, 650, 150, 58);
-    ableem::Rect shipIcon(44, 665, 36, 27);
+    // the plates sit above the hint bar, whatever its height (dy moves everything on them with the plate)
+    const int plateY = surprise::bottomPlateY(barTop_);
+    const int dy = plateY - surprise::BottomPlateY;
+    hud.plate(renderer, 24, plateY, 150, 58);
+    ableem::Rect shipIcon(44, 665 + dy, 36, 27);
     renderer.copy(sprites.ship, nullptr, &shipIcon);
-    hud.shadowText(renderer, f.semi20, "x", 90, 668, Align::Left, ableem::Color(200, 205, 225, 255));
+    hud.shadowText(renderer, f.semi20, "x", 90, 668 + dy, Align::Left, ableem::Color(200, 205, 225, 255));
     hud.chrome(renderer, Slot::Lives, f.number, cheating ? string(InfinitySign) : to_string(max(0, lives)),
-               Gradient::Ice, 3, 110, 660, Align::Left);
+               Gradient::Ice, 3, 110, 660 + dy, Align::Left);
 
     // bottom right: the power-up in force - its icon, its name in its colour and the time left as ten segments
     if (activePowerUp != PowerUpType::None) {
@@ -678,11 +681,11 @@ void SurpriseGame::renderHud(ableem::Renderer &renderer, const SurpriseSprites &
                                              : ableem::Color(255, 110, 215, 255);
         string name = rapid ? _("RAPID FIRE") : spread ? _("SPREAD SHOT") : _("POWER SHOT");
         unsigned int remainingMs = (powerUpUntilTicks > lastTicks) ? (powerUpUntilTicks - lastTicks) : 0;
-        hud.plate(renderer, 996, 650, 260, 58);
-        ableem::Rect iconRect(1012, 664, PowerUpSize, PowerUpSize);
+        hud.plate(renderer, 996, plateY, 260, 58);
+        ableem::Rect iconRect(1012, 664 + dy, PowerUpSize, PowerUpSize);
         renderer.copy(icon, nullptr, &iconRect);
-        hud.shadowText(renderer, f.label, name, 1052, 660, Align::Left, color);
-        hud.segments(renderer, 1054, 686, 10, surprise::timerSegments(remainingMs, PowerUpDurationMs, 10), color,
+        hud.shadowText(renderer, f.label, name, 1052, 660 + dy, Align::Left, color);
+        hud.segments(renderer, 1054, 686 + dy, 10, surprise::timerSegments(remainingMs, PowerUpDurationMs, 10), color,
                      TimerOff);
     }
 }

@@ -248,6 +248,7 @@ void GuiAbout::renderSurprise() {
 
     fx.render(gui->platform().ticks());
 
+    game.setBarTop(gui->classicFooter().y); // the lives and timer plates stay above the hint bar
     game.render(renderer, gui->text(), font, sprites, hud);
 
     // the title: Circle leaves. In a game: Start restarts, Circle leaves the game (the footer without its rule: no

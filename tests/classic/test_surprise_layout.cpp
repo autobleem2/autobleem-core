@@ -80,6 +80,21 @@ TEST_CASE("the score is seven digits, the wave two, zero-padded") {
     CHECK(zeroPad(-5, 2) == "00");
 }
 
+TEST_CASE("the bottom plates never reach into the hint bar") {
+    // a bare canvas (bar top at 720) keeps the design's y 650; a taller bar lifts the plates above it
+    CHECK(bottomPlateY(720) == 650);
+    CHECK(bottomPlateY(666) + BottomPlateH <= 666);
+    // 720p and 1080p (logical px: the renderer scales), the 54 px footer band, the 64 px hint grid and a taller one
+    const int barHeights[] = {0, 54, 64, 80, 120};
+    for (int h : barHeights) {
+        int top = 720 - h;
+        int y = bottomPlateY(top);
+        CHECK(y + BottomPlateH + BottomPlateGap <= top);
+        CHECK(y <= BottomPlateY); // never lower than the design
+        CHECK(y >= 0);
+    }
+}
+
 TEST_CASE("the power-up timer lights ten segments, fewer as it runs out") {
     CHECK(timerSegments(10000, 10000) == 10);
     CHECK(timerSegments(9001, 10000) == 10);
