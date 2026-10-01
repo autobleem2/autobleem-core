@@ -126,6 +126,7 @@ add_library(ab_core STATIC
         src/code/core/services/system.cpp
         src/code/core/services/system_info.cpp
         src/code/core/services/theme.cpp
+        src/code/core/services/theme_color_deriver.cpp
         src/code/core/services/theme_converter.cpp
         src/code/core/services/theme_installer.cpp)
 target_link_libraries(ab_core ableem_engine ${CMAKE_DL_LIBS}) # dlopen: PluginLoader
