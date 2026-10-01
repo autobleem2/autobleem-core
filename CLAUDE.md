@@ -289,8 +289,8 @@ include path to the extensions.
   from the top), `Pop`. The stack (`attach(input)` - Gui does it) hears every `GuiScreen::show()` open and close
   (`ableem::GuiScreenObserver`), draws the old picture into a render target, the new screen's frames into a second one
   while it runs (`ScreenStack::screenFrame`, what `Screen::render()` calls) and composes the two - no read-back. One
-  non-ambient tween (`TransitionPlayer`): started by the new picture's first frame, DebugDriver busy while it runs, a
-  press finishes it (Input's press observer), any other frame (busy, Gui's own) ends it, `Input`'s frame probe makes
+  non-ambient tween (`TransitionPlayer`): started by the new picture's first frame (its time counted from that frame's
+  present), DebugDriver busy while it runs, a press finishes it (Input's press observer), any other frame (busy, Gui's own) ends it, `Input`'s frame probe makes
   every pass a frame meanwhile. `setAnimations(false)` (config.ini `animations`, Options -> Interface -> "Animations",
   set in `Gui::loadAssets`) = instant; `setStartTransition` (after the splash: the launcher drops in); `bringsIn(screen)`;
   `releaseTargets()` on the display's release. Tests: `tests/gui/test_ab_gui_screen_transitions.cpp`.

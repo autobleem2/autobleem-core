@@ -139,6 +139,9 @@ public:
     // an outermost frame of `screen` (nullptr: not a screen's) is about to be drawn, after the tweens' update: true =
     // compose it at progress(). The target's first frame starts the transition; another's finishes it
     bool frame(const void *screen);
+    // the frame that started it is on the screen: its time (and its delay) counts from now, so a first frame that took
+    // long to draw (a screen loading its pictures) does not use the transition up before anything moved
+    void presented();
     // to the end at once (the press, a busy job, the display's release): nothing armed afterwards
     void finish();
 
@@ -153,11 +156,13 @@ public:
 
 private:
     void idle();
+    TweenId startTween();
 
     Tweens &tweens_;
     bool enabled_ = true;
     bool armed_ = false;
     bool started_ = false;
+    bool clockFromPresent_ = false; // started, and its first frame not presented yet
     const void *target_ = nullptr;
     Transition transition_;
     bool backwards_ = false;

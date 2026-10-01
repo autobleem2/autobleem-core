@@ -285,6 +285,7 @@ void ScreenStack::Transitions::playToBlack(const ableem::GuiScreen &screen, Scre
         stack.display_->present();
         stack.presented_++;
         shown++;
+        player.presented();
         if (input && (input->padEventPending() || input->quitRequested()))
             player.finish();
     }
@@ -370,6 +371,8 @@ void ScreenStack::run(const ableem::Color *clearColor, const Draw &draw, Screen 
     presented_++;
     if (!snapshot)
         tr.shown++;
+    if (composed)
+        tr.player.presented(); // its first frame is up: the transition's time starts now
 }
 
 //*******************************

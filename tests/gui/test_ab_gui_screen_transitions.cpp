@@ -250,6 +250,31 @@ TEST_CASE("TransitionPlayer: the target's first frame starts it; busy while it r
     CHECK(DebugDriver::busyLevel() == level);
 }
 
+TEST_CASE("TransitionPlayer: its time starts when the first frame is presented, not when it began drawing") {
+    Clocked c;
+    TransitionPlayer player(c.tweens);
+    int screen = 0;
+    const int level = DebugDriver::busyLevel();
+    REQUIRE(player.arm(&screen, Transition::crossFade(200), false));
+    c.at(1000);
+    CHECK(player.frame(&screen)); // the first frame starts drawing...
+    CHECK(DebugDriver::busyLevel() == level + 1);
+    c.now = 1300; // ...and takes 300 ms (a screen loading its pictures): more than the whole transition
+    player.presented(); // (the stack calls it right after the present, before the next frame's update)
+    c.at(1300);
+    CHECK(player.running());
+    CHECK(player.progress() == doctest::Approx(0.0f));
+    CHECK(DebugDriver::busyLevel() == level + 1); // busy all along
+    c.at(1400);
+    CHECK(player.progress() == doctest::Approx(0.5f));
+    player.presented(); // later frames change nothing
+    c.at(1450);
+    CHECK(player.progress() == doctest::Approx(0.75f));
+    c.at(1500);
+    CHECK_FALSE(player.armed());
+    CHECK(DebugDriver::busyLevel() == level);
+}
+
 TEST_CASE("TransitionPlayer: a press finishes it at once") {
     Clocked c;
     TransitionPlayer player(c.tweens);

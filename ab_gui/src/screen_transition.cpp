@@ -171,13 +171,31 @@ bool TransitionPlayer::frame(const void *screen) {
     if (!started_) {
         started_ = true;
         progress_ = 0.0f;
-        tween_ = tweens_.start(Tween(progress_, 0.0f, 1.0f, transition_.duration())
-                                   .delay(transition_.delayMs)
-                                   .ease(ease::linear)
-                                   .onEnd([this]() { idle(); }),
-                               owner_);
+        tween_ = startTween(); // busy from this frame on; presented() starts its time again
+        clockFromPresent_ = true;
     }
     return armed_;
+}
+
+TweenId TransitionPlayer::startTween() {
+    return tweens_.start(Tween(progress_, 0.0f, 1.0f, transition_.duration())
+                             .delay(transition_.delayMs)
+                             .ease(ease::linear)
+                             .onEnd([this]() { idle(); }),
+                         owner_);
+}
+
+void TransitionPlayer::presented() {
+    if (!clockFromPresent_)
+        return;
+    clockFromPresent_ = false;
+    if (!running())
+        return;
+    // the new run first, then the old one cancelled (no write, no callback): the tweens stay busy throughout
+    const TweenId first = tween_;
+    progress_ = 0.0f;
+    tween_ = startTween();
+    tweens_.cancel(first);
 }
 
 void TransitionPlayer::finish() {
@@ -200,6 +218,7 @@ bool TransitionPlayer::running() const {
 void TransitionPlayer::idle() {
     armed_ = false;
     started_ = false;
+    clockFromPresent_ = false;
     target_ = nullptr;
     tween_ = NoTween;
     progress_ = 1.0f;

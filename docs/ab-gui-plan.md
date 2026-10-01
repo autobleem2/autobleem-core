@@ -110,7 +110,8 @@ spinner, box, tab, vrule) lands here directly.
   the in one played backwards unless declared), the pure `composeTransition` (where the old and new pictures go at a
   progress: alpha, offset, scale, the dim under a Slide; Slide/Pop move on easeOutCubic of the time) and
   `TransitionPlayer` (one transition at a time as ONE non-ambient tween of the progress on the stack's Tweens: armed
-  when a screen opens or closes, started by the new picture's first frame, busy while it runs, `finish()` at a press).
+  when a screen opens or closes, started by the new picture's first frame - its time counted from that frame's
+  present, so a slow first frame does not use it up -, busy while it runs, `finish()` at a press).
   `Screen::declareTransitions` (before show(); kept by the stack, keyed by the screen, forgotten in `~Screen`);
   undeclared = CrossFade. `ableem::GuiScreen::show()` tells a static `GuiScreenObserver` (the stack, `attach()`) when a
   screen opens (before `init()`: the screen under it is drawn into the old-picture target) and closes (its own last
