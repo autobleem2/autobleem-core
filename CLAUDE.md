@@ -277,8 +277,8 @@ include path to the extensions.
   classicFooter/classicRowsThatFit/setCompactPanel/renderTextBar/renderHeader/renderStatus/renderScrollMarkers` and
   `renderBackground` forward to it and the Context; the compact panel is the Context's (G3m; `Gui`'s own copy went in
   G3z). Tests: `tests/gui/test_ab_gui_panel.cpp` (the numbers against the old `Gui` formulas).
-- **`abgui::ScreenStack`** (`screen_stack.h`, G3c) - screens draw, the stack presents: `frame(draw)` = clear (the
-  current draw colour), the drawing, present; `frame(colour, draw)` sets the draw colour first. `Gui` owns it
+- **`abgui::ScreenStack`** (`screen_stack.h`, G3c) - screens draw, the stack presents: `frame(draw)` = clear (opaque black, unless `frame(colour, draw)`; never the
+  colour a last drawing left set - BUG-31), the drawing, present; `frame(colour, draw)` sets the draw colour first. `Gui` owns it
   and hands it to its Context (`uiContext().stack()`). Every screen's `render()` is `abgui::Screen::render()` (since
   G3z: `prepareFrame()`, then `stack().frame(draw)`), and `Gui`'s own frames (busy, `drawText`, the splash picture,
   the resume's black frame) go through it too - **a screen never calls `clear()`/`present()` itself**. A frame started inside another's drawing is presented at once as a frame of its own. The launcher links

@@ -235,7 +235,7 @@ TEST_CASE("begin: the screen as it is presented once, then the first busy frame 
     Busy &busy = rig.busy();
     const int level = DebugDriver::busyLevel();
     busy.begin("Applying settings...", rig.screen());
-    CHECK(rig.display.calls == vector<string>{"clear", "screen", "present", "color", "clear", "present"});
+    CHECK(rig.display.calls == vector<string>{"color", "clear", "screen", "present", "color", "clear", "present"});
     CHECK(sameColor(rig.display.lastColor, Color(0, 0, 0, 255)));
     CHECK(rig.stack.presented() == 2);
     CHECK(busy.active());
@@ -341,7 +341,7 @@ TEST_CASE("a tick from inside a screen's drawing is a frame of its own, presente
         busy.tick();
         rig.display.calls.push_back("outer again");
     });
-    CHECK(rig.display.calls == vector<string>{"clear", "outer", "color", "clear", "present", "outer again", "present"});
+    CHECK(rig.display.calls == vector<string>{"color", "clear", "outer", "color", "clear", "present", "outer again", "present"});
     busy.end();
 }
 

@@ -55,8 +55,9 @@ public:
     ScreenStack(const ScreenStack &) = delete;
     ScreenStack &operator=(const ScreenStack &) = delete;
 
-    // one frame: the canvas cleared in the renderer's current draw colour, `draw`, presented - what a screen's
-    // render() did with its own clear() and present(). A `draw` that throws leaves the frame unpresented.
+    // one frame: the canvas cleared to opaque black (never the colour a last drawing left set, BUG-31), `draw`,
+    // presented - what a screen's render() did with its own clear() and present(). A `draw` that throws leaves the
+    // frame unpresented.
     void frame(const Draw &draw);
     // the same with the canvas cleared to `clearColor`: the draw colour is set to it first and stays so, as the
     // setDrawColor() + clear() it replaces left it
