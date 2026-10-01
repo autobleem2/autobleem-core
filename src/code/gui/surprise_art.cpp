@@ -75,6 +75,9 @@ Color colorAt(const std::vector<Stop> &stops, float u) {
 // a 1000-unit line): the gradient runs over that, the way the README's tool runs it over the glyphs' own bounds
 const float CapTop = 0.10f, CapBottom = 0.79f;
 
+// a glow layer's cache entry sits at its slot's number plus this, beside the lettering's own
+const int GlowSlotOffset = 100;
+
 const Color ShadowColor(0, 0, 0, 255);
 const Color OutlineColor(8, 6, 20, 255);
 const Color RimColor(150, 160, 200, 255);
@@ -88,6 +91,53 @@ void clearTarget(Renderer &renderer) {
     renderer.setBlendMode(BlendMode::None);
     renderer.setDrawColor(Color(0, 0, 0, 0));
     renderer.fillRect();
+}
+
+// the neon glow: the text drawn in four rings of twelve offsets, each ring fainter the further out
+void drawGlow(Renderer &renderer, const Font &font, const std::string &text, Color glow, int padX, int padY) {
+    const int radii[4] = {14, 11, 8, 5};
+    const unsigned char alphas[4] = {18, 24, 34, 50};
+    for (int i = 0; i < 4; i++) {
+        for (int k = 0; k < 12; k++) {
+            float angle = static_cast<float>(k) * 0.5235988f; // 30 degrees
+            int dx = static_cast<int>(std::lround(radii[i] * std::cos(angle)));
+            int dy = static_cast<int>(std::lround(radii[i] * std::sin(angle)));
+            font.drawColor(renderer, padX + dx, padY + dy, Color(glow.r, glow.g, glow.b, alphas[i]), text);
+        }
+    }
+}
+
+// the glow alone, as a premultiplied texture the same way the lettering is (its own padding: no outline, no lean)
+Texture buildGlow(Renderer &renderer, const Font &font, const std::string &text, Color glow, int &padX, int &padY,
+                  int &textW) {
+    const Size sz = font.textSize(text);
+    textW = sz.w;
+    padX = padY = 16 + 2;
+    if (sz.w <= 0 || sz.h <= 0)
+        return Texture();
+    Texture layer = Texture::createTarget(renderer, sz.w + 2 * padX, sz.h + 2 * padY);
+    if (!layer.valid())
+        return Texture();
+    renderer.pushTarget(&layer);
+    clearTarget(renderer);
+    renderer.setBlendMode(BlendMode::Blend);
+    drawGlow(renderer, font, text, glow, padX, padY);
+    renderer.popTarget();
+    layer.setBlendMode(BlendMode::Premultiplied);
+    return layer;
+}
+
+// where a texture of `dst` lands under an Fx: about its pivot, scaled (1.0 = the plain integer rect)
+FRect fxRect(const Rect &dst, const SurpriseHud::Fx &fx) {
+    return FRect(fx.pivotX + (dst.x - fx.pivotX) * fx.scale, fx.pivotY + (dst.y - fx.pivotY) * fx.scale,
+                 dst.w * fx.scale, dst.h * fx.scale);
+}
+
+// a premultiplied texture faded to `alpha`: the colours follow the alpha, the tint is kept
+void fade(Texture &tex, Color tint, unsigned char alpha) {
+    auto scaled = [alpha](unsigned char c) { return static_cast<unsigned char>(c * alpha / 255); };
+    tex.setColorMod(Color(scaled(tint.r), scaled(tint.g), scaled(tint.b)));
+    tex.setAlphaMod(alpha);
 }
 
 // The lettering as a texture: the gradient fill (a target filled row by row, then cut to the text's shape with the
@@ -141,18 +191,8 @@ Texture buildChrome(Renderer &renderer, const Font &font, const std::string &tex
     renderer.pushTarget(&layer);
     clearTarget(renderer);
     renderer.setBlendMode(BlendMode::Blend);
-    if (glow.a) {
-        const int radii[4] = {14, 11, 8, 5};
-        const unsigned char alphas[4] = {18, 24, 34, 50};
-        for (int i = 0; i < 4; i++) {
-            for (int k = 0; k < 12; k++) {
-                float angle = static_cast<float>(k) * 0.5235988f; // 30 degrees
-                int dx = static_cast<int>(std::lround(radii[i] * std::cos(angle)));
-                int dy = static_cast<int>(std::lround(radii[i] * std::sin(angle)));
-                font.drawColor(renderer, padX + dx, padY + dy, Color(glow.r, glow.g, glow.b, alphas[i]), text);
-            }
-        }
-    }
+    if (glow.a)
+        drawGlow(renderer, font, text, glow, padX, padY);
     if (outline > 0) {
         for (int dy = -outline; dy <= outline; dy++)
             for (int dx = -outline; dx <= outline; dx++)
@@ -276,7 +316,7 @@ void SurpriseHud::shadowText(Renderer &renderer, const Font &wanted, const std::
 // SurpriseHud::chrome
 //*******************************
 int SurpriseHud::chrome(Renderer &renderer, Slot slot, const Font &wanted, const std::string &text, Gradient gradient,
-                        int outline, int x, int y, Align align, Color glow, float skew, Color tint) {
+                        int outline, int x, int y, Align align, Color glow, float skew, Color tint, const Fx &fx) {
     const Font &font = face(wanted);
     if (!font.valid() || text.empty())
         return 0;
@@ -291,17 +331,46 @@ int SurpriseHud::chrome(Renderer &renderer, Slot slot, const Font &wanted, const
     }
     if (!l.tex.valid())
         return 0;
-    l.tex.setColorMod(tint);
+    fade(l.tex, tint, fx.alpha);
+    const Size size = l.tex.size();
+    Rect dst(anchored(align, x, l.textW) - l.padX, y - l.padY, size.w, size.h);
+    if (fx.scale == 1.0f)
+        renderer.copy(l.tex, nullptr, &dst);
+    else
+        renderer.copy(l.tex, nullptr, fxRect(dst, fx));
+    return l.textW;
+}
+
+//*******************************
+// SurpriseHud::glowLayer
+//*******************************
+void SurpriseHud::glowLayer(Renderer &renderer, Slot slot, const Font &wanted, const std::string &text, Color glow,
+                            int x, int y, Align align, unsigned char alpha) {
+    const Font &font = face(wanted);
+    if (!font.valid() || text.empty() || alpha == 0)
+        return;
+    Lettering &l = letterings_[static_cast<int>(slot) + GlowSlotOffset];
+    const std::string key = text + "|" + std::to_string(static_cast<int>(glow.r)) + "," +
+                            std::to_string(static_cast<int>(glow.g)) + "," + std::to_string(static_cast<int>(glow.b)) +
+                            "|" + std::to_string(font.lineHeight());
+    if (!l.tex.valid() || l.key != key || l.lost != renderer.targetsLost()) {
+        l.tex = buildGlow(renderer, font, text, glow, l.padX, l.padY, l.textW);
+        l.key = key;
+        l.lost = renderer.targetsLost();
+        renderer.setBlendMode(BlendMode::Blend);
+    }
+    if (!l.tex.valid())
+        return;
+    fade(l.tex, Color(255, 255, 255), alpha);
     const Size size = l.tex.size();
     Rect dst(anchored(align, x, l.textW) - l.padX, y - l.padY, size.w, size.h);
     renderer.copy(l.tex, nullptr, &dst);
-    return l.textW;
 }
 
 //*******************************
 // SurpriseHud::plate
 //*******************************
-void SurpriseHud::plate(Renderer &renderer, int x, int y, int w, int h) {
+void SurpriseHud::plate(Renderer &renderer, int x, int y, int w, int h, const Fx &fx) {
     PlateTexture *found = nullptr;
     for (PlateTexture &p : plates_)
         if (p.w == w && p.h == h)
@@ -317,8 +386,12 @@ void SurpriseHud::plate(Renderer &renderer, int x, int y, int w, int h) {
         found->lost = renderer.targetsLost();
     }
     if (found->tex.valid()) {
+        found->tex.setAlphaMod(fx.alpha);
         Rect dst(x, y, w, h);
-        renderer.copy(found->tex, nullptr, &dst);
+        if (fx.scale == 1.0f)
+            renderer.copy(found->tex, nullptr, &dst);
+        else
+            renderer.copy(found->tex, nullptr, fxRect(dst, fx));
     }
 }
 

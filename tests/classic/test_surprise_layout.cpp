@@ -105,3 +105,145 @@ TEST_CASE("the power-up timer lights ten segments, fewer as it runs out") {
     CHECK(timerSegments(20000, 10000) == 10); // never more than the row has
     CHECK(timerSegments(500, 0) == 0);
 }
+
+// ---- Life lost and Game over (the follow-up)
+// -------------------------------------------------------------------------
+
+namespace {
+// a box lies on the 1280x720 canvas
+bool onScreen(const Box &b) {
+    return b.x >= 0 && b.y >= 0 && b.x + b.w <= 1280 && b.y + b.h <= 720;
+}
+bool inside(const Box &outer, const Box &inner) {
+    return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w &&
+           inner.y + inner.h <= outer.y + outer.h;
+}
+} // namespace
+
+TEST_CASE("the end-screen plates sit on the 720p canvas, centred, clear of the bottom HUD") {
+    CHECK(onScreen(LifeLostPlate));
+    CHECK(onScreen(FinalPlate));
+    CHECK(LifeLostPlate.x + LifeLostPlate.w / 2 == doctest::Approx(CentreX));
+    CHECK(FinalPlate.x + FinalPlate.w / 2 == doctest::Approx(CentreX));
+    // both end above the bottom HUD plates' top at the design's y (650)
+    CHECK(LifeLostPlate.y + LifeLostPlate.h < BottomPlateY);
+    CHECK(FinalPlate.y + FinalPlate.h < BottomPlateY);
+    // the popped-in LIFE LOST plate at its biggest still fits the canvas
+    Box big = {LifeLostPlate.x - LifeLostPlate.w * (LifeLostPopScale - 1) / 2,
+               LifeLostPlate.y - LifeLostPlate.h * (LifeLostPopScale - 1) / 2, LifeLostPlate.w * LifeLostPopScale,
+               LifeLostPlate.h * LifeLostPopScale};
+    CHECK(onScreen(big));
+}
+
+TEST_CASE("the final score plate holds its rows; the divider and the hi-score line stay inside it") {
+    const Box &p = FinalPlate;
+    CHECK(FinalLabelTop > p.y);
+    CHECK(FinalLabelTop < FinalScoreTop);
+    CHECK(FinalScoreTop < FinalDividerY);
+    CHECK(FinalDividerY < FinalHiLabelTop);
+    CHECK(FinalHiLabelTop < p.y + p.h);
+    CHECK(FinalHiNumberTop < p.y + p.h);
+    // the divider and the hi-score row use the plate's inner width
+    CHECK(inside(p, Box{static_cast<float>(FinalDividerX0), static_cast<float>(FinalDividerY),
+                        static_cast<float>(FinalDividerX1 - FinalDividerX0), 1.0f}));
+}
+
+TEST_CASE("PUSH START BUTTON sits under the score plate and above the bottom HUD plates") {
+    CHECK(PushTop > FinalPlate.y + FinalPlate.h);
+    CHECK(PushTop + 40 < BottomPlateY); // the 30 px face's line is about 40 high
+}
+
+TEST_CASE("the GAME OVER title drops from -130 and lands on y 150") {
+    CHECK(gameOverTitleY(0) == GameOverTitleFromY);
+    CHECK(gameOverTitleY(GameOverDropMs) == GameOverTitleTop);
+    CHECK(gameOverTitleY(GameOverDropMs + 1000) == GameOverTitleTop);
+    // outBack: it passes the landing a little before it settles, but never by more than a fifth of the drop
+    int lowest = gameOverTitleY(0);
+    for (unsigned int t = 0; t <= GameOverDropMs; t += 10)
+        lowest = std::max(lowest, gameOverTitleY(t));
+    CHECK(lowest > GameOverTitleTop);
+    CHECK(lowest < GameOverTitleTop + (GameOverTitleTop - GameOverTitleFromY) / 5);
+}
+
+TEST_CASE("the dim, the plate's fade and the PUSH blink follow the title") {
+    CHECK(gameOverDimAlpha(0) == 0);
+    CHECK(gameOverDimAlpha(GameOverDimMs / 2) == GameOverDimAlpha / 2);
+    CHECK(gameOverDimAlpha(GameOverDimMs) == GameOverDimAlpha);
+    CHECK(gameOverDimAlpha(60000) == GameOverDimAlpha);
+
+    CHECK(finalPlateAlpha(GameOverDropMs) == 0); // the plate waits for the landing
+    CHECK(finalPlateAlpha(GameOverDropMs + FinalPlateFadeMs / 2) == doctest::Approx(128).epsilon(0.01));
+    CHECK(finalPlateAlpha(GameOverDropMs + FinalPlateFadeMs) == 255);
+
+    unsigned int in = GameOverDropMs + FinalPlateFadeMs; // PUSH shows once the plate is in: 600 on, 400 off
+    CHECK_FALSE(pushVisible(in - 1));
+    CHECK(pushVisible(in));
+    CHECK(pushVisible(in + PushOnMs - 1));
+    CHECK_FALSE(pushVisible(in + PushOnMs));
+    CHECK_FALSE(pushVisible(in + PushOnMs + PushOffMs - 1));
+    CHECK(pushVisible(in + PushOnMs + PushOffMs));
+}
+
+TEST_CASE("the final score counts up 0 -> score in steps and shows the final number after 900 ms") {
+    const int score = 12340;
+    CHECK(finalScoreShown(0, score) == 0);
+    CHECK(finalScoreShown(GameOverDropMs, score) == 0);
+    CHECK(finalScoreShown(GameOverDropMs + FinalCountMs, score) == score);
+    CHECK(finalScoreShown(GameOverDropMs + FinalCountMs + 5000, score) == score);
+    int last = 0;
+    for (unsigned int t = GameOverDropMs; t <= GameOverDropMs + FinalCountMs; t += 7) {
+        int v = finalScoreShown(t, score);
+        CHECK(v >= last); // never goes back
+        CHECK(v <= score);
+        last = v;
+    }
+    // steps of 50 ms: two frames inside one step show the same number
+    CHECK(finalScoreShown(GameOverDropMs + 101, score) == finalScoreShown(GameOverDropMs + 149, score));
+    // the fallback: the final number at once
+    CHECK(finalScoreShown(0, score, false) == score);
+}
+
+TEST_CASE("a new record's glow pulses between 40 % and 100 % over 1200 ms") {
+    CHECK(recordGlowAlpha(0) == doctest::Approx(102).epsilon(0.02));
+    CHECK(recordGlowAlpha(RecordGlowCycleMs / 2) == 255);
+    CHECK(recordGlowAlpha(RecordGlowCycleMs) == doctest::Approx(102).epsilon(0.02));
+    for (unsigned int t = 0; t < 3 * RecordGlowCycleMs; t += 13) {
+        CHECK(recordGlowAlpha(t) >= 100);
+        CHECK(recordGlowAlpha(t) <= 255);
+    }
+}
+
+TEST_CASE("the Life lost plate pops in, holds and fades out over the freeze") {
+    EndFx start = lifeLostFx(0);
+    CHECK(start.alpha == 0);
+    CHECK(start.scale == doctest::Approx(LifeLostPopScale));
+    EndFx popped = lifeLostFx(LifeLostPopMs);
+    CHECK(popped.alpha == 255);
+    CHECK(popped.scale == doctest::Approx(1.0f));
+    EndFx held = lifeLostFx(1000);
+    CHECK(held.alpha == 255);
+    CHECK(held.scale == doctest::Approx(1.0f));
+    CHECK(lifeLostFx(LifeLostFreezeMs - LifeLostFadeOutMs).alpha == 255);
+    CHECK(lifeLostFx(LifeLostFreezeMs - LifeLostFadeOutMs / 2).alpha == doctest::Approx(128).epsilon(0.01));
+    CHECK(lifeLostFx(LifeLostFreezeMs - 1).alpha <= 2);
+    // a slow frame: static - the plate at full for the whole freeze, no pop, no fade
+    for (unsigned int t = 0; t < LifeLostFreezeMs; t += 50) {
+        EndFx s = lifeLostFx(t, false);
+        CHECK(s.alpha == 255);
+        CHECK(s.scale == doctest::Approx(1.0f));
+    }
+}
+
+TEST_CASE("the red flash fades 110 -> 0 over 250 ms; the lives counter blinks every other 125 ms") {
+    CHECK(lifeLostFlashAlpha(0) == LifeLostFlashAlpha);
+    CHECK(lifeLostFlashAlpha(LifeLostFlashMs - 1) <= 2);
+    CHECK(lifeLostFlashAlpha(LifeLostFlashMs) == 0);
+    CHECK(lifeLostFlashAlpha(5000) == 0);
+    // ease out: it has lost more than half by half time
+    CHECK(lifeLostFlashAlpha(LifeLostFlashMs / 2) < LifeLostFlashAlpha / 2);
+
+    CHECK(livesBlinkRed(0));
+    CHECK(livesBlinkRed(LifeBlinkMs - 1));
+    CHECK_FALSE(livesBlinkRed(LifeBlinkMs));
+    CHECK(livesBlinkRed(LifeBlinkMs * 2));
+}

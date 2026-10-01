@@ -20,6 +20,7 @@
 #pragma once
 
 #include "surprise_art.h"
+#include "surprise_layout.h"
 
 #include <ableem/ui/renderer.h>
 #include <ableem/ui/texture.h>
@@ -111,8 +112,8 @@ public:
     // the far layer: the sky, scrolled slowly; false when there is none (the caller then draws its dark backdrop)
     bool renderSky(ableem::Renderer &renderer, const SurpriseSprites &sprites) const;
 
-    // `font` is the launcher's own face, for what the design does not set (LIFE LOST, GAME OVER) and as the stand-in
-    // for an Oxanium face that did not open
+    // `font` is the launcher's own face, the stand-in for an Oxanium face that did not open (LIFE LOST and GAME OVER
+    // are the HUD's lettering now)
     void render(ableem::Renderer &renderer, TextRenderer &text, const ableem::Font &font,
                 const SurpriseSprites &sprites, SurpriseHud &hud);
 
@@ -179,6 +180,7 @@ private:
     int lives = 3;
     int score = 0;
     int highScore = 0;
+    int startHighScore = 0; // the hi-score when this game began: a score above it, uncheated, is a new record
     int wave = 1;
     bool cheating = false; // the Konami code was entered this game
 
@@ -211,6 +213,9 @@ private:
     // jumping by the frozen duration in a single frame once play resumes
     unsigned int freezeUntilTicks = 0;
     unsigned int totalFrozenMs = 0;
+    bool freezeStatic = false;      // the hit came on a slow frame: the LIFE LOST plate does not animate
+    unsigned int lastDtMs = 0;      // the last update's frame time, uncapped
+    unsigned int gameOverTicks = 0; // when the last life went: the clock of the GAME OVER screen
 
     std::mt19937 rng{std::random_device{}()};
 
@@ -225,6 +230,10 @@ private:
     void killAlien(Alien &a, unsigned int nowTicks);
     void renderTitle(ableem::Renderer &renderer, const SurpriseSprites &sprites, SurpriseHud &hud);
     void renderHud(ableem::Renderer &renderer, const SurpriseSprites &sprites, SurpriseHud &hud);
+    void renderLifeLost(ableem::Renderer &renderer, SurpriseHud &hud);
+    void renderGameOver(ableem::Renderer &renderer, SurpriseHud &hud);
+    bool newRecord() const { return !cheating && score > startHighScore; }
+    unsigned int sinceHit() const { return lastTicks - (freezeUntilTicks - surprise::LifeLostFreezeMs); }
     int awayFromFormationCount() const; // aliens currently diving or returning
     float restX(const Alien &a, unsigned int nowTicks) const;
     float restY(const Alien &a) const;

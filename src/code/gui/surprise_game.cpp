@@ -51,7 +51,10 @@ const int ExtraLifeEveryNthDrop = 50;  // ...and whatever the dice say, the Nth 
 const float ExtraLifeFallScale = 0.6f; // a life falls slower than the timed power-ups, so it can be caught
 const unsigned int PowerUpDurationMs = 10000;
 
-const unsigned int LifeLostFreezeMs = 2000;
+const unsigned int LifeLostFreezeMs = surprise::LifeLostFreezeMs;
+const unsigned int SlowFrameMs = 100; // a frame this long means the pop-in cannot animate
+const bool CountUpFinalScore =
+    true; // false: the final score shows at once (if the count's rebuilds cost on the console)
 
 const float SkyScrollPxPerSecond = 24.0f; // the far layer: slow, the star streaks over it are faster
 
@@ -127,6 +130,10 @@ void SurpriseGame::reset(unsigned int nowTicks) {
     nextDiveAtTicks = nowTicks + 2500;
     freezeUntilTicks = 0;
     totalFrozenMs = 0;
+    freezeStatic = false;
+    lastDtMs = 0;
+    gameOverTicks = 0;
+    startHighScore = highScore;
     spawnWave(nowTicks);
 }
 
@@ -547,6 +554,9 @@ void SurpriseGame::handleCollisions(unsigned int nowTicks) {
             alienBullets.clear();
             freezeUntilTicks = nowTicks + LifeLostFreezeMs;
             totalFrozenMs += LifeLostFreezeMs;
+            freezeStatic = lastDtMs > SlowFrameMs;
+            if (gameOver())
+                gameOverTicks = nowTicks;
         }
     }
 
@@ -569,6 +579,7 @@ void SurpriseGame::handleCollisions(unsigned int nowTicks) {
 //*******************************
 void SurpriseGame::update(unsigned int nowTicks, bool moveLeft, bool moveRight, bool fireHeld) {
     unsigned int dt = (lastTicks == 0) ? 16 : (nowTicks - lastTicks);
+    lastDtMs = dt;
     if (dt > 200)
         dt = 200;
     lastTicks = nowTicks;
@@ -666,11 +677,15 @@ void SurpriseGame::renderHud(ableem::Renderer &renderer, const SurpriseSprites &
     ableem::Rect shipIcon(44, 665 + dy, 36, 27);
     renderer.copy(sprites.ship, nullptr, &shipIcon);
     hud.shadowText(renderer, f.semi20, "x", 90, 668 + dy, Align::Left, ableem::Color(200, 205, 225, 255));
+    // during the freeze the counter (already showing the new count) blinks red every other 125 ms
+    const bool frozen = !gameOver() && lastTicks < freezeUntilTicks;
+    const ableem::Color livesTint = frozen && surprise::livesBlinkRed(sinceHit()) ? ableem::Color(255, 90, 90, 255)
+                                                                                  : ableem::Color(255, 255, 255, 255);
     hud.chrome(renderer, Slot::Lives, f.number, cheating ? string(InfinitySign) : to_string(max(0, lives)),
-               Gradient::Ice, 3, 110, 660 + dy, Align::Left);
+               Gradient::Ice, 3, 110, 660 + dy, Align::Left, ableem::Color(0, 0, 0, 0), 0.0f, livesTint);
 
     // bottom right: the power-up in force - its icon, its name in its colour and the time left as ten segments
-    if (activePowerUp != PowerUpType::None) {
+    if (activePowerUp != PowerUpType::None && !gameOver()) {
         const bool rapid = activePowerUp == PowerUpType::Rapid;
         const bool spread = activePowerUp == PowerUpType::Spread;
         const ableem::Texture &icon = rapid    ? sprites.powerupRapid
@@ -724,9 +739,107 @@ void SurpriseGame::renderTitle(ableem::Renderer &renderer, const SurpriseSprites
 }
 
 //*******************************
+// SurpriseGame::renderLifeLost
+//*******************************
+// the 2 s freeze after a hit: a red flash over the frozen field, then the plate with LIFE LOST popping in over it
+void SurpriseGame::renderLifeLost(ableem::Renderer &renderer, SurpriseHud &hud) {
+    using Gradient = SurpriseHud::Gradient;
+    using Slot = SurpriseHud::Slot;
+    const unsigned int elapsed = sinceHit();
+
+    // a slow frame leaves no animation: the plate and text stand for the whole freeze and the flash is dropped
+    if (!freezeStatic) {
+        int flash = surprise::lifeLostFlashAlpha(elapsed);
+        if (flash > 0) {
+            renderer.setBlendMode(ableem::BlendMode::Blend);
+            renderer.setDrawColor(ableem::Color(235, 50, 60, static_cast<unsigned char>(flash)));
+            renderer.fillRect();
+        }
+    }
+
+    const surprise::EndFx pop = surprise::lifeLostFx(elapsed, !freezeStatic);
+    if (pop.alpha <= 0)
+        return;
+    const surprise::Box &p = surprise::LifeLostPlate;
+    SurpriseHud::Fx fx;
+    fx.alpha = static_cast<unsigned char>(pop.alpha);
+    fx.scale = pop.scale;
+    fx.pivotX = static_cast<int>(p.x + p.w / 2);
+    fx.pivotY = static_cast<int>(p.y + p.h / 2);
+    hud.plate(renderer, static_cast<int>(p.x), static_cast<int>(p.y), static_cast<int>(p.w), static_cast<int>(p.h), fx);
+    hud.chrome(renderer, Slot::LifeLost, hud.fonts.subtitle, _("LIFE LOST"), Gradient::Pink, 4, surprise::CentreX,
+               surprise::LifeLostTextTop, ableem::Align::Center, ableem::Color(255, 60, 190, 255), -0.18f,
+               ableem::Color(255, 255, 255, 255), fx);
+}
+
+//*******************************
+// SurpriseGame::renderGameOver
+//*******************************
+// the end: the field and the HUD dimmed, GAME OVER dropping in, the final score plate, PUSH START BUTTON blinking
+void SurpriseGame::renderGameOver(ableem::Renderer &renderer, SurpriseHud &hud) {
+    using ableem::Align;
+    using Gradient = SurpriseHud::Gradient;
+    using Slot = SurpriseHud::Slot;
+    const SurpriseFonts &f = hud.fonts;
+    const unsigned int elapsed = lastTicks - gameOverTicks;
+    const bool record = newRecord();
+
+    // the dim covers what is drawn so far: the sky, the field, the HUD
+    const int dim = surprise::gameOverDimAlpha(elapsed);
+    if (dim > 0) {
+        renderer.setBlendMode(ableem::BlendMode::Blend);
+        renderer.setDrawColor(ableem::Color(0, 0, 0, static_cast<unsigned char>(dim)));
+        renderer.fillRect();
+    }
+
+    hud.chrome(renderer, Slot::GameOver, f.title, _("GAME OVER"), Gradient::Chrome, 6, surprise::CentreX,
+               surprise::gameOverTitleY(elapsed), Align::Center, LabelRed, -0.18f);
+
+    const int plateAlpha = surprise::finalPlateAlpha(elapsed);
+    if (plateAlpha > 0) {
+        const unsigned char a = static_cast<unsigned char>(plateAlpha);
+        const surprise::Box &p = surprise::FinalPlate;
+        SurpriseHud::Fx fx;
+        fx.alpha = a;
+        hud.plate(renderer, static_cast<int>(p.x), static_cast<int>(p.y), static_cast<int>(p.w), static_cast<int>(p.h),
+                  fx);
+
+        auto faded = [a](ableem::Color c) {
+            return ableem::Color(c.r, c.g, c.b, static_cast<unsigned char>(c.a * a / 255));
+        };
+        hud.shadowText(renderer, f.label, _("Final score"), surprise::CentreX, surprise::FinalLabelTop, Align::Center,
+                       faded(LabelRed));
+
+        const string shown = surprise::zeroPad(surprise::finalScoreShown(elapsed, score, CountUpFinalScore), 7);
+        if (record)
+            hud.glowLayer(renderer, Slot::FinalScore, f.subtitle, shown, ableem::Color(255, 60, 190, 255),
+                          surprise::CentreX, surprise::FinalScoreTop, Align::Center,
+                          static_cast<unsigned char>(surprise::recordGlowAlpha(elapsed) * a / 255));
+        hud.chrome(renderer, Slot::FinalScore, f.subtitle, shown, Gradient::Gold, 4, surprise::CentreX,
+                   surprise::FinalScoreTop, Align::Center, ableem::Color(0, 0, 0, 0), 0.0f,
+                   ableem::Color(255, 255, 255, 255), fx);
+
+        renderer.setBlendMode(ableem::BlendMode::Blend);
+        renderer.setDrawColor(faded(ableem::Color(40, 235, 255, surprise::FinalDividerAlpha)));
+        renderer.fillRect(ableem::Rect(surprise::FinalDividerX0, surprise::FinalDividerY,
+                                       surprise::FinalDividerX1 - surprise::FinalDividerX0, 1));
+
+        hud.shadowText(renderer, f.label, "HI-SCORE", surprise::FinalDividerX0, surprise::FinalHiLabelTop, Align::Left,
+                       faded(LabelRed));
+        hud.chrome(renderer, Slot::FinalHi, f.number, surprise::zeroPad(highScore, 7),
+                   record ? Gradient::Gold : Gradient::Ice, 3, surprise::FinalDividerX1, surprise::FinalHiNumberTop,
+                   Align::Right, ableem::Color(0, 0, 0, 0), 0.0f, ableem::Color(255, 255, 255, 255), fx);
+    }
+
+    if (surprise::pushVisible(elapsed))
+        hud.chrome(renderer, Slot::Push, f.push, _("PUSH START BUTTON"), Gradient::Ice, 3, surprise::CentreX,
+                   surprise::PushTop, Align::Center);
+}
+
+//*******************************
 // SurpriseGame::render
 //*******************************
-void SurpriseGame::render(ableem::Renderer &renderer, TextRenderer &text, const ableem::Font &font,
+void SurpriseGame::render(ableem::Renderer &renderer, TextRenderer &, const ableem::Font &font,
                           const SurpriseSprites &sprites, SurpriseHud &hud) {
     hud.fallback = font;
 
@@ -802,12 +915,8 @@ void SurpriseGame::render(ableem::Renderer &renderer, TextRenderer &text, const 
 
     renderHud(renderer, sprites, hud);
 
-    if (!gameOver() && lastTicks < freezeUntilTicks) {
-        text.renderText(font, _("LIFE LOST"), 0, SCREEN_HEIGHT / 2 - 20, XALIGN_CENTER);
-    }
-
-    if (gameOver()) {
-        text.renderText(font, _("GAME OVER"), 0, SCREEN_HEIGHT / 2 - 20, XALIGN_CENTER);
-        text.renderText(font, _("Final score") + ": " + to_string(score), 0, SCREEN_HEIGHT / 2 + 10, XALIGN_CENTER);
-    }
+    if (gameOver())
+        renderGameOver(renderer, hud);
+    else if (lastTicks < freezeUntilTicks)
+        renderLifeLost(renderer, hud);
 }
