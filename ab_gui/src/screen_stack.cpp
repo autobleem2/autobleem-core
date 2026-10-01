@@ -110,6 +110,7 @@ struct ScreenStack::Transitions : public ableem::GuiScreenObserver {
     std::map<const ableem::GuiScreen *, ScreenTransitions> declarations;
     bool startSet = false;
     Transition start;
+    const ableem::GuiScreen *keeper = nullptr; // keepPictureOnClose(): its last picture stays as the old one
 
     // the two pictures: the old one (the screen under one that opens, or one that closed) and the new one's frames
     ableem::Texture oldPicture, newPicture;
@@ -250,11 +251,15 @@ void ScreenStack::Transitions::screenCloses(ableem::GuiScreen &screen) {
     }
     hasOld = false;
     const Transition t = stack.declared(screen).closing();
-    if (open.empty() && player.enabled() && drawer && t.kind != TransitionKind::Fade) {
-        // nothing under it and no fade: its last picture stays on display - kept as the old picture, so the next
-        // screen's start transition comes in over it (the launcher drops in over the splash)
-        captureOld(*drawer);
-        return;
+    if (keeper == &screen) {
+        // asked for (keepPictureOnClose): its last picture stays on display - kept as the old picture, so the next
+        // screen's start transition comes in over it (the launcher drops in over the splash). Never for any other
+        // screen: one that closes may have freed what it draws with already (the launcher before a game)
+        keeper = nullptr;
+        if (open.empty() && player.enabled() && drawer && t.kind != TransitionKind::Fade) {
+            captureOld(*drawer);
+            return;
+        }
     }
     if (!player.enabled() || !t.moves())
         return;
@@ -393,6 +398,8 @@ void ScreenStack::declare(const ableem::GuiScreen &screen, const ScreenTransitio
 void ScreenStack::forget(const ableem::GuiScreen &screen) {
     Transitions &tr = *transitions_;
     tr.declarations.erase(&screen);
+    if (tr.keeper == &screen)
+        tr.keeper = nullptr;
     for (auto it = tr.open.begin(); it != tr.open.end();) {
         if (it->screen == &screen)
             it = tr.open.erase(it); // gone without closing (an exception through show()): never drawn again
@@ -416,6 +423,10 @@ void ScreenStack::setAnimations(bool on) {
 
 bool ScreenStack::animations() const {
     return transitions_->player.enabled();
+}
+
+void ScreenStack::keepPictureOnClose(const ableem::GuiScreen &screen) {
+    transitions_->keeper = &screen;
 }
 
 void ScreenStack::setStartTransition(const Transition &t) {

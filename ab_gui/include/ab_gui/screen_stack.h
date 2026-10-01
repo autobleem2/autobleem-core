@@ -126,6 +126,9 @@ public:
     // the next screen that opens with no screen under it comes in with `t` instead of its own in (once): after the
     // splash the launcher drops in from the top (the plan's decision 12)
     void setStartTransition(const Transition &t);
+    // `screen` (with nothing under it, and no Fade out) leaves its last picture as the old one when it closes, for the
+    // start transition to come in over (the splash); drawn once more as it closes, so it must still be able to draw
+    void keepPictureOnClose(const ableem::GuiScreen &screen);
     // a transition will bring `screen` in or is bringing it in (armed for its frames, not over) - the launcher then
     // leaves out its own fade from black
     bool bringsIn(const ableem::GuiScreen &screen) const;
