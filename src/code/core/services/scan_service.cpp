@@ -725,6 +725,7 @@ void ScanService::openProcessors(ProcessorSession &session) {
     options.logFile = processorsLogFilePath();
     options.tmpBase = ProcessorRunner::defaultTmpBase();
     options.env = processorEnvironment();
+    options.homeBase = Env::getPathToUSBRoot() + sep + "Home" + sep + "processors";
     session.runner = make_unique<ProcessorRunner>(processorProcess_ ? *processorProcess_ : streamingProcess_, options);
 }
 
