@@ -108,6 +108,7 @@ add_library(ab_core STATIC
         src/code/core/services/windows_host.cpp
         src/code/core/services/clock.cpp
         src/code/core/services/output_mode.cpp
+        src/code/core/services/carousel_session.cpp
         src/code/core/services/game_catalog.cpp
         src/code/core/services/game_query.cpp
         src/code/core/services/game_settings.cpp
