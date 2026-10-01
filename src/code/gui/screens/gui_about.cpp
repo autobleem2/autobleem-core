@@ -23,10 +23,19 @@ void GuiAbout::init() {
     sprites.enemy2 = ableem::Texture::loadFile(renderer, sdir + "enemy2.png");
     sprites.ufo = ableem::Texture::loadFile(renderer, sdir + "ufo.png");
     sprites.laserPlayer = ableem::Texture::loadFile(renderer, sdir + "laser_player.png");
+    sprites.laserPierce = ableem::Texture::loadFile(renderer, sdir + "laser_pierce.png");
     sprites.laserEnemy = ableem::Texture::loadFile(renderer, sdir + "laser_enemy.png");
     sprites.powerupRapid = ableem::Texture::loadFile(renderer, sdir + "powerup_rapid.png");
     sprites.powerupSpread = ableem::Texture::loadFile(renderer, sdir + "powerup_spread.png");
     sprites.powerupPower = ableem::Texture::loadFile(renderer, sdir + "powerup_power.png");
+    sprites.powerupLife = ableem::Texture::loadFile(renderer, sdir + "powerup_life.png");
+    sprites.explosion = ableem::Texture::loadFile(renderer, sdir + "explosion.png");
+    sprites.sky = ableem::Texture::loadFile(renderer, sdir + "sky.jpg"); // missing = the old dark backdrop
+
+    // the game's own lettering: Oxanium (a language the theme's fonts cannot draw gets the CJK font for all of it);
+    // the credits' face stands in for a file that did not open
+    hud.fonts.load(renderer, Env::getPathToFontsDir(), Fonts::cjkFontFor(app.config().inifile.values["language"]));
+    hud.fallback = font;
 
     game.sounds.playerShoot = ableem::Sound::load(sdir + "sfx_player_shoot.ogg");
     game.sounds.enemyShoot = ableem::Sound::load(sdir + "sfx_enemy_shoot.ogg");
@@ -230,18 +239,23 @@ void GuiAbout::renderSurprise() {
 
     gui->renderBackground();
 
-    // the screen darkened to near black, no edge: the star field shows through what is left
-    gui->panelStyle().box(renderer, ableem::Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), abgui::Tone::Black, 235,
-                          abgui::Tone::None);
+    // the far layer is the designer's sky; without it the screen is darkened to near black, no edge - the star
+    // field shows through what is left
+    if (!game.renderSky(renderer, sprites)) {
+        gui->panelStyle().box(renderer, ableem::Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), abgui::Tone::Black, 235,
+                              abgui::Tone::None);
+    }
 
     fx.render(gui->platform().ticks());
 
-    game.render(renderer, gui->text(), font, sprites);
+    game.render(renderer, gui->text(), font, sprites, hud);
 
-    // Start restarts, Circle leaves the game (the footer without its rule: no panel on the play field)
-    gui->panelStyle().footer(*gui, gui->classicFooter(),
-                             "|@Start| " + _("Restart") + "  |@O| " + (game.gameOver() ? _("Back") : _("Exit game")),
-                             false);
+    // the title: Circle leaves. In a game: Start restarts, Circle leaves the game (the footer without its rule: no
+    // panel on the play field)
+    string hints = game.onTitle()
+                       ? "|@O| " + _("Back")
+                       : "|@Start| " + _("Restart") + "  |@O| " + (game.gameOver() ? _("Back") : _("Exit game"));
+    gui->panelStyle().footer(*gui, gui->classicFooter(), hints, false);
 }
 
 //*******************************
@@ -255,7 +269,9 @@ void GuiAbout::loop() {
     while (menuVisible) {
         unsigned int ticks = gui->platform().ticks();
 
-        if (surpriseMode) {
+        if (surpriseMode && game.onTitle()) {
+            game.updateTitle(ticks);
+        } else if (surpriseMode) {
             game.update(ticks, gui->input().dpadLeft(), gui->input().dpadRight(), crossHeld);
 
             // remembered here, written once when the screen closes: config.ini on every point scored was
@@ -272,7 +288,7 @@ void GuiAbout::loop() {
                 menuVisible = false;
             }
             // the Konami code, during a game: its last press (Circle) is kept from leaving the game
-            if (surpriseMode && !game.gameOver() && !game.infiniteLives() &&
+            if (surpriseMode && !game.onTitle() && !game.gameOver() && !game.infiniteLives() &&
                 (e.type == Event::Type::ButtonDown || e.type == Event::Type::DpadDown) && konami.feed(e.button)) {
                 game.enableInfiniteLives();
                 continue;
@@ -281,7 +297,7 @@ void GuiAbout::loop() {
             case Event::Type::ButtonDown:
                 if (e.button == Button::Start) {
                     if (surpriseMode) {
-                        // in the game Start restarts it
+                        // on the title Start begins the game, in the game it restarts it
                         game.reset(ticks);
                         crossHeld = false;
                         app.audio().cursor.play();
@@ -289,6 +305,7 @@ void GuiAbout::loop() {
                         surpriseMode = true;
                         crossHeld = false;
                         game.reset(ticks);
+                        game.showTitle();
                         // a faster, darker field with more comets: the lasers and pickups have to read
                         // against it, and it should feel like flying rather than drifting
                         StarFx::Style flying;
