@@ -195,16 +195,28 @@ void Style::sheet(ableem::Renderer &renderer, const Rect &panel) const {
 }
 
 void Style::sheet(Context &ctx, const Rect &panel) const {
-    if (!drawFrame(ctx, "panel", panel))
-        sheet(ctx.renderer(), panel);
+    const PanelSheet under = ctx.panelSheet();
+    if (!under.set) {
+        if (!drawFrame(ctx, "panel", panel))
+            sheet(ctx.renderer(), panel);
+        return;
+    }
+    // the theme's sheet colour under the frame; a rim-only frame (G6c, `"fill": false`) leaves it showing
+    ctx.renderer().setBlendMode(ableem::BlendMode::Blend);
+    ctx.renderer().setDrawColor(under.drawn());
+    ctx.renderer().fillRect(panel);
+    if (!drawFrame(ctx, "panel", panel)) {
+        ctx.renderer().setDrawColor(Color(edge.r, edge.g, edge.b, edgeAlpha));
+        ctx.renderer().drawRect(panel);
+    }
 }
 
 //*******************************
 // Style::toast
 //*******************************
 void Style::toast(Context &ctx, const Rect &panel) const {
-    if (!drawFirstFrame(ctx, {"toast", "panel"}, panel))
-        sheet(ctx.renderer(), panel);
+    if (!drawFrame(ctx, "toast", panel))
+        sheet(ctx, panel); // the "panel" frame, else the code-drawn sheet - on the theme's sheet colour when it has one
 }
 
 //*******************************

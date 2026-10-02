@@ -66,6 +66,19 @@ struct DisabledVeil {
     ableem::Color drawn() const { return ableem::Color(color.r, color.g, color.b, alpha); }
 };
 
+// The `sheet` role (G6c): the colour and the alpha of the sheet under every panel. A theme's own, like the DisabledVeil
+// (not a Style member - Style's layout is the SDK's; the Context hands it out, Context::panelSheet). Unset = the code's
+// black at Style::sheetAlpha; set, Style::sheet fills the panel with this first and draws the "panel" frame (or the
+// code-drawn edge) over it - which is what lets the bridge's rim-only panel frame (`"fill": false`) sit on a sheet.
+struct PanelSheet {
+    bool set = false;
+    ableem::Color color{0, 0, 0, 255};
+    unsigned char alpha = 200;
+
+    // the colour as it is filled, the alpha in place
+    ableem::Color drawn() const { return ableem::Color(color.r, color.g, color.b, alpha); }
+};
+
 // The inactive-state alphas (G5r9): how faint a thing that is not active draws - the Resume icon when the game has no
 // resume point, a tab that is not the current one, the track of a bubble's progress bar. A theme's own, like the
 // DisabledVeil (not a Style member - Style's layout is the SDK's; the Context hands it out, Context::inactiveAlphas).
@@ -218,7 +231,8 @@ public:
     // the screen behind the panel, darkened
     void dim(ableem::Renderer &renderer) const;
     void dim(Context &ctx) const;
-    // the sheet and its edge; through the Context, the "panel" frame instead when there is one
+    // the sheet and its edge; through the Context, the "panel" frame instead when there is one - and, when the Context's
+    // PanelSheet is set, its colour filled under the frame (or under the edge) first
     void sheet(ableem::Renderer &renderer, const ableem::Rect &panel) const;
     void sheet(Context &ctx, const ableem::Rect &panel) const;
     // a notification bubble's panel (G5f): the "toast" frame when the Context has one, else the "panel" frame (what

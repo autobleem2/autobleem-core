@@ -170,6 +170,13 @@ DisabledVeil Context::disabledVeil() const {
 }
 
 //*******************************
+// Context::panelSheet
+//*******************************
+PanelSheet Context::panelSheet() const {
+    return sheetProvider ? sheetProvider() : PanelSheet();
+}
+
+//*******************************
 // Context::inactiveAlphas
 //*******************************
 InactiveAlphas Context::inactiveAlphas() const {

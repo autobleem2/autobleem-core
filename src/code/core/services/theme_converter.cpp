@@ -4,9 +4,13 @@
 
 #include "theme_converter.h"
 
+#include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <set>
+#include <sstream>
+#include <ableem/engine/image_pixels.h>
 #include <ableem/engine/log.h>
 
 using namespace std;
@@ -19,6 +23,26 @@ const char *COLORS_INI = "colors.ini";
 
 // the sub-directories the cleanup is confined to
 const char *CLEANED_DIRS[] = {"images", "sounds", "font"};
+
+// launcher.frames of every converted theme: the ONE shared bridge set (autobleem-design bridge/frames/frames.json),
+// every image a "bridge:" path the frame reader resolves under the launcher's resources (bridge/). Cut lines and bleed
+// are the designer's; `tint` names the derived role each frame is multiplied by.
+const char *BRIDGE_FRAMES = R"json({
+"panel":{"image":"bridge:frames/panel.png","slice":36,"bleed":12,"fill":false,"tint":"edge"},
+"selection":{"image":"bridge:frames/selection.png","slice":{"left":12,"top":10,"right":12,"bottom":10},"bleed":4,"tint":"selectionBand"},
+"heading":{"image":"bridge:frames/heading.png","slice":{"left":12,"top":6,"right":12,"bottom":6},"tint":"edge"},
+"key":{"image":"bridge:frames/key.png","slice":16,"bleed":4,"tint":"edge"},
+"keyFunction":{"image":"bridge:frames/key_function.png","slice":16,"bleed":4,"tint":"edge"},
+"keyLit":{"image":"bridge:frames/key_lit.png","slice":16,"bleed":4,"tint":"edge"},
+"keySelected":{"image":"bridge:frames/key_selected.png","slice":16,"bleed":4,"tint":"selectionBand"},
+"field":{"image":"bridge:frames/field.png","slice":16,"bleed":4,"tint":"edge"},
+"chip":{"image":"bridge:frames/chip.png","slice":10,"bleed":2,"tint":"edge"},
+"badge":{"image":"bridge:frames/badge.png","slice":12,"bleed":4,"tint":"edge"}
+})json";
+
+// the blocks of a theme.json the converter owns: the stamp's sum covers them, so a theme whose blocks changed since is
+// one somebody edited and is never derived again
+const vector<string> OWNED_BLOCKS = {"/launcher/colors", "/launcher/frames", "/launcher/logo", "/launcher/hints"};
 
 //*******************************
 // ini helpers
@@ -89,7 +113,134 @@ void removeEmptyDirs(const string &dir) {
         DirEntry::removeDirAndContents(dir);
 }
 
+//*******************************
+// which picture stands for a role
+//*******************************
+// the file a role is taken from, `images` being <theme>/images/: the renamed one when the folder is already converted,
+// else the first old name that is there; "" when the theme has none
+string roleSource(const string &images, const ThemeConverter::Role &role) {
+    if (DirEntry::exists(images + role.newName))
+        return images + role.newName;
+    for (const string &oldName : role.oldNames)
+        if (DirEntry::exists(images + oldName))
+            return images + oldName;
+    return string();
+}
+
+// whether the picture at `file` can stand for the role (Role::Require); one that cannot be decoded is used as it is
+bool fitsRole(const ThemeConverter::Role &role, const string &file) {
+    using Require = ThemeConverter::Require;
+    if (role.require == Require::Square) {
+        int w = 0;
+        int h = 0;
+        if (ableem::readImageSize(file, w, h) && (h > 2 * w || w > 2 * h)) {
+            PLOG_INFO << "Theme image " << file << " is " << w << "x" << h << ", not a button glyph - not used";
+            return false;
+        }
+    } else if (role.require == Require::Visible) {
+        ableem::ImagePixels picture;
+        if (ableem::readImagePixels(file, picture)) {
+            bool visible = false;
+            for (size_t i = 3; i < picture.rgba.size() && !visible; i += 4)
+                visible = picture.rgba[i] != 0;
+            if (!visible) {
+                PLOG_INFO << "Theme image " << file << " is fully transparent - not used";
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+//*******************************
+// the bridge's helpers
+//*******************************
+// `text` as a JSON string literal
+string quoted(const string &text) {
+    string out = "\"";
+    for (const char c : text) {
+        if (c == '"' || c == '\\') {
+            out += '\\';
+            out += c;
+        } else if (static_cast<unsigned char>(c) < 0x20) {
+            char buf[8];
+            snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned>(c));
+            out += buf;
+        } else {
+            out += c;
+        }
+    }
+    return out + "\"";
+}
+
+// `name` in `dir`'s root: as written, else whichever file differs only in case (1.0 themes were made on Windows); "" none
+string findInRoot(const string &dir, const string &name) {
+    if (name.empty())
+        return string();
+    if (DirEntry::exists(dir + sep + name))
+        return dir + sep + name;
+    if (name.find_first_of("/\\") != string::npos)
+        return string();
+    auto lower = [](string s) {
+        for (char &c : s)
+            c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    const string wanted = lower(name);
+    for (const DirEntry &entry : DirEntry::diru(dir))
+        if (!entry.isDir && lower(entry.name) == wanted)
+            return dir + sep + entry.name;
+    return string();
+}
+
+// the picture the colours are read from: the theme's background, else the 1.0 default names
+string backgroundFile(const string &dir, const string &named) {
+    string file = findInRoot(dir, named);
+    for (const char *fallback : {"background.png", "background.jpg"})
+        if (file.empty())
+            file = findInRoot(dir, fallback);
+    return file;
+}
+
+void putRole(ostringstream &o, const char *name, const ThemeRgb &c) {
+    o << quoted(name) << ":" << quoted(c.hex()) << ",";
+}
+
+// The JSON the bridge adds to a written theme.json (mergeThemeJson): every colour role, the sheet and the veil, the
+// shared frames, and - for a theme that has one - its logo. `logo` is the launcher.logo object's text, "" for none.
+string bridgePatch(const ThemeColorRoles &r, const string &logo) {
+    ostringstream o;
+    o << "{\"launcher\":{\"colors\":{";
+    putRole(o, "text", r.text);
+    putRole(o, "secondary", r.secondary);
+    putRole(o, "hint", r.hint);
+    putRole(o, "row", r.row);
+    putRole(o, "rowSelected", r.rowSelected);
+    putRole(o, "heading", r.heading);
+    putRole(o, "value", r.value);
+    putRole(o, "description", r.description);
+    putRole(o, "footer", r.footer);
+    putRole(o, "selectionBand", r.selectionBand);
+    putRole(o, "edge", r.edge);
+    o << "\"sheet\":{\"color\":" << quoted(r.sheet.hex()) << ",\"alpha\":" << r.sheetAlpha << "},"
+      << "\"disabled\":{\"color\":" << quoted(r.disabled.hex()) << ",\"alpha\":" << r.disabledAlpha << "}},"
+      << "\"frames\":" << BRIDGE_FRAMES;
+    if (!logo.empty())
+        o << ",\"logo\":" << logo;
+    o << "}}";
+    return o.str();
+}
+
+// the stamp: the version, and the sum of the blocks as they are now in the file
+bool writeStamp(const string &themeJson, int stamp) {
+    const string sum = ableem::digestThemeJson(themeJson, OWNED_BLOCKS);
+    return ableem::mergeThemeJson(themeJson, "{\"converter\":{\"stamp\":" + to_string(stamp) + ",\"sum\":" + quoted(sum) +
+                                                 "}}");
+}
+
 } // namespace
+
+constexpr int ThemeConverter::StampVersion;
 
 //*******************************
 // ThemeConverter::launcherRoles
@@ -102,16 +253,33 @@ const vector<ThemeConverter::Role> &ThemeConverter::launcherRoles() {
          "launcher_background.png",
          [](ThemeSpec &s) { return &s.launcher.background; }},
         {{"GR/Footer_AB.png", "GR/Footer.png"}, "launcher_footer.png", [](ThemeSpec &s) { return &s.launcher.footer; }},
-        {{"GR/Acid_C_Btn.png"}, "play_button.png", [](ThemeSpec &s) { return &s.launcher.playButton; }},
+        {{"GR/Acid_C_Btn.png"},
+         "play_button.png",
+         [](ThemeSpec &s) { return &s.launcher.playButton; },
+         Require::Visible},
         {{"BMP_Text/Play_Text.png"}, "play_text.png", [](ThemeSpec &s) { return &s.launcher.playText; }},
         {{"CB/Function_AB.png", "CB/Function_BG.png"},
          "settings_panel.png",
          [](ThemeSpec &s) { return &s.launcher.settingsPanel; }},
         {{"CB/PlayerOne.png"}, "meta_panel.png", [](ThemeSpec &s) { return &s.launcher.metaPanel; }},
         {{"GR/arrow.png"}, "arrow.png", [](ThemeSpec &s) { return &s.launcher.arrow; }},
-        {{"GR/X_Btn_ICN.png"}, "hint_cross.png", [](ThemeSpec &s) { return &s.launcher.hints.cross; }},
-        {{"GR/Circle_Btn_ICN.png"}, "hint_circle.png", [](ThemeSpec &s) { return &s.launcher.hints.circle; }},
-        {{"GR/Tri_Btn_ICN.png"}, "hint_triangle.png", [](ThemeSpec &s) { return &s.launcher.hints.triangle; }},
+        {{"GR/X_Btn_ICN.png"},
+         "hint_cross.png",
+         [](ThemeSpec &s) { return &s.launcher.hints.cross; },
+         Require::Square},
+        {{"GR/Circle_Btn_ICN.png"},
+         "hint_circle.png",
+         [](ThemeSpec &s) { return &s.launcher.hints.circle; },
+         Require::Square},
+        {{"GR/Tri_Btn_ICN.png"},
+         "hint_triangle.png",
+         [](ThemeSpec &s) { return &s.launcher.hints.triangle; },
+         Require::Square},
+        // 1.0 spelled it "Squere"; 50 of the pack's 51 themes ship one, and the footer's hints have a Square (G6b3)
+        {{"GR/Squere_Btn_ICN.png", "GR/Square_Btn_ICN.png"},
+         "hint_square.png",
+         [](ThemeSpec &s) { return &s.launcher.hints.square; },
+         Require::Square},
         {{"CB/Setting_ICN.png"}, "menu_settings.png", [](ThemeSpec &s) { return &s.launcher.menuIcons.settings; }},
         {{"CB/Manual_ICN.png"}, "menu_guide.png", [](ThemeSpec &s) { return &s.launcher.menuIcons.guide; }},
         {{"CB/MemoryCard_ICN.png"}, "menu_memcard.png", [](ThemeSpec &s) { return &s.launcher.menuIcons.memcard; }},
@@ -250,10 +418,8 @@ ThemeSpec ThemeConverter::specFor(const string &themeDir) {
     const string images = themeDir + sep + "images" + sep;
     bool hasLauncherImages = false;
     for (const Role &role : launcherRoles()) {
-        bool found = DirEntry::exists(images + role.newName);
-        for (const string &oldName : role.oldNames)
-            found = found || DirEntry::exists(images + oldName);
-        if (found) {
+        const string source = roleSource(images, role);
+        if (!source.empty() && fitsRole(role, source)) {
             *role.field(spec) = string("images") + sep + role.newName;
             hasLauncherImages = true;
         }
@@ -279,16 +445,98 @@ ThemeSpec ThemeConverter::specFor(const string &themeDir) {
 }
 
 //*******************************
+// ThemeConverter::rolesFor
+//*******************************
+ThemeColorRoles ThemeConverter::rolesFor(const string &themeDir, const ThemeSpec &spec) {
+    ThemeColorInput in;
+    ableem::ImagePixels picture;
+    const string file = backgroundFile(themeDir, spec.classic.background);
+    if (!file.empty() && ableem::readImagePixels(file, picture)) {
+        in.pixels = picture.rgba.data();
+        in.width = picture.width;
+        in.height = picture.height;
+        in.channels = 4;
+    }
+    // colors.ini's fg first, then theme.ini's Text_fg (the order the prototype read them in)
+    const ThemeColor &text = spec.launcher.colors.text.set ? spec.launcher.colors.text : spec.classic.textColor;
+    if (text.set) {
+        in.hasText = true;
+        in.text = ThemeRgb(text.r, text.g, text.b);
+    }
+    const ThemeColor &secondary = spec.launcher.colors.secondary;
+    if (secondary.set) {
+        in.hasSecondary = true;
+        in.secondary = ThemeRgb(secondary.r, secondary.g, secondary.b);
+    }
+    const ThemeColor &mainBg = spec.classic.menuPanel.color;
+    if (mainBg.set) {
+        in.hasMainBg = true;
+        in.mainBg = ThemeRgb(mainBg.r, mainBg.g, mainBg.b);
+    }
+    ThemeColorRoles roles = ThemeColorDeriver::derive(in);
+    for (const string &note : roles.notes) {
+        PLOG_INFO << "Theme colours: " << note;
+    }
+    for (const string &why : roles.fallbacks) {
+        PLOG_INFO << "Theme colours, fallback: " << why;
+    }
+    return roles;
+}
+
+//*******************************
+// ThemeConverter::needsUpgrade / upgrade
+//*******************************
+bool ThemeConverter::needsUpgrade(const string &themeDir, int stamp) {
+    const int has = ableem::readThemeJsonInt(themeDir + sep + THEME_JSON, "/converter/stamp", 0);
+    return has > 0 && has < stamp;
+}
+
+bool ThemeConverter::upgrade(const string &themeDir, int stamp) {
+    const string json = themeDir + sep + THEME_JSON;
+    if (!needsUpgrade(themeDir, stamp))
+        return false;
+    if (ableem::digestThemeJson(json, OWNED_BLOCKS) != ableem::readThemeJsonString(json, "/converter/sum")) {
+        PLOG_INFO << "Theme " << themeDir << " was edited after it was converted - not derived again";
+        return false;
+    }
+    ThemeSpec spec;
+    if (!spec.load(json))
+        return false;
+    PLOG_INFO << "Deriving the colours of " << themeDir << " again (converter stamp " << stamp << ")";
+    const ThemeColorRoles roles = rolesFor(themeDir, spec);
+    if (!ableem::mergeThemeJson(json, bridgePatch(roles, string()))) {
+        PLOG_WARNING << "Theme not upgraded, could not write " << THEME_JSON;
+        return false;
+    }
+    return writeStamp(json, stamp);
+}
+
+//*******************************
 // ThemeConverter::convert
 //*******************************
 bool ThemeConverter::convert(const string &themeDir) {
     PLOG_INFO << "Converting theme folder to theme.json: " << themeDir;
     ThemeSpec spec = specFor(themeDir);
+    // the colours come from the 1.0 files and the background, so before theme.ini and colors.ini go
+    const ThemeColorRoles roles = rolesFor(themeDir, spec);
+
+    // launcher.logo from the 1.0 Logo and Lposition keys - not for a theme with no logo file or an empty rect (shelves)
+    const auto &logo = spec.classic.logo;
+    string logoJson;
+    if (logo.set && logo.w > 0 && logo.h > 0 && !logo.file.empty() && DirEntry::exists(themeDir + sep + logo.file)) {
+        logoJson = "{\"file\":" + quoted(logo.file) + ",\"x\":" + to_string(logo.x) + ",\"y\":" + to_string(logo.y) +
+                   ",\"w\":" + to_string(logo.w) + ",\"h\":" + to_string(logo.h) + "}";
+    }
 
     // 1. theme.json first: from here on the folder is readable by the new code whatever happens next
-    if (!spec.save(themeDir + sep + THEME_JSON)) {
+    const string json = themeDir + sep + THEME_JSON;
+    if (!spec.save(json)) {
         PLOG_WARNING << "Theme not converted, could not write " << THEME_JSON;
         return false;
+    }
+    // the bridge: roles, sheet, veil, frames and logo (ThemeSpec holds none of the last four), then the stamp
+    if (!ableem::mergeThemeJson(json, bridgePatch(roles, logoJson)) || !writeStamp(json, StampVersion)) {
+        PLOG_WARNING << "Theme converted without its bridge block, could not extend " << THEME_JSON;
     }
 
     // 2. the launcher images to their role names
@@ -299,6 +547,8 @@ bool ThemeConverter::convert(const string &themeDir) {
         for (const string &oldName : role.oldNames) {
             if (!DirEntry::exists(images + oldName))
                 continue;
+            if (!fitsRole(role, images + oldName))
+                break; // not named in the json: removed with the rest
             if (!DirEntry::renameFile(images + oldName, images + role.newName)) {
                 PLOG_WARNING << "Could not rename " << images + oldName << " to " << role.newName;
             }

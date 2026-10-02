@@ -183,12 +183,15 @@ One entry per frame, by its name; every key is optional, but one of the two imag
 
 | Key | Value | Default |
 |---|---|---|
-| `image` | the 1x PNG, relative to the theme folder | none |
+| `image` | the 1x PNG, relative to the theme folder; **`bridge:<path>`** names a file of the launcher's shared bridge set instead (`bridge:frames/panel.png` is `bridge/frames/panel.png` under the launcher's resources, the `@2x` twin next to it) - what a converted 1.0 theme points at (G6c) | none |
 | `image2x` | the `@2x` PNG | `<image's name>@2x.png` next to `image`, when that file exists (a theme shipping only the `@2x` names it here, or names the 1x file it leaves out) |
 | `slice` | a number (all four) or `{ "left": l, "top": t, "right": r, "bottom": b }`, logical px from the image's outer edge | 0 (the whole image stretched) |
 | `bleed` | the same form: how far the image reaches outside the box | 0 |
 | `fill` | `false` leaves the centre out (a rim only) | `true` |
 | `tint` | a colour role of `launcher.colors` the image is multiplied by | none (the image's own colours) |
+
+A `panel` frame with `"fill": false` is drawn over the theme's `launcher.colors.sheet` (colour and alpha, default black at 200),
+which the code fills under every panel first - so a rim-only panel needs no centre of its own (G6c2).
 
 A frame whose image is missing, or smaller than its slices, is ignored (the log says so) and that element stays
 code-drawn. Frames are read from **the theme's own** `theme.json` only - never taken over from the `default` theme.

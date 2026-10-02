@@ -255,6 +255,8 @@ void Gui::wireUiContext() {
     uiContext_.veilProvider = [this]() { return disabledVeil_; };
     // the theme's own inactive-state alphas (step G5r9): every value unset unless its theme.json has launcher.inactive
     uiContext_.inactiveProvider = [this]() { return inactiveAlphas_; };
+    // the theme's own panel sheet (step G6c2): unset unless its theme.json has launcher.colors.sheet
+    uiContext_.sheetProvider = [this]() { return panelSheet_; };
 }
 
 //*******************************
@@ -282,7 +284,9 @@ static abgui::SpinnerSpec themeSpinner(const string &dir) {
 // theme without launcher.frames draws exactly as before
 static map<string, abgui::FrameSpec> themeFrames(const string &dir, const ableem::LauncherTheme &launcher) {
     map<string, abgui::FrameSpec> specs;
-    for (const ableem::ThemeFrame &f : ableem::loadThemeFrames(dir)) {
+    // a "bridge:" image is one of the shared set a converted 1.0 theme points at (G6c): the launcher's bridge/ resources
+    const string bridgeDir = Env::getWorkingPath() + sep + "bridge";
+    for (const ableem::ThemeFrame &f : ableem::loadThemeFrames(dir, bridgeDir)) {
         abgui::FrameSpec spec;
         spec.file = f.image;
         spec.file2x = f.image2x;
@@ -338,6 +342,14 @@ void Gui::loadAssets(bool reloadMusic) {
         disabledVeil_.set = true;
         disabledVeil_.color = Color(veil.color.r, veil.color.g, veil.color.b, 255);
         disabledVeil_.alpha = static_cast<unsigned char>(veil.alpha);
+    }
+    // the theme's own panel sheet (G6c2): the colour and alpha under every panel - nothing when it sets none
+    const ableem::ThemeSheet sheet = ableem::loadThemeSheet(AppBase::get().theme().loadedPath());
+    panelSheet_ = abgui::PanelSheet();
+    if (sheet.set) {
+        panelSheet_.set = true;
+        panelSheet_.color = Color(sheet.color.r, sheet.color.g, sheet.color.b, 255);
+        panelSheet_.alpha = static_cast<unsigned char>(sheet.alpha);
     }
     // the theme's own inactive-state alphas (G5r9): nothing set when it has no launcher.inactive
     const ableem::ThemeInactiveAlphas inactive = ableem::loadThemeInactiveAlphas(AppBase::get().theme().loadedPath());

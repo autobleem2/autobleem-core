@@ -1264,3 +1264,133 @@ TEST_CASE("loadThemeHidden: reads the theme.json in the folder") {
     CHECK_FALSE(ableem::loadThemeHidden(tmp.at("b")));
     CHECK_FALSE(ableem::loadThemeHidden(tmp.at("none")));
 }
+
+TEST_CASE("readThemeSheet: launcher.colors.sheet - a colour, or colour + alpha; bad ones are unset (G6c2)") {
+    TempDir tmp("theme_sheet");
+    auto sheet = [&](const char *json) {
+        tmp.writeFile("theme.json", json);
+        return ableem::readThemeSheet(tmp.at("theme.json"));
+    };
+
+    ableem::ThemeSheet none = sheet("{ \"launcher\": { \"colors\": { \"text\": \"#ffffff\" } } }");
+    CHECK_FALSE(none.set);
+    CHECK(none.alpha == ableem::ThemeSheet::DefaultAlpha);
+    CHECK_FALSE(ableem::readThemeSheet(tmp.at("missing.json")).set);
+
+    ableem::ThemeSheet plain = sheet("{ \"launcher\": { \"colors\": { \"sheet\": \"#1d1f28\" } } }");
+    CHECK(plain.set);
+    CHECK(plain.color.toHex() == "#1d1f28");
+    CHECK(plain.alpha == 200);
+
+    ableem::ThemeSheet full =
+        sheet("{ \"launcher\": { \"colors\": { \"sheet\": { \"color\": \"#102030\", \"alpha\": 90 } } } }");
+    CHECK(full.set);
+    CHECK(full.color.toHex() == "#102030");
+    CHECK(full.alpha == 90);
+
+    CHECK(sheet("{ \"launcher\": { \"colors\": { \"sheet\": { \"color\": \"#102030\", \"alpha\": 900 } } } }").alpha ==
+          255);
+    CHECK(sheet("{ \"launcher\": { \"colors\": { \"sheet\": { \"alpha\": 50 } } } }").color.toHex() == "#000000");
+    CHECK_FALSE(sheet("{ \"launcher\": { \"colors\": { \"sheet\": \"red\" } } }").set);
+    CHECK_FALSE(sheet("{ \"launcher\": { \"colors\": { \"sheet\": 7 } } }").set);
+    CHECK_FALSE(sheet("{ \"launcher\": { \"colors\": { \"sheet\": { \"alpha\": \"x\" } } } }").set);
+    CHECK_FALSE(sheet("not json").set);
+
+    // the same through the folder
+    tmp.writeFile("theme.json", "{ \"launcher\": { \"colors\": { \"sheet\": \"#010203\" } } }");
+    CHECK(ableem::loadThemeSheet(tmp.path()).color.toHex() == "#010203");
+}
+
+TEST_CASE("loadThemeFrames: a bridge: image is looked for under the bridge dir, its @2x twin next to it (G6c2)") {
+    TempDir tmp("theme_bridge");
+    tmp.writeFile("shared/frames/panel.png", "1x");
+    tmp.writeFile("shared/frames/panel@2x.png", "2x");
+    tmp.writeFile("shared/frames/key.png", "1x only");
+    tmp.writeFile("own/frames/mine.png", "own");
+    tmp.writeFile("own/theme.json",
+                  "{ \"launcher\": { \"frames\": {"
+                  " \"panel\": { \"image\": \"bridge:frames/panel.png\", \"slice\": 36, \"fill\": false, "
+                  "\"tint\": \"edge\" },"
+                  " \"key\": { \"image\": \"bridge:frames/key.png\", \"slice\": 16 },"
+                  " \"gone\": { \"image\": \"bridge:frames/gone.png\", \"slice\": 4 },"
+                  " \"mine\": { \"image\": \"frames/mine.png\", \"slice\": 8 } } } }");
+
+    // with the bridge dir: the shared images, the theme's own beside them
+    const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(tmp.at("own"), tmp.at("shared"));
+    std::map<string, ableem::ThemeFrame> byName;
+    for (const ableem::ThemeFrame &f : frames)
+        byName[f.name] = f;
+    REQUIRE(byName.size() == 3); // "gone" has no file anywhere: dropped
+    CHECK(byName["panel"].image == tmp.at("shared") + ableem::sep + "frames/panel.png");
+    CHECK(byName["panel"].image2x == tmp.at("shared") + ableem::sep + "frames/panel@2x.png");
+    CHECK_FALSE(byName["panel"].fill);
+    CHECK(byName["panel"].tint == "edge");
+    CHECK(byName["key"].image2x.empty());
+    CHECK(byName["mine"].image == tmp.at("own") + ableem::sep + "frames/mine.png");
+
+    // without it a bridge: frame is dropped, never looked for in the theme's own folder
+    const std::vector<ableem::ThemeFrame> own = ableem::loadThemeFrames(tmp.at("own"));
+    REQUIRE(own.size() == 1);
+    CHECK(own[0].name == "mine");
+}
+
+TEST_CASE("mergeThemeJson: objects merge key by key, the rest is replaced, the order is kept (G6c2)") {
+    TempDir tmp("theme_merge");
+    tmp.writeFile("theme.json",
+                  "{ \"format\": 1, \"launcher\": { \"colors\": { \"text\": \"#ffffff\", \"edge\": \"#111111\" }, "
+                  "\"footer\": \"f.png\" }, \"sounds\": { \"cursor\": \"c.wav\" } }");
+
+    CHECK(ableem::mergeThemeJson(
+        tmp.at("theme.json"),
+        "{ \"launcher\": { \"colors\": { \"edge\": \"#222222\", \"sheet\": { \"color\": \"#000000\" } },"
+        " \"logo\": { \"file\": \"l.png\" } }, \"converter\": { \"stamp\": 1 } }"));
+
+    ThemeSpec s;
+    REQUIRE(s.load(tmp.at("theme.json")));
+    CHECK(s.launcher.colors.text.toHex() == "#ffffff");       // untouched
+    CHECK(s.launcher.colors.edge.color.toHex() == "#222222"); // replaced
+    CHECK(s.launcher.footer == "f.png");
+    CHECK(s.sounds.cursor == "c.wav");
+    CHECK(ableem::readThemeSheet(tmp.at("theme.json")).set);
+    CHECK(ableem::readThemeLogo(tmp.at("theme.json")).file == "l.png");
+    CHECK(ableem::readThemeJsonInt(tmp.at("theme.json"), "/converter/stamp", 0) == 1);
+
+    const string text = tmp.readFile("theme.json");
+    CHECK(text.find("\"format\"") < text.find("\"launcher\"")); // the file's own order stays
+    CHECK(text.find("\"launcher\"") < text.find("\"sounds\""));
+    CHECK(text.find("\"sounds\"") < text.find("\"converter\"")); // new keys are appended
+
+    // refused: a patch that is not an object, a file that is missing or not an object - and nothing written
+    const string before = tmp.readFile("theme.json");
+    CHECK_FALSE(ableem::mergeThemeJson(tmp.at("theme.json"), "[1]"));
+    CHECK_FALSE(ableem::mergeThemeJson(tmp.at("theme.json"), "nope"));
+    CHECK_FALSE(ableem::mergeThemeJson(tmp.at("missing.json"), "{}"));
+    tmp.writeFile("bad.json", "[1, 2]");
+    CHECK_FALSE(ableem::mergeThemeJson(tmp.at("bad.json"), "{}"));
+    CHECK(tmp.readFile("theme.json") == before);
+}
+
+TEST_CASE("readThemeJsonInt / readThemeJsonString / digestThemeJson: the stamp and the sum of the converter's blocks") {
+    TempDir tmp("theme_digest");
+    tmp.writeFile("a.json",
+                  "{ \"converter\": { \"stamp\": 3, \"sum\": \"abc\" }, \"x\": { \"b\": 1, \"a\": [1, 2] }, \"y\": 5 }");
+    const string a = tmp.at("a.json");
+
+    CHECK(ableem::readThemeJsonInt(a, "/converter/stamp", 0) == 3);
+    CHECK(ableem::readThemeJsonInt(a, "/converter/nope", -1) == -1);
+    CHECK(ableem::readThemeJsonInt(a, "/converter/sum", -1) == -1); // a string is not an int
+    CHECK(ableem::readThemeJsonInt(tmp.at("missing.json"), "/y", 7) == 7);
+    CHECK(ableem::readThemeJsonString(a, "/converter/sum") == "abc");
+    CHECK(ableem::readThemeJsonString(a, "/y").empty());
+
+    const std::vector<string> blocks = {"/x", "/nowhere"};
+    const string sum = ableem::digestThemeJson(a, blocks);
+    CHECK(sum.size() == 16);
+    // the same blocks in another key order and another layout: the same sum; a pointer to nowhere counts as null
+    tmp.writeFile("b.json", "{\"y\":9,\"x\":{\"a\":[1,2],\"b\":1}}");
+    CHECK(ableem::digestThemeJson(tmp.at("b.json"), blocks) == sum);
+    // an edit inside a block changes it
+    tmp.writeFile("c.json", "{\"x\":{\"a\":[1,3],\"b\":1}}");
+    CHECK(ableem::digestThemeJson(tmp.at("c.json"), blocks) != sum);
+    CHECK(ableem::digestThemeJson(tmp.at("missing.json"), blocks).empty());
+}
