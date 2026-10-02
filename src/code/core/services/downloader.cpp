@@ -57,13 +57,16 @@ Downloader::Result Downloader::fetch(const DownloadRequest &request, string &err
     const bool resume = request.resume && !resumeCommand_.empty() && before > 0;
     if (!resume)
         DirEntry::removeFile(part);
+    lastStatus_ = 0;
     const int status = runner_(commandFor(resume ? resumeCommand_ : command_, request.url, part));
+    lastStatus_ = status;
     if (status != 0 || DirEntry::fileSize(part) <= 0) {
         error = "the download failed (" + to_string(status) + ")";
         PLOG_WARNING << "Download failed (" << status << "): " << request.url;
         // kept for the next attempt when it may be continued - unless this was a resume that got nowhere
         // (a server that does not do ranges makes curl -C - fail outright): then the next one starts over
-        const bool gotNowhere = resume && DirEntry::fileSize(part) <= before;
+        const bool lineFailed = status != 0 && request.keepPartOnStatus && request.keepPartOnStatus(status);
+        const bool gotNowhere = resume && DirEntry::fileSize(part) <= before && !lineFailed;
         if (!request.resume || gotNowhere)
             DirEntry::removeFile(part);
         return Result::Failed;
