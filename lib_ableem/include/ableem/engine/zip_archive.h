@@ -41,6 +41,11 @@ public:
     // the same, reporting the bytes written so far against the sum of every entry's recorded size
     static bool extract(const std::string &zipPath, const std::string &destDir, const ByteProgress &progress);
 
+    // true when extract() would find nothing wrong with the archive itself: it opens, every name is safe and
+    // every entry unpacks with the CRC it records. Nothing is written - for telling a bad archive from a
+    // destination that could not be written to after extract() failed.
+    static bool verify(const std::string &zipPath);
+
     // an entry name the extractor will accept: relative, forward slashes, no ".." segment
     static bool isSafeName(const std::string &name);
 };
