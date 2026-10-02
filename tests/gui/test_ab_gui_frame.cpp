@@ -1034,3 +1034,44 @@ TEST_CASE("Style::buttonWidth: an alternative (L2/R2) is one chip, a text chip w
     ctx.glyphProvider = [&](const string &key) { return key == "Left" || key == "Right" ? arrow : ableem::Texture(); };
     CHECK(style.buttonWidth(ctx, "Left/Right", 30) == 18 + 6 + 18);
 }
+
+TEST_CASE("Style::sheet and toast with the theme's sheet colour (G6c2): the panel frame is still asked for, once") {
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    ableem::Renderer &renderer = maybe.gui->renderer();
+    abgui::Context ctx(renderer);
+    const abgui::Style style;
+    const Rect box(20, 20, 200, 120);
+
+    abgui::PanelSheet sheet;
+    sheet.set = true;
+    sheet.color = ableem::Color(29, 31, 40, 255);
+    sheet.alpha = 200;
+    ctx.sheetProvider = [sheet] { return sheet; };
+
+    // no frame at all: the sheet colour and the code-drawn edge (nothing to see here but that it runs)
+    style.sheet(ctx, box);
+    style.toast(ctx, box);
+
+    // a rim-only panel frame (the bridge's): drawn over the sheet, asked for once per sheet
+    FrameSet set;
+    FrameSpec panel;
+    panel.file = testFrame("panel.png");
+    panel.slice = TestSlice;
+    panel.bleed = TestBleed;
+    panel.fill = false;
+    map<string, FrameSpec> specs;
+    specs["panel"] = panel;
+    set.assign(specs);
+    vector<string> asked;
+    ctx.frameProvider = [&](const string &name) {
+        asked.push_back(name);
+        return set.frame(renderer, name);
+    };
+    style.sheet(ctx, box);
+    CHECK(asked == vector<string>{"panel"});
+    asked.clear();
+    style.toast(ctx, box); // no toast frame: the panel one, over the sheet
+    CHECK(asked == vector<string>{"toast", "panel"});
+}

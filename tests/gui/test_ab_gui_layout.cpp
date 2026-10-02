@@ -175,3 +175,26 @@ TEST_CASE("Context::inactiveAlphas: no provider = all unset; the provider's valu
     CHECK(abgui::InactiveAlphas::orToday(ctx.inactiveAlphas().resume, 120) == 120);
     CHECK(abgui::InactiveAlphas::orToday(ctx.inactiveAlphas().tab, 120) == 50);
 }
+
+TEST_CASE("PanelSheet and Context::panelSheet: unset by default, black at 200 as the sheet always was (G6c2)") {
+    const abgui::PanelSheet none;
+    CHECK_FALSE(none.set);
+    CHECK(same(none.color, Color(0, 0, 0, 255)));
+    CHECK(none.alpha == 200);
+    CHECK(none.alpha == abgui::Style().sheetAlpha);
+
+    abgui::PanelSheet themed;
+    themed.set = true;
+    themed.color = Color(29, 31, 40, 255);
+    themed.alpha = 180;
+    CHECK(same(themed.drawn(), Color(29, 31, 40, 180)));
+
+    MaybeGui maybe;
+    if (!maybe.available())
+        return;
+    abgui::Context ctx(maybe.gui->renderer());
+    CHECK_FALSE(ctx.panelSheet().set);
+    ctx.sheetProvider = [themed] { return themed; };
+    CHECK(ctx.panelSheet().set);
+    CHECK(ctx.panelSheet().alpha == 180);
+}

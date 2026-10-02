@@ -54,6 +54,9 @@ void Theme::load() {
         ThemeConverter::convert(defaultsDir);
     if (loadedPath_ != defaultsDir && ThemeConverter::needsConversion(loadedPath_))
         ThemeConverter::convert(loadedPath_);
+    // a converted theme whose converter stamp is behind ours is derived once more (never an edited one, never an unstamped one)
+    if (loadedPath_ != defaultsDir && ThemeConverter::needsUpgrade(loadedPath_))
+        ThemeConverter::upgrade(loadedPath_);
 
     ThemeSpec defaults;
     defaults.load(defaultsDir + sep + THEME_JSON);

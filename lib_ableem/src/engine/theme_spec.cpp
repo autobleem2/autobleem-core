@@ -3,6 +3,7 @@
 #include "ableem/engine/strings.h"
 
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -785,15 +786,33 @@ vector<ThemeFrame> readThemeFrames(const string &path) {
     return frames;
 }
 
-vector<ThemeFrame> loadThemeFrames(const string &dir) {
+namespace {
+
+const char *BridgeMarker = "bridge:";
+
+// `file` as written in a theme.json -> the path it names: under `bridgeDir` for a "bridge:" file ("" when there is no
+// such dir), else under the theme's `dir`; "" for no file
+string framePath(const string &dir, const string &bridgeDir, const string &file) {
+    if (file.empty())
+        return string();
+    const string marker = BridgeMarker;
+    if (file.compare(0, marker.size(), marker) != 0)
+        return dir + sep + file;
+    return bridgeDir.empty() ? string() : bridgeDir + sep + file.substr(marker.size());
+}
+
+} // namespace
+
+vector<ThemeFrame> loadThemeFrames(const string &dir, const string &bridgeDir) {
     vector<ThemeFrame> frames;
     for (ThemeFrame f : readThemeFrames(dir + sep + "theme.json")) {
-        const string named = f.image.empty() ? string() : dir + sep + f.image;
+        const string named = framePath(dir, bridgeDir, f.image);
         const string image = !named.empty() && DirEntry::exists(named) ? named : string();
         string image2x;
         if (!f.image2x.empty()) {
-            if (DirEntry::exists(dir + sep + f.image2x))
-                image2x = dir + sep + f.image2x;
+            const string named2x = framePath(dir, bridgeDir, f.image2x);
+            if (!named2x.empty() && DirEntry::exists(named2x))
+                image2x = named2x;
         } else if (!named.empty() && DirEntry::exists(at2x(named))) {
             image2x = at2x(named);
         }
@@ -1029,6 +1048,51 @@ ThemeDisabledVeil loadThemeDisabledVeil(const string &dir) {
 }
 
 //*******************************
+// readThemeSheet / loadThemeSheet
+//*******************************
+constexpr int ThemeSheet::DefaultAlpha;
+
+ThemeSheet readThemeSheet(const string &path) {
+    ThemeSheet sheet;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return sheet;
+    const json *colors = child(launcher, "colors");
+    const json *value = colors ? child(*colors, "sheet") : nullptr;
+    if (!value)
+        return sheet;
+    ThemeColor color;
+    if (value->is_string()) {
+        if (!ThemeColor::parseHex(value->get<string>(), color))
+            return sheet;
+    } else if (value->is_object()) {
+        const json *c = child(*value, "color");
+        if (c) {
+            if (!c->is_string() || !ThemeColor::parseHex(c->get<string>(), color))
+                return sheet;
+        } else {
+            color = ThemeColor(0, 0, 0);
+        }
+        const json *a = child(*value, "alpha");
+        if (a) {
+            if (!a->is_number_integer())
+                return sheet;
+            const long long alpha = a->get<long long>();
+            sheet.alpha = alpha < 0 ? 0 : alpha > 255 ? 255 : static_cast<int>(alpha);
+        }
+    } else {
+        return sheet;
+    }
+    sheet.color = color;
+    sheet.set = true;
+    return sheet;
+}
+
+ThemeSheet loadThemeSheet(const string &dir) {
+    return readThemeSheet(dir + sep + "theme.json");
+}
+
+//*******************************
 // readThemeInactiveAlphas / loadThemeInactiveAlphas
 //*******************************
 ThemeInactiveAlphas readThemeInactiveAlphas(const string &path) {
@@ -1133,6 +1197,105 @@ bool readThemeHidden(const string &path) {
 
 bool loadThemeHidden(const string &dir) {
     return readThemeHidden(dir + sep + "theme.json");
+}
+
+//*******************************
+// mergeThemeJson / readThemeJsonInt / digestThemeJson
+//*******************************
+namespace {
+
+// `into` gets `patch`'s keys: objects on both sides merge key by key, anything else is replaced
+void mergeInto(ordered_json &into, const ordered_json &patch) {
+    for (auto it = patch.begin(); it != patch.end(); ++it) {
+        if (it->is_object() && into.contains(it.key()) && into[it.key()].is_object())
+            mergeInto(into[it.key()], *it);
+        else
+            into[it.key()] = *it;
+    }
+}
+
+// the theme.json at `path` parsed into `out`; false when missing, invalid or not an object
+template <class Json> bool parseObjectFile(const string &path, Json &out) {
+    ifstream in(path, ifstream::binary);
+    if (!in.is_open())
+        return false;
+    try {
+        in >> out;
+    } catch (const typename Json::exception &) {
+        return false;
+    }
+    return out.is_object();
+}
+
+} // namespace
+
+bool mergeThemeJson(const string &path, const string &patch) {
+    ordered_json patchJson;
+    try {
+        patchJson = ordered_json::parse(patch);
+    } catch (const ordered_json::exception &) {
+        return false;
+    }
+    if (!patchJson.is_object())
+        return false;
+    ordered_json j;
+    if (!parseObjectFile(path, j))
+        return false;
+    mergeInto(j, patchJson);
+    ofstream o(path, ofstream::binary);
+    if (!DirEntry::checkWritable(o, path))
+        return false;
+    o << setw(2) << j << "\n";
+    o.flush();
+    o.close();
+    return o.good();
+}
+
+int readThemeJsonInt(const string &path, const string &pointer, int fallback) {
+    json j;
+    if (!parseObjectFile(path, j))
+        return fallback;
+    try {
+        const json &v = j.at(json::json_pointer(pointer));
+        return v.is_number_integer() ? v.get<int>() : fallback;
+    } catch (const json::exception &) {
+        return fallback;
+    }
+}
+
+string readThemeJsonString(const string &path, const string &pointer) {
+    json j;
+    if (!parseObjectFile(path, j))
+        return string();
+    try {
+        const json &v = j.at(json::json_pointer(pointer));
+        return v.is_string() ? v.get<string>() : string();
+    } catch (const json::exception &) {
+        return string();
+    }
+}
+
+string digestThemeJson(const string &path, const vector<string> &pointers) {
+    json j;
+    if (!parseObjectFile(path, j))
+        return string();
+    string text;
+    for (const string &pointer : pointers) {
+        json value; // null when the pointer leads nowhere
+        try {
+            value = j.at(json::json_pointer(pointer));
+        } catch (const json::exception &) {
+        }
+        text += pointer + "=" + value.dump() + "\n"; // json keeps its keys sorted: the same blocks, the same text
+    }
+    uint64_t hash = 1469598103934665603ULL; // FNV-1a, 64 bit
+    for (const char c : text) {
+        hash ^= static_cast<unsigned char>(c);
+        hash *= 1099511628211ULL;
+    }
+    char hex[17];
+    snprintf(hex, sizeof(hex), "%016llx", static_cast<unsigned long long>(hash));
+    return hex;
 }
 
 } // namespace ableem

@@ -265,7 +265,10 @@ std::vector<ThemeFrame> readThemeFrames(const std::string &path);
 // the frames of the theme in `dir` (its own theme.json only), each image an absolute path or "": `image` when it is in
 // the folder; `image2x` when given and in the folder, else "<image's stem>@2x<ext>" when that is next to the image. A
 // frame with neither file is dropped (logged).
-std::vector<ThemeFrame> loadThemeFrames(const std::string &dir);
+// An image written "bridge:<path>" (G6c: the shared bridge set every converted 1.0 theme points at) is looked for under
+// `bridgeDir` instead of the theme's folder - "bridge:frames/panel.png" is <bridgeDir>/frames/panel.png, its @2x twin
+// next to it. With no `bridgeDir` such a frame is dropped (logged).
+std::vector<ThemeFrame> loadThemeFrames(const std::string &dir, const std::string &bridgeDir = std::string());
 
 //******************
 // ThemeIcon (launcher.icons, ab_gui G5a)
@@ -343,6 +346,26 @@ ThemeDisabledVeil readThemeDisabledVeil(const std::string &path);
 ThemeDisabledVeil loadThemeDisabledVeil(const std::string &dir);
 
 //******************
+// The panel sheet (launcher.colors.sheet, G6c)
+//******************
+// The colour and alpha of the sheet under every panel (abgui::Style::sheet): `"sheet": "#rrggbb"` (alpha stays
+// DefaultAlpha) or `"sheet": { "color": "#rrggbb", "alpha": 0..255 }` (a missing alpha is DefaultAlpha, a missing colour
+// black). It is what a bridge theme's rim-only `panel` frame (`"fill": false`) is drawn over. Kept out of ThemeSpec for
+// ThemeFrame's reason and read from the theme's own theme.json only; unset = the code's black at its own alpha, as before.
+struct ThemeSheet {
+    static constexpr int DefaultAlpha = 200;
+    ThemeColor color = ThemeColor(0, 0, 0);
+    int alpha = DefaultAlpha; // 0..255
+    bool set = false;
+};
+
+// the sheet of the theme.json at `path`; unset (set false) for no block, a bad colour, a value of the wrong type or a
+// bad file. An alpha out of range is clamped to 0..255. Never throws.
+ThemeSheet readThemeSheet(const std::string &path);
+// the sheet of the theme in `dir` (its own theme.json only)
+ThemeSheet loadThemeSheet(const std::string &dir);
+
+//******************
 // The inactive-state alphas (launcher.inactive, ab_gui G5r9)
 //******************
 // How faint a thing that is not active draws: `"inactive": { "resume": 0..255, "tab": 0..255, "barTrack": 0..255 }` -
@@ -399,5 +422,24 @@ bool loadThemeSpinner(const std::string &dir, ThemeSpinner &out);
 // missing file, bad JSON, a missing key or a non-boolean value. Never throws.
 bool readThemeHidden(const std::string &path);
 bool loadThemeHidden(const std::string &dir); // the theme.json in `dir`
+
+//******************
+// Editing a written theme.json (the converter, G6c2)
+//******************
+// ThemeSpec::save writes only what ThemeSpec holds; the keys kept out of it (frames, logo, the disabled veil, the sheet)
+// and the converter's stamp are added to the file afterwards with these. All three never throw.
+
+// Merges `patch` (JSON text of an object) into the theme.json at `path`: objects are merged key by key, anything else
+// replaces. False (file untouched) when `patch` is not an object, or the file is missing, not an object or not writable.
+bool mergeThemeJson(const std::string &path, const std::string &patch);
+// The integer at `pointer` (a JSON pointer, "/converter") of the theme.json at `path`; `fallback` when the file, the
+// key or an integer there is missing.
+int readThemeJsonInt(const std::string &path, const std::string &pointer, int fallback);
+// The string at `pointer` of the theme.json at `path`; "" when the file, the key or a string there is missing.
+std::string readThemeJsonString(const std::string &path, const std::string &pointer);
+// A short digest (16 hex digits, FNV-1a) of the values at the JSON `pointers` of the theme.json at `path`, keys in
+// sorted order; a pointer that leads nowhere counts as null. "" when the file is missing or invalid. It tells whether
+// a block the converter wrote has been edited since.
+std::string digestThemeJson(const std::string &path, const std::vector<std::string> &pointers);
 
 } // namespace ableem

@@ -186,6 +186,10 @@ private:
     // dropped by releaseDisplay(). Appended last, as inactiveAlphas_ was (no SDK layout change, no AB_SDK_ABI bump)
     abgui::BackdropSnapshot backdrop_;
 
+    // the current theme's `sheet` role (G6c2: launcher.colors.sheet of its own theme.json - unset = the code's black at
+    // 200): refilled by loadAssets(), handed out as the Context's sheetProvider. Appended last, as backdrop_ was
+    abgui::PanelSheet panelSheet_;
+
 public:
     // The launcher hands over its frame (taken without the hint band and the bubbles) before it opens a screen and
     // takes it back after: every screen started meanwhile - the classic ones through renderBackground(), the ab_gui

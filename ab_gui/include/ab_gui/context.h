@@ -224,6 +224,13 @@ public:
     using InactiveProvider = std::function<InactiveAlphas()>;
     InactiveProvider inactiveProvider;
     InactiveAlphas inactiveAlphas() const;
+
+    // Appended (step G6c2): the `sheet` role of the current look (style.h, PanelSheet) - the colour and alpha of the
+    // sheet under every panel. AutoBleem's is Gui's, read from the theme's own launcher.colors.sheet. Unset, or a sheet
+    // that is not `set`, means no role: Style::sheet draws its black at sheetAlpha as always.
+    using SheetProvider = std::function<PanelSheet()>;
+    SheetProvider sheetProvider;
+    PanelSheet panelSheet() const;
 };
 
 } // namespace abgui
