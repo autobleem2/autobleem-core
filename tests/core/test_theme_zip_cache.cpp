@@ -321,6 +321,7 @@ TEST_CASE("a cache that cannot be written is not the zip's fault: a good zip is 
     // .cache is a folder that may not be written to: the unpack folder cannot be created
     DirEntry::removeFile(tmp.at("themes/.cache"));
     tmp.makeSubDir("themes/.cache");
+    tmp.makeSubDir("themes/.cache/Old10"); // a stale entry of the picked name, so the folder is kept, not removed
     REQUIRE(chmod(tmp.at("themes/.cache").c_str(), 0555) == 0);
     DirEntry::createDir(tmp.at("themes/.cache/.probe"));
     const bool enforced = !DirEntry::isDirectory(tmp.at("themes/.cache/.probe")); // false when running as root
