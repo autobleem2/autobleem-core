@@ -35,7 +35,9 @@ class AppBase;
 // 7: the ab_gui step G3z (docs/ab-gui-plan.md, 2026-09-30): GuiScreen is an abgui::Screen (render() final, draw() and
 //    prepareFrame()), GuiConfirm/GuiTextPage/GuiKeyboard/GuiActionMenu/GuiFactsPage are the ab_gui widgets, PanelStyle
 //    is an abgui::Style, Gui lost its dead busy and compact-panel members - an extension built for 6 is refused
-#define AB_SDK_ABI 7
+// 8: DownloadRequest keeps a .part on chosen statuses (2026-10-02) - the Downloader's layout changed; the Store and
+//    PSC-Bios are rebuilt, an extension built for 7 is refused
+#define AB_SDK_ABI 8
 
 #define AB_SDK_STR2(x) #x
 #define AB_SDK_STR(x) AB_SDK_STR2(x)

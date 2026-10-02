@@ -316,7 +316,7 @@ TEST_CASE("ExtensionRuntime::runProvider runs whichever runnable extension provi
 
 TEST_CASE("the SDK stamp names the ABI, the compiler and the target") {
     string stamp = AB_SDK_STAMP;
-    CHECK(AB_SDK_ABI == 7); // the ab_gui ABI step (G3z): the classic screens are abgui::Screens
+    CHECK(AB_SDK_ABI == 8); // the Downloader keeps a .part on chosen statuses (keepPartOnStatus)
     CHECK(stamp.find("sdk=" + to_string(AB_SDK_ABI) + ";") == 0);
     CHECK(stamp.find(";cxx=") != string::npos);
     CHECK(stamp.find(";target=") != string::npos);
