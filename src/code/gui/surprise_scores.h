@@ -15,7 +15,7 @@ namespace surprise {
 const int ScoreRows = 10;
 const int InitialsLength = 3;
 // what an initial can be: the letters, a space and a full stop (Up steps forward through it, Down back)
-const std::string InitialsAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ .";
+const std::string InitialsAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .?";
 
 struct ScoreRow {
     std::string initials;

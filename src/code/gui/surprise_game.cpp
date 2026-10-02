@@ -231,7 +231,8 @@ void SurpriseGame::addExplosion(float centreX, float centreY, unsigned int start
 // the classic way: Up/Down change the letter, Cross takes it and goes to the next, Circle goes back one (it does not
 // leave here), Start takes the name as it is; the third Cross ends it
 void SurpriseGame::initialsPress(ableem::Button button, unsigned int nowTicks) {
-    if (!entering_)
+    // the first moments ignore presses: the fire button still being hammered from the game must not type the name
+    if (!entering_ || nowTicks - entryOpenedTicks_ < surprise::EntryInputGuardMs)
         return;
     entryLastInput_ = nowTicks;
     char &c = entryName_[static_cast<size_t>(entryPos_)];
@@ -320,6 +321,7 @@ void SurpriseGame::updateAfterGame(unsigned int nowTicks) {
             entryName_ = "A  ";
             entryPos_ = 0;
             entryLastInput_ = nowTicks;
+            entryOpenedTicks_ = nowTicks;
         }
     }
 }

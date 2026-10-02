@@ -142,6 +142,8 @@ public:
     void initialsPress(ableem::Button button, unsigned int nowTicks);
     // the table shown after an entry (Cross ends it early, Start plays again)
     bool showingScores() const { return showingScores_; }
+    // the table takes presses only after a moment (the presses of the entry must not skip it)
+    bool scoresInputReady() const { return lastTicks - scoresSince_ >= surprise::ScoresInputGuardMs; }
 
     // the table as config.ini keeps it ("surprisescores"); `legacyHighScore` is the old single high score
     void seedScores(const std::string &text, int legacyHighScore);
@@ -243,6 +245,7 @@ private:
     unsigned int entryLastInput_ = 0;
     bool showingScores_ = false;
     unsigned int scoresSince_ = 0;
+    unsigned int entryOpenedTicks_ = 0;
     int litRow_ = -1; // the table's new entry, blinking
     bool godArmed_ = false;
     unsigned int godSplashTicks_ = 0;

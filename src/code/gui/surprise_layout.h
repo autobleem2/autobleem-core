@@ -298,6 +298,8 @@ const unsigned int AttractTitleMs = 10000, AttractScoresMs = 7000, DemoMs = 2500
 const unsigned int DemoTargetMs = 1500; // the demo pilot picks another alien this often
 // after a game over: the GAME OVER screen, then the initials (a new entry), then the table with it lit
 const unsigned int EntryAfterGameOverMs = 2500, EntryIdleMs = 30000, ScoresAfterEntryMs = 10000;
+// presses ignored at first: the initials (the fire button hammered on from the game) and the table after them
+const unsigned int EntryInputGuardMs = 800, ScoresInputGuardMs = 1500;
 // GOD MODE (the Konami code on the title): the splash pops like LIFE LOST
 const unsigned int GodSplashMs = 2000;
 

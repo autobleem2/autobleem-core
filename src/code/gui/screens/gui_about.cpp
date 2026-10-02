@@ -408,8 +408,9 @@ void GuiAbout::loop() {
                 continue;
             }
             // the table after an entry: Cross goes on to the title (Start plays again and Circle leaves, as below)
-            if (surpriseMode && game.showingScores() && press && e.button == Button::Cross) {
-                game.showTitle();
+            if (surpriseMode && game.showingScores() && press && (!game.scoresInputReady() || e.button == Button::Cross)) {
+                if (game.scoresInputReady())
+                    game.showTitle();
                 continue;
             }
             if (surpriseMode && game.onTitle() && press) {
