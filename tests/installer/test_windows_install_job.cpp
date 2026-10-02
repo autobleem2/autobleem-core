@@ -208,7 +208,7 @@ TEST_CASE("a fresh install: the data tree, the shipped themes and the three cove
     CHECK(fx.tmp.readFile("Documents/AutoBleem/Themes/ab2/theme.json") == "{ab2}");
     CHECK(fx.has("Themes/ab2/images/bg.png"));
     CHECK(fx.has("Themes/default/theme.json"));
-    CHECK(fx.out.said("2 themes copied in"));
+    CHECK(fx.out.said("3 themes copied in"));
     for (const char *r : {"J", "U", "P"})
         CHECK(fx.tmp.readFile(string("Documents/AutoBleem/System/Databases/covers") + r + ".db") ==
               string("sqlite covers") + r + ".db");
@@ -232,6 +232,8 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     fx.tmp.writeFile("Documents/AutoBleem/System/games.fingerprint", "old");
     fx.tmp.writeFile("Documents/AutoBleem/System/roms.fingerprint", "old");
     fx.tmp.writeFile("Documents/AutoBleem/Themes/ab2/theme.json", "{edited}");
+    // the default theme was there already: the user's choice stays
+    fx.tmp.writeFile("Documents/AutoBleem/Themes/ab2.0.0/theme.json", "{mine}");
     fx.tmp.writeFile("Documents/AutoBleem/Games/Tekken 3/Tekken 3.cue", "cue");
     fx.tmp.writeFile("Documents/AutoBleem/System/Databases/coversU.db", "sqlite coversU.db");
     fx.tmp.writeFile("Documents/AutoBleem/System/Processors/README.txt", "my notes");
