@@ -221,6 +221,8 @@ TEST_CASE("a fresh install: the data tree, the shipped themes and the three cove
     // the shipped processor is in the data tree
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe") == "exe 1.0.1");
     CHECK(fx.out.said("1 scanner processors"));
+    // a fresh install decides nothing about on/off: no sequence.ini, so every processor starts off (SDK-11)
+    CHECK_FALSE(fx.has("System/Processors/sequence.ini"));
     // and the shipped extension in the data tree's Extensions/
     CHECK(fx.tmp.readFile("Documents/AutoBleem/Extensions/store/bin/win/store.dll") == "dll 1.0.1");
     CHECK(fx.out.said("1 extensions"));
@@ -239,7 +241,11 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     fx.tmp.writeFile("Documents/AutoBleem/System/Processors/README.txt", "my notes");
     // an older unzip, switched off by the user
     fx.tmp.writeFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe", "exe 1.0.0");
-    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/sequence.ini", "[ps1]\n-unzip\n");
+    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/sequence.ini", "[ps1]\n-unzip\nmine\n");
+    // a processor the user installed, switched on, with the data folder it keeps for itself (SDK-11)
+    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/mine/processor.ini", "[Processor]\nVersion=1.0\n");
+    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/mine/bin/windows-x86_64/mine.exe", "exe mine");
+    fx.tmp.writeFile("Documents/AutoBleem/Home/processors/mine/cache.dat", "data");
     // an older Store with a file the new one has not, the Store's own state, one of the user's own extensions
     fx.tmp.writeFile("Documents/AutoBleem/Extensions/store/bin/win/store.dll", "dll 1.0.0");
     fx.tmp.writeFile("Documents/AutoBleem/Extensions/store/stale.txt", "old");
@@ -257,7 +263,11 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/README.txt") == "my notes"); // never rewritten
     // the update brings the new program; the user's order and on/off stay
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe") == "exe 1.0.1");
-    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/sequence.ini") == "[ps1]\n-unzip\n");
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/sequence.ini") == "[ps1]\n-unzip\nmine\n");
+    // a processor the user installed stays, with its program and its data folder
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/mine/bin/windows-x86_64/mine.exe") == "exe mine");
+    CHECK(fx.has("System/Processors/mine/processor.ini"));
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/Home/processors/mine/cache.dat") == "data");
     // the Store replaced whole; its state, the crash guard's list and the user's extension kept
     CHECK(fx.tmp.readFile("Documents/AutoBleem/Extensions/store/bin/win/store.dll") == "dll 1.0.1");
     CHECK_FALSE(fx.has("Extensions/store/stale.txt"));

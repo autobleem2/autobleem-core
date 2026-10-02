@@ -15,8 +15,9 @@
 // Two ordered lists, [ps1] and [roms], one processor name per line, a leading '-' for one that is switched
 // off; ';' or '#' starts a comment. load() merges the file with what is installed:
 //   - the file's order is kept for every processor still installed and belonging to that sequence;
-//   - a processor not in the file yet goes to the end, switched on (several new ones by Order=, then name) -
-//     Order is the author's suggestion for a new one, never a reason to reorder what the user sorted;
+//   - a processor not in the file yet goes to the end, switched OFF (SDK-11: it does nothing until the user turns
+//     it on; several new ones by Order=, then name) - Order is the author's suggestion for a new one, never a
+//     reason to reorder what the user sorted; one the file already lists keeps its setting;
 //   - a name that is not installed (or does not belong there) is dropped.
 // A processor with no binary for this machine stays in its place (the stick may go to another machine).
 class ProcessorSequences {
