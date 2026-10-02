@@ -148,7 +148,7 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   The app's `ThemeConverter` (`core/services/theme_converter.*`) is the only writer besides tests.
 - **`ZipArchive`** (`engine/zip_archive.h`) - `list/extract` of a .zip over vendored miniz (`third_party/miniz/`,
   built with `MINIZ_NO_TIME`). Entry names are checked before anything is written: no
-  `..`, no absolute paths, no backslashes. Themes dropped as zips are its only caller. **`ZipWriter`**
+  `..`, no absolute paths; a backslash in a name is a separator (zips from Windows PowerShell 5.1 use it). Themes dropped as zips are its only caller. **`ZipWriter`**
   (`engine/zip_writer.h`, 2026-09-18) is the write side: `open/addFile(path, name)/addBytes/close`, files
   streamed through miniz's read callback with 64-bit offsets, so a partition image of any size goes in
   without being read into memory - for abflashkit's `LBOOT.EPB`. The entry size is given up front on

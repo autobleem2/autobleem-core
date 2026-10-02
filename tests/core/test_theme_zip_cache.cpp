@@ -98,6 +98,32 @@ TEST_CASE("a folder of the same name wins: the zip is not listed and not used") 
     CHECK(DirEntry::exists(tmp.at("themes/Neon.zip")));
 }
 
+TEST_CASE("a zip written by Windows PowerShell 5.1 (backslash separators, a folder name with a space) is a theme") {
+    TempDir tmp("zipcache");
+    tmp.makeSubDir("themes");
+    // Compress-Archive on PowerShell 5.1: "Dragon Ball\theme.ini", no directory entries
+    makeZip(tmp.at("themes/DragonBall.zip"), {{"Dragon Ball\\theme.ini", "[Theme]\nBackground=old.jpg\nLines=9\n"},
+                                              {"Dragon Ball\\colors.ini", "[Colors]\n"},
+                                              {"Dragon Ball\\images\\GR\\JP_US_BG.png", "stock bg"},
+                                              {"Dragon Ball\\old.jpg", "background"}});
+
+    CHECK(ThemeZipCache::listZipThemes(tmp.at("themes")) == vector<string>{"DragonBall"});
+
+    const string dir = ThemeZipCache::prepare(tmp.at("themes"), "DragonBall");
+    CHECK(dir == tmp.at("themes/.cache/DragonBall"));
+    CHECK(DirEntry::exists(dir + "/theme.json"));
+    CHECK(DirEntry::exists(tmp.at("themes/DragonBall.zip")));
+}
+
+TEST_CASE("the list is read from the folder every time: a zip put there later is listed at once") {
+    TempDir tmp("zipcache");
+    makeNewTheme(tmp, "First");
+    CHECK(ThemeZipCache::listZipThemes(tmp.at("themes")) == vector<string>{"First"});
+
+    makeZip(tmp.at("themes/Second.zip"), {{"theme.json", NEW_JSON}});
+    CHECK(ThemeZipCache::listZipThemes(tmp.at("themes")) == vector<string>{"First", "Second"});
+}
+
 //*******************************
 // unpack on pick
 //*******************************
