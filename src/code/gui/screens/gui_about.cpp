@@ -53,7 +53,7 @@ void GuiAbout::init() {
     // the credits' small font: the launcher's medium face (about.ttf, an SST copy, went with the Sony fonts)
     {
         AboutStage stage("init credits font");
-        font = Fonts::openNewSharedCachedFont(Env::getPathToFontsDir() + sep + "OpenSans-Medium.ttf", 15, renderer);
+        font = Fonts::openNewSharedCachedFont(Fonts::defaultClassicFontPath(), 15, renderer);
     }
     {
         AboutStage stage("init logo");

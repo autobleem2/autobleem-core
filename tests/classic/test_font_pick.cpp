@@ -1,6 +1,6 @@
 //
 // Fonts::pickFonts (UIREV-31, one font): which file draws the classic screens and the launcher pair -
-// the user's font > the CJK font > the theme's launcher.fonts > the built-in Open Sans. Static and file-only
+// the user's font > the CJK font > the theme's launcher.fonts > the built-in Red Hat Text. Static and file-only
 // (the fonts are never opened), so the real class is tested over a scratch resources tree.
 //
 #include "doctest/doctest.h"
@@ -22,8 +22,8 @@ struct FontTree {
         env.setWorkingPath(tmp.path());
         env.setRetroarchDir(tmp.path() + sep + "ra");
         tmp.makeSubDir("fonts");
-        tmp.writeFile("fonts/OpenSans-Medium.ttf", "x");
-        tmp.writeFile("fonts/OpenSans-Bold.ttf", "x");
+        tmp.writeFile("fonts/RedHatText-Medium.ttf", "x");
+        tmp.writeFile("fonts/RedHatText-SemiBold.ttf", "x");
         tmp.writeFile("fonts/NotoSansSC-Regular.otf", "x");
         tmp.writeFile("fonts/Mine.ttf", "x");
     }
@@ -31,12 +31,12 @@ struct FontTree {
 };
 } // namespace
 
-TEST_CASE("no theme fonts: Open Sans for the launcher pair and the classic screens (today's look)") {
+TEST_CASE("no theme fonts: Red Hat Text Medium/SemiBold for the launcher pair and the classic screens") {
     FontTree tree;
     const Fonts::Pick pick = Fonts::pickFonts("true", "--", "English", "", "");
-    CHECK(pick.medium == tree.fonts("OpenSans-Medium.ttf"));
-    CHECK(pick.bold == tree.fonts("OpenSans-Bold.ttf"));
-    CHECK(pick.classic == tree.fonts("OpenSans-Medium.ttf"));
+    CHECK(pick.medium == tree.fonts("RedHatText-Medium.ttf"));
+    CHECK(pick.bold == tree.fonts("RedHatText-SemiBold.ttf"));
+    CHECK(pick.classic == tree.fonts("RedHatText-Medium.ttf"));
     CHECK_FALSE(pick.userFont);
 }
 
@@ -53,7 +53,7 @@ TEST_CASE("a theme with only a medium keeps the built-in bold") {
     FontTree tree;
     const Fonts::Pick pick = Fonts::pickFonts("true", "--", "English", "themes/x/Red-Medium.ttf", "");
     CHECK(pick.classic == "themes/x/Red-Medium.ttf");
-    CHECK(pick.bold == tree.fonts("OpenSans-Bold.ttf"));
+    CHECK(pick.bold == tree.fonts("RedHatText-SemiBold.ttf"));
 }
 
 TEST_CASE("a user's font still wins over the theme's, and leaves the launcher pair alone") {

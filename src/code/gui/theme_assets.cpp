@@ -118,9 +118,9 @@ void ThemeAssets::load() {
     arrow("dpadLeft", dpadLeft, dpadLeftOutline);
     arrow("dpadRight", dpadRight, dpadRightOutline);
 
-    // a theme without launcher fonts (and a default theme without them either) gets the shipped pair -
-    // Open Sans Medium/Bold (OFL), the stand-in for the console's SST since 2026-09-21
-    // the classic screens' font is one with the launcher's (UIREV-31): the theme's launcher.fonts medium - Open Sans
+    // a theme without launcher fonts gets the shipped pair - Red Hat Text Medium/SemiBold (OFL), since UIREV-31
+    // (it was Open Sans Medium/Bold, the stand-in for the console's SST, from 2026-09-21)
+    // the classic screens' font is one with the launcher's (UIREV-31): the theme's launcher.fonts medium - Red Hat Text
     // Medium on a theme that sets none - or the user's own when Options says so, or the CJK font for a language that
     // needs it; a theme's classic.font is not read (2026-09-29, the owner) - so it is never opened either
     const Fonts::Pick pick =

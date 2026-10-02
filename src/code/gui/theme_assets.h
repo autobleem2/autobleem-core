@@ -47,20 +47,22 @@ public:
     static std::map<std::string, std::string> builtInIcons(const Theme &theme);
 
     // the UI's font set (titles, rows, footers, the menus, the extensions' screens): the launcher's pair (the
-    // theme's launcher.fonts, else Open Sans Medium/Bold) - or, with "Use Default Font" off, the user's font for
+    // theme's launcher.fonts, else Red Hat Text Medium/SemiBold) - or, with "Use Default Font" off, the user's font for
     // both (2026-09-29, the owner)
     Fonts themeFonts;
     // the launcher's pair whatever Options say: the parts with a fixed look draw with it - About and its game,
     // the launcher's game details, game menu and hints. A static on purpose: a new member here would move
     // Gui's layout, which the extensions are built against (AB_SDK_ABI)
     static Fonts &fixedFonts();
-    // the classic screens' font - the name is historic: the theme's launcher medium (Open Sans on a theme that sets
+    // the classic screens' font - the name is historic: the theme's launcher medium (Red Hat Text on a theme that sets
     // none; or the user's own font, or the CJK one) at Fonts::ClassicFontSize; a theme's classic.font is not read
     // (2026-09-29; UIREV-31: one font with the launcher's)
     ableem::Font themeFont;
     // the classic font (the file themeFont was opened from - default, user or CJK) at another size, for a screen
     // whose rows will not fit at the usual size
     ableem::Font classicFontAtSize(int size);
+    // the file themeFont was opened from (the default, the theme's, the user's or the CJK one): Options' Font row
+    const std::string &classicFontFile() const { return classicFontFile_; }
 
     ableem::Rect backgroundRect;
     ableem::Rect logoRect;

@@ -47,15 +47,16 @@ public:
     ableem::Font &boldAtSize(int fontSize) { return atSize(FONT_BOLD, fontSize); }
 
     // the classic screens' font on a theme that sets no launcher.fonts (2026-09-29: a theme's classic.font in
-    // theme.json is no longer read; UIREV-31: a theme's launcher.fonts medium replaces it): Open Sans Medium, the
+    // theme.json is no longer read; UIREV-31: a theme's launcher.fonts medium replaces it): Red Hat Text Medium, the
     // launcher's own, in resources/fonts
-    static const char *const DefaultClassicFont; // "OpenSans-Medium.ttf"
+    static const char *const DefaultClassicFont; // "RedHatText-Medium.ttf"
+    static const char *const DefaultBoldFont;    // "RedHatText-SemiBold.ttf", the launcher's bold
     static const int ClassicFontSize = 20;
     static std::string defaultClassicFontPath();
     // the folders a user-chosen font (config.ini "font") is looked for in, in order: retroarch/fonts, the
     // resources' fonts
     static std::vector<std::string> userFontDirs();
-    // the classic screens' font file: `fallback` (the default, Open Sans, when empty) when config.ini "themefont" -
+    // the classic screens' font file: `fallback` (the default, Red Hat Text, when empty) when config.ini "themefont" -
     // Options' "Use Default Font" - is on, or the "font" it names is not found; else that font
     static std::string classicFontPath(const std::string &useDefault, const std::string &font,
                                        const std::string &fallback = std::string());
@@ -65,14 +66,14 @@ public:
 
     // Which files draw what (UIREV-31, one font): the launcher pair and the classic screens' font.
     struct Pick {
-        std::string medium;  // the launcher's medium face: the theme's launcher.fonts.medium, else Open Sans Medium
+        std::string medium;  // the launcher's medium face: the theme's launcher.fonts.medium, else Red Hat Text Medium
         std::string bold;    // the launcher's bold face, likewise
         std::string classic; // the classic screens' font
         bool userFont = false; // classic is a font the user chose (it has no bold of its own: it draws the UI pair)
     };
     // The order: a CJK language's font for everything, else the user's own font (config.ini "font" while "themefont"
     // is off and the file exists) for the classic screens, else the theme's medium - the classic screens' default is
-    // the launcher's face, not a separate Open Sans. `themeMedium`/`themeBold` are launcher.fonts, empty = built-in.
+    // the launcher's face, not a separate font. `themeMedium`/`themeBold` are launcher.fonts, empty = built-in.
     static Pick pickFonts(const std::string &useDefault, const std::string &font, const std::string &language,
                           const std::string &themeMedium, const std::string &themeBold);
     // (re)opens every size from these two ttf files - the theme's launcher fonts, or the console's own

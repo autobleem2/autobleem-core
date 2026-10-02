@@ -111,7 +111,7 @@ Config::Config() {
     if (updates == "") {
         updates = Version::isBetweenTags() ? "nightly" : Version::isPreRelease() ? "testing" : "release";
     }
-    // the classic screens' font (G5n): the default is the theme's launcher.fonts medium, else Open Sans
+    // the classic screens' font (G5n): the default is the theme's launcher.fonts medium, else Red Hat Text
     // (Fonts::DefaultClassicFont), unless
     // "themefont" ("Use Default Font") is off and "font" names a .ttf/.otf from retroarch/fonts or
     // resources/fonts. A theme's own classic font is not read since 2026-09-29; "--" (it) became the default.
@@ -119,7 +119,7 @@ Config::Config() {
         inifile.values["themefont"] = "true";
     }
     if (inifile.values["font"] == "" || inifile.values["font"] == "--") {
-        inifile.values["font"] = "OpenSans-Medium.ttf";
+        inifile.values["font"] = "RedHatText-Medium.ttf";
     }
 
     if (inifile.values["surprisehighscore"] == "") {
