@@ -91,7 +91,29 @@ size_t writeChunk(void *opaque, mz_uint64 offset, const void *buffer, size_t siz
     return written;
 }
 
+// the same callback for verify(): the bytes go nowhere, miniz still checks the CRC at the end
+size_t discardChunk(void *, mz_uint64, const void *, size_t size) {
+    return size;
+}
+
 } // namespace
+
+//*******************************
+// ZipArchive::verify
+//*******************************
+bool ZipArchive::verify(const string &zipPath) {
+    Reader reader(zipPath);
+    if (!reader.open)
+        return false;
+    for (unsigned i = 0; i < reader.count(); i++) {
+        ZipEntry entry;
+        if (!reader.stat(i, entry) || !isSafeName(entry.name))
+            return false;
+        if (!entry.isDir && !mz_zip_reader_extract_to_callback(&reader.zip, i, discardChunk, nullptr, 0))
+            return false;
+    }
+    return true;
+}
 
 //*******************************
 // ZipArchive::isSafeName

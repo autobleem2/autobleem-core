@@ -11,7 +11,12 @@
 #include "core/services/theme_converter.h"
 #include "core/services/theme_zip_cache.h"
 
+#include <ableem/engine/zip_archive.h>
 #include <ableem/engine/zip_writer.h>
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 #include <map>
 #include <string>
@@ -297,6 +302,62 @@ TEST_CASE("not enough free space: nothing is unpacked and the zip is left alone,
     // room again: the same zip unpacks
     ThemeZipCache::setFreeSpaceProbe([](const string &) { return uint64_t(1) << 40; });
     CHECK(ThemeZipCache::prepare(tmp.at("themes"), "Neon") == tmp.at("themes/.cache/Neon"));
+}
+
+TEST_CASE("a cache that cannot be written is not the zip's fault: a good zip is never renamed .bad") {
+    TempDir tmp("zipcache");
+    makeNewTheme(tmp, "Old10");
+    makeOldTheme(tmp, "Old11");
+
+    // .cache is in the way as a plain file: it can neither be cleaned as a folder nor created
+    tmp.writeFile("themes/.cache", "in the way");
+    for (const char *name : {"Old10", "Old11"}) {
+        CHECK(ThemeZipCache::prepare(tmp.at("themes"), name).empty());
+        CHECK(DirEntry::exists(tmp.at(string("themes/") + name + ".zip")));
+        CHECK_FALSE(DirEntry::exists(tmp.at(string("themes/") + name + ".zip.bad")));
+    }
+
+#ifndef _WIN32
+    // .cache is a folder that may not be written to: the unpack folder cannot be created
+    DirEntry::removeFile(tmp.at("themes/.cache"));
+    tmp.makeSubDir("themes/.cache");
+    tmp.makeSubDir("themes/.cache/Old10"); // a stale entry of the picked name, so the folder is kept, not removed
+    REQUIRE(chmod(tmp.at("themes/.cache").c_str(), 0555) == 0);
+    DirEntry::createDir(tmp.at("themes/.cache/.probe"));
+    const bool enforced = !DirEntry::isDirectory(tmp.at("themes/.cache/.probe")); // false when running as root
+    if (enforced) {
+        CHECK(ThemeZipCache::prepare(tmp.at("themes"), "Old10").empty());
+        CHECK(DirEntry::exists(tmp.at("themes/Old10.zip")));
+        CHECK_FALSE(DirEntry::exists(tmp.at("themes/Old10.zip.bad")));
+    }
+    chmod(tmp.at("themes/.cache").c_str(), 0755); // so the TempDir can delete it
+#endif
+
+    // once it can be written, the same zip unpacks
+    DirEntry::removeDirAndContents(tmp.at("themes/.cache"));
+    DirEntry::removeFile(tmp.at("themes/.cache"));
+    CHECK(ThemeZipCache::prepare(tmp.at("themes"), "Old10") == tmp.at("themes/.cache/Old10"));
+    CHECK(DirEntry::exists(tmp.at("themes/.cache/Old10/theme.json")));
+}
+
+TEST_CASE("a zip whose entry is damaged inside is still renamed .bad: only a sound archive is spared") {
+    TempDir tmp("zipcache");
+    makeNewTheme(tmp, "rot");
+    string bytes = tmp.readFile("themes/rot.zip");
+    // the first entry's stored bytes sit right after its local header (30 bytes + the name "theme.json")
+    bytes[30 + 10 + 3] ^= 0x55;
+    tmp.writeFile("themes/rot.zip", bytes);
+
+    CHECK_FALSE(ableem::ZipArchive::verify(tmp.at("themes/rot.zip")));
+    CHECK(ThemeZipCache::prepare(tmp.at("themes"), "rot").empty());
+    CHECK(DirEntry::exists(tmp.at("themes/rot.zip.bad")));
+}
+
+TEST_CASE("ZipArchive::verify accepts a sound archive and writes nothing") {
+    TempDir tmp("zipcache");
+    makeNewTheme(tmp, "fine");
+    CHECK(ableem::ZipArchive::verify(tmp.at("themes/fine.zip")));
+    CHECK_FALSE(ableem::ZipArchive::verify(tmp.at("themes/missing.zip")));
 }
 
 TEST_CASE("the previous cache goes before the room is checked: its space counts") {

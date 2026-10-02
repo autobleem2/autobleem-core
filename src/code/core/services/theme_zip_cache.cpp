@@ -122,8 +122,10 @@ bool ensureCache(const string &themesDir, const string &name) {
         return giveUp(name, zip, staging, "no theme.json or theme.ini in it");
 
     const string root = ThemeZipCache::cacheRoot(themesDir);
-    if (!DirEntry::createDirs(root))
+    if (!DirEntry::createDirs(root)) {
+        PLOG_WARNING << "Theme zip " << name << " left alone: could not create " << root;
         return false;
+    }
     const uint64_t room = freeSpace(root);
     if (room < needed + SPACE_MARGIN) {
         PLOG_WARNING << "Theme zip " << name << " needs " << needed << " bytes, " << room << " are free";
@@ -134,6 +136,12 @@ bool ensureCache(const string &themesDir, const string &name) {
     if (!ableem::ZipArchive::extract(zip, staging)) {
         if (freeSpace(root) < SPACE_MARGIN) { // ran out of room on the way: not the zip's fault
             DirEntry::removeDirAndContents(staging);
+            return false;
+        }
+        DirEntry::removeDirAndContents(staging);
+        if (ableem::ZipArchive::verify(zip)) { // the archive is sound: the cache could not be written
+            PLOG_WARNING << "Theme zip " << name << " left alone: could not write into " << root
+                         << " (not writable, or no room); the default theme is used this time";
             return false;
         }
         return giveUp(name, zip, staging, "could not unpack it");
