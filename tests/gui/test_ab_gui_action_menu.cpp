@@ -438,9 +438,13 @@ TEST_CASE("ActionMenu::loop: a held d-pad repeats at the shared pace, and the re
     Menu menu(*g.gui, side.ctx);
     menu.items = plain(10);
     menu.open();
-    // every frame takes 100 ms; the d-pad is pressed before the loop and let go at frame 8, Back at frame 9
+    // every frame takes 100 ms - on the menu's own clock, not the wall's: a real delay() overshoots on a loaded
+    // machine (parallel ctest) and moved the repeats by a frame. The d-pad is pressed before the loop and let go at
+    // frame 8, Back at frame 9
+    unsigned int now = 0;
+    side.ctx.clock = [&now] { return now; };
     menu.onFrame = [&](int frame) {
-        g.gui->platform().delay(100);
+        now += 100;
         if (frame == 8)
             g.gui->input().inject(dpad(false, Button::DpadDown));
         if (frame == 9)

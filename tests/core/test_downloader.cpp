@@ -174,3 +174,42 @@ TEST_CASE("Downloader::commandFor") {
     CHECK(Downloader::commandFor("curl -C - -o \"%o\" \"%u\"", "http://a/b c", "/x/y.part") ==
           "curl -C - -o \"/x/y.part\" \"http://a/b c\"");
 }
+
+TEST_CASE("Downloader: a resume that fails with a status keepPartOnStatus names (the network) keeps the .part") {
+    TempDir tmp("downloader");
+    tmp.writeFile("big.part", "01234");
+    Downloader d("get %u %o", "resume %u %o", [](const string &) { return 6; }); // no host: nothing was written
+    DownloadRequest r;
+    r.url = "http://x/big";
+    r.target = tmp.at("big");
+    r.resume = true;
+    r.keepPartOnStatus = [](int status) { return status == 6 || status == 28; };
+    string error;
+    CHECK(d.fetch(r, error) == Downloader::Result::Failed);
+    CHECK(d.lastStatus() == 6);
+    CHECK(error.find("6") != string::npos);
+    CHECK(tmp.readFile("big.part") == "01234");
+
+    // another status (no ranges here): thrown away as before, so the next attempt starts over
+    Downloader refuse("get %u %o", "refuse %u %o", [](const string &) { return 33; });
+    CHECK(refuse.fetch(r, error) == Downloader::Result::Failed);
+    CHECK(refuse.lastStatus() == 33);
+    CHECK_FALSE(DirEntry::exists(tmp.at("big.part")));
+}
+
+TEST_CASE("Downloader: keepPartOnStatus never keeps a wrong file") {
+    TempDir tmp("downloader");
+    FakeCommand site;
+    site.bodies["http://x/a"] = "abc";
+    Downloader d("get %u %o", "resume %u %o", site.runner());
+    DownloadRequest r;
+    r.url = "http://x/a";
+    r.target = tmp.at("a");
+    r.size = 4;
+    r.resume = true;
+    r.keepPartOnStatus = [](int) { return true; };
+    string error;
+    CHECK(d.fetch(r, error) == Downloader::Result::WrongSize);
+    CHECK(d.lastStatus() == 0);
+    CHECK_FALSE(DirEntry::exists(tmp.at("a.part")));
+}
