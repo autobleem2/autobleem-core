@@ -9,6 +9,7 @@
 #include "core/version.h"
 #include "environment.h"
 #include "output_mode.h"
+#include "default_theme.h"
 
 //*******************************
 // Config::Config()
@@ -35,7 +36,7 @@ Config::Config() {
     // the shipped config.ini says ab2.0.0 too; this is for a config.ini that is missing or came back empty (an
     // unclean unmount on the first Pi boot did that) - the launcher should still come up in its own theme
     if (inifile.values["theme"] == "") {
-        inifile.values["theme"] = "ab2.0.0";
+        inifile.values["theme"] = DefaultTheme::Name;
     }
     if (inifile.values["aspect"] == "") {
         inifile.values["aspect"] = "false";

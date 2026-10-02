@@ -96,6 +96,7 @@ struct Fixture {
         options.repoUrl = Site;
         options.buildbotUrl = Buildbot;
         options.scratchDir = tmp.makeSubDir("scratch");
+        tmp.writeFile("Program Files/AutoBleem/Themes/ab2.0.0/theme.json", "{ab2.0.0}");
         tmp.writeFile("Program Files/AutoBleem/Themes/ab2/theme.json", "{ab2}");
         tmp.writeFile("Program Files/AutoBleem/Themes/ab2/images/bg.png", "png");
         tmp.writeFile("Program Files/AutoBleem/Themes/default/theme.json", "{default}");
@@ -275,6 +276,26 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     CHECK(fx.out.said("coversU.db is already there"));
     CHECK(fx.site.count("coversJ.db") == 0);
     CHECK(fx.out.said("Updated."));
+}
+
+TEST_CASE("an update that brings the default theme to a data tree without it switches the theme once") {
+    Fixture fx;
+    fx.tmp.writeFile("Documents/AutoBleem/System/config.ini", "theme=aergb\nlanguage=Polish\n");
+    fx.tmp.writeFile("Documents/AutoBleem/Themes/ab2/theme.json", "{ab2}");
+    fx.options.update = true;
+    fx.options.coversJapan = fx.options.coversUsa = fx.options.coversPal = false;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    {
+        const string cfg = fx.tmp.readFile("Documents/AutoBleem/System/config.ini");
+        CHECK(cfg.find("Theme=ab2.0.0") != string::npos);
+        CHECK(cfg.find("Language=Polish") != string::npos);
+    }
+    CHECK(fx.has("Themes/ab2.0.0/theme.json"));
+    // the next update: the folder is there, the user's choice stays
+    fx.tmp.writeFile("Documents/AutoBleem/System/config.ini", "theme=aergb\n");
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/config.ini").find("Theme=aergb") != string::npos);
 }
 
 TEST_CASE("RetroArch and its cores from the download repository, then the BIOS files and the samples") {

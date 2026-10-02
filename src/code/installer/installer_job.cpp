@@ -1,6 +1,7 @@
 #include "installer/installer_job.h"
 #include "installer/install_job_base.h"
 #include "installer/legacy_layout.h"
+#include "core/services/default_theme.h"
 #include "core/services/extension_catalog.h"
 #include "core/services/processor_catalog.h"
 
@@ -170,6 +171,8 @@ private:
         }
         if (stopped(error))
             return false;
+        // the default theme's folder before the install touches the Themes, for the one-time switch (unpack)
+        hadDefaultTheme = DirEntry::isDirectory(at(string("Themes/") + DefaultTheme::Name));
         if (info.installed) {
             say("  AutoBleem " + (info.installedVersion.empty() ? string("(unknown version)") : info.installedVersion) +
                 " is on the stick - updating to " + info.packageVersion);
@@ -228,6 +231,14 @@ private:
             writeText(at(ConfigIni), savedConfig);
             say("  config.ini kept as it was");
         }
+        // the package's default theme on a stick that did not have it (an update from an older version, an
+        // AutoBleem 1.0 conversion, a fresh install): the theme setting switches to it once; a stick that had the
+        // folder keeps the user's choice
+        const bool shipsDefaultTheme =
+            find(shippedThemes.begin(), shippedThemes.end(), DefaultTheme::Name) != shippedThemes.end();
+        if (DefaultTheme::switchesTo(shipsDefaultTheme, hadDefaultTheme) &&
+            setIniValue(at(ConfigIni), "theme", DefaultTheme::Name))
+            say(string("  theme set to ") + DefaultTheme::Name);
         // the PS1 emulator every install lands on (the owner's rule, 2026-09-21): pcsx-abnxt, whatever the
         // stick's config.ini said before
         if (setIniValue(at(ConfigIni), "emulator", "pcsx-abnxt"))
@@ -649,6 +660,7 @@ private:
     vector<string> shippedExtensions; // the package's Extensions/<name>/ folders
     string savedConfig;
     string themeCfg;
+    bool hadDefaultTheme = false; // Themes/<DefaultTheme::Name> was on the stick before this run
     bool newBinary = false;
 };
 

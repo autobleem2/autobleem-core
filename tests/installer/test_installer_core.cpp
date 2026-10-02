@@ -94,6 +94,8 @@ string makePackage(TempDir &tmp, const string &version) {
     b.file("./Extensions/store/extension.ini", "[extension]\nName=AutoBleem Store\nVersion=" + version + "\n");
     b.file("./Extensions/store/bin/psc/store.so", "ELF store", 0755);
     b.dir("./Themes")
+        .dir("./Themes/ab2.0.0")
+        .file("./Themes/ab2.0.0/theme.json", "{}")
         .dir("./Themes/ab2")
         .file("./Themes/ab2/theme.json", "{}")
         .dir("./Themes/default")
@@ -377,6 +379,70 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     CHECK(next.out.said("Updated."));
 }
 
+//******************
+// UIREV-51: the default theme on an update
+//******************
+TEST_CASE("a fresh install lands on the default theme") {
+    Fixture fx;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini").find("Theme=ab2.0.0") != string::npos);
+    CHECK(fx.has("Themes/ab2.0.0/theme.json"));
+}
+
+TEST_CASE("an update that brings the default theme to a stick without it switches the theme once") {
+    Fixture fx;
+    // an older version: its launcher, its config on another theme, no default theme folder
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF v1.9.0");
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/config.ini", "theme=aergb\nlanguage=Polish\n");
+    fx.tmp.writeFile("stick/VERSION", "v1.9.0\n");
+    fx.tmp.writeFile("stick/Themes/ab2/theme.json", "{}");
+    CHECK_FALSE(fx.has("Themes/ab2.0.0"));
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    const string cfg = fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini");
+    CHECK(cfg.find("Theme=ab2.0.0") != string::npos);
+    CHECK(cfg.find("Language=Polish") != string::npos); // the other settings stay
+    CHECK(fx.out.said("theme set to ab2.0.0"));
+    CHECK(fx.has("Themes/ab2.0.0/theme.json"));
+
+    // the next update finds the folder: the user's choice (here back to aergb) is kept
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/config.ini", "theme=aergb\n");
+    Fixture next;
+    next.options = fx.options;
+    next.options.packageFile = makePackage(next.tmp, "v2.0.1");
+    REQUIRE_MESSAGE(InstallerJob::run(next.options, next.site, next.out, []() { return false; }, error), error);
+    CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini").find("Theme=aergb") != string::npos);
+    CHECK_FALSE(next.out.said("theme set to"));
+}
+
+TEST_CASE("an update whose stick already has the default theme folder keeps the user's theme") {
+    Fixture fx;
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF v2.0.0");
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/config.ini", "theme=aergb\n");
+    fx.tmp.writeFile("stick/Themes/ab2.0.0/theme.json", "{mine}");
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini").find("Theme=aergb") != string::npos);
+    CHECK_FALSE(fx.out.said("theme set to"));
+}
+
+TEST_CASE("a package without the default theme folder does not switch the theme") {
+    Fixture fx;
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF v1.9.0");
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/config.ini", "theme=aergb\n");
+    TarBuilder b;
+    b.dir("./Autobleem").dir("./Autobleem/bin").dir("./Autobleem/bin/autobleem");
+    b.file("./Autobleem/bin/autobleem/autobleem-gui", "ELF v2", 0755);
+    b.dir("./Themes").dir("./Themes/ab2").file("./Themes/ab2/theme.json", "{}");
+    b.file("./VERSION", "v2\n");
+    fx.options.packageFile = fx.tmp.at("pkg/other.tar.gz");
+    REQUIRE(b.writeTarGz(fx.options.packageFile));
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini").find("Theme=aergb") != string::npos);
+}
+
 TEST_CASE("RetroArch, its cores, libraries, apps and bundles, then the BIOS files and the samples") {
     Fixture fx;
     fx.options.retroarch = true;
@@ -572,9 +638,11 @@ TEST_CASE("an AutoBleem 1.0 / NG stick is brought to the new layout before the u
     CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/autobleem-gui") == "ELF v2.0.0-pre0-abc1234");
     {
         const string cfg = fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini");
-        CHECK(cfg.find("Theme=aergb") != string::npos);
+        // a 1.0 stick has no default theme folder: the conversion switches the theme to it (UIREV-51)
+        CHECK(cfg.find("Theme=ab2.0.0") != string::npos);
         CHECK(cfg.find("Emulator=pcsx-abnxt") != string::npos);
     }
+    CHECK(fx.out.said("theme set to ab2.0.0"));
     CHECK(fx.out.said("retroarch -> RetroArch/bin"));
 
     // a second run finds the new layout and does not migrate again
