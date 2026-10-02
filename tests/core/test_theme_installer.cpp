@@ -3,14 +3,12 @@
 //
 #include "doctest/doctest.h"
 
-#include "../support/env_fixture.h"
 #include "../support/string_maker.h"
 #include "../support/temp_dir.h"
 #include "../support/zip_fixtures.h"
 
 #include "core/services/theme_installer.h"
 #include "core/services/theme_converter.h"
-#include "core/services/theme.h"
 
 #include <memory>
 #include <string>
@@ -139,27 +137,4 @@ TEST_CASE("a zip that is no theme, or no zip, is renamed .bad and nothing is ins
     }
     CHECK_FALSE(DirEntry::exists(tmp.at("evil.txt")));
     CHECK(ThemeInstaller::installZips(tmp.at("themes")).empty()); // .bad files are not retried
-}
-
-TEST_CASE("Theme::load() installs a dropped zip and can then load it, converting it if it is old") {
-    EnvFixture env;
-    TempDir tmp("installer");
-    env.setWorkingPath(tmp.path());
-    env.setThemesDir(tmp.makeSubDir("themes"));
-    tmp.writeFile("themes/default/theme.json", "{ \"classic\": { \"background\": \"bg.png\", \"menuLines\": 12 } }");
-    tmp.writeFile("themes/default/bg.png", "x");
-    tmp.writeFile("themes/retro.zip", ZIP_FIXTURE(NESTED_ZIP));
-    tmp.writeFile("config.ini", "Theme=retro\n");
-
-    Config config;
-    Theme theme(config);
-    theme.load();
-
-    CHECK(theme.loadedPath() == tmp.at("themes/retro"));
-    CHECK(theme.classic().background == tmp.at("themes/retro/old.jpg"));
-    CHECK(int(theme.classic().menuLines) == 9);
-    CHECK(DirEntry::exists(tmp.at("themes/retro/theme.json")));
-    CHECK(DirEntry::exists(tmp.at("themes/retro/images/launcher_background.png")));
-    CHECK_FALSE(DirEntry::exists(tmp.at("themes/retro.zip")));
-    CHECK(config.inifile.values["theme"] == "retro");
 }

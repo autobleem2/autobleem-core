@@ -17,10 +17,10 @@
 // file when it has one, the default theme's otherwise). Owned by App; ThemeAssets, AppAudio and the
 // launcher only turn the values here into textures, sounds and fonts.
 //
-// A theme dropped in as <name>.zip is unpacked to <name>/ by ThemeInstaller, and a theme folder still in the
-// old layout (theme.ini + the console's data tree) is converted in place by ThemeConverter, both the first
-// time load() meets them. Nothing here knows the console's real paths: they all
-// come from Env.
+// A theme left in the themes directory as <name>.zip is unpacked by ThemeZipCache into themes/.cache/<name>/
+// while it is the picked one (and only then), and a theme folder still in the old layout (theme.ini + the
+// console's data tree) is converted in place by ThemeConverter, both the first time load() meets them. Nothing
+// here knows the console's real paths: they all come from Env.
 class Theme {
 public:
     // which theme is config.ini's "theme"; a folder that is not a theme at all is written back there as "default"
@@ -31,7 +31,8 @@ public:
     // "default" and writes that back to config.ini.
     void load();
 
-    std::string path(); // <themes>/<name>, or <themes>/default when there is no such folder
+    // <themes>/<name>, else the unpacked <themes>/.cache/<name>, else <themes>/default
+    std::string path();
 
     // the merged, resolved theme. Every file field is an absolute path or "" (no theme has that file).
     const ThemeSpec &spec() const { return spec_; }

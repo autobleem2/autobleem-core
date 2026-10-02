@@ -127,7 +127,8 @@ add_library(ab_core STATIC
         src/code/core/services/system_info.cpp
         src/code/core/services/theme.cpp
         src/code/core/services/theme_converter.cpp
-        src/code/core/services/theme_installer.cpp)
+        src/code/core/services/theme_installer.cpp
+        src/code/core/services/theme_zip_cache.cpp)
 target_link_libraries(ab_core ableem_engine ${CMAKE_DL_LIBS}) # dlopen: PluginLoader
 target_include_directories(ab_core PUBLIC src/code ${CMAKE_BINARY_DIR}/generated)
 if (AB_ONLINE_UPDATE)

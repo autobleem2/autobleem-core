@@ -11,11 +11,11 @@
 //******************
 // ThemeInstaller
 //******************
-// A user copies mytheme.zip next to the theme folders; the next time themes are looked at (Theme::load(),
-// the Options menu's theme list) it is unpacked to mytheme/ and the zip is deleted. The archive may hold
-// the theme's files at its root or inside one folder (the way most zips are made; "__MACOSX" and other
-// dot/underscore folders are ignored when looking for it). Either layout of theme is fine - an old
-// theme.ini one converts afterwards like any other folder.
+// Used by tools/theme_convert, not by the launcher: the launcher leaves a theme zip a zip (ThemeZipCache).
+// installZips() unpacks every mytheme.zip next to the theme folders to mytheme/ and deletes the zip. The
+// archive may hold the theme's files at its root or inside one folder (the way most zips are made;
+// "__MACOSX" and other dot/underscore folders are ignored when looking for it). Either layout of theme is
+// fine - an old theme.ini one converts afterwards like any other folder.
 //
 // A zip that replaces an existing folder of the same name is an update: the folder goes. A zip that is
 // not an archive, or holds no theme, is renamed <name>.zip.bad so it is not tried again on every boot.

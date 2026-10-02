@@ -5,7 +5,7 @@
 #include "theme.h"
 #include "environment.h"
 #include "theme_converter.h"
-#include "theme_installer.h"
+#include "theme_zip_cache.h"
 
 #include <iostream>
 #include <ableem/engine/log.h>
@@ -27,9 +27,13 @@ string Theme::defaultsPath() {
 // Theme::path
 //*******************************
 string Theme::path() {
-    string path = Env::getPathToThemesDir() + sep + config_.inifile.values["theme"];
+    const string themes = Env::getPathToThemesDir();
+    const string name = config_.inifile.values["theme"];
+    string path = themes + sep + name;
     if (!DirEntry::exists(path)) {
-        path = defaultsPath();
+        // a zip theme that load() unpacked
+        path = DirEntry::isDirectory(ThemeZipCache::cacheDir(themes, name)) ? ThemeZipCache::cacheDir(themes, name)
+                                                                            : defaultsPath();
     }
     return path;
 }
@@ -38,7 +42,9 @@ string Theme::path() {
 // Theme::load
 //*******************************
 void Theme::load() {
-    ThemeInstaller::installZips(Env::getPathToThemesDir()); // a dropped <name>.zip becomes <name>/ first
+    // a picked <name>.zip is unpacked into themes/.cache/<name>/ (and converted there) first; whatever else
+    // the cache holds - the previous zip theme, a leftover of a power cut - is removed
+    ThemeZipCache::prepare(Env::getPathToThemesDir(), config_.inifile.values["theme"]);
 
     const string defaultsDir = defaultsPath();
     loadedPath_ = path();
