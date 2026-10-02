@@ -108,12 +108,16 @@ TEST_CASE("ProcessorSequences: new ones by Order at the end, the user's order ke
     // first contact: nothing in the file, every one new - by Order
     ProcessorSequences seq(tmp.at("Processors/sequence.ini"));
     CHECK(seq.load(catalog.processors()));
-    CHECK(names(seq.entries(ProcessorSequence::Ps1)) == vector<string>{"patch", "unzip", "rvz2chd"});
-    CHECK(names(seq.entries(ProcessorSequence::Roms)) == vector<string>{"unzip"});
+    // (SDK-11: and every one of them is stored OFF, for PS1 games and for ROMs)
+    CHECK(names(seq.entries(ProcessorSequence::Ps1)) == vector<string>{"-patch", "-unzip", "-rvz2chd"});
+    CHECK(names(seq.entries(ProcessorSequence::Roms)) == vector<string>{"-unzip"});
+    CHECK(seq.chain(ProcessorSequence::Ps1, catalog.processors()).empty());
+    CHECK(seq.chain(ProcessorSequence::Roms, catalog.processors()).empty());
 
-    // the user sorts: patch last, unzip off
+    // the user sorts: patch last, unzip off, the others on
     CHECK(seq.move(ProcessorSequence::Ps1, 0, 2));
-    seq.setEnabled(ProcessorSequence::Ps1, 0, false);
+    seq.setEnabled(ProcessorSequence::Ps1, 1, true);
+    seq.setEnabled(ProcessorSequence::Ps1, 2, true);
     CHECK(names(seq.entries(ProcessorSequence::Ps1)) == vector<string>{"-unzip", "rvz2chd", "patch"});
     CHECK_FALSE(seq.move(ProcessorSequence::Ps1, 1, 1));
     REQUIRE(seq.save());
@@ -133,7 +137,28 @@ TEST_CASE("ProcessorSequences: new ones by Order at the end, the user's order ke
     catalog.scan();
     ProcessorSequences third(tmp.at("Processors/sequence.ini"));
     CHECK(third.load(catalog.processors()));
-    CHECK(names(third.entries(ProcessorSequence::Ps1)) == vector<string>{"-unzip", "patch", "first"});
+    // (the new one is off; the ones the user set keep their setting, on or off)
+    CHECK(names(third.entries(ProcessorSequence::Ps1)) == vector<string>{"-unzip", "patch", "-first"});
+}
+
+TEST_CASE("ProcessorSequences: a processor already set keeps its setting, a new one beside it starts off") {
+    TempDir tmp("sequences_known");
+    processor(tmp, "unzip", unzipIni);
+    processor(tmp, "patch", "[Processor]\nExec=bin/{key}/patch\nKinds=ps1\n");
+    processor(tmp, "fresh", "[Processor]\nExec=bin/{key}/fresh\nKinds=ps1,rom\n");
+    tmp.writeFile("Processors/sequence.ini", "[ps1]\nunzip\n-patch\n\n[roms]\n-unzip\n");
+    ProcessorCatalog catalog(tmp.at("Processors"), {"psc"});
+    catalog.scan();
+    ProcessorSequences seq(tmp.at("Processors/sequence.ini"));
+    CHECK(seq.load(catalog.processors())); // "fresh" was added
+    CHECK(names(seq.entries(ProcessorSequence::Ps1)) == vector<string>{"unzip", "-patch", "-fresh"});
+    CHECK(names(seq.entries(ProcessorSequence::Roms)) == vector<string>{"-unzip", "-fresh"});
+    REQUIRE(seq.save());
+
+    // the next boot finds nothing new and changes nothing
+    ProcessorSequences again(tmp.at("Processors/sequence.ini"));
+    CHECK_FALSE(again.load(catalog.processors()));
+    CHECK(names(again.entries(ProcessorSequence::Ps1)) == vector<string>{"unzip", "-patch", "-fresh"});
 }
 
 TEST_CASE("ProcessorSequences reads a hand-written file: comments, case, duplicates, strangers") {

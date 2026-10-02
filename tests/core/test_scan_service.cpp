@@ -608,6 +608,26 @@ struct ProcessorsOnStick {
                          "[Processor]\nExec=bin/{key}/" + name + "\nVersion=1.0\nEnv=PROC_LOG=" + log() + "\n" + ini);
         for (const auto &s : scripts)
             fx.tmp.writeFile(dir + "/" + s.first, s.second);
+        if (presetOn)
+            switchOn(name, ini);
+    }
+
+    // A processor met for the first time is stored OFF (SDK-11), so the ones these tests mean to run are put
+    // into sequence.ini switched on, the way a user who turned them on would have left it.
+    void switchOn(const string &name, const string &ini) {
+        size_t at = ini.find("Kinds=");
+        string kinds = at == string::npos ? "" : ini.substr(at, ini.find('\n', at) - at);
+        if (kinds.find("ps1") != string::npos || kinds.find("games-folder") != string::npos)
+            ps1.push_back(name);
+        if (kinds.find("rom") != string::npos)
+            roms.push_back(name);
+        string text = "[ps1]\n";
+        for (const string &n : ps1)
+            text += n + "\n";
+        text += "\n[roms]\n";
+        for (const string &n : roms)
+            text += n + "\n";
+        fx.tmp.writeFile("System/Processors/sequence.ini", text);
     }
 
     string log() const { return fx.tmp.at("proc.log"); }
@@ -627,9 +647,29 @@ struct ProcessorsOnStick {
     void clearLog() const { std::remove(log().c_str()); }
 
     ScanServiceFixture &fx;
+    bool presetOn = true;
+    vector<string> ps1, roms;
 };
 
 } // namespace
+
+TEST_CASE("processors: a processor the launcher meets for the first time is stored off and does nothing") {
+    ScanServiceFixture fx;
+    ProcessorsOnStick procs(fx);
+    procs.presetOn = false;
+    test_support::makeFakeGame(fx.gamesDir(), "Crash", "SLUS_012.34");
+    procs.add("newcomer", "Kinds=games-folder,ps1,rom\nMatch=*\n");
+    procs.add("known", "Kinds=ps1\n");
+    fx.tmp.writeFile("System/Processors/sequence.ini", "[ps1]\nknown\n"); // the user had set this one: on
+
+    ScanUpdate update = fx.runAndPoll();
+    CHECK(update.finishedGameCount == 1);
+    // only the known, switched-on one ran
+    CHECK(procs.ran() == vector<string>{"known --ismine --ps1 ~/Games/Crash", "known --start --ps1 ~/Games/Crash"});
+    string ini = fx.tmp.readFile("System/Processors/sequence.ini");
+    CHECK(ini.find("[ps1]\nknown\n-newcomer\n") != string::npos);
+    CHECK(ini.find("[roms]\n-newcomer\n") != string::npos);
+}
 
 TEST_CASE("processors: the preprocessor first, then each game's chain in the user's order, then the scan") {
     ScanServiceFixture fx;

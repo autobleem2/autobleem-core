@@ -283,6 +283,9 @@ TEST_CASE("a fresh install with the default options: the package and the three c
     CHECK(fx.has("Games/!SaveStates"));
     CHECK(fx.has("Games/!MemCards"));
     CHECK(fx.has("System/Logs"));
+    // a fresh install decides nothing about the processors' on/off: with no sequence.ini the launcher's first
+    // boot stores every one of them off, the shipped Unzip included (SDK-11)
+    CHECK_FALSE(fx.has("System/Processors/sequence.ini"));
     CHECK(fx.tmp.readFile("stick/Autobleem/bin/db/coversJ.db") == "sqlite coversJ.db");
     CHECK(fx.has("Autobleem/bin/db/coversU.db"));
     CHECK(fx.has("Autobleem/bin/db/coversP.db"));
@@ -330,6 +333,11 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     fx.tmp.writeFile("stick/Extensions/store/stale.txt", "old");            // the Store, shipped: replaced
     fx.tmp.writeFile("stick/Extensions/mine/extension.ini", "[extension]"); // one the user put there stays
     fx.tmp.writeFile("stick/System/Extensions/store/sources.txt", "https://x/list.tsv\n"); // the Store's own
+    // SDK-11: a processor the user installed, its on/off, and the data folder it keeps for itself
+    fx.tmp.writeFile("stick/System/Processors/mine/processor.ini", "[Processor]\nVersion=1.0\n");
+    fx.tmp.writeFile("stick/System/Processors/mine/bin/psc/mine", "prog");
+    fx.tmp.writeFile("stick/System/Processors/sequence.ini", "[ps1]\nmine\n\n[roms]\n-mine\n");
+    fx.tmp.writeFile("stick/Home/processors/mine/cache.dat", "data");
 
     Fixture next; // a newer package, the same stick
     next.options = fx.options;
@@ -357,6 +365,11 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     CHECK(fx.has("Autobleem/bin/db/coversJ.db"));
     // the scanner processors' folder is made, with its README
     CHECK(fx.tmp.readFile("stick/System/Processors/README.txt").find("scanner processors") != string::npos);
+    // an update never removes a processor the user installed, nor its settings or data (SDK-11)
+    CHECK(fx.tmp.readFile("stick/System/Processors/mine/bin/psc/mine") == "prog");
+    CHECK(fx.has("System/Processors/mine/processor.ini"));
+    CHECK(fx.tmp.readFile("stick/System/Processors/sequence.ini") == "[ps1]\nmine\n\n[roms]\n-mine\n");
+    CHECK(fx.tmp.readFile("stick/Home/processors/mine/cache.dat") == "data");
     // and the extensions', next to the one the user put there (kept)
     CHECK(fx.tmp.readFile("stick/Extensions/README.txt").find("AutoBleem extensions") != string::npos);
     CHECK_FALSE(fx.has("Themes/ab2/stale.png"));
