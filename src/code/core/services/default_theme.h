@@ -12,7 +12,7 @@
 
 namespace DefaultTheme {
 
-inline constexpr const char *Name = "ab2.0.0";
+constexpr const char Name[] = "ab2.0.0"; // not an inline variable: the console's gcc 6 builds C++14
 
 // packageShipsIt: the package carries Themes/<Name>; stickHadIt: that folder was on the stick before the install
 inline bool switchesTo(bool packageShipsIt, bool stickHadIt) {
