@@ -770,8 +770,8 @@ TEST_CASE("processors: suspended for a launch, none that modifies starts; resume
     ScanServiceFixture fx;
     ProcessorsOnStick procs(fx);
     test_support::makeFakeGame(fx.gamesDir(), "Crash", "SLUS_012.34");
+    procs.add("reader", "Kinds=ps1\nModifies=false\n"); // reader first: the chain's order is the file's
     procs.add("writer", "Kinds=ps1\n");
-    procs.add("reader", "Kinds=ps1\nModifies=false\n");
 
     fx.svc.setProcessorsSuspended(true);
     ScanUpdate update = fx.runAndPoll();
