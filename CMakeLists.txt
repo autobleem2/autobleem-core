@@ -191,6 +191,7 @@ add_library(ab_gui STATIC
         ab_gui/include/ab_gui/panel.h
         ab_gui/include/ab_gui/screen.h
         ab_gui/include/ab_gui/screen_stack.h
+        ab_gui/include/ab_gui/screen_transition.h
         ab_gui/include/ab_gui/spinner.h
         ab_gui/include/ab_gui/style.h
         ab_gui/include/ab_gui/text_page.h
@@ -210,6 +211,7 @@ add_library(ab_gui STATIC
         ab_gui/src/panel.cpp
         ab_gui/src/screen.cpp
         ab_gui/src/screen_stack.cpp
+        ab_gui/src/screen_transition.cpp
         ab_gui/src/spinner.cpp
         ab_gui/src/style.cpp
         ab_gui/src/text_page.cpp

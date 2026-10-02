@@ -40,6 +40,7 @@ void Busy::begin(const string &message, const function<void()> &redraw) {
         return;
     message_ = message;
     done_ = total_ = 0;
+    stack_.finishTransition(); // the backdrop is the screen at rest, never a half-way transition frame
     ableem::Renderer &renderer = ctx_->renderer();
     renderer.captureNextFrame();
     if (redraw)

@@ -286,6 +286,9 @@ struct Input::Impl {
     bool eventSinceDraw = true;
     Uint32 lastDraw = 0;
     Uint64 ambientDue = 0;  // the ambient timeline: when its next frame is due (performance counter), 0 = not running
+    std::function<bool()> frameProbe;     // setFrameProbe(): true = a frame every pass (a screen transition runs)
+    std::function<void()> pressObserver;  // setPressObserver(): told of every press poll() hands out
+    bool framesForced() const { return frameProbe && frameProbe(); }
     bool quitArmed = false; // ... and false in between, so a "while (poll(e))" drain loop ends
     bool dpadState[4] = {false, false, false, false};
     std::mutex injectedMutex;
@@ -816,9 +819,17 @@ static int ambientFps() {
     return fps;
 }
 
+void Input::setFrameProbe(std::function<bool()> probe) {
+    impl->frameProbe = std::move(probe);
+}
+
+void Input::setPressObserver(std::function<void()> observer) {
+    impl->pressObserver = std::move(observer);
+}
+
 bool Input::frameDue() {
     const Uint32 now = SDL_GetTicks();
-    if (impl->need == FrameNeed::Active || impl->eventSinceDraw || impl->quitRequested) {
+    if (impl->need == FrameNeed::Active || impl->eventSinceDraw || impl->quitRequested || impl->framesForced()) {
         impl->eventSinceDraw = false;
         impl->lastDraw = now;
         impl->ambientDue = 0; // the timeline starts afresh when the screen rests again
@@ -860,6 +871,8 @@ bool Input::waitForEvent(int timeoutMs) {
         impl->takeTermSignal();
         if (impl->quitRequested || impl->injectedPending() || impl->tasksPending())
             return true;
+        if (impl->framesForced()) // a screen transition: no waiting, the caller draws its frame now
+            return SDL_PollEvent(nullptr) == 1;
         const int elapsed = static_cast<int>(SDL_GetTicks() - start);
         if (elapsed >= timeoutMs)
             return false;
@@ -889,6 +902,9 @@ bool Input::poll(Event &out) {
     if (!pollEvent(out))
         return false;
     impl->admit(out);
+    if (impl->pressObserver &&
+        (out.type == Event::Type::ButtonDown || out.type == Event::Type::DpadDown || out.type == Event::Type::KeyDown))
+        impl->pressObserver(); // a press finishes a screen transition before the screen sees it
     return true;
 }
 

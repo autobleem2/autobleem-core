@@ -75,6 +75,10 @@ Config::Config() {
     if (inifile.values["splashscreen"] != "false") {
         inifile.values["splashscreen"] = "true";
     }
+    // "Animations" (Options -> Interface, UIREV-48): the screen transitions, on unless switched off
+    if (inifile.values["animations"] != "false") {
+        inifile.values["animations"] = "true";
+    }
 
     // Options -> Display (OutputMode): auto | 720 | 1080 | <w>x<h>; the console 720 unless 1080 was kept
     if (inifile.values[OutputMode::ConfigKey] == "") {

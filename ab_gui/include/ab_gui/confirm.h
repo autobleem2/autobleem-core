@@ -24,7 +24,10 @@ namespace abgui {
 //********************
 class Confirm : public Screen {
 public:
-    using Screen::Screen;
+    // a dialog: it pops in (95% -> 100% with a fade) and back out
+    Confirm(ableem::GuiBase &gui, Context &context) : Screen(gui, context) {
+        declareTransitions(ScreenTransitions(Transition::pop()));
+    }
 
     std::string label;                     // the question
     std::string title;                     // the header; empty = "Please confirm"

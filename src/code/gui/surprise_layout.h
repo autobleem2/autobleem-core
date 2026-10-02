@@ -238,4 +238,69 @@ inline int recordGlowAlpha(unsigned int elapsedMs) {
     return static_cast<int>(std::lround(255.0f * (0.4f + 0.6f * k)));
 }
 
+//******************
+// The asteroid belt, the speed and the launch (README "The asteroid belt (follow-up, 2026-10-02)")
+//******************
+// the corridor between the belt's walls: the formation's reach (x 366..914) plus two ship widths each side. The belt
+// is a WALL - the ship's x is clamped to CorridorLeft .. CorridorRight - ship width, touching it costs nothing
+const int CorridorLeft = 254, CorridorRight = 1026;
+const int BeltStripW = 600, BeltStripH = 1440; // left wall | right wall, each looping top to bottom
+const int BeltHalfW = 300, BeltRightX = 980;   // the right wall's screen x
+
+// one speed drives every layer; it eases toward the state's target
+const float SpeedCruise = 0.35f; // the title (and the table, the attract loop)
+const float SpeedBoost = 2.6f;   // the launch's first BoostMs
+const float SpeedPlay = 1.6f;    // playing
+const float SpeedOver = 0.6f;    // game over
+const float SpeedUpTauMs = 450.0f, SpeedDownTauMs = 1200.0f;
+inline float easedSpeed(float speed, float target, unsigned int dtMs) {
+    const float tau = target > speed ? SpeedUpTauMs : SpeedDownTauMs;
+    return speed + (target - speed) * std::min(1.0f, dtMs / tau);
+}
+
+// px per ms per speed unit (the sky is the far layer; the near wall runs about 4x the far one)
+const float SkyPxPerMs = 0.012f, BeltFarPxPerMs = 0.07f, BeltNearPxPerMs = 0.30f;
+// the star field's streaks: a near star's height is its size x this
+inline float starStreak(float speed) {
+    return std::max(1.0f, 0.6f + 0.9f * speed);
+}
+
+// the launch (START): the ship flies from its title spot to its play row while the speed boosts; no control meanwhile
+const unsigned int BoostMs = 1400;
+const unsigned int LaunchMs = 2400;    // the first wave's clock starts here
+const unsigned int HudFadeInMs = 800;  // the HUD fades in from the launch
+const unsigned int GetReadyFromMs = 500, GetReadyUntilMs = LaunchMs + 300, GetReadyBlinkMs = 250;
+const int GetReadyTop = 340;
+const Box TitleShip = {584, 360, 112, 84};
+inline float easeInOutQuad(float k) {
+    k = clamp01(k);
+    return k < 0.5f ? 2 * k * k : 1 - (-2 * k + 2) * (-2 * k + 2) / 2;
+}
+inline Box launchShip(unsigned int elapsedMs, float playX, float playY, float playW, float playH) {
+    const float e = easeInOutQuad(static_cast<float>(elapsedMs) / BoostMs);
+    return {TitleShip.x + (playX - TitleShip.x) * e, TitleShip.y + (playY - TitleShip.y) * e,
+            TitleShip.w + (playW - TitleShip.w) * e, TitleShip.h + (playH - TitleShip.h) * e};
+}
+inline int hudAlpha(unsigned int sinceLaunchMs) {
+    return sinceLaunchMs >= HudFadeInMs ? 255 : static_cast<int>(255 * sinceLaunchMs / HudFadeInMs);
+}
+inline bool getReadyVisible(unsigned int sinceLaunchMs) {
+    return sinceLaunchMs >= GetReadyFromMs && sinceLaunchMs < GetReadyUntilMs &&
+           (sinceLaunchMs / GetReadyBlinkMs) % 2 == 0;
+}
+
+// the last life: the world slows to a cruise while the ship shudders, then one big chained explosion, then GAME OVER
+const unsigned int DyingSlowMs = 1400, DyingBoomMs = 900;
+const float BigBoomScale = 2.0f, PopScale = 0.6f; // the ship's explosions; a POWER bolt meeting an enemy bullet
+
+// the attract loop on the title: the title, the high score table, a short demo, the title again
+const unsigned int AttractTitleMs = 10000, AttractScoresMs = 7000, DemoMs = 25000;
+const unsigned int DemoTargetMs = 1500; // the demo pilot picks another alien this often
+// after a game over: the GAME OVER screen, then the initials (a new entry), then the table with it lit
+const unsigned int EntryAfterGameOverMs = 2500, EntryIdleMs = 30000, ScoresAfterEntryMs = 10000;
+// presses ignored at first: the initials (the fire button hammered on from the game) and the table after them
+const unsigned int EntryInputGuardMs = 800, ScoresInputGuardMs = 1500;
+// GOD MODE (the Konami code on the title): the splash pops like LIFE LOST
+const unsigned int GodSplashMs = 2000;
+
 } // namespace surprise

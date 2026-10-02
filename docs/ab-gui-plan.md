@@ -105,6 +105,32 @@ spinner, box, tab, vrule) lands here directly.
 - A press during a transition finishes it at once and goes to the new screen - nothing lost, nothing to the old one.
 - The DebugDriver counts a transition as busy, so `wait_ready` waits it out and no test grabs a half-way frame.
 - The splash becomes a plain screen: one image, one label, in Fade, out Fade, a hold time - declared, no own loop.
+- **Built (UIREV-48, 2026-10-01).** `ab_gui/screen_transition.h`: `Transition` (kind, `SlideFrom`, length - 0 = the
+  kind's default: Fade 250, CrossFade 200, Slide 250, Pop 160 ms - and a delay), `ScreenTransitions` (in, and out =
+  the in one played backwards unless declared), the pure `composeTransition` (where the old and new pictures go at a
+  progress: alpha, offset, scale, the dim under a Slide; Slide/Pop move on easeOutCubic of the time) and
+  `TransitionPlayer` (one transition at a time as ONE non-ambient tween of the progress on the stack's Tweens: armed
+  when a screen opens or closes, started by the new picture's first frame - its time counted from that frame's
+  present, so a slow first frame does not use it up -, busy while it runs, `finish()` at a press).
+  `Screen::declareTransitions` (before show(); kept by the stack, keyed by the screen, forgotten in `~Screen`);
+  undeclared = CrossFade. `ableem::GuiScreen::show()` tells a static `GuiScreenObserver` (the stack, `attach()`) when a
+  screen opens (before `init()`: the screen under it is drawn into the old-picture target) and closes (its own last
+  picture is drawn into that target; the screen under it is drawn live). `Screen::render()` goes through
+  `ScreenStack::screenFrame`: while the transition runs the screen's frame is drawn into the second target and the two
+  are composed on the window - no read-back. Input got a press observer (a press finishes it before the screen sees
+  it) and a frame probe (every pass draws while one runs, also for screens resting on `waitForEvent`). Any frame that
+  is not the target screen's (a busy job's - `Busy::begin` finishes it too -, Gui's own) ends it first. A screen with
+  nothing under it plays only a Fade, to black on its own frames, before show() returns (the splash). Off - Options ->
+  Interface -> "Animations" (`animations` in config.ini, default on) - nothing is armed and nothing drawn twice; the
+  launcher's own fade from black is off too. Declared: Confirm, ActionMenu, the set picker and the System/Quick menu
+  Pop; the keyboard a Slide from the bottom; the splash Fade (425 ms after the 300 ms settle) in and out, held 2 s;
+  the launcher None (its own fade from black after a game, as before). Decision 12: `Gui::display(false)` sets the
+  stack's one-shot start transition after a shown splash, so the launcher drops in from the top over the faded-out
+  splash (black); with the splash off it fades in from black by itself. **Not as planned:** the durations live in
+  `screen_transition.h`, not in `Style` (its layout is the SDK's - no `AB_SDK_ABI` bump); a transition composes whole
+  frames, so a dialog's Pop scales its backdrop copy with it. No `AB_SDK_ABI` bump: new classes and non-virtual
+  functions, `ScreenStack` appended by one pointer, `GuiScreen`/`Input` unchanged in layout (statics, pimpl).
+  Tests: `tests/gui/test_ab_gui_screen_transitions.cpp`.
 
 ## 7b. Element animations (the owner, 2026-09-30 - evoui needs them)
 
@@ -361,7 +387,8 @@ up to `feature/uirev-int` `67f35ad9` (`loop_chooseSet()` still calls `showSetNam
 ("(Internal)") and A1 (the About credits) are wording, not drawing - a UIREV text batch with its translations; S3
 (grey rows read as disabled) went with UIREV-29. The Quick/System menu onto `abgui::ActionMenu` (font roles by
 size, G3k), the Store's tab underline, the scroll markers as images, the jewel case (an Options choice,
-`evoimg/frames/`), the classic buttons (`classic.buttons`, already the theme's) and 7a's transitions are later steps.
+`evoimg/frames/`), the classic buttons (`classic.buttons`, already the theme's) and 7a's transitions are later steps
+(the transitions: UIREV-48, see 7a).
 
 **For the owner before the steps that need it:** what `showingtimeout=0` means (G5r1); Play as the theme's two images
 or a frame with a translated label (G5j); the switch images for the ON/OFF values - on every theme, only on a theme

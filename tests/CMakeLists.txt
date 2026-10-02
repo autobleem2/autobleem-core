@@ -133,6 +133,10 @@ if (AB_CORE_UI)
     # the bubble's slides and the fade-in on non-ambient tweens (G5o4): the old state machine and timers against the
     # tween versions at every frame, a show()/hide() part-way, only the slides busy (not the hold) - pure
     ab_add_test(test_ab_gui_transitions gui/test_ab_gui_transitions.cpp LIBS ab_gui)
+    # the screen transitions (UIREV-48, 7a): the layer math (pure), the player's state machine on a set clock (armed,
+    # started by the first frame, busy, a press finishes it, another frame finishes it, off = instant), and the stack on
+    # a headless renderer (the old picture, the composed frames, a close, the frame probe, the start transition)
+    ab_add_test(test_ab_gui_screen_transitions gui/test_ab_gui_screen_transitions.cpp LIBS ab_gui)
     # the LAN-safety gate, the auth compare and the grab framing - pure, but the header pulls in gui_base.h,
     # so it links the ui library the way ab_classic's tests do
     ab_add_test(test_debug_driver classic/test_debug_driver.cpp LIBS ableem)

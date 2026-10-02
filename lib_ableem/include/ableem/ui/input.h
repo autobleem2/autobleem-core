@@ -175,6 +175,13 @@ public:
     bool frameDue();
     void pushFrameNeed(); // GuiScreen::show()
     void popFrameNeed();
+    // While `probe` says true, every pass is a frame whatever the screen's need: frameDue() is true and
+    // waitForEvent() returns at once (true only when an event is already waiting) - so a screen that rests between
+    // presses still draws every frame of a screen transition (ab_gui's ScreenStack, the plan's 7a). Empty = none.
+    void setFrameProbe(std::function<bool()> probe);
+    // Called with every press poll() hands out (a ButtonDown, DpadDown or KeyDown), before the screen sees it: a
+    // press finishes a running screen transition at once (ab_gui's ScreenStack). Empty = none.
+    void setPressObserver(std::function<void()> observer);
     // sleeps until an event is waiting (SDL's or an injected one - those are looked for every 10 ms) or
     // timeoutMs has passed; true when poll() has something. What a screen that draws nothing between presses
     // calls instead of spinning on poll().

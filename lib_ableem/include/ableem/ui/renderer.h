@@ -60,6 +60,8 @@ public:
     // (the launcher's bare carousel under the System menu, BUG-31). A frame that does not start with clear() is read
     // back and presented as with captureNextFrame()
     void captureNextFrameSilently();
+    // a silent capture is asked for: the next frame is a snapshot, never shown (the screen transitions leave it alone)
+    bool silentCapturePending() const;
     Texture lastCapture() const;
 
     void setDrawColor(Color c);

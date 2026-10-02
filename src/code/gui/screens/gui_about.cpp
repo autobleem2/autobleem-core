@@ -62,6 +62,8 @@ void GuiAbout::init() {
 
     savedHighScore = Strings::toInt(app.config().inifile.values["surprisehighscore"]);
     game.seedHighScore(savedHighScore);
+    // the ten-row table (UIREV-39 follow-up); the old single high score joins it once
+    game.seedScores(app.config().inifile.values["surprisescores"], savedHighScore);
 
     if (credits.empty()) {
         credits = autobleemCredits();
@@ -96,6 +98,11 @@ void GuiAbout::loadGameAssets() {
         {
             AboutStage stage("init sky.jpg");
             sprites.sky = ableem::Texture::loadFile(renderer, sdir + "sky.jpg"); // missing = the old dark backdrop
+        }
+        {
+            AboutStage stage("init belt (2 png)");
+            sprites.beltFar = ableem::Texture::loadFile(renderer, sdir + "belt_far.png"); // missing = no belt drawn
+            sprites.beltNear = ableem::Texture::loadFile(renderer, sdir + "belt_near.png");
         }
     }
 
@@ -311,17 +318,40 @@ void GuiAbout::renderSurprise() {
                               abgui::Tone::None);
     }
 
+    // the star field follows the game's speed: a cruise on the title, a rush at the launch, streaks when fast
+    fx.setStyle(flyingStyle(game.speed()));
     fx.render(gui->platform().ticks());
 
     game.setBarTop(gui->classicFooter().y); // the lives and timer plates stay above the hint bar
     game.render(renderer, gui->text(), font, sprites, hud);
 
     // the title: Circle leaves. In a game: Start restarts, Circle leaves the game (the footer without its rule: no
-    // panel on the play field)
-    string hints = game.onTitle()
-                       ? "|@O| " + _("Back")
-                       : "|@Start| " + _("Restart") + "  |@O| " + (game.gameOver() ? _("Back") : _("Exit game"));
+    // panel on the play field). The initials: the letter, the next, back, done.
+    string hints;
+    if (game.enteringInitials())
+        hints = "|@Up+Down| " + _("Letter") + "  |@X| " + _("Next") + "  |@O| " + _("Back") + "  |@Start| " + _("Done");
+    else if (game.onTitle() || game.demo())
+        hints = "|@O| " + _("Back");
+    else if (game.showingScores())
+        hints = "|@Start| " + _("Play") + "  |@X| " + _("Continue") + "  |@O| " + _("Back");
+    else
+        hints = "|@Start| " + _("Restart") + "  |@O| " + (game.gameOver() ? _("Back") : _("Exit game"));
     gui->panelStyle().footer(*gui, gui->classicFooter(), hints, false);
+}
+
+//*******************************
+// GuiAbout::flyingStyle
+//*******************************
+// the game's star field: faster, darker, more comets than the credits' (the lasers and pickups have to read against
+// it), its pace and streaks following the game's speed - the play speed is the old fixed 2.5
+StarFx::Style GuiAbout::flyingStyle(float speed) {
+    StarFx::Style flying;
+    flying.speedScale = 2.5f * speed / surprise::SpeedPlay;
+    flying.brightnessScale = 0.55f;
+    flying.cometOdds = 150;
+    flying.maxComets = 3;
+    flying.streakScale = surprise::starStreak(speed);
+    return flying;
 }
 
 //*******************************
@@ -365,11 +395,32 @@ void GuiAbout::loop() {
             if (e.type == Event::Type::Quit) {
                 menuVisible = false;
             }
-            // the Konami code, during a game: its last press (Circle) is kept from leaving the game
-            if (surpriseMode && !game.onTitle() && !game.gameOver() && !game.infiniteLives() &&
-                (e.type == Event::Type::ButtonDown || e.type == Event::Type::DpadDown) && konami.feed(e.button)) {
-                game.enableInfiniteLives();
+            const bool press = e.type == Event::Type::ButtonDown || e.type == Event::Type::DpadDown;
+            // the initials after a new table score: every press is the entry's (Circle steps back, it does not leave)
+            if (surpriseMode && game.enteringInitials()) {
+                if (press)
+                    game.initialsPress(e.button, ticks);
                 continue;
+            }
+            // the attract demo: Start plays, any other press goes back to the title
+            if (surpriseMode && game.demo() && press && e.button != Button::Start) {
+                game.showTitle();
+                continue;
+            }
+            // the table after an entry: Cross goes on to the title (Start plays again and Circle leaves, as below)
+            if (surpriseMode && game.showingScores() && press && (!game.scoresInputReady() || e.button == Button::Cross)) {
+                if (game.scoresInputReady())
+                    game.showTitle();
+                continue;
+            }
+            if (surpriseMode && game.onTitle() && press) {
+                game.titleInput(); // any press starts the attract loop over from the title
+                // the Konami code, on the title only (the owner, 2026-10-02): its last press (Circle) is kept from
+                // leaving, and GOD MODE splashes
+                if (!game.godMode() && konami.feed(e.button)) {
+                    game.armGodMode();
+                    continue;
+                }
             }
             switch (e.type) {
             case Event::Type::ButtonDown:
@@ -390,14 +441,8 @@ void GuiAbout::loop() {
                         crossHeld = false;
                         game.reset(ticks);
                         game.showTitle();
-                        // a faster, darker field with more comets: the lasers and pickups have to read
-                        // against it, and it should feel like flying rather than drifting
-                        StarFx::Style flying;
-                        flying.speedScale = 2.5f;
-                        flying.brightnessScale = 0.55f;
-                        flying.cometOdds = 150;
-                        flying.maxComets = 3;
-                        fx.setStyle(flying);
+                        // the star field turns into the game's (flyingStyle(), set every frame from its speed)
+                        fx.setStyle(flyingStyle(game.speed()));
                         if (app.audio().music.isPlaying()) {
                             // something is already playing (the theme's track or a custom one) -
                             // just duck it to 50% behind the game
@@ -414,8 +459,9 @@ void GuiAbout::loop() {
                 } else if (surpriseMode && e.button == Button::Cross) {
                     crossHeld = true;
                 } else if (surpriseMode && e.button == Button::Circle) {
-                    // Circle leaves the game, back to the credits
+                    // Circle leaves the game, back to the credits (GOD MODE ends with it)
                     surpriseMode = false;
+                    game.disarmGodMode();
                     fx.setStyle(StarFx::Style()); // back to the About screen's calm backdrop
                     if (duckedThemeMusic)
                         app.audio().music.setVolume(128);
@@ -440,8 +486,16 @@ void GuiAbout::loop() {
             }
         }
     }
+    // the table and the best score, written once as the screen closes and only when they changed
+    bool changed = false;
     if (to_string(savedHighScore) != app.config().inifile.values["surprisehighscore"]) {
         app.config().inifile.values["surprisehighscore"] = to_string(savedHighScore);
-        app.config().save();
+        changed = true;
     }
+    if (sprites.ship.valid() && game.scoresText() != app.config().inifile.values["surprisescores"]) {
+        app.config().inifile.values["surprisescores"] = game.scoresText();
+        changed = true;
+    }
+    if (changed)
+        app.config().save();
 }

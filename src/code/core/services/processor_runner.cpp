@@ -73,6 +73,14 @@ vector<pair<string, string>> ProcessorRunner::environment(const ProcessorInfo &p
     env.emplace_back("AB_PROCESSOR_NAME", processor.name);
     if (!tmp.empty())
         env.emplace_back("AB_TMP", tmp);
+    if (!options_.homeBase.empty()) {
+        // its own data folder: the launcher's HOME on the console is the console's own storage, never written
+        const string home = options_.homeBase + sep + processor.name;
+        if (!DirEntry::isDirectory(home))
+            DirEntry::createDirs(home);
+        env.emplace_back("HOME", home);
+        env.emplace_back("AB_HOME", home);
+    }
     for (const auto &kv : processor.manifest.env)
         env.push_back(kv);
     return env;
