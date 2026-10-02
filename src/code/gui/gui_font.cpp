@@ -87,7 +87,8 @@ vector<string> Fonts::userFontDirs() {
 //*******************************
 // Fonts::defaultClassicFontPath / classicFontPath
 //*******************************
-const char *const Fonts::DefaultClassicFont = "OpenSans-Medium.ttf";
+const char *const Fonts::DefaultClassicFont = "RedHatText-Medium.ttf";
+const char *const Fonts::DefaultBoldFont = "RedHatText-SemiBold.ttf";
 
 string Fonts::defaultClassicFontPath() {
     return Env::getPathToFontsDir() + sep + DefaultClassicFont;
@@ -113,7 +114,7 @@ Fonts::Pick Fonts::pickFonts(const string &useDefault, const string &font, const
                              const string &themeMedium, const string &themeBold) {
     Pick pick;
     pick.medium = themeMedium.empty() ? defaultClassicFontPath() : themeMedium;
-    pick.bold = themeBold.empty() ? Env::getPathToFontsDir() + sep + "OpenSans-Bold.ttf" : themeBold;
+    pick.bold = themeBold.empty() ? Env::getPathToFontsDir() + sep + DefaultBoldFont : themeBold;
     // the theme's medium is what "Use default font" means; a user's font still wins over it
     pick.classic = classicFontPath(useDefault, font, pick.medium);
     pick.userFont = pick.classic != pick.medium;

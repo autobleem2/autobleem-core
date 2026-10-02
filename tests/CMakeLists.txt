@@ -52,7 +52,7 @@ if (AB_CORE_UI)
     ab_add_test(test_panel_style_footer classic/test_panel_style_footer.cpp LIBS ab_gui)
     # UIREV-29: the theme's style roles as PanelStyle::fromTheme resolves them (static - no Gui needed)
     ab_add_test(test_panel_style_roles classic/test_panel_style_roles.cpp LIBS ab_classic)
-    # UIREV-31 (G5n): the font pick order - user font > CJK > the theme's launcher.fonts > Open Sans (files only)
+    # UIREV-31 (G5n): the font pick order - user font > CJK > the theme's launcher.fonts > Red Hat Text (files only)
     ab_add_test(test_font_pick classic/test_font_pick.cpp LIBS ab_classic)
     # ab_gui's Style on its own (G2): the defaults, the colour roles from a plain ColorRoles block, the hint
     # protocol - all static or plain data, no renderer needed
