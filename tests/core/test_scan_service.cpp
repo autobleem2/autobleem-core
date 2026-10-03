@@ -823,3 +823,32 @@ TEST_CASE("processors: a ROM chain gets --rom and --system, and what a step made
     CHECK(ran[2].find("patch --ismine --rom ") == 0);
     CHECK(ran[3].find("Sonic.zip.nes --system Nintendo - Nintendo Entertainment System") != string::npos);
 }
+
+TEST_CASE("at start the worker scans once when the core-picks marker is missing, with nothing else changed") {
+    ScanServiceFixture fx;
+    RetroArchOnStick ra(fx);
+    ra.addRom("A.nes");
+    fx.runAndPoll(); // everything is up to date, the marker is written
+    REQUIRE(ableem::DirEntry::exists(ScanService::coreMigrationMarkerPath()));
+    CHECK_FALSE(ScanService::corePicksScanDue());
+    CHECK(ScanService::fingerprintsMatchDisk());
+
+    // an update: the marker is not there yet, no game or ROM changed
+    ableem::DirEntry::removeFile(ScanService::coreMigrationMarkerPath());
+    CHECK(ScanService::corePicksScanDue());
+    fx.svc.start();
+    bool finished = false;
+    for (int i = 0; i < 200 && !finished; i++) {
+        finished = fx.svc.poll().finished;
+        if (!finished)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    fx.svc.stop();
+    CHECK(finished);
+    CHECK(ableem::DirEntry::exists(ScanService::coreMigrationMarkerPath()));
+
+    // without RetroArch nothing is due
+    ableem::DirEntry::removeFile(ScanService::coreMigrationMarkerPath());
+    fx.env.setRetroArchBinaries({});
+    CHECK_FALSE(ScanService::corePicksScanDue());
+}

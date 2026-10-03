@@ -474,9 +474,115 @@ bool RetroArchService::setGameCore(PsGame &game, const ableem::CoreInfoPtr &core
 }
 
 //********************
+// RetroArchService::userCoresCfgPath
+//********************
+string RetroArchService::userCoresCfgPath() {
+    return Env::getPathToStateDir() + sep + "cores.user.cfg";
+}
+
+//********************
+// RetroArchService::corePlatforms
+//********************
+vector<RACorePlatform> RetroArchService::corePlatforms() {
+    ensureLoaded();
+    vector<RACorePlatform> out;
+    for (const string &db : cores_.databases()) { // sorted
+        RACorePlatform row;
+        row.database = db;
+        row.cores = cores_.platformOrder(db);
+        if (row.cores.size() < 2)
+            continue;
+        ableem::CoreInfoPtr now = cores_.coreForDatabase(db);
+        for (size_t i = 0; i < row.cores.size(); i++) {
+            if (row.cores[i] == now)
+                row.current = static_cast<int>(i);
+        }
+        out.push_back(row);
+    }
+    return out;
+}
+
+//********************
+// RetroArchService::saveCorePicks
+//********************
+int RetroArchService::saveCorePicks(const vector<pair<string, ableem::CoreInfoPtr>> &choices) {
+    ensureLoaded();
+    map<string, string> picks = ableem::CoreInfoTable::loadUserPicks(userCoresCfgPath());
+    struct Move {
+        string database;
+        ableem::CoreInfoPtr from, to;
+    };
+    vector<Move> moves;
+    for (const auto &choice : choices) {
+        ableem::CoreInfoPtr now = cores_.coreForDatabase(choice.first);
+        if (!choice.second || !now || now == choice.second)
+            continue;
+        if (choice.second == cores_.platformCoreFor(choice.first))
+            picks.erase(choice.first);
+        else
+            picks[choice.first] = choice.second->stem;
+        moves.push_back({choice.first, now, choice.second});
+    }
+    if (moves.empty())
+        return 0;
+    if (!ableem::CoreInfoTable::saveUserPicks(userCoresCfgPath(), picks))
+        PLOG_WARNING << "Could not write " << userCoresCfgPath();
+    for (const Move &move : moves)
+        moveCore(move.database, move.from, move.to);
+    loadCores(); // the new picks are what coreForDatabase answers from now on
+    return static_cast<int>(moves.size());
+}
+
+//********************
+// RetroArchService::moveCore
+//********************
+void RetroArchService::moveCore(const string &database, const ableem::CoreInfoPtr &from,
+                                const ableem::CoreInfoPtr &to) {
+    const string playlistPath = Env::getPathToRetroarchPlaylistsDir() + sep + database + ".lpl";
+    ableem::RetroArchPlaylistEntries entries;
+    ableem::RetroArchPlaylistHeader header;
+    if (!ableem::RetroArchPlaylist::load(playlistPath, entries, &header))
+        return;
+    const string usbRoot = Env::getPathToUSBRoot();
+    const string romsPrefix = Env::getPathToRetroarchRomsDir() + "/";
+    auto ours = [&](const string &path) {
+        string mapped = mapPlaylistPath(path, usbRoot);
+        replace(mapped.begin(), mapped.end(), '\\', '/');
+        return mapped.rfind(romsPrefix, 0) == 0;
+    };
+    int moved = 0;
+    for (auto &entry : entries) {
+        if (ours(entry.path) && mapPlaylistPath(entry.core_path, usbRoot) == from->core_path) {
+            entry.core_path = to->core_path;
+            entry.core_name = to->name;
+            moved++;
+        }
+    }
+    if (moved == 0)
+        return;
+    const string tempPath = playlistPath + ".tmp";
+    if (!ableem::RetroArchPlaylist::save(tempPath, entries, header) || !DirEntry::replaceFile(tempPath, playlistPath)) {
+        PLOG_WARNING << "Could not write " << playlistPath;
+        DirEntry::removeFile(tempPath);
+        return;
+    }
+    PLOG_INFO << "Default core for " << database << ": " << moved << " entries moved to " << to->name;
+    for (auto &info : playlistInfos_) { // the loaded games of that system's own playlist
+        if (info.displayName != database)
+            continue;
+        for (auto &game : info.psGames) {
+            if (game->core_path == from->core_path && ours(game->image_path)) {
+                game->core_path = to->core_path;
+                game->core_name = to->name;
+            }
+        }
+    }
+}
+
+//********************
 // RetroArchService::loadCores
 //********************
 void RetroArchService::loadCores() {
     PLOG_INFO << "Building core list";
-    cores_.load(Env::getPathToRetroarchDir(), coresCfgPath());
+    cores_.load(Env::getPathToRetroarchDir(), coresCfgPath(), userCoresCfgPath());
 }

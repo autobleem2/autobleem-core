@@ -428,3 +428,58 @@ TEST_CASE("a pick for a game that is not in its playlist changes nothing") {
     CHECK(stranger.core_path == ra.core("snes9x_libretro"));
     CHECK_FALSE(ra.service.setGameCore(stranger, nullptr));
 }
+
+TEST_CASE(
+    "the cores window: the user's pick is saved, wins over the platform's, and moves the entries on the old default") {
+    RetroArchTree ra;
+    const string db = "Nintendo - Super Nintendo Entertainment System";
+    ra.addCore("mesen2_libretro", "Nintendo - SNES (Mesen2)", "sfc|smc|fig|swc",
+               db); // the most extensions: the default
+    ra.tmp.writeFile("elsewhere/Mine.sfc", "rom");
+    auto entry = [&](const string &path, const string &label, const string &core) {
+        return RetroArchTree::Entry{path, label, ra.core(core), "name of " + core, db + ".lpl"};
+    };
+    ra.writePlaylist(db, {entry("/media/RetroArch/roms/snes/Chrono Trigger.sfc", "Chrono Trigger", "mesen2_libretro"),
+                          entry("/media/RetroArch/roms/snes/Earthbound.sfc", "Earthbound", "bsnes_libretro"),
+                          entry("/media/elsewhere/Mine.sfc", "Mine", "mesen2_libretro")});
+    PsGames games = ra.service.gamesInPlaylist(db);
+    REQUIRE(games.size() == 3);
+
+    // only a system with two or more cores is a row; the platform's own pick comes first
+    vector<RACorePlatform> rows = ra.service.corePlatforms();
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].database == db);
+    REQUIRE(rows[0].cores.size() == 3);
+    CHECK(rows[0].cores[0]->stem == "mesen2");
+    CHECK(rows[0].current == 0);
+
+    // the user picks Snes9x: a line in the user's file, the entries on Mesen2 under the ROM folders move
+    ableem::CoreInfoPtr snes9x = rows[0].cores[2];
+    REQUIRE(snes9x->stem == "snes9x");
+    CHECK(ra.service.saveCorePicks({{db, snes9x}}) == 1);
+    CHECK(ableem::CoreInfoTable::loadUserPicks(RetroArchService::userCoresCfgPath()) ==
+          std::map<string, string>{{db, "snes9x"}});
+    CHECK(games[0]->core_path == ra.core("snes9x_libretro"));
+    CHECK(games[1]->core_path == ra.core("bsnes_libretro"));  // a hand pick stays
+    CHECK(games[2]->core_path == ra.core("mesen2_libretro")); // not under our ROM folders
+    RetroArchService fresh;
+    PsGames again = fresh.gamesInPlaylist(db);
+    REQUIRE(again.size() == 3);
+    CHECK(again[0]->core_path == ra.core("snes9x_libretro"));
+    CHECK(again[1]->core_path == ra.core("bsnes_libretro"));
+    CHECK(again[2]->core_path == ra.core("mesen2_libretro"));
+    // the editor's default follows, the window still marks the platform's pick
+    CHECK(ra.service.defaultCoreForGame(*games[0])->stem == "snes9x");
+    rows = ra.service.corePlatforms();
+    CHECK(rows[0].cores[0]->stem == "mesen2");
+    CHECK(rows[0].cores[rows[0].current]->stem == "snes9x");
+
+    // nothing changed: nothing is written
+    CHECK(ra.service.saveCorePicks({{db, rows[0].cores[rows[0].current]}}) == 0);
+
+    // back to the platform's pick: the line goes, and the file with it
+    CHECK(ra.service.saveCorePicks({{db, rows[0].cores[0]}}) == 1);
+    CHECK_FALSE(ableem::DirEntry::exists(RetroArchService::userCoresCfgPath()));
+    CHECK(games[0]->core_path == ra.core("mesen2_libretro"));
+    CHECK(games[1]->core_path == ra.core("bsnes_libretro"));
+}

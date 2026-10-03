@@ -104,6 +104,17 @@ string ScanService::romsSkipListPath() {
 }
 
 //*******************************
+// ScanService::coreMigrationMarkerPath / corePicksScanDue
+//*******************************
+string ScanService::coreMigrationMarkerPath() {
+    return Env::getPathToStateDir() + sep + "core-picks-1.done";
+}
+
+bool ScanService::corePicksScanDue() {
+    return romScanEnabled() && !DirEntry::exists(coreMigrationMarkerPath());
+}
+
+//*******************************
 // ScanService::romScanEnabled
 //*******************************
 bool ScanService::romScanEnabled() {
@@ -201,6 +212,8 @@ void ScanService::threadMain() {
     lastCheckFingerprint_ = lastScannedFingerprint_;
     lastScannedRomsFingerprint_.load(romsFingerprintFilePath());
     lastCheckRomsFingerprint_ = lastScannedRomsFingerprint_;
+    if (corePicksScanDue())
+        scanRequested_.store(true);
 
     auto lastWatchCheck = chrono::steady_clock::now() - chrono::milliseconds(ScanWatchInterval);
     while (!stopping_.load()) {
@@ -304,7 +317,7 @@ int ScanService::scanRetroArchRoms(Listener &listener, vector<string> &playlists
         online->ensureDatabases(Env::getPathToRetroarchRdbDir());
 
     ableem::CoreInfoTable cores;
-    cores.load(Env::getPathToRetroarchDir(), RetroArchService::coresCfgPath());
+    cores.load(Env::getPathToRetroarchDir(), RetroArchService::coresCfgPath(), RetroArchService::userCoresCfgPath());
 
     ableem::RetroArchScanner::Options options;
     options.romsDir = Env::getPathToRetroarchRomsDir();
@@ -313,9 +326,9 @@ int ScanService::scanRetroArchRoms(Listener &listener, vector<string> &playlists
     // a folder for every system an installed core plays, so there is somewhere to put its games
     ableem::RetroArchScanner::createMissingFolders(options.romsDir, cores, options.folderAliases,
                                                    ableem::RetroArchScanner::loadSkipList(romsSkipListPath()));
-    options.rdbDir = Env::getPathToRetroarchRdbDir(); // a missing one just means nothing gets identified
-    options.stateFile = romScanStateFilePath();       // so a folder nothing changed in is not scanned again
-    options.coreMigrationMarker = Env::getPathToStateDir() + sep + "core-picks-1.done"; // once per stick
+    options.rdbDir = Env::getPathToRetroarchRdbDir();        // a missing one just means nothing gets identified
+    options.stateFile = romScanStateFilePath();              // so a folder nothing changed in is not scanned again
+    options.coreMigrationMarker = coreMigrationMarkerPath(); // once per stick
     ableem::RetroArchScanner scanner(&listener);
     ableem::RetroArchScanResult result = scanner.scan(options, ableem::RetroArchScanner::systemsFrom(cores));
     playlistsWritten = result.playlistsWritten;

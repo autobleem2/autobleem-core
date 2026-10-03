@@ -1215,3 +1215,38 @@ TEST_CASE("scan: once per stick every entry of ours moves to the current core, t
             CHECK(e.core_path == current);
     }
 }
+
+TEST_CASE("CoreInfoTable: the user's file is read after the platform's and wins; the platform's pick stays known") {
+    RomsTree t;
+    t.addCore("snes9x_libretro", "Nintendo - SNES (Snes9x)", "sfc|smc", SNES);
+    t.addCore("bsnes_libretro", "Nintendo - SNES (bsnes)", "sfc", SNES);
+    t.addCore("mesen_libretro", "Nintendo - SNES (Mesen)", "sfc|smc|fig", SNES);
+    t.tmp.writeFile("platform.cfg", string(SNES) + " = bsnes\n");
+    const string user = t.tmp.at("user.cfg");
+
+    auto load = [&]() {
+        CoreInfoTable table;
+        table.load(t.tmp.at("retroarch"), t.tmp.at("platform.cfg"), user);
+        return table;
+    };
+    CHECK(load().coreForDatabase(SNES)->stem == "bsnes"); // no user file: the platform's
+    REQUIRE(CoreInfoTable::saveUserPicks(user, {{SNES, "snes9x"}}));
+    CoreInfoTable table = load();
+    CHECK(table.coreForDatabase(SNES)->stem == "snes9x");
+    CHECK(table.platformCoreFor(SNES)->stem == "bsnes");
+    CHECK(table.defaultCoreFor(SNES)->stem == "mesen"); // the .info mapping is a third thing
+    CoreInfos order = table.platformOrder(SNES);
+    REQUIRE(order.size() == 3);
+    CHECK(order[0]->stem == "bsnes"); // the platform's pick first, the rest by stem - whatever the user chose
+    CHECK(order[1]->stem == "mesen");
+    CHECK(order[2]->stem == "snes9x");
+    CHECK(CoreInfoTable::loadUserPicks(user) == std::map<string, string>{{SNES, "snes9x"}});
+
+    // a line naming a core that is not there is ignored
+    t.tmp.writeFile("user.cfg", string(SNES) + " = nothere\n");
+    CHECK(load().coreForDatabase(SNES)->stem == "bsnes");
+
+    // an empty set of picks removes the file
+    REQUIRE(CoreInfoTable::saveUserPicks(user, {}));
+    CHECK_FALSE(DirEntry::exists(user));
+}

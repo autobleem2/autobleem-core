@@ -100,11 +100,12 @@ CoreInfoPtr CoreInfoTable::parseInfoFile(const string &file, const string &coreP
 //*******************************
 // CoreInfoTable::load
 //*******************************
-void CoreInfoTable::load(const string &retroarchDir, const string &coresCfgPath) {
+void CoreInfoTable::load(const string &retroarchDir, const string &coresCfgPath, const string &userCfgPath) {
     cores_.clear();
     databases_.clear();
     defaultCores_.clear();
     overrideCores_.clear();
+    platformCores_.clear();
 
     if (!DirEntry::exists(retroarchDir)) {
         PLOG_WARNING << "RetroArch not found at " << retroarchDir;
@@ -139,9 +140,22 @@ void CoreInfoTable::load(const string &retroarchDir, const string &coresCfgPath)
         }
     }
 
-    if (coresCfgPath.empty())
-        return;
-    ifstream in(coresCfgPath);
+    // the platform's cfg first, then the user's: overrideCores_ is searched from the front, so what the user chose
+    // wins; platformCores_ keeps the platform's own picks (the window marks them "(default)")
+    vector<pair<string, CoreInfoPtr>> platform = readCfg(coresCfgPath);
+    platformCores_ = platform;
+    overrideCores_ = readCfg(userCfgPath);
+    overrideCores_.insert(overrideCores_.end(), platform.begin(), platform.end());
+}
+
+//*******************************
+// CoreInfoTable::readCfg
+//*******************************
+vector<pair<string, CoreInfoPtr>> CoreInfoTable::readCfg(const string &path) const {
+    vector<pair<string, CoreInfoPtr>> out;
+    if (path.empty())
+        return out;
+    ifstream in(path);
     string line;
     while (getline(in, line)) {
         if (line.empty() || line[0] == '#' || line.find('=') == string::npos)
@@ -153,12 +167,83 @@ void CoreInfoTable::load(const string &retroarchDir, const string &coresCfgPath)
         trim(value);
         CoreInfoPtr info = value.empty() ? nullptr : coreForCfgValue(value);
         if (info) {
-            overrideCores_.emplace_back(dbName, info);
+            out.emplace_back(dbName, info);
             PLOG_INFO << "Core override: " << dbName << " -> " << info->name;
         } else {
             PLOG_WARNING << "Core override: " << dbName << " = '" << value << "' matches no installed core";
         }
     }
+    return out;
+}
+
+//*******************************
+// CoreInfoTable::platformCoreFor
+//*******************************
+CoreInfoPtr CoreInfoTable::platformCoreFor(const string &dbName) const {
+    string key = stripLpl(dbName);
+    lcase(key);
+    trim(key);
+    for (const auto &kv : platformCores_) {
+        if (kv.first == key)
+            return kv.second;
+    }
+    return defaultCoreFor(dbName);
+}
+
+//*******************************
+// CoreInfoTable::platformOrder
+//*******************************
+CoreInfos CoreInfoTable::platformOrder(const string &dbName) const {
+    CoreInfos out;
+    CoreInfoPtr first = platformCoreFor(dbName);
+    if (!first)
+        return out;
+    const string key = stripLpl(dbName);
+    out.push_back(first);
+    CoreInfos others;
+    for (const CoreInfoPtr &info : cores_) {
+        if (info != first && find(info->databases.begin(), info->databases.end(), key) != info->databases.end())
+            others.push_back(info);
+    }
+    stable_sort(others.begin(), others.end(),
+                [](const CoreInfoPtr &i, const CoreInfoPtr &j) { return i->stem < j->stem; });
+    out.insert(out.end(), others.begin(), others.end());
+    return out;
+}
+
+//*******************************
+// CoreInfoTable::userPicks / saveUserPicks
+//*******************************
+map<string, string> CoreInfoTable::loadUserPicks(const string &path) {
+    map<string, string> picks;
+    ifstream in(path);
+    string line;
+    while (getline(in, line)) {
+        if (line.empty() || line[0] == '#' || line.find('=') == string::npos)
+            continue;
+        string db = line.substr(0, line.find('='));
+        string value = line.substr(line.find('=') + 1);
+        trim(db);
+        trim(value);
+        if (!db.empty() && !value.empty())
+            picks[db] = value;
+    }
+    return picks;
+}
+
+bool CoreInfoTable::saveUserPicks(const string &path, const map<string, string> &picks) {
+    if (picks.empty()) {
+        if (DirEntry::exists(path))
+            return DirEntry::removeFile(path);
+        return true;
+    }
+    string text =
+        "# AutoBleem - the cores you chose for a system (RetroArch cores window), \"<database>=<core file stem>\".\n"
+        "# Read after the platform's own choices, so these win; a system set back to the platform's pick has no "
+        "line.\n";
+    for (const auto &kv : picks)
+        text += kv.first + "=" + kv.second + "\n";
+    return DirEntry::writeFileIfChanged(path, text) != DirEntry::WriteResult::Failed;
 }
 
 //*******************************

@@ -28,6 +28,16 @@ struct RAPlaylistInfo {
 };
 
 //********************
+// RACorePlatform
+//********************
+// one row of the RetroArch cores window: a system two or more installed cores play
+struct RACorePlatform {
+    std::string database;
+    ableem::CoreInfos cores; // the platform file's own pick first (it is the one marked "(default)"), then by stem
+    int current = 0;         // the index of the core in use: the user's choice, else 0
+};
+
+//********************
 // RetroArchService
 //********************
 // Was the RAIntegrator singleton. Reads retroarch/info/*.info (the cores) and retroarch/playlists/*.lpl
@@ -76,6 +86,17 @@ public:
     // or the playlist cannot be found or written, with nothing changed.
     bool setGameCore(PsGame &game, const ableem::CoreInfoPtr &core);
 
+    // the RetroArch cores window: every system with two or more installed cores, by name
+    std::vector<RACorePlatform> corePlatforms();
+    // what the window saved: the user's file (<state>/cores.user.cfg) gets a line per system whose choice differs
+    // from the platform's pick, a system set back loses its line, and for every system whose core changed the
+    // playlist entries under the ROM folders that carried the OLD core move to the new one (hand picks with another
+    // core stay; Favorites, History and the PS1 export are not touched), here and in the loaded games. Returns how
+    // many systems changed.
+    int saveCorePicks(const std::vector<std::pair<std::string, ableem::CoreInfoPtr>> &choices);
+    // <state>/cores.user.cfg
+    static std::string userCoresCfgPath();
+
     // the platform's cores.cfg, next to the resources: resources/platform/<platform>.cores.cfg
     static std::string coresCfgPath();
 
@@ -91,6 +112,8 @@ private:
     PsGames allGames(bool withMetadata);
     void ensureLoaded();
     void loadCores();
+    // the entries of the system's playlist under the ROM folders that name `from` name `to`
+    void moveCore(const std::string &database, const ableem::CoreInfoPtr &from, const ableem::CoreInfoPtr &to);
     void loadPlaylists();
     void reloadFavorites();
     void reloadHistory();

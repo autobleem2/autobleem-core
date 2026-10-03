@@ -3,6 +3,7 @@
 // same table on its own thread, so it lives here and each side builds its own.
 #pragma once
 
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -49,7 +50,12 @@ using CoreInfos = std::vector<CoreInfoPtr>;
 // core in the order above).
 class CoreInfoTable {
 public:
-    void load(const std::string &retroarchDir, const std::string &coresCfgPath);
+    // userCfgPath: the user's own choices in the same format, read after coresCfgPath so they win ("" = none)
+    void load(const std::string &retroarchDir, const std::string &coresCfgPath, const std::string &userCfgPath = "");
+
+    // the user's file as database -> core file stem, written as the window saves it (an empty map removes the file)
+    static std::map<std::string, std::string> loadUserPicks(const std::string &path);
+    static bool saveUserPicks(const std::string &path, const std::map<std::string, std::string> &picks);
 
     // one .info file; corePath is the core it names (<retroarch>/cores/<stem>.so)
     static CoreInfoPtr parseInfoFile(const std::string &file, const std::string &corePath);
@@ -67,15 +73,22 @@ public:
     // every installed core that can play the database, the one coreForDatabase answers first (a cores.cfg core
     // is in the list even when its .info does not list the database), the rest by file stem. Empty when none.
     CoreInfos coresForDatabase(const std::string &dbName) const;
+    // the core the PLATFORM's cfg (else the .info mapping) picks, whatever the user's file says
+    CoreInfoPtr platformCoreFor(const std::string &dbName) const;
+    // the same cores as coresForDatabase, in an order that does not move with the user's choice: the platform's
+    // pick first, then by file stem
+    CoreInfos platformOrder(const std::string &dbName) const;
 
 private:
     // the core a cores.cfg value names - see the class comment; nullptr when none matches
     CoreInfoPtr coreForCfgValue(const std::string &value) const;
+    std::vector<std::pair<std::string, CoreInfoPtr>> readCfg(const std::string &path) const;
 
     CoreInfos cores_;
     std::set<std::string> databases_;
     std::vector<std::pair<std::string, CoreInfoPtr>> defaultCores_;  // database name -> core
-    std::vector<std::pair<std::string, CoreInfoPtr>> overrideCores_; // lower-cased database name -> core
+    std::vector<std::pair<std::string, CoreInfoPtr>> overrideCores_; // lower-cased database name -> core; user's first
+    std::vector<std::pair<std::string, CoreInfoPtr>> platformCores_; // the platform cfg's lines alone
 };
 
 } // namespace ableem

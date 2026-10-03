@@ -176,6 +176,12 @@ public:
     // resources/platform/roms_skip.cfg - the databases the scan never makes a ROM folder for (not games, or
     // played elsewhere); every other database an installed core plays gets one when it is missing
     static std::string romsSkipListPath();
+    // <state>/core-picks-1.done - the one-time move of playlist entries to the current core picks has run
+    static std::string coreMigrationMarkerPath();
+    // the one-time move (and the ROM folders the scan makes) is still to do: RetroArch is there and the marker is
+    // not. The worker asks for one scan at start when it is - the games and ROM trees may not have changed since
+    // an update, and a scan otherwise only runs when they do.
+    static bool corePicksScanDue();
 
     // RetroArch is installed and has ROM folders to scan - see the class comment
     static bool romScanEnabled();
