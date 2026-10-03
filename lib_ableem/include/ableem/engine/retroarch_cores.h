@@ -17,11 +17,18 @@ namespace ableem {
 // one <retroarch>/info/<core>.info file: what the core is called, what it plays, and the .so it lives in
 struct CoreInfo {
     std::string name; // display_name
+    // the core's file name without the extension and the "_libretro" suffix: "km_snes9x2010" for
+    // cores/km_snes9x2010_libretro.so - the exact name a cores.cfg line can use, and the order's tie-break
+    std::string stem;
     std::vector<std::string> extensions;
     std::vector<std::string> databases;
     std::string core_path;
     // the core reads archives itself (arcade sets): a .zip is handed over whole, never looked into
     bool block_extract = false;
+
+    // the part of the display name that tells the builds of one system apart: "km_Snes9x 2010" of
+    // "Nintendo - SNES (km_Snes9x 2010)" - what is inside the last pair of parentheses, else the whole name
+    std::string shortName() const;
 };
 
 using CoreInfoPtr = std::shared_ptr<CoreInfo>;
@@ -34,9 +41,12 @@ using CoreInfos = std::vector<CoreInfoPtr>;
 // is actually in <retroarch>/cores - the info bundle
 // describes every core libretro builds, a few hundred, and a database mapped to a core that is not
 // installed would make every game of that system unplayable. Each database then gets the first installed
-// core (the one with the most extensions first) whose .info lists it, unless the cores.cfg says otherwise:
-// "<database name>=<part of a core's display name>", one per line, '#' comments - which core plays a
-// system is platform knowledge (resources/platform/<platform>.cores.cfg in the app).
+// core (the one with the most extensions first, equal counts by file stem - the same stick always gives the
+// same core) whose .info lists it, unless the cores.cfg says otherwise: "<database name>=<core>", one per line,
+// '#' comments - which core plays a system is platform knowledge (resources/platform/<platform>.cores.cfg in
+// the app). <core> is matched in this order: the core's file stem exactly ("km_snes9x2010" = cores/
+// km_snes9x2010_libretro.so), then its display name exactly, then a part of its display name (the first such
+// core in the order above).
 class CoreInfoTable {
 public:
     void load(const std::string &retroarchDir, const std::string &coresCfgPath);
@@ -54,8 +64,14 @@ public:
     // the two halves of coreForDatabase, for a caller that wants to know which answered
     CoreInfoPtr overrideCoreFor(const std::string &dbName) const;
     CoreInfoPtr defaultCoreFor(const std::string &dbName) const;
+    // every installed core that can play the database, the one coreForDatabase answers first (a cores.cfg core
+    // is in the list even when its .info does not list the database), the rest by file stem. Empty when none.
+    CoreInfos coresForDatabase(const std::string &dbName) const;
 
 private:
+    // the core a cores.cfg value names - see the class comment; nullptr when none matches
+    CoreInfoPtr coreForCfgValue(const std::string &value) const;
+
     CoreInfos cores_;
     std::set<std::string> databases_;
     std::vector<std::pair<std::string, CoreInfoPtr>> defaultCores_;  // database name -> core

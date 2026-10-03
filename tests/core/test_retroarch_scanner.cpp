@@ -20,10 +20,13 @@
 
 #include <algorithm>
 #include <fstream>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
 using ableem::CoreInfoPtr;
+using ableem::CoreInfos;
 using ableem::CoreInfoTable;
 using ableem::Crc32;
 using ableem::DirEntry;
@@ -980,4 +983,170 @@ TEST_CASE("scan: with the databases in place the playlists carry their names; a 
           vector<string>{"Chrono Trigger (USA)"});
 
     CHECK(scanner.scan(t.options, systems).playlistsWritten.empty());
+}
+
+//*******************************
+// exact core names, the order's tie-break, ROM folders at scan time, a kept core pick
+//*******************************
+TEST_CASE("CoreInfoTable: a cores.cfg value is a file stem first, then a whole display name, then a part of one") {
+    RomsTree t;
+    // "Snes9x" is a part of both display names and the stem of neither; "snes9x" the stem of the first only
+    t.addCore("snes9x_libretro", "Nintendo - SNES (Snes9x)", "sfc|smc", SNES);
+    t.addCore("snes9x2010_libretro", "Nintendo - SNES (Snes9x 2010)", "sfc|smc|fig|swc", SNES);
+
+    auto picked = [&](const string &value) {
+        t.tmp.writeFile("cores.cfg", string(SNES) + " = " + value + "\n");
+        return t.cores(t.tmp.at("cores.cfg")).coreForDatabase(SNES)->name;
+    };
+    CHECK(picked("snes9x") == "Nintendo - SNES (Snes9x)"); // the stem, though the other has more extensions
+    CHECK(picked("snes9x2010") == "Nintendo - SNES (Snes9x 2010)");
+    CHECK(picked("Nintendo - SNES (Snes9x)") == "Nintendo - SNES (Snes9x)"); // a whole name, though a part of both
+    CHECK(picked("(Snes9x)") == "Nintendo - SNES (Snes9x)");                 // a part: today's behaviour
+    CHECK(picked("Snes9x") == "Nintendo - SNES (Snes9x 2010)");       // two parts: the first in the table's order
+    CHECK(picked("no such core") == "Nintendo - SNES (Snes9x 2010)"); // nothing matches: the .info mapping stays
+}
+
+TEST_CASE("CoreInfoTable: cores that tie on extensions are ordered by file stem, whatever the stick lists first") {
+    RomsTree t;
+    t.addCore("zeta_libretro", "Z (Tie Zeta)", "sfc|smc", SNES);
+    t.addCore("alpha_libretro", "A (Tie Alpha)", "sfc|smc", SNES);
+    t.addCore("mid_libretro", "M (Tie Mid)", "sfc|smc", SNES);
+    t.addCore("big_libretro", "B (Big)", "sfc|smc|fig", SNES);
+
+    CoreInfoTable cores = t.cores();
+    CHECK(cores.coreForDatabase(SNES)->stem == "big");
+    CoreInfos all = cores.coresForDatabase(SNES);
+    REQUIRE(all.size() == 4);
+    CHECK(all[0]->stem == "big");
+    CHECK(all[1]->stem == "alpha"); // after the default: by stem
+    CHECK(all[2]->stem == "mid");
+    CHECK(all[3]->stem == "zeta");
+
+    // a fragment that two cores match gives the first in that order
+    t.tmp.writeFile("cores.cfg", string(SNES) + " = Tie\n");
+    CHECK(t.cores(t.tmp.at("cores.cfg")).coreForDatabase(SNES)->stem == "alpha");
+    CHECK(cores.cores()[1]->stem == "alpha");
+}
+
+TEST_CASE("CoreInfoTable::coresForDatabase: the cfg's core first even when its .info does not list the database") {
+    RomsTree t;
+    t.addCore("fbneo_libretro", "Arcade (FinalBurn Neo)", "zip", "FBNeo - Arcade Games");
+    t.addCore("fbalpha_libretro", "Arcade (FB Alpha)", "zip|7z", "FB Alpha - Arcade Games");
+    t.tmp.writeFile("cores.cfg", "FB Alpha - Arcade Games = fbneo\n");
+
+    CoreInfoTable cores = t.cores(t.tmp.at("cores.cfg"));
+    CoreInfos all = cores.coresForDatabase("FB Alpha - Arcade Games.lpl");
+    REQUIRE(all.size() == 2);
+    CHECK(all[0]->stem == "fbneo");
+    CHECK(all[1]->stem == "fbalpha");
+    CHECK(cores.coresForDatabase("Atari - 2600").empty());
+}
+
+TEST_CASE("createMissingFolders: a folder for every database an installed core plays, bar the skipped ones") {
+    RomsTree t;
+    t.addCore("puae_libretro", "Commodore - Amiga (P-UAE)", "adf|zip", "Commodore - Amiga");
+    t.addCore("hatari_libretro", "Atari - ST (Hatari)", "st|zip", "Atari - ST");
+    t.addCore("nestopia_libretro", "Nintendo - NES (Nestopia)", "nes", NES);
+    t.addCore("fbneo_libretro", "Arcade (FinalBurn Neo)", "zip", "FBNeo - Arcade Games");
+    t.addCore("ffmpeg_libretro", "FFmpeg", "mp4|mkv", "FFmpeg");
+    t.addCore("mame2010_libretro", "ARC (MAME 2010)", "zip", "MAME 2010");
+    t.addCore("bk_libretro", "Elektronika BK", "bin", "BK-0010/BK-0011");
+    t.addCore("notinstalled_libretro", "Sega - Not Installed", "bin", "Sega - Not Installed", false, false);
+    t.tmp.makeSubDir("roms/nintendo - nintendo entertainment system"); // a folder there, in another case
+    t.tmp.makeSubDir("roms/Arcade");
+    t.tmp.writeFile("roms/Arcade/placeholder.txt", "x");
+
+    const auto aliases = std::map<string, string>{{"Arcade", "FBNeo - Arcade Games"}};
+    const auto skip = RetroArchScanner::loadSkipList("");
+    CHECK(skip.empty()); // no file, no skips
+    t.tmp.writeFile("skip.cfg", "# not games\nFFmpeg\n\n  mame 2010  \n");
+    const auto skipped = RetroArchScanner::loadSkipList(t.tmp.at("skip.cfg"));
+    CHECK(skipped == std::set<string>{"ffmpeg", "mame 2010"});
+
+    CoreInfoTable cores = t.cores();
+    vector<string> created = RetroArchScanner::createMissingFolders(t.options.romsDir, cores, aliases, skipped);
+    CHECK(created == vector<string>{"Atari - ST", "Commodore - Amiga"});
+    CHECK(DirEntry::isDirectory(t.tmp.at("roms/Commodore - Amiga")));
+    CHECK(DirEntry::isDirectory(t.tmp.at("roms/Atari - ST")));
+    CHECK_FALSE(DirEntry::isDirectory(t.tmp.at("roms/FFmpeg")));
+    CHECK_FALSE(DirEntry::isDirectory(t.tmp.at("roms/MAME 2010")));
+    CHECK_FALSE(DirEntry::isDirectory(t.tmp.at("roms/FBNeo - Arcade Games"))); // the "Arcade" alias is its home
+    CHECK_FALSE(DirEntry::isDirectory(t.tmp.at("roms/Sega - Not Installed")));
+    CHECK_FALSE(DirEntry::isDirectory(t.tmp.at("roms/BK-0010")));        // not a usable folder name
+    CHECK_FALSE(DirEntry::isDirectory(t.tmp.at(string("roms/") + NES))); // the folder is there already
+
+    // nothing left to make: a second pass does nothing, and what is in the folders stays
+    CHECK(RetroArchScanner::createMissingFolders(t.options.romsDir, cores, aliases, skipped).empty());
+    CHECK(t.readFile("roms/Arcade/placeholder.txt") == "x");
+    // no ROM folder tree at all: nothing is created
+    CHECK(RetroArchScanner::createMissingFolders(t.tmp.at("nowhere"), cores, aliases, skipped).empty());
+}
+
+TEST_CASE("merge: a core picked by hand stays when the database's name replaces the label") {
+    TempDir tmp("mergecore");
+    tmp.makeSubDir("roms/nes");
+    tmp.writeFile("roms/nes/Lolo.nes", "rom");
+    tmp.writeFile("roms/nes/Plain.nes", "rom");
+    const string source = tmp.at("roms/nes");
+    const string target = "/media/roms/nes";
+
+    auto entry = [&](const string &file, const string &label, const string &corePath, const string &coreName) {
+        RetroArchPlaylistEntry e;
+        e.path = target + "/" + file;
+        e.label = label;
+        e.core_path = corePath;
+        e.core_name = coreName;
+        e.crc32 = "00000000|crc";
+        e.db_name = "Nintendo - Nintendo Entertainment System.lpl";
+        return e;
+    };
+    RetroArchPlaylistEntries existing = {
+        entry("Lolo.nes", "Lolo", "/media/cores/nestopia_libretro.so", "Nestopia"), // picked by hand
+        entry("Plain.nes", "Plain", "DETECT", "DETECT"),                            // no core of its own yet
+    };
+    ScannedRoms fresh = scanned(
+        {
+            entry("Lolo.nes", "Adventures of Lolo (USA)", "/media/cores/km_fceumm_libretro.so", "FCEUmm"),
+            entry("Plain.nes", "Plain (USA)", "/media/cores/km_fceumm_libretro.so", "FCEUmm"),
+        },
+        true);
+
+    RetroArchPlaylistEntries merged = RetroArchScanner::merge(existing, fresh, source, target);
+    REQUIRE(merged.size() == 2);
+    CHECK(merged[0].label == "Adventures of Lolo (USA)");              // the database's name
+    CHECK(merged[0].core_path == "/media/cores/nestopia_libretro.so"); // the pick, not the system's default
+    CHECK(merged[0].core_name == "Nestopia");
+    CHECK(merged[1].label == "Plain (USA)");
+    CHECK(merged[1].core_name == "FCEUmm"); // no pick: the fresh entry's core
+}
+
+TEST_CASE("scan: a core picked for a game survives the rescan that names the game from the database") {
+    RomsTree t;
+    t.addCore("nestopia_libretro", "Nintendo - NES / Famicom (Nestopia UE)", "nes|fds", NES);
+    t.addCore("fceumm_libretro", "Nintendo - NES / Famicom (FCEUmm)", "nes|fds|unf", NES);
+    t.options.stateFile = t.tmp.at("scanstate");
+    writeNesRdb(t.tmp, "retroarch/database/rdb");
+    const string nes = string("roms/") + NES;
+    t.tmp.makeSubDir(nes);
+    writeZip(t.tmp.at(nes + "/lolo.zip"), {{"lolo.nes", "rom"}});
+    RetroArchSystems systems = RetroArchScanner::systemsFrom(t.cores());
+    RetroArchScanner scanner;
+
+    RetroArchScanner::Options blind = t.options; // a first scan before the database pack
+    blind.rdbDir = "";
+    scanner.scan(blind, systems);
+    RetroArchPlaylistEntries entries = t.loadPlaylist(NES);
+    REQUIRE(entries.size() == 1);
+    CHECK(entries[0].core_name == "Nintendo - NES / Famicom (FCEUmm)"); // the system's default
+    entries[0].core_path = t.tmp.at("retroarch/cores/nestopia_libretro.so");
+    entries[0].core_name = "Nintendo - NES / Famicom (Nestopia UE)";
+    REQUIRE(RetroArchPlaylist::save(t.playlist(NES), entries));
+
+    t.options.rdbDir = t.tmp.at("retroarch/database/rdb");
+    scanner.scan(t.options, systems); // the database names the game
+    entries = t.loadPlaylist(NES);
+    REQUIRE(entries.size() == 1);
+    CHECK(entries[0].label == "Adventures of Lolo (USA)");
+    CHECK(entries[0].core_name == "Nintendo - NES / Famicom (Nestopia UE)");
+    CHECK(entries[0].core_path == t.tmp.at("retroarch/cores/nestopia_libretro.so"));
 }

@@ -41,6 +41,7 @@
 #include <cstdint>
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -129,6 +130,18 @@ public:
 
     // "folder=database" lines ('#' comments) into an alias map; a missing file gives an empty map
     static std::map<std::string, std::string> loadFolderAliases(const std::string &cfgPath);
+
+    // one database name per line ('#' comments): the databases that never get a ROM folder (not games, or
+    // played elsewhere); a missing file gives an empty set. Names are compared in lower case.
+    static std::set<std::string> loadSkipList(const std::string &cfgPath);
+
+    // <romsDir>/<database>/ for every database an installed core plays when the folder does not exist yet, no
+    // alias in `aliases` points at the database (its games live in the alias's folder) and the skip list does
+    // not name it. A database name that is not a usable folder name ("BK-0010/BK-0011") is left out. Existing
+    // folders are compared without regard to case. Returns the names created, sorted.
+    static std::vector<std::string> createMissingFolders(const std::string &romsDir, const CoreInfoTable &cores,
+                                                         const std::map<std::string, std::string> &aliases,
+                                                         const std::set<std::string> &skip);
 
     // the entries one folder yields - paths under targetFolder, sorted by path. Public for the tests.
     static ScannedRoms scanFolder(const std::string &folder, const std::string &targetFolder,

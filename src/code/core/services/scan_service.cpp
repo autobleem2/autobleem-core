@@ -97,6 +97,13 @@ string ScanService::romsFolderAliasesPath() {
 }
 
 //*******************************
+// ScanService::romsSkipListPath
+//*******************************
+string ScanService::romsSkipListPath() {
+    return Env::getWorkingPath() + sep + "platform" + sep + "roms_skip.cfg";
+}
+
+//*******************************
 // ScanService::romScanEnabled
 //*******************************
 bool ScanService::romScanEnabled() {
@@ -303,6 +310,9 @@ int ScanService::scanRetroArchRoms(Listener &listener, vector<string> &playlists
     options.romsDir = Env::getPathToRetroarchRomsDir();
     options.playlistsDir = Env::getPathToRetroarchPlaylistsDir();
     options.folderAliases = ableem::RetroArchScanner::loadFolderAliases(romsFolderAliasesPath());
+    // a folder for every system an installed core plays, so there is somewhere to put its games
+    ableem::RetroArchScanner::createMissingFolders(options.romsDir, cores, options.folderAliases,
+                                                   ableem::RetroArchScanner::loadSkipList(romsSkipListPath()));
     options.rdbDir = Env::getPathToRetroarchRdbDir(); // a missing one just means nothing gets identified
     options.stateFile = romScanStateFilePath();       // so a folder nothing changed in is not scanned again
     ableem::RetroArchScanner scanner(&listener);

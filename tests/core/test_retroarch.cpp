@@ -11,6 +11,10 @@
 #include "core/services/environment.h"
 #include "core/services/retroarch.h"
 
+#include <ableem/engine/filesystem.h>
+#include <ableem/engine/retroarch_playlist.h>
+
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -367,4 +371,60 @@ TEST_CASE("a playlist's games get publisher, year and players from the system's 
     PsGames atari = fresh.gamesInPlaylist("Atari - 2600");
     REQUIRE(atari.size() == 1);
     CHECK(atari[0]->publisher == "");
+}
+
+TEST_CASE("a game's core: the default first among the cores that play it, and a pick is written into its entry") {
+    RetroArchTree ra;
+    ra.writePlaylist("Nintendo - Super Nintendo Entertainment System",
+                     {ra.snes("Chrono Trigger.sfc", "Chrono Trigger"), ra.snes("Earthbound.sfc", "Earthbound")});
+    PsGames games = ra.service.gamesInPlaylist("Nintendo - Super Nintendo Entertainment System");
+    REQUIRE(games.size() == 2);
+
+    ableem::CoreInfos cores = ra.service.coresForGame(*games[0]);
+    REQUIRE(cores.size() == 2);
+    CHECK(cores[0]->core_path == ra.core("snes9x_libretro")); // the default: the one with more extensions
+    CHECK(cores[1]->core_path == ra.core("bsnes_libretro"));
+    CHECK(ra.service.defaultCoreForGame(*games[0])->core_path == ra.core("snes9x_libretro"));
+    CHECK(ra.service.coresForGame(*std::make_shared<PsGame>()).empty()); // no database, no cores
+
+    REQUIRE(ra.service.setGameCore(*games[0], cores[1]));
+    CHECK(games[0]->core_path == ra.core("bsnes_libretro"));
+    CHECK(games[0]->core_name == "Nintendo - SNES (bsnes)");
+    CHECK(games[1]->core_path == ra.core("snes9x_libretro")); // the other game is as it was
+
+    // the file says so - a service that reads it fresh (the next launch, a rescan) agrees
+    ableem::RetroArchPlaylistEntries entries;
+    REQUIRE(ableem::RetroArchPlaylist::load(
+        ra.tmp.at("RetroArch/bin/playlists/Nintendo - Super Nintendo Entertainment System.lpl"), entries));
+    REQUIRE(entries.size() == 2);
+    CHECK(entries[0].core_path == ra.core("bsnes_libretro"));
+    CHECK(entries[0].core_name == "Nintendo - SNES (bsnes)");
+    CHECK(entries[1].core_name == "DETECT");
+    CHECK_FALSE(ableem::DirEntry::exists(
+        ra.tmp.at("RetroArch/bin/playlists/Nintendo - Super Nintendo Entertainment System.lpl.tmp")));
+
+    RetroArchService fresh;
+    PsGames again = fresh.gamesInPlaylist("Nintendo - Super Nintendo Entertainment System");
+    REQUIRE(again.size() == 2);
+    CHECK(again[0]->core_path == ra.core("bsnes_libretro"));
+    CHECK(again[1]->core_path == ra.core("snes9x_libretro"));
+
+    // back to the default is a pick too: the entry names it
+    REQUIRE(ra.service.setGameCore(*games[0], cores[0]));
+    CHECK(games[0]->core_path == ra.core("snes9x_libretro"));
+}
+
+TEST_CASE("a pick for a game that is not in its playlist changes nothing") {
+    RetroArchTree ra;
+    ra.writePlaylist("Nintendo - Super Nintendo Entertainment System",
+                     {ra.snes("Chrono Trigger.sfc", "Chrono Trigger")});
+    PsGames games = ra.service.gamesInPlaylist("Nintendo - Super Nintendo Entertainment System");
+    REQUIRE(games.size() == 1);
+    PsGame stranger = *games[0];
+    stranger.image_path += ".gone";
+    ableem::CoreInfos cores = ra.service.coresForGame(stranger);
+    REQUIRE(cores.size() == 2);
+    CHECK_FALSE(ra.service.setGameCore(stranger, cores[1]));
+    CHECK(stranger.core_path == ra.core("snes9x_libretro"));
+    CHECK_FALSE(ra.service.setGameCore(stranger, nullptr));
 }

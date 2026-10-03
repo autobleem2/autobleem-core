@@ -407,6 +407,73 @@ bool RetroArchService::autoDetectCorePath(const PsGame &game, string &core_name,
 }
 
 //********************
+// RetroArchService::coresForGame
+//********************
+ableem::CoreInfos RetroArchService::coresForGame(const PsGame &game) {
+    ensureLoaded();
+    return cores_.coresForDatabase(game.db_name);
+}
+
+//********************
+// RetroArchService::defaultCoreForGame
+//********************
+ableem::CoreInfoPtr RetroArchService::defaultCoreForGame(const PsGame &game) {
+    ensureLoaded();
+    return cores_.coreForDatabase(game.db_name);
+}
+
+//********************
+// RetroArchService::setGameCore
+//********************
+bool RetroArchService::setGameCore(PsGame &game, const ableem::CoreInfoPtr &core) {
+    if (!core || game.db_name.empty())
+        return false;
+    ensureLoaded();
+    string stem = game.db_name;
+    if (DirEntry::matchExtension(stem, "lpl"))
+        stem = DirEntry::getFileNameWithoutExtension(stem);
+    const string playlistPath = Env::getPathToRetroarchPlaylistsDir() + sep + stem + ".lpl";
+
+    ableem::RetroArchPlaylistEntries entries;
+    ableem::RetroArchPlaylistHeader header;
+    if (!ableem::RetroArchPlaylist::load(playlistPath, entries, &header))
+        return false;
+    const string usbRoot = Env::getPathToUSBRoot();
+    bool found = false;
+    for (auto &entry : entries) {
+        if (mapPlaylistPath(entry.path, usbRoot) != game.image_path)
+            continue;
+        entry.core_path = core->core_path;
+        entry.core_name = core->name;
+        found = true;
+        break;
+    }
+    if (!found)
+        return false;
+    // beside it and swapped in: RetroArch may be reading the playlist this very moment
+    const string tempPath = playlistPath + ".tmp";
+    if (!ableem::RetroArchPlaylist::save(tempPath, entries, header) || !DirEntry::replaceFile(tempPath, playlistPath)) {
+        PLOG_WARNING << "Could not write " << playlistPath;
+        DirEntry::removeFile(tempPath);
+        return false;
+    }
+    PLOG_INFO << "Core for '" << game.title << "': " << core->name << " (" << stem << ".lpl)";
+
+    // the game itself and its twins (the same file in Favorites or History, or a second copy of the list)
+    game.core_path = core->core_path;
+    game.core_name = core->name;
+    for (auto &info : playlistInfos_) {
+        for (auto &other : info.psGames) {
+            if (other->image_path == game.image_path && other->db_name == game.db_name) {
+                other->core_path = core->core_path;
+                other->core_name = core->name;
+            }
+        }
+    }
+    return true;
+}
+
+//********************
 // RetroArchService::loadCores
 //********************
 void RetroArchService::loadCores() {

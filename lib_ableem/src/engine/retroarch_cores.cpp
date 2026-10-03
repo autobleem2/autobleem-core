@@ -14,8 +14,20 @@ namespace ableem {
 
 namespace {
 
+// most extensions first; equal counts by file stem, so the order never depends on how the stick lists its files
 bool sortByMaxExtensions(const CoreInfoPtr &i, const CoreInfoPtr &j) {
-    return i->extensions.size() > j->extensions.size();
+    if (i->extensions.size() != j->extensions.size())
+        return i->extensions.size() > j->extensions.size();
+    return i->stem < j->stem;
+}
+
+// "cores/km_snes9x2010_libretro.so" -> "km_snes9x2010"
+string stemOf(const string &corePath) {
+    string stem = DirEntry::getFileNameWithoutExtension(DirEntry::getFileNameFromPath(corePath));
+    const string suffix = "_libretro";
+    if (stem.size() > suffix.size() && stem.compare(stem.size() - suffix.size(), suffix.size(), suffix) == 0)
+        stem.erase(stem.size() - suffix.size());
+    return stem;
 }
 
 string stripLpl(const string &dbName) {
@@ -42,11 +54,24 @@ vector<string> splitBar(const string &value) {
 } // namespace
 
 //*******************************
+// CoreInfo::shortName
+//*******************************
+string CoreInfo::shortName() const {
+    const size_t open = name.rfind('(');
+    if (open == string::npos || name.empty() || name.back() != ')' || open + 2 > name.size())
+        return name;
+    string inside = name.substr(open + 1, name.size() - open - 2);
+    trim(inside);
+    return inside.empty() ? name : inside;
+}
+
+//*******************************
 // CoreInfoTable::parseInfoFile
 //*******************************
 CoreInfoPtr CoreInfoTable::parseInfoFile(const string &file, const string &corePath) {
     CoreInfoPtr info = make_shared<CoreInfo>();
     info->core_path = corePath;
+    info->stem = stemOf(corePath);
 
     ifstream in(file);
     string line;
@@ -55,13 +80,17 @@ CoreInfoPtr CoreInfoTable::parseInfoFile(const string &file, const string &coreP
         lcase(lcaseLine);
         if (lcaseLine.find('=') == string::npos)
             continue;
-        if (lcaseLine.rfind("display_name", 0) == 0) {
+        // the key whole: "database_match_archive_member = true" is not the "database" line (km_FinalBurn Neo's
+        // .info has both, and the later one used to make its database "true")
+        string key = lcaseLine.substr(0, lcaseLine.find('='));
+        trim(key);
+        if (key == "display_name") {
             info->name = unquoted(line, lcaseLine);
-        } else if (lcaseLine.rfind("supported_extensions", 0) == 0) {
+        } else if (key == "supported_extensions") {
             info->extensions = splitBar(unquoted(line, lcaseLine));
-        } else if (lcaseLine.rfind("database", 0) == 0) {
+        } else if (key == "database") {
             info->databases = splitBar(unquoted(line, lcaseLine));
-        } else if (lcaseLine.rfind("block_extract", 0) == 0) {
+        } else if (key == "block_extract") {
             info->block_extract = toLowerCopy(unquoted(line, lcaseLine)) == "true";
         }
     }
@@ -122,13 +151,33 @@ void CoreInfoTable::load(const string &retroarchDir, const string &coresCfgPath)
         lcase(dbName);
         trim(dbName);
         trim(value);
-        for (const CoreInfoPtr &info : cores_) {
-            if (info->name.find(value) != string::npos) {
-                overrideCores_.emplace_back(dbName, info);
-                PLOG_INFO << "Core override: " << dbName << " -> " << info->name;
-            }
+        CoreInfoPtr info = value.empty() ? nullptr : coreForCfgValue(value);
+        if (info) {
+            overrideCores_.emplace_back(dbName, info);
+            PLOG_INFO << "Core override: " << dbName << " -> " << info->name;
+        } else {
+            PLOG_WARNING << "Core override: " << dbName << " = '" << value << "' matches no installed core";
         }
     }
+}
+
+//*******************************
+// CoreInfoTable::coreForCfgValue
+//*******************************
+CoreInfoPtr CoreInfoTable::coreForCfgValue(const string &value) const {
+    for (const CoreInfoPtr &info : cores_) { // the file stem, exactly
+        if (info->stem == value)
+            return info;
+    }
+    for (const CoreInfoPtr &info : cores_) { // the display name, exactly
+        if (info->name == value)
+            return info;
+    }
+    for (const CoreInfoPtr &info : cores_) { // a part of the display name: the first in the table's order
+        if (info->name.find(value) != string::npos)
+            return info;
+    }
+    return nullptr;
 }
 
 //*******************************
@@ -155,6 +204,27 @@ CoreInfoPtr CoreInfoTable::defaultCoreFor(const string &dbName) const {
             return kv.second;
     }
     return nullptr;
+}
+
+//*******************************
+// CoreInfoTable::coresForDatabase
+//*******************************
+CoreInfos CoreInfoTable::coresForDatabase(const string &dbName) const {
+    CoreInfos out;
+    CoreInfoPtr preferred = coreForDatabase(dbName);
+    if (!preferred)
+        return out;
+    const string key = stripLpl(dbName);
+    out.push_back(preferred);
+    CoreInfos others;
+    for (const CoreInfoPtr &info : cores_) {
+        if (info != preferred && find(info->databases.begin(), info->databases.end(), key) != info->databases.end())
+            others.push_back(info);
+    }
+    stable_sort(others.begin(), others.end(),
+                [](const CoreInfoPtr &i, const CoreInfoPtr &j) { return i->stem < j->stem; });
+    out.insert(out.end(), others.begin(), others.end());
+    return out;
 }
 
 //*******************************

@@ -65,6 +65,17 @@ public:
     // the background scan rewrote playlists: read them all again (the cores stay as loaded)
     void reloadPlaylists();
 
+    // the installed cores that can play the game's system, the platform's default first (the one a game with no
+    // pick of its own gets); empty when none does - what the game editor's Core row cycles through
+    ableem::CoreInfos coresForGame(const PsGame &game);
+    // the core a game of that system gets when nobody picked one: the first of coresForGame()
+    ableem::CoreInfoPtr defaultCoreForGame(const PsGame &game);
+    // the game's own pick: written into its playlist entry (core_path/core_name - RetroArch's own per-game core
+    // association), and into the game and its twins in the loaded playlists, so the next launch uses it. The
+    // playlist is read and rewritten like the scanner does (beside it, then renamed); false when the entry
+    // or the playlist cannot be found or written, with nothing changed.
+    bool setGameCore(PsGame &game, const ableem::CoreInfoPtr &core);
+
     // the platform's cores.cfg, next to the resources: resources/platform/<platform>.cores.cfg
     static std::string coresCfgPath();
 

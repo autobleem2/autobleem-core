@@ -173,6 +173,9 @@ public:
 
     // resources/platform/roms_folders.cfg - the ROM folders not named as their database is ("Arcade")
     static std::string romsFolderAliasesPath();
+    // resources/platform/roms_skip.cfg - the databases the scan never makes a ROM folder for (not games, or
+    // played elsewhere); every other database an installed core plays gets one when it is missing
+    static std::string romsSkipListPath();
 
     // RetroArch is installed and has ROM folders to scan - see the class comment
     static bool romScanEnabled();

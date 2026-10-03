@@ -131,6 +131,58 @@ map<string, string> RetroArchScanner::loadFolderAliases(const string &cfgPath) {
 }
 
 //*******************************
+// RetroArchScanner::loadSkipList
+//*******************************
+set<string> RetroArchScanner::loadSkipList(const string &cfgPath) {
+    set<string> skip;
+    ifstream in(cfgPath);
+    string line;
+    while (getline(in, line)) {
+        trim(line);
+        if (line.empty() || line[0] == '#')
+            continue;
+        skip.insert(toLowerCopy(line));
+    }
+    return skip;
+}
+
+//*******************************
+// RetroArchScanner::createMissingFolders
+//*******************************
+vector<string> RetroArchScanner::createMissingFolders(const string &romsDir, const CoreInfoTable &cores,
+                                                      const map<string, string> &aliases, const set<string> &skip) {
+    vector<string> created;
+    if (!DirEntry::isDirectory(romsDir))
+        return created;
+
+    set<string> have; // folders there now and the databases the aliases give a home, lower case
+    for (const DirEntry &folder : DirEntry::diru_DirsOnly(romsDir))
+        have.insert(toLowerCopy(folder.name));
+    for (const auto &alias : aliases)
+        have.insert(toLowerCopy(alias.second));
+
+    for (const string &db : cores.databases()) { // sorted
+        const string key = toLowerCopy(db);
+        if (db.empty() || db[0] == '.' || have.count(key) || skip.count(key) || isReservedPlaylist(db))
+            continue;
+        if (db.find_first_of("/\\:*?\"<>|") != string::npos) {
+            PLOG_INFO << "No ROM folder for '" << db << "': not a usable folder name";
+            continue;
+        }
+        if (!cores.coreForDatabase(db))
+            continue;
+        const string folder = romsDir + sep + db;
+        if (!DirEntry::createDir(folder)) {
+            PLOG_WARNING << "Cannot create " << folder;
+            continue;
+        }
+        PLOG_INFO << "ROM folder created: " << db;
+        created.push_back(db);
+    }
+    return created;
+}
+
+//*******************************
 // RetroArchScanner::systemsFrom
 //*******************************
 RetroArchSystems RetroArchScanner::systemsFrom(const CoreInfoTable &cores) {
@@ -320,6 +372,12 @@ int RetroArchScanner::seedCrcsFromPlaylist(ScannedRoms &roms, const RetroArchPla
     return seeded;
 }
 
+// an entry that names a core ("DETECT" and empty mean RetroArch picks one)
+static bool isRealCore(const RetroArchPlaylistEntry &entry) {
+    return !entry.core_path.empty() && entry.core_path != "DETECT" && !entry.core_name.empty() &&
+           entry.core_name != "DETECT";
+}
+
 //*******************************
 // RetroArchScanner::merge
 //*******************************
@@ -366,7 +424,14 @@ RetroArchPlaylistEntries RetroArchScanner::merge(const RetroArchPlaylistEntries 
             continue; // vanished
         auto named = identified.find(sourcePathOf(entry.path));
         if (named != identified.end() && named->second->label != entry.label) {
-            merged.push_back(*named->second);
+            // the database's name replaces the label only: a core picked by hand for the game (or RetroArch's
+            // own association) stays, the fresh entry would carry the system's default
+            RetroArchPlaylistEntry renamed = *named->second;
+            if (isRealCore(entry)) {
+                renamed.core_path = entry.core_path;
+                renamed.core_name = entry.core_name;
+            }
+            merged.push_back(renamed);
         } else {
             // an entry that names this machine's folder (a scan run here, on a stick written for another
             // machine) is made to name the target's, as every fresh entry does
