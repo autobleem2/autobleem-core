@@ -103,6 +103,10 @@ public:
     static void cleanPublisherString(std::string &pub);                            // remove any trailing "." or spaces
     static std::vector<std::string> getTokens(const std::string &str, char delim); // empty tokens are dropped
     static std::string floatToString(float f, int n);                              // n decimals
+    // an upper-case copy of UTF-8 text: ASCII, Latin-1 and Latin Extended-A (Polish, Czech, Turkish ...), Greek and
+    // Cyrillic letters go up; every other byte sequence stays as it is (a byte is never cut - unlike toupper() in a
+    // Latin-1 locale). "ß" stays "ß"; a broken sequence is copied through
+    static std::string upperUtf8(const std::string &s);
 };
 
 } // namespace ableem

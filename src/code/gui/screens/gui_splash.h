@@ -8,19 +8,19 @@
 //********************
 // GuiSplash
 //********************
+// The boot splash, a plain screen (docs/ab-gui-plan.md 7a, UIREV-48): the theme's background and logo with the version
+// on the status plate, declared as a Fade in from black (after SplashSettleDuration of black, while the display
+// syncs) and a Fade out to black, held SplashHoldDuration in between. The screen stack plays both fades - no own loop,
+// no own alpha. Gui::display(false) is its only caller.
 class GuiSplash : public GuiScreen {
 public:
-    void render() override;
-    void loop() override;
+    explicit GuiSplash(ableem::GuiBase &_gui);
 
-    int alpha = 0;
-    int start = 0;
+    // closes the screen once the fade in is over and the hold has passed
+    bool prepareFrame() override;
+    void draw() override; // the background, the logo and the version
 
-    // fade in, hold at full brightness for SplashHoldDuration, fade back out, then loop() returns and the
-    // launcher takes over (its own fade-in - see GuiLauncher - picks up where this leaves off)
-    enum class Phase { Settle, FadeIn, Hold, FadeOut };
-    Phase phase = Phase::Settle;
-    long holdStart = 0;
-
-    using GuiScreen::GuiScreen;
+private:
+    bool holding_ = false;
+    unsigned int holdStart_ = 0;
 };

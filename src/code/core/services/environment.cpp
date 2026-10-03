@@ -386,8 +386,10 @@ void Env::setRetroArchBinaries(const vector<string> &paths) {
 void Env::setDownloadCommand(const string &command) {
     downloadCommand_ = command;
 }
-const string &Env::downloadCommand() {
-    return downloadCommand_;
+string Env::downloadCommand() {
+    string command = downloadCommand_;
+    Strings::replaceAll(command, "%r", getWorkingPath());
+    return command;
 }
 void Env::setUpdateSource(const string &repoUrl, const string &downloadCommand, const string &retroarchCatalog) {
     repoUrl_ = repoUrl;

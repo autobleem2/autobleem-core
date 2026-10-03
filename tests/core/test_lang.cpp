@@ -67,6 +67,18 @@ TEST_CASE("loadMore adds a second directory's file on top, keeping what the firs
     CHECK(lang.translate("Scan SSID") == "Szukaj sieci");
 }
 
+TEST_CASE("a loadMore directory is applied again when the language changes") {
+    LangDir d;
+    d.tmp.makeSubDir("tool/lang");
+    d.tmp.writeFile("tool/lang/Polish.txt", "# tool\nScan SSID=Szukaj sieci\n");
+    ableem::Lang lang;
+    lang.load(d.dir(), "English");
+    lang.loadMore(d.tmp.at("tool/lang")); // English: nothing to read, but the directory is remembered
+    lang.load(d.dir(), "Polish");
+    CHECK(lang.translate("Scan SSID") == "Szukaj sieci");
+    CHECK(lang.translate("Re/Scan") == "Skanuj");
+}
+
 TEST_CASE("a UTF-8 BOM on the first line is not part of the first string") {
     LangDir d;
     ableem::Lang lang;

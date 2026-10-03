@@ -105,6 +105,30 @@ TEST_CASE("ProcessorRunner: a good run, its progress, its log and its environmen
     CHECK(log.find("=== exit 0, ok") != string::npos);
 }
 
+TEST_CASE("ProcessorRunner: HOME and AB_HOME are the processor's own folder under Home/processors, made when missing") {
+    TempDir tmp("runner_home");
+    FakeProcess fake;
+    fake.lines = {"#DONE"};
+    const string base = tmp.at("Home/processors");
+    ProcessorRunner runner(fake, {"", tmp.at("abproc"), {}, base});
+    CHECK_FALSE(DirEntry::exists(base + "/unzip"));
+    runner.start(unzip(tmp), {"--games", "/media/Games"}, "", nullptr, nullptr);
+    CHECK(DirEntry::isDirectory(base + "/unzip"));
+    CHECK(envValue(fake.lastEnv, "HOME") == base + "/unzip");
+    CHECK(envValue(fake.lastEnv, "AB_HOME") == base + "/unzip");
+
+    // what the processor keeps there stays for the next run
+    tmp.writeFile("Home/processors/unzip/cache.dat", "data");
+    runner.start(unzip(tmp), {"--games", "/media/Games"}, "", nullptr, nullptr);
+    CHECK(tmp.readFile("Home/processors/unzip/cache.dat") == "data");
+
+    // no base: neither is set, the processor inherits the launcher's
+    ProcessorRunner plain(fake, {"", tmp.at("abproc"), {}});
+    plain.start(unzip(tmp), {"--games", "/media/Games"}, "", nullptr, nullptr);
+    CHECK(envValue(fake.lastEnv, "HOME") == "<none>");
+    CHECK(envValue(fake.lastEnv, "AB_HOME") == "<none>");
+}
+
 TEST_CASE("ProcessorRunner: the ways a run fails") {
     TempDir tmp("runner_fail");
     FakeProcess fake;

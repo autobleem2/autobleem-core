@@ -130,7 +130,7 @@ TEST_CASE("Config keeps what the file already says") {
     CHECK(config.inifile.values["aspect"] == "false");
 }
 
-TEST_CASE("Config over an empty config.ini gives the shipped defaults, ab2 included") {
+TEST_CASE("Config over an empty config.ini gives the shipped defaults, ab2.0.0 included") {
     // what an unclean unmount left on the first Pi boot: the file exists and holds nothing
     TempDir tmp("config_empty");
     EnvFixture env;
@@ -139,10 +139,10 @@ TEST_CASE("Config over an empty config.ini gives the shipped defaults, ab2 inclu
 
     Config config;
 
-    CHECK(config.inifile.values["theme"] == "ab2");
+    CHECK(config.inifile.values["theme"] == "ab2.0.0");
     CHECK(config.inifile.values["language"] == "English");
     // and the file written back is a real one again (atomically: no .tmp left behind)
-    CHECK(tmp.readFile("config.ini").find("Theme=ab2") != std::string::npos);
+    CHECK(tmp.readFile("config.ini").find("Theme=ab2.0.0") != std::string::npos);
     CHECK_FALSE(DirEntry::exists(tmp.path() + sep + "config.ini.tmp"));
 }
 
@@ -264,7 +264,7 @@ TEST_CASE("Config: scaler migrates from the old aspect switch, only when scaler 
     }
 }
 
-TEST_CASE("Config: splash timeout defaults to 2s and keeps 0 (Skip) rather than treating it as unset") {
+TEST_CASE("Config: notification timeout defaults to 2s and keeps a 0 chosen after the migration") {
     TempDir tmp("config_showingtimeout_zero");
     EnvFixture env;
     env.setWorkingPath(tmp.path());
@@ -272,9 +272,8 @@ TEST_CASE("Config: splash timeout defaults to 2s and keeps 0 (Skip) rather than 
     // the default, nothing in the file
     CHECK(Config().inifile.values["showingtimeout"] == "2");
 
-    // 0 ("Skip" in the Options row) used to mean "forever" and must not be filled back in with the default -
-    // it is a real, saved value like any other 1..20
-    tmp.writeFile("config.ini", "[General]\nShowingtimeout=0\n");
+    // 0 ("don't show") is a real, saved value like any other 1..20 once the migration has run
+    tmp.writeFile("config.ini", "[General]\nShowingtimeout=0\nShowingtimeoutmigrated=1\n");
     Config config;
     CHECK(config.inifile.values["showingtimeout"] == "0");
     config.save();
@@ -288,6 +287,69 @@ TEST_CASE("Config: splash timeout defaults to 2s and keeps 0 (Skip) rather than 
         t2.writeFile("config.ini", "[General]\nShowingtimeout=" + std::to_string(seconds) + "\n");
         CHECK(Config().inifile.values["showingtimeout"] == std::to_string(seconds));
     }
+}
+
+TEST_CASE("Config: an old showingtimeout=0 (which meant stay up) is converted to 2 once") {
+    TempDir tmp("config_showingtimeout_migrate");
+    EnvFixture env;
+    env.setWorkingPath(tmp.path());
+
+    // no marker: the 0 becomes the default and the marker is written
+    tmp.writeFile("config.ini", "[General]\nShowingtimeout=0\n");
+    {
+        Config config;
+        CHECK(config.inifile.values["showingtimeout"] == "2");
+        CHECK(config.inifile.values["showingtimeoutmigrated"] == "1");
+    }
+    CHECK(reloadFromDisk(tmp).values["showingtimeout"] == "2");
+    CHECK(reloadFromDisk(tmp).values["showingtimeoutmigrated"] == "1");
+
+    // the user then chooses 0: it stays 0 through every later load
+    {
+        Config config;
+        config.inifile.values["showingtimeout"] = "0";
+        config.save();
+    }
+    CHECK(Config().inifile.values["showingtimeout"] == "0");
+    CHECK(Config().inifile.values["showingtimeout"] == "0");
+
+    // a fresh file gets the marker too, so a 0 chosen on it is kept
+    tmp.writeFile("config.ini", "[General]\nLanguage=English\n");
+    CHECK(Config().inifile.values["showingtimeoutmigrated"] == "1");
+
+    // other values are untouched, marker or not
+    for (const char *value : {"1", "2", "7", "20"}) {
+        tmp.writeFile("config.ini", string("[General]\nShowingtimeout=") + value + "\n");
+        CHECK(Config().inifile.values["showingtimeout"] == value);
+    }
+}
+
+TEST_CASE("Config: the splash screen defaults on and keeps an explicit false") {
+    TempDir tmp("config_splashscreen");
+    EnvFixture env;
+    env.setWorkingPath(tmp.path());
+
+    CHECK(Config().inifile.values["splashscreen"] == "true");
+
+    tmp.writeFile("config.ini", "[General]\nSplashscreen=false\n");
+    CHECK(Config().inifile.values["splashscreen"] == "false");
+
+    tmp.writeFile("config.ini", "[General]\nSplashscreen=no\n");
+    CHECK(Config().inifile.values["splashscreen"] == "true");
+}
+
+TEST_CASE("Config: the animations (screen transitions) default on and keep an explicit false") {
+    TempDir tmp("config_animations");
+    EnvFixture env;
+    env.setWorkingPath(tmp.path());
+
+    CHECK(Config().inifile.values["animations"] == "true");
+
+    tmp.writeFile("config.ini", "[General]\nAnimations=false\n");
+    CHECK(Config().inifile.values["animations"] == "false");
+
+    tmp.writeFile("config.ini", "[General]\nAnimations=maybe\n");
+    CHECK(Config().inifile.values["animations"] == "true");
 }
 
 TEST_CASE("Config writes config.ini into the state dir when one is set apart from the working path") {

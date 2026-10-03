@@ -218,13 +218,13 @@ TEST_CASE("icon frames come back as pixels: the save's own, dimmed for a link bl
     MemcardImage::Pixel px[MemcardImage::IconSize * MemcardImage::IconSize];
 
     image.iconPixels(0, 0, px);
-    CHECK(px[0].r == 248); // palette red 31 * 8
+    CHECK(px[0].r == 255); // palette red 31: white-scale 255
     CHECK(px[0].g == 0);
     CHECK(px[0].a == 255);
-    CHECK(px[255].r == 248);
+    CHECK(px[255].r == 255);
 
     image.iconPixels(1, 0, px); // the link block: the top's frame, a third as bright
-    CHECK(px[0].r == 82);
+    CHECK(px[0].r == 85);
     CHECK(px[0].a == 255);
 
     image.iconPixels(2, 0, px); // free
@@ -234,6 +234,103 @@ TEST_CASE("icon frames come back as pixels: the save's own, dimmed for a link bl
     image.deleteGame(0); // deleted: lightened
     image.iconPixels(0, 0, px);
     CHECK(px[0].r == 251); // 31 * 4 + 127
+}
+
+namespace {
+
+// A synthetic card with a 1-, a 2- and a 3-frame save in slots 0, 1 and 2 (header byte 2 = 0x11/0x12/0x13).
+// Every frame is a solid colour of its own (frame f = palette entry f + 1: red, green, blue) except the
+// top-left pixel, which is palette entry 0 (raw 0x0000, the transparent colour). Slot 3 has a flag of 0x15, which
+// is not a frame count. Palette entry 4 is white.
+CardBytes animatedCard() {
+    CardBytes card;
+    const int flags[4] = {0x11, 0x12, 0x13, 0x15};
+    for (int slot = 0; slot < 4; slot++) {
+        card.addSave({slot}, "Save", "BASCUS-941", "63ANIM");
+        uint8_t *b = card.block(slot);
+        b[2] = flags[slot];
+        b[0x60 + 2] = 0x1F; // entry 1: red
+        b[0x60 + 3] = 0x00;
+        b[0x60 + 4] = 0xE0; // entry 2: green (31 << 5)
+        b[0x60 + 5] = 0x03;
+        b[0x60 + 6] = 0x00; // entry 3: blue (31 << 10)
+        b[0x60 + 7] = 0x7C;
+        b[0x60 + 8] = 0xFF; // entry 4: white
+        b[0x60 + 9] = 0x7F;
+        for (int f = 0; f < 3; f++) {
+            memset(b + 0x80 + f * 128, (f + 1) * 0x11, 128);
+            b[0x80 + f * 128] = ((f + 1) << 4) | 0x00; // pixel (0,0) is entry 0, (1,0) is entry f + 1
+        }
+    }
+    return card;
+}
+
+} // namespace
+
+TEST_CASE("an icon animates over what header byte 2 says: 0x11 = 1 frame, 0x12 = 2, 0x13 = 3, anything else = 1") {
+    CardBytes card = animatedCard();
+    MemcardImage image = imageOf(card);
+    CHECK(image.iconFrameCount(0) == 1);
+    CHECK(image.iconFrameCount(1) == 2);
+    CHECK(image.iconFrameCount(2) == 3);
+    CHECK(image.iconFrameCount(3) == 1); // 0x15: not a frame count
+    CHECK(image.iconFrameCount(4) == 1); // free
+
+    CardBytes link;
+    link.addSave({0, 1}, "Hello", "BASCUS-941", "63TEKKEN3");
+    link.block(0)[2] = 0x13;
+    MemcardImage linked = imageOf(link);
+    CHECK(linked.iconFrameCount(0) == 3);
+    CHECK(linked.iconFrameCount(1) == 1); // a link block is static
+}
+
+TEST_CASE("the frame shown follows the real BIOS's pace: 320 ms a frame of 2, 220 ms of 3, from frame 0 and wrapping") {
+    // a static icon never moves
+    for (unsigned int t : {0u, 1000u, 123456u})
+        CHECK(MemcardImage::iconFrameAt(1, t) == 0);
+
+    CHECK(MemcardImage::iconFrameAt(2, 0) == 0); // the pencil has just entered the slot
+    CHECK(MemcardImage::iconFrameAt(2, 319) == 0);
+    CHECK(MemcardImage::iconFrameAt(2, 320) == 1);
+    CHECK(MemcardImage::iconFrameAt(2, 639) == 1);
+    CHECK(MemcardImage::iconFrameAt(2, 640) == 0);
+
+    CHECK(MemcardImage::iconFrameAt(3, 0) == 0);
+    CHECK(MemcardImage::iconFrameAt(3, 219) == 0);
+    CHECK(MemcardImage::iconFrameAt(3, 220) == 1);
+    CHECK(MemcardImage::iconFrameAt(3, 440) == 2);
+    CHECK(MemcardImage::iconFrameAt(3, 659) == 2);
+    CHECK(MemcardImage::iconFrameAt(3, 660) == 0);
+
+    // a move tick later than the clock's zero: the frame counts from the move
+    const unsigned int moveTick = 5000;
+    CHECK(MemcardImage::iconFrameAt(3, 5000 + 230 - moveTick) == 1);
+}
+
+TEST_CASE("every frame of the synthetic card has its own colour, palette colour 0 is transparent, white is 255") {
+    CardBytes card = animatedCard();
+    MemcardImage image = imageOf(card);
+    MemcardImage::Pixel px[MemcardImage::IconSize * MemcardImage::IconSize];
+
+    const uint8_t expectRgb[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
+    for (int f = 0; f < 3; f++) {
+        image.iconPixels(2, f, px);
+        CHECK(px[0].a == 0); // entry 0, raw 0x0000
+        CHECK(px[1].a == 255);
+        CHECK(px[1].r == expectRgb[f][0]);
+        CHECK(px[1].g == expectRgb[f][1]);
+        CHECK(px[1].b == expectRgb[f][2]);
+        CHECK(px[255].a == 255);
+    }
+
+    // palette entry 4 is white: all channels 255
+    card.block(0)[0x80] = 0x44;
+    image = imageOf(card);
+    image.iconPixels(0, 0, px);
+    CHECK(px[0].r == 255);
+    CHECK(px[0].g == 255);
+    CHECK(px[0].b == 255);
+    CHECK(px[0].a == 255);
 }
 
 TEST_CASE("a card is written and read back whole; a DexDrive file is read past its header; a short file is refused") {

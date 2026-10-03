@@ -75,6 +75,12 @@ struct ThrowingExtension : FakeExtension {
 // the plugins' two C functions, as the fake loader hands them out
 const char *goodAbi() { return AB_SDK_STAMP; }
 const char *otherAbi() { return "sdk=0;cxx=gcc-6;cxx11abi=1;target=psc"; }
+// our own stamp but the ABI before ours: an extension built against the previous SDK with this very compiler
+const char *previousAbi() {
+    static const string ours = AB_SDK_STAMP;
+    static const string previous = "sdk=" + to_string(AB_SDK_ABI - 1) + ours.substr(ours.find(';'));
+    return previous.c_str();
+}
 Extension *createFake(ExtensionHost &host) { return new FakeExtension(host); }
 Extension *createThrowing(ExtensionHost &host) { return new ThrowingExtension(host); }
 Extension *createEntry(ExtensionHost &host) { return new EntryExtension(host); }
@@ -185,6 +191,15 @@ TEST_CASE("ExtensionRuntime refuses a plugin built for another SDK, and says so 
     CHECK(rt->run("old", true) == ExtensionRuntime::Refusal::WrongAbi);
     CHECK_FALSE(has("old:create")); // nothing of it was called but the stamp
     CHECK(t.catalog.find("old")->loadProblem == "built for a different AutoBleem");
+}
+
+TEST_CASE("ExtensionRuntime refuses a plugin built for the previous SDK ABI with the same compiler and target") {
+    Tree t;
+    t.add("stale", "", {previousAbi, createFake});
+    auto rt = t.runtime();
+    CHECK(rt->run("stale", true) == ExtensionRuntime::Refusal::WrongAbi);
+    CHECK_FALSE(has("stale:create"));
+    CHECK(t.catalog.find("stale")->loadProblem == "built for a different AutoBleem");
 }
 
 TEST_CASE("ExtensionRuntime: a library that will not load, or is not an extension") {
@@ -301,6 +316,7 @@ TEST_CASE("ExtensionRuntime::runProvider runs whichever runnable extension provi
 
 TEST_CASE("the SDK stamp names the ABI, the compiler and the target") {
     string stamp = AB_SDK_STAMP;
+    CHECK(AB_SDK_ABI == 8); // the Downloader keeps a .part on chosen statuses (keepPartOnStatus)
     CHECK(stamp.find("sdk=" + to_string(AB_SDK_ABI) + ";") == 0);
     CHECK(stamp.find(";cxx=") != string::npos);
     CHECK(stamp.find(";target=") != string::npos);

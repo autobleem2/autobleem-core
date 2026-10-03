@@ -80,7 +80,7 @@ string makePackage(TempDir &tmp, const string &version) {
     TarBuilder b;
     b.dir("./Autobleem").dir("./Autobleem/bin").dir("./Autobleem/bin/autobleem");
     b.file("./Autobleem/bin/autobleem/autobleem-gui", "ELF " + version, 0755);
-    b.file("./Autobleem/bin/autobleem/config.ini", "theme=ab2\nlanguage=English\n");
+    b.file("./Autobleem/bin/autobleem/config.ini", "theme=ab2.0.0\nlanguage=English\n");
     b.file("./Autobleem/bin/autobleem/platform/roms_systems.cfg",
            "# the systems\nNintendo - Nintendo Entertainment System\n  \nSega - Mega Drive - Genesis\r\n");
     b.file("./Autobleem/bin/emu/pcsx-ab", "ELF pcsx", 0755);
@@ -94,6 +94,8 @@ string makePackage(TempDir &tmp, const string &version) {
     b.file("./Extensions/store/extension.ini", "[extension]\nName=AutoBleem Store\nVersion=" + version + "\n");
     b.file("./Extensions/store/bin/psc/store.so", "ELF store", 0755);
     b.dir("./Themes")
+        .dir("./Themes/ab2.0.0")
+        .file("./Themes/ab2.0.0/theme.json", "{}")
         .dir("./Themes/ab2")
         .file("./Themes/ab2/theme.json", "{}")
         .dir("./Themes/default")
@@ -283,6 +285,9 @@ TEST_CASE("a fresh install with the default options: the package and the three c
     CHECK(fx.has("Games/!SaveStates"));
     CHECK(fx.has("Games/!MemCards"));
     CHECK(fx.has("System/Logs"));
+    // a fresh install decides nothing about the processors' on/off: with no sequence.ini the launcher's first
+    // boot stores every one of them off, the shipped Unzip included (SDK-11)
+    CHECK_FALSE(fx.has("System/Processors/sequence.ini"));
     CHECK(fx.tmp.readFile("stick/Autobleem/bin/db/coversJ.db") == "sqlite coversJ.db");
     CHECK(fx.has("Autobleem/bin/db/coversU.db"));
     CHECK(fx.has("Autobleem/bin/db/coversP.db"));
@@ -330,6 +335,11 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     fx.tmp.writeFile("stick/Extensions/store/stale.txt", "old");            // the Store, shipped: replaced
     fx.tmp.writeFile("stick/Extensions/mine/extension.ini", "[extension]"); // one the user put there stays
     fx.tmp.writeFile("stick/System/Extensions/store/sources.txt", "https://x/list.tsv\n"); // the Store's own
+    // SDK-11: a processor the user installed, its on/off, and the data folder it keeps for itself
+    fx.tmp.writeFile("stick/System/Processors/mine/processor.ini", "[Processor]\nVersion=1.0\n");
+    fx.tmp.writeFile("stick/System/Processors/mine/bin/psc/mine", "prog");
+    fx.tmp.writeFile("stick/System/Processors/sequence.ini", "[ps1]\nmine\n\n[roms]\n-mine\n");
+    fx.tmp.writeFile("stick/Home/processors/mine/cache.dat", "data");
 
     Fixture next; // a newer package, the same stick
     next.options = fx.options;
@@ -357,6 +367,11 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     CHECK(fx.has("Autobleem/bin/db/coversJ.db"));
     // the scanner processors' folder is made, with its README
     CHECK(fx.tmp.readFile("stick/System/Processors/README.txt").find("scanner processors") != string::npos);
+    // an update never removes a processor the user installed, nor its settings or data (SDK-11)
+    CHECK(fx.tmp.readFile("stick/System/Processors/mine/bin/psc/mine") == "prog");
+    CHECK(fx.has("System/Processors/mine/processor.ini"));
+    CHECK(fx.tmp.readFile("stick/System/Processors/sequence.ini") == "[ps1]\nmine\n\n[roms]\n-mine\n");
+    CHECK(fx.tmp.readFile("stick/Home/processors/mine/cache.dat") == "data");
     // and the extensions', next to the one the user put there (kept)
     CHECK(fx.tmp.readFile("stick/Extensions/README.txt").find("AutoBleem extensions") != string::npos);
     CHECK_FALSE(fx.has("Themes/ab2/stale.png"));
@@ -375,6 +390,70 @@ TEST_CASE("an update replaces what the package ships and keeps the user's files 
     CHECK(fx.has("UpdateRoms/UpdateRoms.exe"));
     CHECK(next.out.said("config.ini kept as it was"));
     CHECK(next.out.said("Updated."));
+}
+
+//******************
+// UIREV-51: the default theme on an update
+//******************
+TEST_CASE("a fresh install lands on the default theme") {
+    Fixture fx;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini").find("Theme=ab2.0.0") != string::npos);
+    CHECK(fx.has("Themes/ab2.0.0/theme.json"));
+}
+
+TEST_CASE("an update that brings the default theme to a stick without it switches the theme once") {
+    Fixture fx;
+    // an older version: its launcher, its config on another theme, no default theme folder
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF v1.9.0");
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/config.ini", "theme=aergb\nlanguage=Polish\n");
+    fx.tmp.writeFile("stick/VERSION", "v1.9.0\n");
+    fx.tmp.writeFile("stick/Themes/ab2/theme.json", "{}");
+    CHECK_FALSE(fx.has("Themes/ab2.0.0"));
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    const string cfg = fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini");
+    CHECK(cfg.find("Theme=ab2.0.0") != string::npos);
+    CHECK(cfg.find("Language=Polish") != string::npos); // the other settings stay
+    CHECK(fx.out.said("theme set to ab2.0.0"));
+    CHECK(fx.has("Themes/ab2.0.0/theme.json"));
+
+    // the next update finds the folder: the user's choice (here back to aergb) is kept
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/config.ini", "theme=aergb\n");
+    Fixture next;
+    next.options = fx.options;
+    next.options.packageFile = makePackage(next.tmp, "v2.0.1");
+    REQUIRE_MESSAGE(InstallerJob::run(next.options, next.site, next.out, []() { return false; }, error), error);
+    CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini").find("Theme=aergb") != string::npos);
+    CHECK_FALSE(next.out.said("theme set to"));
+}
+
+TEST_CASE("an update whose stick already has the default theme folder keeps the user's theme") {
+    Fixture fx;
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF v2.0.0");
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/config.ini", "theme=aergb\n");
+    fx.tmp.writeFile("stick/Themes/ab2.0.0/theme.json", "{mine}");
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini").find("Theme=aergb") != string::npos);
+    CHECK_FALSE(fx.out.said("theme set to"));
+}
+
+TEST_CASE("a package without the default theme folder does not switch the theme") {
+    Fixture fx;
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF v1.9.0");
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/config.ini", "theme=aergb\n");
+    TarBuilder b;
+    b.dir("./Autobleem").dir("./Autobleem/bin").dir("./Autobleem/bin/autobleem");
+    b.file("./Autobleem/bin/autobleem/autobleem-gui", "ELF v2", 0755);
+    b.dir("./Themes").dir("./Themes/ab2").file("./Themes/ab2/theme.json", "{}");
+    b.file("./VERSION", "v2\n");
+    fx.options.packageFile = fx.tmp.at("pkg/other.tar.gz");
+    REQUIRE(b.writeTarGz(fx.options.packageFile));
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini").find("Theme=aergb") != string::npos);
 }
 
 TEST_CASE("RetroArch, its cores, libraries, apps and bundles, then the BIOS files and the samples") {
@@ -572,9 +651,11 @@ TEST_CASE("an AutoBleem 1.0 / NG stick is brought to the new layout before the u
     CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/autobleem-gui") == "ELF v2.0.0-pre0-abc1234");
     {
         const string cfg = fx.tmp.readFile("stick/Autobleem/bin/autobleem/config.ini");
-        CHECK(cfg.find("Theme=aergb") != string::npos);
+        // a 1.0 stick has no default theme folder: the conversion switches the theme to it (UIREV-51)
+        CHECK(cfg.find("Theme=ab2.0.0") != string::npos);
         CHECK(cfg.find("Emulator=pcsx-abnxt") != string::npos);
     }
+    CHECK(fx.out.said("theme set to ab2.0.0"));
     CHECK(fx.out.said("retroarch -> RetroArch/bin"));
 
     // a second run finds the new layout and does not migrate again

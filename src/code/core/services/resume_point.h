@@ -5,6 +5,7 @@
 
 #include "../model/ps_game.h"
 
+#include <ctime>
 #include <string>
 
 //******************
@@ -38,6 +39,9 @@ public:
 
     bool slotIsActive(const PsGame &game, int slot) const;
     std::string pictureForSlot(const PsGame &game, int slot) const;
+    // when the slot's kept state file was written (its mtime), 0 when the slot has none (UIREV-37: the resume-slot
+    // screen's date)
+    time_t timeForSlot(const PsGame &game, int slot) const;
     // the picture for whichever slot the game last stopped in, "" when there is none
     std::string lastPicture(const PsGame &game) const;
 

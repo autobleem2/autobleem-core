@@ -183,7 +183,9 @@ PsGames GameQueryService::apps(AppCategory category) {
         game->publisher = manifest.value("author");
         game->readme_path = folder + sep + manifest.value("readme");
         game->startup = manifest.programInFolder();
-        game->image_path = folder + sep + manifest.value("image");
+        // no Image= key is no art (empty), not the folder itself, which "exists" and drew an empty cover (BUG-36)
+        const string image = manifest.value("image");
+        game->image_path = image.empty() ? "" : folder + sep + image;
         game->base = folder;
         game->kernel = manifest.value("kernel") == "true";
         game->app = true;

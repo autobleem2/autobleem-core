@@ -29,6 +29,7 @@ add_library(ableem_engine ${ABLEEM_LIB_KIND}
         src/engine/environment.cpp
         src/engine/ini_file.cpp
         src/engine/lang.cpp
+        src/engine/ext_trace.cpp
         src/engine/memcard_image.cpp
         src/engine/config_file_editor.cpp
         src/engine/memcard_manager.cpp
@@ -51,6 +52,7 @@ add_library(ableem_engine ${ABLEEM_LIB_KIND}
         src/engine/crc32.cpp
         src/engine/retroarch_scanner.cpp
         src/engine/theme_spec.cpp
+        src/engine/image_pixels.cpp
         src/engine/zip_archive.cpp
         src/engine/tar_archive.cpp
         src/engine/zip_writer.cpp
@@ -77,6 +79,7 @@ target_include_directories(ableem_engine
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/sqlite
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz
         )
 

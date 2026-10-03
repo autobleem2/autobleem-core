@@ -25,14 +25,14 @@
 // the same pad can be notified again - keeps a reading bouncing around 15% from renotifying every poll
 #define PadBatteryLowResetPercent 25
 
-// GuiSplash::loop(): how long the screen stays black after the window comes up before the splash fades in,
-// milliseconds. A TV takes a moment to lock onto the freshly set HDMI mode at boot - on the Pi 400 the
+// GuiSplash (its in transition's delay): how long the screen stays black after the window comes up before the
+// splash fades in, milliseconds. A TV takes a moment to lock onto the freshly set HDMI mode at boot - on the Pi 400 the
 // whole fade-in/hold went by before the picture appeared - so the splash waits for it (1500 until 2026-09-29,
 // 300 since: the owner found the wait too long).
 #define SplashSettleDuration (300)
-// GuiSplash::loop(): how long the fully-faded-in splash holds before fading back out, milliseconds
+// GuiSplash::prepareFrame(): how long the fully-faded-in splash holds before fading back out, milliseconds
 #define SplashHoldDuration (2 * TicksPerSecond)
-// GuiSplash::loop(): each fade (in, and out), milliseconds - what 10 alpha a frame took at 60 fps
+// GuiSplash's two Fade transitions (in, and out), milliseconds - what 10 alpha a frame took at 60 fps
 #define SplashFadeDuration 425
 // GuiLauncher: how long the launcher takes to fade in from black when it is first shown, milliseconds
 #define LauncherFadeInDuration 300

@@ -6,52 +6,29 @@
 // through onButton() and their hints through extraHints(). Hardware Information (the launcher) and
 // PSC-Bios's opening screen are the two.
 //
+// ab_gui's abgui::FactsPage (docs/ab-gui-plan.md, G3i) as a classic screen (G3z): a page overrides title(),
+// collect() (abgui::FactsSection - sectionsOf() turns SystemInfoService's InfoSection into them), extraHints() and
+// onButton(), and calls refresh() after a sub-screen that may have changed the facts. The rows are the theme's font.
+//
 #pragma once
+
+#include <ab_gui/facts_page.h>
 
 #include "../gui_screen.h"
 #include "../../core/services/system_info.h"
 
-#include <ableem/ui/font.h>
-
-#include <string>
 #include <vector>
 
 //********************
 // GuiFactsPage
 //********************
-class GuiFactsPage : public GuiScreen {
+class GuiFactsPage : public ClassicScreen<abgui::FactsPage> {
 public:
-    using GuiScreen::GuiScreen;
+    explicit GuiFactsPage(ableem::GuiBase &_gui) : ClassicScreen<abgui::FactsPage>(_gui) {}
 
+    // the theme's font, from the top, the rows read
     void init() override;
-    void render() override;
-    void loop() override;
 
-    unsigned int refreshInterval = 1000; // ms between re-reads of the sections
-
-protected:
-    virtual std::string title() = 0;
-    virtual std::vector<InfoSection> collect() = 0; // the sections, fresh
-    // "|@Select| WiFi settings   |@S| ..." - the page's own hints, before Back and the page counter
-    virtual std::string extraHints() { return ""; }
-    // a button the page's own: true when taken (Circle is the page's, when not taken here)
-    virtual bool onButton(ableem::Button /*button*/) { return false; }
-
-    void refresh(); // rebuild the rows from collect() - also after a sub-screen that may have changed them
-
-private:
-    // one drawn line: a section heading, or a label and its value
-    struct Line {
-        bool heading = false;
-        std::string label;
-        std::string value;
-    };
-    std::vector<Line> lines;
-    int firstVisible = 0; // index into lines of the top row on the screen
-    int rowsThatFit = 1;  // rows the panel holds at the font's height, from the last render()
-    unsigned int lastRefresh = 0;
-    ableem::Font font;
-
-    void scrollBy(int rows);     // clamped to the list
-    int maxFirstVisible() const; // the last top row that still fills the panel
+    // SystemInfoService's sections as the page reads them
+    static std::vector<abgui::FactsSection> sectionsOf(const std::vector<InfoSection> &infos);
 };

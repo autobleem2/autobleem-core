@@ -3,38 +3,24 @@
 // info box are. Longer than the panel, it scrolls: Up/Down a line, L2/R2 a page. Circle (or Escape) goes
 // back; the caller sets `title` and `lines` and calls show().
 //
+// ab_gui's abgui::TextPage (docs/ab-gui-plan.md, G3h) as a classic screen (G3z): `title`, `lines`, `centred`,
+// `splitItem`; the lines draw in the classic theme's text colour.
+//
 #pragma once
 
-#include "../gui_screen.h"
+#include <ab_gui/text_page.h>
 
-#include <string>
-#include <vector>
+#include "../gui_screen.h"
 
 //********************
 // GuiTextPage
 //********************
-class GuiTextPage : public GuiScreen {
+class GuiTextPage : public ClassicScreen<abgui::TextPage> {
 public:
-    using GuiScreen::GuiScreen;
+    explicit GuiTextPage(ableem::GuiBase &_gui) : ClassicScreen<abgui::TextPage>(_gui) {}
 
-    void render() override;
-    void loop() override;
-
-    std::string title;              // the header
-    std::vector<std::string> lines; // one row each, left aligned, wrapped to the panel; "" is a blank row
-    bool centred = false;           // centre every line instead
-
-    // how a line is laid out: its leading spaces indent all of it, and a numbered item's marker ("1. ") hangs
-    // in front of the text, whose wrapped rows start under the text's first letter
-    struct Item {
-        size_t indent = 0;  // leading spaces
-        std::string marker; // "12. ", "" when the line is not a numbered item
-        std::string text;   // the rest
-    };
-    static Item splitItem(const std::string &line);
-
-private:
-    int firstLine = 0;     // the first line shown
-    int lastLineShown = 0; // one past the last line render() fitted in
-    int rowsThatFit = 1;   // rows of the font in the content rect - a page
+    // shown again, the page starts from its first line
+    void init() override { firstLine_ = 0; }
+    // the lines' colour: the classic theme's text colour, as it is when the frame is drawn
+    bool prepareFrame() override;
 };

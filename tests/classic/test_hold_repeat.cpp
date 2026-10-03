@@ -78,3 +78,14 @@ TEST_CASE("HoldRepeat copes with the tick counter wrapping") {
     CHECK(hold.due(nearEnd + 100) == 0);
     CHECK(hold.due(nearEnd + 350) == 1); // wrapped past 0
 }
+
+TEST_CASE("every screen's held key uses the one shared pair") {
+    // copies: a static const member handed to CHECK by reference would need a definition
+    const uint32_t delay = HoldRepeat::RepeatDelayMs, interval = HoldRepeat::RepeatIntervalMs;
+    const uint32_t fastAfter = HoldRepeat::RepeatFastAfterMs, fastInterval = HoldRepeat::RepeatFastIntervalMs;
+    const HoldRepeat::Timing rows = HoldRepeat::rows();
+    CHECK(rows.delay == delay);
+    CHECK(rows.interval == interval);
+    CHECK(rows.fastAfter == fastAfter);
+    CHECK(rows.fastInterval == fastInterval);
+}

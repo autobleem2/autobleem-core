@@ -77,10 +77,86 @@ int PadBatteryService::percentFromCapacityLevel(const string &level) {
 }
 
 //*******************************
+// PadBatteryService::parseFakeSpec / fakeBatteries
+//*******************************
+vector<int> PadBatteryService::parseFakeSpec(const string &spec) {
+    vector<int> percents;
+    size_t start = 0;
+    while (start <= spec.size() && percents.size() < MaxFakePads) {
+        size_t comma = spec.find(',', start);
+        string token = Strings::trim(spec.substr(start, comma == string::npos ? string::npos : comma - start));
+        char *end = nullptr;
+        long value = strtol(token.c_str(), &end, 10);
+        if (!token.empty() && end != token.c_str() && *end == '\0')
+            percents.push_back(static_cast<int>(max(0L, min(100L, value))));
+        if (comma == string::npos)
+            break;
+        start = comma + 1;
+    }
+    return percents;
+}
+
+vector<PadBatteryInfo> PadBatteryService::fakeBatteries(const string &spec) {
+    vector<PadBatteryInfo> out;
+    for (int percent : parseFakeSpec(spec)) {
+        PadBatteryInfo info;
+        const string n = to_string(out.size() + 1);
+        info.address = "00:00:00:00:00:0" + n;
+        info.sysfsName = "fake_battery_" + n;
+        info.percent = percent;
+        info.status = "Discharging";
+        out.push_back(info);
+    }
+    return out;
+}
+
+//*******************************
+// PadBatteryCharge::rect
+//*******************************
+constexpr int PadBatteryCharge::NubWidth;
+constexpr int PadBatteryCharge::NubHeight;
+constexpr int PadBatteryCharge::Inset;
+constexpr int PadBatteryCharge::BodyWidth;
+constexpr int PadBatteryCharge::BodyHeight;
+
+PadBatteryCharge PadBatteryCharge::rect(int glyphX, int glyphY, int glyphWidth, int glyphHeight, int percent) {
+    const int bodyWidth = glyphWidth - NubWidth;
+    const int share = min(100, max(0, percent));
+    PadBatteryCharge charge;
+    charge.x = glyphX + Inset;
+    charge.y = glyphY + Inset;
+    charge.w = max(1, (bodyWidth - 2 * Inset) * share / 100);
+    charge.h = glyphHeight - 2 * Inset;
+    return charge;
+}
+
+//*******************************
+// PadBatteryFill::accentOrWhite
+//*******************************
+PadBatteryFill PadBatteryFill::accentOrWhite(bool accentSet, int accentR, int accentG, int accentB) {
+    PadBatteryFill fill; // white
+    if (accentSet) {
+        fill.r = accentR;
+        fill.g = accentG;
+        fill.b = accentB;
+    }
+    return fill;
+}
+
+//*******************************
 // PadBatteryService::list
 //*******************************
 vector<PadBatteryInfo> PadBatteryService::list() const {
     vector<PadBatteryInfo> out;
+#ifdef AB_DEBUG_HOST
+    // AB_FAKE_PAD_BATTERY=<percent>[,<percent>]: a dev host has no wireless pad - this fakes them (never read on
+    // a console, a Pi or a PC stick)
+    if (const char *fake = getenv("AB_FAKE_PAD_BATTERY")) {
+        out = fakeBatteries(fake);
+        if (!out.empty())
+            return out;
+    }
+#endif
     if (root_.empty() || !DirEntry::exists(root_))
         return out;
 

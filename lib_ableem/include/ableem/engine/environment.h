@@ -97,7 +97,7 @@ struct Environment {
     static std::string getPathToMemcardTemplateDir(); // working:/memcard - the blank card1.mcd/card2.mcd
     static std::string getPathToLangDir();            // working:/lang - the <Language>.txt translation files
     static std::string getPathToFontsDir();           // working:/fonts - the shipped fonts (the launcher's
-                                                      // Open Sans pair, Noto Sans SC for Chinese)
+                                                      // Red Hat Text pair, Open Sans, Noto Sans SC for Chinese)
 
     static std::string getPathToThemesDir();
     static std::string getPathToCoversDBDir();

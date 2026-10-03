@@ -7,6 +7,7 @@
 #include "ableem/engine/zip_archive.h"
 #include "ableem/engine/filesystem.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <iostream>
 #include <miniz.h>
@@ -64,7 +65,11 @@ struct Reader {
         if (!mz_zip_reader_file_stat(&zip, i, &st))
             return false;
         entry.name = st.m_filename;
-        entry.isDir = mz_zip_reader_is_file_a_directory(&zip, i) != 0;
+        // zips made by Windows PowerShell 5.1 (Compress-Archive) name the entries "folder\file": a backslash
+        // is the separator there, as it is for every Windows unzip
+        replace(entry.name.begin(), entry.name.end(), '\\', '/');
+        entry.isDir =
+            mz_zip_reader_is_file_a_directory(&zip, i) != 0 || (!entry.name.empty() && entry.name.back() == '/');
         if (entry.isDir && (entry.name.empty() || entry.name.back() != '/'))
             entry.name += '/';
         entry.crc = st.m_crc32;
@@ -91,7 +96,29 @@ size_t writeChunk(void *opaque, mz_uint64 offset, const void *buffer, size_t siz
     return written;
 }
 
+// the same callback for verify(): the bytes go nowhere, miniz still checks the CRC at the end
+size_t discardChunk(void *, mz_uint64, const void *, size_t size) {
+    return size;
+}
+
 } // namespace
+
+//*******************************
+// ZipArchive::verify
+//*******************************
+bool ZipArchive::verify(const string &zipPath) {
+    Reader reader(zipPath);
+    if (!reader.open)
+        return false;
+    for (unsigned i = 0; i < reader.count(); i++) {
+        ZipEntry entry;
+        if (!reader.stat(i, entry) || !isSafeName(entry.name))
+            return false;
+        if (!entry.isDir && !mz_zip_reader_extract_to_callback(&reader.zip, i, discardChunk, nullptr, 0))
+            return false;
+    }
+    return true;
+}
 
 //*******************************
 // ZipArchive::isSafeName

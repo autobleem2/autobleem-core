@@ -148,7 +148,7 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   The app's `ThemeConverter` (`core/services/theme_converter.*`) is the only writer besides tests.
 - **`ZipArchive`** (`engine/zip_archive.h`) - `list/extract` of a .zip over vendored miniz (`third_party/miniz/`,
   built with `MINIZ_NO_TIME`). Entry names are checked before anything is written: no
-  `..`, no absolute paths, no backslashes. Themes dropped as zips are its only caller. **`ZipWriter`**
+  `..`, no absolute paths; a backslash in a name is a separator (zips from Windows PowerShell 5.1 use it). Themes dropped as zips are its only caller. **`ZipWriter`**
   (`engine/zip_writer.h`, 2026-09-18) is the write side: `open/addFile(path, name)/addBytes/close`, files
   streamed through miniz's read callback with 64-bit offsets, so a partition image of any size goes in
   without being read into memory - for abflashkit's `LBOOT.EPB`. The entry size is given up front on
@@ -172,7 +172,13 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   output pixels (`toOutput()`, edges rounded so neighbours tile; identity at 1). `Texture::createTarget`
   allocates output pixels and carries `pixelScale()`, which `copy()` applies to a source rect, so a target is
   addressed like the screen; `Font::load` loads the face `scale` times bigger, draws in output pixels and
-  measures in logical ones. Nothing in the app knows. `Gui::outputScale()` is the policy: a Pi on a >= 1080p
+  measures in logical ones. Nothing in the app knows. **High-resolution theme images** (ab_gui G4f): above scale 1
+  a theme image's `<stem>@2x<ext>` (exactly twice the pixels) is loaded instead of the 1x one when it is next to it
+  (`ableem::themeImageFile` in `engine/theme_spec.h` picks, `Texture::loadFile(renderer, path, pixelScale)` loads it
+  with pixel scale 2, so `size()` is logical and `copy()` scales a source rect like a target's; `ThemeAssets::
+  loadImage` is the one call the app makes). At scale 1 nothing is looked up. The 1x file stays required, and
+  whatever measures a picture's pixels (`opaqueBounds`, `outlineOf`) reads the 1x file. The audit of every reader is
+  the plan's G4f row; `tests/data/hires-test-theme/` is a theme whose 1x and @2x images differ in colour. `Gui::outputScale()` is the policy: a Pi on a >= 1080p
   display gets 1.5 (`Platform::desktopDisplaySize()`), a dev host reads `AB_OUTPUT_SCALE`, the console is 1.
   The Pi installer boots in 1920x1080 by default now (`--hdmi-mode`), the plymouth script scales the logo up.
 - **MSAA** (2026-09-18): `GuiBase(..., multisampleSamples)` asks for a multisampled GL context before the
@@ -200,7 +206,8 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   column, the columns spread perspective-correctly with each side's height as its depth. Nothing newer than
   SDL 2.0.4 (`SDL_RenderGeometry` is 2.0.18, which the console's own `autobleem_sdl` now is since 2026-09-29 -
   was 2.0.14; the carousel still targets 2.0.4 unguarded).
-- **`Texture`** - shared handle (copy freely) with `loadFile/loadMemory/createTarget/createStreaming`, plus
+- **`Texture`** - shared handle (copy freely) with `loadFile/loadMemory/createTarget/createStreaming` (and
+  `loadFile(renderer, path, pixelScale)` for a high-resolution image - see "Output scale"), plus
   `PixelLock` (RAII `lock()`) for per-pixel `get/set` - replaces the old manual `SDL_LockTexture` +
   `SDL_AllocFormat`/`SDL_MapRGBA` dance (see `engine/cardedit.cpp`, the memory card icon renderer).
 - **`Font`** - shared handle over SDL_FontCache: `textSize/width/lineHeight/draw/drawAlign/drawColor`. The
@@ -240,6 +247,334 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   (libchdr is linked by `ableem_engine`); `lib_ableem/examples/demo.cpp` (`ableem_demo` target) is a
   from-scratch smoke test of the ui library alone - texture + font + sound + input, no AutoBleem code involved.
 
+## ab_gui (the AutoBleem User Interface Library, `docs/ab-gui-plan.md`)
+
+`ab_gui/` (namespace `abgui`, headers `ab_gui/include/ab_gui/` included as `<ab_gui/...>`, CMake target `ab_gui`,
+built with `AB_CORE_UI`) links `ableem` only: no AutoBleem code and **no SDL** (no SDL header, call or type - what it
+needs that the `ableem` API lacks goes into lib_ableem first). `ab_classic` links it; `ab_add_extension` passes its
+include path to the extensions.
+- **`abgui::Style`** (`style.h`) - the look as data (the colour roles, the metrics as fields with today's values as
+  defaults, `Default*` constants) and its primitives (`dim/sheet/rule/header/selection/disabled/label/scrollMarker/
+  footer/button(s)/buttonWidth/buttonsWidth/outlineOf`, `parseHints`; since G2c also `box/plate/key/field/caret/progress/
+  spinner/tab/vrule` with `Tone` (a colour role + an alpha, `Style::OwnAlpha`/`StyleAlpha` for "the colour's own" /
+  "the style's metric") and `KeyState` - the keyboard, busy spinner and bar, About, splash, text back rect, the detail
+  pane, the Store and PSC-Bios draw through them). `Style::fromColors(ColorRoles)` resolves the
+  roles from a plain block - AutoBleem's `LauncherTheme` never reaches ab_gui.
+- **`abgui::Context`** (`context.h`) - what the drawing needs: the `Renderer`, and as providers asked at draw time
+  (never cached - the display release frees fonts and textures) the fonts by `FontRole` (Title/Row/RowSmall/Small/
+  Classic), the button glyphs and their outlines, the text drawer and measurer, the translator and the current
+  `Style`. Since G3a also the `Input` and `Platform` (the three-argument constructor; `hasInput()`/`input()`),
+  `ticks()`/`delay()` (a settable `clock` wins over the platform's ticks) and `play(UiSound)` over a `soundPlayer`
+  (Cursor, Cancel, HomeUp, HomeDown, Resume) - what the widgets moving into ab_gui reach instead of `gui->`/`app.`;
+  since G3b the `backdropDrawer` (`drawBackdrop()`) and the `panelProvider` (`panelRect()`, the full classic panel);
+  new members are appended at the end. `Gui` owns AutoBleem's (`Gui::uiContext()`, wired in
+  `Gui::wireUiContext()` to `ThemeAssets`, `TextRenderer`, `_()`, the theme, `AppAudio`'s five sounds, the theme's
+  background and its menu panel down to the status line's foot). The G3 sub-steps and their ABI rule are in
+  `docs/ab-gui-plan.md` ("G3 sub-steps").
+- **`abgui::Panel`** (`panel.h`, G3b) - the classic panel as a rect + a `Style`: `Panel::full(ctx)`,
+  `Panel::compact(ctx, rows, font)` (800 wide, centred), `content()`, `footer()`, `rowsThatFit`, and the drawing
+  (`sheet` = dim + sheet, `header`, `footer(ctx, line)`, `scrollMarkers`). `Gui::classicPanel/classicContent/
+  classicFooter/classicRowsThatFit/setCompactPanel/renderTextBar/renderHeader/renderStatus/renderScrollMarkers` and
+  `renderBackground` forward to it and the Context; the compact panel is the Context's (G3m; `Gui`'s own copy went in
+  G3z). Tests: `tests/gui/test_ab_gui_panel.cpp` (the numbers against the old `Gui` formulas).
+- **`abgui::ScreenStack`** (`screen_stack.h`, G3c) - screens draw, the stack presents: `frame(draw)` = clear (opaque black, unless `frame(colour, draw)`; never the
+  colour a last drawing left set - BUG-31), the drawing, present; `frame(colour, draw)` sets the draw colour first. `Gui` owns it
+  and hands it to its Context (`uiContext().stack()`). Every screen's `render()` is `abgui::Screen::render()` (since
+  G3z: `prepareFrame()`, then `stack().frame(draw)`), and `Gui`'s own frames (busy, `drawText`, the splash picture,
+  the resume's black frame) go through it too - **a screen never calls `clear()`/`present()` itself**. A frame started inside another's drawing is presented at once as a frame of its own. The launcher links
+  ab_gui `--whole-archive` since then (header templates call it). Tests: `tests/gui/test_ab_gui_screen_stack.cpp`.
+- **Screen transitions** (`screen_transition.h`, UIREV-48; the plan's 7a, "Built") - a screen declares its in and out
+  (`Screen::declareTransitions(ScreenTransitions(...))` before show(), usually in its constructor; none = CrossFade;
+  the out one = the in one backwards): `None`, `Fade` (through black), `CrossFade`, `Slide` from an edge (`drop()` =
+  from the top), `Pop`. The stack (`attach(input)` - Gui does it) hears every `GuiScreen::show()` open and close
+  (`ableem::GuiScreenObserver`), draws the old picture into a render target, the new screen's frames into a second one
+  while it runs (`ScreenStack::screenFrame`, what `Screen::render()` calls) and composes the two - no read-back. One
+  non-ambient tween (`TransitionPlayer`): started by the new picture's first frame (its time counted from that frame's
+  present), DebugDriver busy while it runs, a press finishes it (Input's press observer), any other frame (busy, Gui's own) ends it, `Input`'s frame probe makes
+  every pass a frame meanwhile. `setAnimations(false)` (config.ini `animations`, Options -> Interface -> "Animations",
+  set in `Gui::loadAssets`) = instant; `setStartTransition` (after the splash: the launcher drops in); `bringsIn(screen)`;
+  `releaseTargets()` on the display's release. Tests: `tests/gui/test_ab_gui_screen_transitions.cpp`.
+- **`abgui::Tween` / `Timeline` / `Tweens`** (`tween.h`, G5o1; the plan's 7b) - the one timing base for element
+  animations. A `Tween` drives a caller's `float&` from/to over a duration with a delay and an `Easing` (a plain
+  `float(*)(float)`: `ease::outCubic` = `core/model/timing.h`'s `easeOutCubic` formula for formula (the default),
+  `linear`, `inCubic`, `inOutCubic`, `outBack` (~10% overshoot), `pulse` = `pulseWave` over one period), `loop()`,
+  `yoyo()` (the way back is the curve run backwards, ends at `from`), `ambient()`, `onEnd(cb)`; its values are the pure
+  `valueAt(elapsed)` (`from` before the delay, exactly the curve's end - `to`, `from` for a yoyo or a pulse - at the end; nothing is written before
+  the delay). A `Timeline` is `sequence()`/`parallel()` of tweens, timelines and `wait(ms)`s with its own delay and end
+  callback. `Tweens` runs them: **one per program, owned by the `ScreenStack`** (`ctx.stack().tweens()`, an appended
+  `unique_ptr` member), clocked by the Context's `ticks()` (`Context::setStack` binds it; a settable `clock` wins) and
+  **advanced before every outermost `ScreenStack::frame`** (outside the frame, so an end callback may open a screen);
+  `start()` returns a `TweenId` (`startAt(startedAt, timeline, owner)` starts one as if at a moment already gone - the
+  carousel's held-stick step following on exactly from the last, G5o5), `cancel(id)` stops where it is (no write, no callback), `finish(id)` jumps to the end
+  (end values, callbacks in end order; a loop is dropped), `finishNonAmbient()` (a press during a transition). A run
+  holding a non-ambient, non-loop tween is `busy()` - **the DebugDriver's `busy` counts it** (one `setBusy` step for
+  the whole set) - and `frameNeed()` is Active then, Ambient with only ambient runs/loops, else Idle;
+  `applyFrameNeed(input)` raises the Input's need, never lowers it (a screen calls it after setting its own).
+  **Lifetime**: a tween on a screen's float is started for a `TweenOwner` the screen holds next to it - when the owner
+  dies or `cancel()`s, its tweens never write or call back again (a weak reference to the owner's token, checked
+  before every write and callback). Callers so far: the launcher's ambient motion (G5o2, `ambient.h`) and, since G5o4, the notification bubble's two slides and the launcher's fade-in (`transitions.h`: `slideClock`/`bubbleProgress`, `fadeInClock`/`fadeInAlpha` - non-ambient, so the DebugDriver is busy during them, but never during a bubble's hold, which is a timestamp, not a tween); G5o3/G5o5 move the rest. No `AB_SDK_ABI` bump: new
+  classes, `ScreenStack` appended (`busy_` keeps its offset), `Context`'s layout untouched. Tests:
+  `tests/gui/test_ab_gui_tween.cpp`.
+- **`abgui::Action` / `abgui::ActionMap`** (`actions.h`, G3f) - what the player wants, not which button: `Confirm`,
+  `Back`, `Option`, `Extra`, `Menu`, `View`, `PrevTab`/`NextTab`, `PageUp`/`PageDown`, `Up/Down/Left/Right`,
+  `First`/`Last`. `ActionMap` turns a pad button (`fromButton`), a key (`fromKey`) or an `ableem::Event`
+  (`fromEvent` -> action + pressed/released) into one. The default is today's: the pad (Cross Confirm, Circle Back,
+  Triangle Option, Square Extra, Start Menu, Select View, L1/R1 PrevTab/NextTab, L2/R2 PageUp/PageDown, the d-pad)
+  and the keyboard as `ableem::KeyboardMap` maps it (Enter, Backspace/Esc, Tab, F1/F2, PgUp/PgDn, Home/End, arrows,
+  Space). First/Last have no default button (L1/R1 are the tabs' or the list's ends - the screen decides); `bind`
+  gives them one. `setSwapConfirmBack(true)` exchanges Confirm and Back on the pad's buttons only (default off) - a
+  pad event the keyboard-as-pad made from a key (`ableem::Event::fromKey`, which `Input` sets since G3z) keeps the
+  key's meaning. The program's one map is the Context's `actions` (G3g); an `ActionEvent` carries the `event` it came
+  from.
+  `abgui::HoldRepeat`/`DpadHold` (`hold_repeat.h`) are the moved shared
+  hold-repeat pace; `gui/hold_repeat.h` keeps the global names as aliases. Tests: `tests/gui/test_ab_gui_actions.cpp`.
+- **`abgui::Screen`** (`screen.h`, G3g) - the base of ab_gui's screens, `: public ableem::GuiScreen`, holding a
+  `Context &ctx`: `draw()` pure, `render()` final (`ctx.stack().frame(draw)`), `loop()` = the old loop with every
+  event through `handle()`: a mapped press/release to `virtual onAction(const ActionEvent &)`, anything else to
+  `virtual onUnmapped(const Event &)`. The defaults are **the adapter under the old hooks** (`legacyAction`): a pad
+  button reaches the hook of the button its action belongs to (`classicButton`: Confirm Cross ... PageDown R2, First
+  L1, Last R1 - the button's own with the default map), the d-pad `dispatchDpad()` (the live state, the old
+  priority), a key its own key hook (Enter `doEnter`, whatever its action), text `doTextInput`. The switches live once,
+  in `ableem::GuiScreen`'s new non-virtual `dispatchEvent/dispatchDpad/dispatchButton/dispatchKey`, which its own
+  `loop()` calls too. Since G3z `render()` first calls `virtual bool prepareFrame()` - what a screen does before its
+  frame, outside it (a refresh when due, `endBusy()`, a pad read), false = no frame this time (the screen closed in
+  it) - and clears to `frameColor` when that is set (the launcher and the splash: transparent black). **Every classic
+  screen is one** (G3z, below). Tests: `tests/gui/test_ab_gui_screen.cpp` (the old loop and the new one, hook for
+  hook, over the same events; `prepareFrame`/`frameColor` on a logging display).
+- **The classic screens on ab_gui** (G3z, `AB_SDK_ABI` 7): `gui/gui_screen.h`'s `ClassicScreen<Widget>` is any
+  ab_gui screen on `Gui::uiContext()` plus the members every classic screen file expects (`gui` - the
+  `shared_ptr<Gui>` -, `renderer`, `app`); `GuiScreen` is `ClassicScreen<abgui::Screen>`, so every classic screen
+  reads its events through the ActionMap (the default `onAction()` reaches the old hooks exactly as before) and has
+  `draw()` only - no screen overrides `render()` any more (the launcher's and the extensions' screens were
+  converted: `draw()` override, the pre-frame work in `prepareFrame()`). The widgets are the ab_gui ones under their
+  old names (the DebugDriver's screen name is the most derived class's, so it stays): `GuiConfirm` =
+  `ClassicScreen<abgui::Confirm>`, `GuiTextPage` (`<abgui::TextPage>`; the lines in the classic theme's text colour,
+  from the top at every show), `GuiKeyboard` (`<abgui::Keyboard>`; its static `pageName()` keeps the `_()` literals
+  for the language tools), `GuiActionMenu` (`<abgui::ActionMenu>`; `init()` = `open()`), `GuiFactsPage`
+  (`<abgui::FactsPage>`; the theme's font, `open()`; a page's `collect()` returns `abgui::FactsSection`s -
+  `GuiFactsPage::sectionsOf()` turns `SystemInfoService`'s `InfoSection`s into them). Their forwarding .cpp files
+  went. `GuiMenuBase` keeps its members and its per-call `GuiMenuBaseList` forwarding (header-only: an extension
+  compiles it in, so it can change without an ABI bump); its `render()` went, `draw()` is the override. `Gui` lost
+  its dead busy members and its copy of the compact panel (`classicPanel()` asks the Context). An extension built for
+  ABI 6 is refused by the stamp (`test_extension_runtime`).
+- **`abgui::TextPage`** (`text_page.h`, G3h) - the first widget on `abgui::Screen` and the pattern for the rest: a
+  titled page of `lines` (wrapped to the panel at the rows' inset, a numbered item hangs - `splitItem`; a blank or, with
+  `centred`, every line is one row through the Context's `lineDrawer`), scrolling a line (d-pad, arrows) or a page
+  (L2/R2, Page Up/Down), Back (Circle, Escape) closes. `draw()` is the old drawing on `Panel::full(ctx)` and the
+  Context (`drawText`, `textWidth`, `font(Classic)`, `translate`, `play(UiSound)`); `loop()` is the old page's loop
+  (frame need Idle, a frame when due, then each event to `handle()`); `onAction` reads the pad by its action (Back,
+  PageUp, PageDown - the d-pad by its live state, keys as keys), `onUnmapped` the keys nobody bound. The pure parts
+  are static/free and tested: `abgui::wrapText(text, width, measure)` (`TextRenderer::wrapLines` forwards to it),
+  `TextPage::splitItem/canScroll/scrolled`. The line colour is `TextPage::color` (the classic theme's text colour,
+  set by `GuiTextPage`; unset: the style's text). `GuiTextPage` is it as a classic screen since G3z (until then it
+  forwarded to a fresh one per frame). Context gained `lineDrawer`/`drawLine` (appended). Tests:
+  `tests/gui/test_ab_gui_text_page.cpp` (events on a headless GuiBase, skips without a renderer), `tests/classic/
+  test_text_page.cpp` (the old class's `splitItem`).
+- **`abgui::FactsPage`** (`facts_page.h`, G3i) - a read-only page of sections (a heading band each) and label/value
+  rows, the values in a column 35 % across (a long one cut with "..." - `abgui::elideText`, which
+  `TextRenderer::elide` forwards to), as many rows as the panel holds, scrolling a row at a time with markers,
+  re-read every `refreshInterval`. The hooks are protected virtuals as on the old page: `title()`, `collect()`
+  (`FactsSection`s), `extraHints()`, `onButton()`. The `TextPage` pattern: `draw()` on `Panel::full(ctx)` and the
+  Context, its own `loop()` (refresh when due, a frame when due, events to `handle()`), `onAction` (the d-pad by its
+  live state, up first; PrevTab/NextTab the first/last row, PageUp/PageDown a page, then the page's `onButton()`,
+  then Back closes), `onUnmapped` (a button with no action still reaches `onButton()`). Pure and tested: `linesOf`,
+  `maxFirstVisible`, `scrolled`, `refreshDue`, `counter`, `valueColumn`. `GuiFactsPage` is it as a classic screen
+  since G3z (PSC-Bios's page and Hardware Information derive from it). Tests: `tests/gui/test_ab_gui_facts_page.cpp`.
+- **`abgui::Confirm`** (`confirm.h`, G3j) - a yes/no question in a compact 800 px dialog over the backdrop: the
+  header (`title`, else "Please confirm"), `label` wrapped to the panel, the two answers as footer hints
+  (`confirmLabel`/`cancelLabel`, else "Confirm"/"Cancel"), `result`. The `TextPage` pattern: `draw()` on a
+  `Panel` over `Confirm::panelRect` (pure, tested with `textWidth`), its own `loop()` (rest for a press, a frame
+  every 250 ms meanwhile, events to `handle()`), `onAction` (Confirm = yes with the Cursor sound, Back = no with
+  Cancel; the d-pad and other buttons nothing) and `onUnmapped` (Enter yes, Escape no). Context gained
+  `shadowSwitch`/`setTextShadow` (appended; Gui wires it to the text renderer's shadow) for the halo the dialog
+  sets from its style. `GuiConfirm` is it as a classic screen since G3z (the Store constructs it; `GuiKeepDisplay`
+  derives from it and keeps its own countdown loop). Tests: `tests/gui/test_ab_gui_confirm.cpp`.
+- **`abgui::ActionMenu`** (`action_menu.h`, G3k) - a compact 800 px panel of actions: `title` and `subtitle`,
+  rows of a name over a description (`Item{title, description, heading, disabled}` - a heading is a thin band the
+  cursor skips, a disabled item is under the disabled veil with its reason as description, skipped and never
+  picked), scrolling with edge markers, footer hints (`crossLabel`/`circleLabel`, else "Select"/"Back"), `selected`,
+  `wrap`, `background` (a texture drawn under the dimmed panel instead of the backdrop), `result`. The `TextPage`
+  pattern: `draw()` on a `Panel`, pure `selectable`/`rowHeight`/`roomForRows`/`visibleCount`/`scrolledTo`/`moved`,
+  its own `loop()` (frame when due, `DpadHold` repeats, events to `handle()`), `onAction` (Confirm picks with the
+  Cursor sound, Back leaves with Cancel, the d-pad by its live state; keys do nothing). `GuiActionMenu` is it as a
+  classic screen since G3z (`init()` = `open()`). The launcher's `GuiSystemMenu` (Quick and System menus, the DebugDriver's
+  `items`/`selected`) keeps its own class: its 20/14/15 px fonts and description strip are not `FontRole`s yet.
+  Tests: `tests/gui/test_ab_gui_action_menu.cpp`.
+- **`abgui::Busy`** (`busy.h`, G3l) - the spinner a long job on the main thread shows, reached as
+  `ctx.stack().busy()` (the `ScreenStack` owns it; `Context::setStack` binds it to that Context): `begin(message,
+  redraw)` presents the screen as it is once and captures it as the backdrop, then draws the first busy frame -
+  black, the backdrop, the style's dim, the ring of dots (12, radius 30, a dot every 70 ms) with the message 24 px
+  under it in `FontRole::Row`, and with `setProgress(done, total)` a 400x6 bar 12 px under the message's line;
+  `tick()` draws one when due (40 ms since the last, or at once after `setProgress`); `end()` drops the backdrop and,
+  on the busy -> not busy step only, calls `Input::flushInputEvents()` (the busy rule stays in `Input`) and
+  `DebugDriver::setBusy(false)` (`begin()` set it true on the first begin of a job; a begin inside a job is the same
+  job). `waitScreen(message, topLine)` is the "please wait" picture: the backdrop, the Context's `logoDrawer`
+  (appended in G3l; Gui wires the theme's logo), the spinner under the logo, the top line in `RowSmall`. Every frame
+  goes through the stack, so a tick from inside a screen's drawing is a frame of its own. `Gui::beginBusy/busyTick/
+  setBusyProgress/endBusy/tickBusy/drawText` keep their signatures and forward (Gui's old busy members went in G3z).
+  The ring and message sit on the theme's toast frame (`Style::toast` into `Busy::toastRect`, ToastPad 24 round the widest and lowest of them).
+  Pure and tested: `frameDue`, `spinnerLead`, `spinnerCentre`, `messageTop`, `barRect`, `toastRect`, `barDone`,
+  `waitSpinnerY`. Tests: `tests/gui/test_ab_gui_busy.cpp` (and `tests/classic/test_busy_input.cpp`, unchanged).
+  **The spinner as a theme element** (G5p, `spinner.h`; the plan's decision 13): a theme's own `launcher.spinner:
+  {image, frames, fps}` (`ableem::loadThemeSpinner` - one image of N equal frames side by side, `@2x` next to it, never
+  merged from the default theme; `fps` unset = 24) replaces the ring of dots. `SpinnerStrip` (`assign`/`release`/
+  `anim(renderer)`; `Gui::spinner_`, appended after `icons_` - no ABI bump) loads it on the first ask like `IconSet` (the
+  @2x above output scale 1 at pixel scale 2, `size()` logical), the Context hands it out as `spinnerProvider`/
+  `spinnerAnim()` (appended; an invalid `SpinnerAnim` = no strip), `Style::spinnerStrip(ctx, cx, cy, elapsedMs)` draws
+  frame `spinnerFrameIndex` = `(elapsed * fps / 1000) mod frames` centred on (cx, cy) at its own size (`spinnerFrameRect`,
+  `spinnerDestRect`), and `Style::spinner(ctx, ...)` and `Busy` (elapsed from the job's start; `waitScreen`: the clock)
+  try it before the ring - a theme without one draws today's ring call for call. Test theme: `tests/data/frame-test-theme/
+  spinner/` (`make_test_spinner.py`, 8 frames, orange at 1x / sky blue at @2x). Tests: `tests/gui/test_ab_gui_spinner.cpp`,
+  `tests/core/test_theme_spec.cpp`.
+- **`abgui::ListModel`** (`list_model.h`, G3m part 1) - the selection and paging of a list, pure and header-only:
+  a `View` of references to the caller's own `selected`/`firstVisible`/`lastVisible` plus `maxVisible` and `size`, and
+  inline static templates over a skip predicate: `adjustPageBy`, `computePagePosition`, `landOnSelectable`,
+  `stepDown`/`stepUp` (with the wrap), `pageDown`/`pageUp`, `home`/`end`. `GuiMenuBase` keeps every data member
+  (the screens built on it read and set them) and forwards its `adjustPageBy`/`landOnSelectable`/`computePagePosition` to the
+  model through `modelView()`/`skipper()` (non-virtual, no layout change); the moves go through `abgui::List` since
+  part 2. Tests: `tests/classic/test_menu_base_navigation.cpp`
+  (the real model, plus a brute-force comparison with the frozen old code).
+- **`abgui::List`** (`list.h`, G3m part 2) - the classic list on `abgui::Screen`: a full panel (or a compact one for up to
+  `CompactRows` (8) rows with nothing beside them), the title, the rows of the list's font one under the other, the
+  cursor's band, the scroll markers, the footer; `draw()` is the old `GuiMenuBase::draw` call for call. Its numbers are
+  references - to its own, or to a caller's members in place (`List::Refs`). The rows are its own `rows`
+  (`Row{label, value, heading, disabled}`: the value right-aligned, a `|@Check|`/`|@Uncheck|` label's value the text
+  ON/OFF, a heading's band, a disabled veil) or a subclass's (`size/isEmpty/skip/titleText/statusText/drawRow/rowName/
+  screenName` are virtual). The moves play the classic sounds (`stepDown/Up` Cursor, `pageDown` HomeUp, `pageUp/first/
+  last` HomeDown, `confirm` Cursor, `back` Cancel); `holdRows` is the blocking held d-pad at HoldRepeat's pace until
+  another event is pending (`step()`/`redraw()` virtual); `onAction`/`onUnmapped`: the d-pad by its live state, L1/R1
+  first/last, L2/R2 a page, Confirm/Back, keys as keys. Pure: `rowTop`, `textLeft`, `valueRight`, `band`,
+  `switchState`, `drawSwitch` (G5m: the theme's `switchOn`/`switchOff` icon at the value's right edge when it has both, else the ON/OFF text), `isCompact`; the DebugDriver's `driverItems()`/`driverSelected()` (`publish()` hands them over under
+  `screenName()`). **The compact panel is the Context's** (`setCompactPanel`/`clearCompactPanel`/`currentPanelRect`,
+  appended): its `panelSwitch` is how `Gui` points the text renderer's rows at it (and `Gui::classicPanel()` asks
+  `currentPanelRect()`), and `Gui::setCompactPanel/clearCompactPanel` forward to the Context. `TextRenderer`'s row
+  functions take their numbers from `List`'s geometry. **`GuiMenuBase` is a thin template over it**: every member
+  kept, each function builds a `GuiMenuBaseList` - a `List` over the menu's members whose hooks are the menu's
+  virtuals (`renderLineIndexOnRow` in TextRenderer's row role, `getTitle`/`getStatusLine`, the skip, `doKeyDown`/
+  `doKeyUp`/`render` for a held row) - and forwards; the input stays on the classic hooks. A rebuilt extension bakes
+  `List`'s layout in through that inline class. Tests: `tests/gui/test_ab_gui_list.cpp`.
+- **`abgui::Keyboard`** (`keyboard.h`, G3n) - the on-screen keyboard: pages of letters, symbols and two of accents, a function
+  row (Shift once/lock, the page key, Space, Backspace, Done), a text field with a caret (`label`, `result`, `cancelled`,
+  `displayAsterisksInstead`; `cursorIndex`/`page`/`row`/`column`/`shift` public for a forwarder). The `TextPage` pattern:
+  `draw()` on `Panel::full(ctx)` (keys and field through `Style::key/field/caret`, labels drawn as they are, never parsed
+  for `|@X|` markers), its own `loop()` - **the keyboard-as-pad is off and the raw keyboard on for its duration and both
+  are put back after it, whichever way it ends** (Done, Back, Esc, the window's Quit) - `onAction` (Confirm types the
+  key, Option backspace, Extra space, PrevTab Shift, NextTab the next page, PageUp/PageDown the text cursor, Menu Done,
+  Back cancels; the d-pad by its live state; a button plays the Cursor sound) and `onUnmapped` (typed text, and the USB
+  keyboard's arrows/Home/End/Backspace/Delete/Enter/Esc as keys). Pure and tested: `keyAt`, `pageKeyLabel`, `pageName`,
+  `previousChar/nextChar`, `inserted/backspaced/deletedForward`, `shown/caretIn`, `moved`, `shiftAfter`, `nextPage`.
+  `GuiKeyboard` is it as a classic screen since G3z (the Store and PSC-Bios construct it); its static `pageName` keeps
+  the `_()` literals for the language tools. Tests: `tests/gui/test_ab_gui_keyboard.cpp`.
+- `footer_shorten.h` - the footer's label shortening (`abgui::shortenFooterLabels`).
+- **Frames** (`frame.h`, G4a; the plan's "G4 sub-steps", the artist's side `docs/ab-gui-frames-spec.md`) - a 9-slice PNG a
+  primitive draws instead of its code-drawn box: `FrameSpec` (the 1x/@2x files, `slice` and `bleed` as logical
+  `Insets`, `fill`, `tint` - a Style colour's name, `Style::colorByName`), the pure `framePieces()`/`frameFits()` (the
+  nine source/destination rects; corners shrink in proportion in a box too small for them; an image with no pixel
+  between its cut lines is refused), `drawFrame()`, and `FrameSet` (the specs by name, each image loaded on its first
+  `frame(renderer, name)` - the @2x one above output scale 1, `pickFile` - and dropped by `release()`). The Context
+  hands them out (`frameProvider`/`frame(name)`, appended); `Style::drawFrame(ctx, name, box)` draws one and says
+  whether there was one, and a primitive's **Context** overload asks first: `sheet()` the `panel` frame (the Renderer
+  overloads never draw frames). **Opt-in**: no frame by that name = the old drawing, call for call. **Kept out of
+  `Style`, `ThemeSpec` and `ThemeAssets` on purpose** (their layouts are the SDK's - no ABI bump): `Gui` owns the
+  `FrameSet` (`frames_`, appended after `stack_`), fills it in `loadAssets()` from `ableem::loadThemeFrames(
+  theme().loadedPath())` - the engine's reader of **the theme's own** `launcher.frames` (never merged over `default`),
+  `@2x` found next to the 1x - and releases it in `releaseDisplay()`. `Style::selection(ctx, rect)` draws the `selection` frame (G4c) instead of the band and bar, and `selectionFramed(ctx)`
+  tells the callers to draw it before the row's text (`abgui::List::draw` does; without the frame the band stays over the
+  rows). `Style::label(ctx, rect)` draws the `heading` frame (G4d) in a heading band's box, else the faint band; `TextRenderer::renderLabelBox(ctx, ...)` is the classic screens' way to it. `Style::button(ctx, ...)` (G5d) draws the `chip` frame under a glyph-less key's name (START, L2+R2, ESC, RESET - so every footer, the launcher's hint lines and the keyboard's footer), else the old fill and edge; the width is the same either way. **One chip size** (G5 hints, UIREV-42): 22 px tall, 28 wide at least (`Style::ChipHeight/ChipMinWidth`), every button centred on `y + height / 2`; any `"A+B"` marker is ONE chip (`|@L2+R2|`, `|@Select+Start|`; the paging pairs `|@L1+R1|` and `|@L2+R2|` too - `parseHints` merges the old `|@L1|/|@R1|` spellings); **the d-pad is NOT a combination** (the owner, 2026-10-01): `|@Left+Right|`, `|@Up+Down|` and the `|@Left|/|@Right|` spellings are the arrows separate, each in its own normal-size chip/glyph (`parseHints` splits them, `Style::button/buttonWidth` draw them side by side, 6 px apart); A footer is ALWAYS ONE row (the owner): the window makes room - a compact panel (`Panel::compact(ctx, rows, font, footerLine)`, `Confirm`, `ActionMenu`, `abgui::List`'s, the launcher's set picker and System menu through `Panel::compactWidth(ctx, hints, status)`) is `max(800, Style::footerWidth(...))` wide, at most the canvas less 2 x `margin`, centred; only when even that is too narrow does `Style::footer` drop to the Small font, then `shortenFooterLabels`. `Style::key(ctx, ...)` / `field(ctx, ...)` (G4e) draw the `keySelected`/`keyLit`/`keyFunction`/`key` and `field` frames - a missing state frame falls back to `key` (a selected key then gets today's outline over it), no frame at all runs the old Renderer call; `abgui::Keyboard` goes through them. `Style::footer(ctx, ...)` (G5r8) draws the optional `footer` frame over the footer band instead of the rule (only with `withRule`; the callers - `Panel::footer`, `PanelStyle::footer`, the launcher's, Store's and PSC-Bios's own screens - all go through it; the launcher's `hintBar` is G5e's), `Style::toast(ctx, rect)` (G5f) draws a notification bubble's panel - the `toast` frame, else the `panel` frame (what `sheet()` gave it since G4b), else the code-drawn sheet and edge (no frame = the old call; `NotificationBubble` goes through it, and its bar through `Style::progress(ctx, ...)`), and the scroll markers, the rule under the header and the dim are drawn through their Context overloads everywhere (`scrollMarker/rule/dim(ctx, ...)`, `Busy` included). A test theme with a panel frame (cyan rim at 1x, orange at @2x), a selection frame (magenta / lime), a heading frame (yellow / blue), key (white / grey), keyFunction (lilac / violet), keyLit (cream / brown), keySelected (red / pink) field (green / teal), (G5b) badge (gold / violet), (G5d) chip (mint / maroon) (G5r8) footer (copper / steel blue, 64x62), (G5e) hintBar (salmon / olive), (G5h) tab (indigo / bronze, 48x48, slice 16, no bleed) and (G5f) toast (hot pink / dark teal, 64x64, slice 20, bleed 8) frames. **`Style::tabCell(ctx, cell)`** (G5h) draws the `tab` frame into the set picker's current tab's whole cell, under its icon and label, else the old code - the selection band colour at `bandAlpha` over the cell and a `selectionBar` bar along its bottom (the Renderer overload; the other tabs draw no frame, their icon's alpha is `InactiveAlphas::tab`); the Store's tab underline `Style::tab` stays code-drawn:
+  `tests/data/frame-test-theme/` (`make_test_frame.py` draws them). Tests:
+  `tests/gui/test_ab_gui_frame.cpp`, `tests/core/test_theme_spec.cpp` (the reader). Since G5a `Style::drawFrame(ctx,
+  name, box, alpha)` draws one at an alpha and `drawFirstFrame(ctx, {names}, box)` the first the Context has.
+- **Icons** (`icon.h`, G5a; the plan's "G5 sub-steps", the artist's side `docs/ab-gui-evoui-art-spec.md`, 3.) - fixed images
+  by name drawn at their own size (a d-pad arrow, a meta-row badge, a tab), `FrameSet`'s twin: `IconSpec` (1x/@2x
+  files), `loadIcon()` (the @2x above output scale 1 at pixel scale 2 - `size()` logical; a 1x file with the plain
+  `loadFile` call), `loadIconHalo()` (`Style::outlineOf` of the 1x file), `IconSet` (`assign(specs, halo)`, `icon()`/
+  `halo()` loaded on first ask, `release()`); `pickImageFile()` (`frame.h`) is the one 1x/@2x rule of both sets. The
+  Context hands them out (`iconProvider`/`iconHaloProvider`, `icon(name)`/`iconHalo(name)`, appended). **Unlike frames,
+  icons fall back** (UIREV-30): the engine's `resolveThemeIcons(themeDir, defaultDir, builtIn)` gives per name the
+  theme's own `launcher.icons` entry, else `default`'s, else the program's built-in file; `resolveThemeIconHalo` reads
+  `launcher.iconHalo` (the theme's, else `default`'s, else on - false drops every halo). AutoBleem's built-in table is
+  `ThemeAssets::builtInIcons()` (the `evoimg/` files, `players` = the theme's `launcher.metaPanel`), resolved by
+  `ThemeAssets::iconSpecs()`/`iconHalo()` (statics - no layout change); `Gui::icons_` (appended after `frames_`) is
+  filled in `loadAssets()` and released in `releaseDisplay()`. **G5b**: the launcher's `PsMeta` draws its meta row through the Context (`icon(name)`/`iconHalo(name)` per badge - `internal`/`usb`, `hd`/`sd`,
+  `lock`/`unlock`, `favorite`, `retroarch`, `lightgun`/`lightgun2`, each with its halo, and the `disc`, both without a badge; the `players`
+  icon has no halo yet - G5r2 - and no badge) and the optional `badge` frame, `Style::drawFrame`, behind each badge: the icon's rect grown by 1 px). **G5c**: the set picker's tabs (`tabPlayStation`/`tabRetroArch`/`tabApps`) and the Extensions list's `extension` (a theme's only, no built-in) are the Context's icons too, fetched at draw time. `raCover`/`appCover`/`bigBox` stay the built-in `evoimg/` files on every theme (the carousel's parts - the owner, 2026-09-30; `ThemeAssets::bigBoxFrame` and the cover loads are untouched). The d-pad arrows `ThemeAssets` hands out as glyphs load
+  from the table (the same `evoimg/dpad_*.png` on a theme without the block). The test theme's icons: all 27 names,
+  orange at 1x, sky blue at @2x (`tests/data/frame-test-theme/make_test_icons.py`). Tests: `tests/gui/test_ab_gui_icon.cpp`,
+  `tests/core/test_theme_spec.cpp`.
+- **The launcher logo and the resume picture mask** (G5q, G5s; plan decisions 14, 15) - two single-image elements of the
+  theme's **own** theme.json (never merged over `default`; unset = nothing / a rectangle, call for call), read by
+  `ableem::loadThemeLogo(dir)` (`launcher.logo: {file, x, y, w, h}`, `ThemeLauncherLogo`) and `loadThemeResumeMask(dir)`
+  (`launcher.menuIcons.resumePictureMask`), both kept out of `ThemeSpec`. The 1x file is what is named; the `@2x` next
+  to it comes through `ThemeAssets::loadImage` (G4f). `Gui` (`launcherLogo_`, `launcherLogoRect_`, `resumeMask_`,
+  appended after `icons_`, no ABI bump) loads them in `loadAssets()` and drops them in `releaseDisplay()`;
+  `launcherLogo()`/`launcherLogoRect()` are what the launcher draws (over the background, under the carousel).
+  `Gui::maskedResumePicture(picture)` multiplies the mask's alpha into a screenshot **once**, when it is loaded: the
+  picture is copied unblended into a render target of the picture window (`resumePictureWindow()`, default
+  25,33 68x52) x `PictureMask::ComposeScale` (3), then the mask over it in the new `ableem::BlendMode::Mask` (SDL custom
+  blend: colours kept, alpha = dst alpha x src alpha; SDL before 2.0.6 has none and leaves the rectangle). No mask or
+  no picture returns the picture itself. `core/model/picture_mask.h` is the pure part (`multiplyAlpha`, `composeSize`).
+  The test theme's logo (orange / sky blue) and mask (corners cut 16 px): `tests/data/frame-test-theme/images/`
+  (`make_test_logo_mask.py`). Tests: `tests/core/test_theme_spec.cpp`, `tests/core/test_picture_mask.cpp`.
+- **The disabled veil and the Store's badge** (G5t; plan decision 16) - `Style::disabled`'s black at `disabledAlpha` (150)
+  became a theme role, `launcher.colors.disabled` (`"#rrggbb"`, or `{ "color", "alpha" }`; the theme's own theme.json
+  only, `ableem::readThemeDisabledVeil(path)`/`loadThemeDisabledVeil(dir)` -> `ThemeDisabledVeil`, unset when absent
+  or malformed). **Not a `Style`/`ColorRoles`/`ThemeSpec` member** (their layouts are the SDK's - no `AB_SDK_ABI` bump):
+  `abgui::DisabledVeil` (style.h: `set`, `color`, `alpha`, `drawn()`) is handed out by the Context (`veilProvider`,
+  `disabledVeil()`, appended), `Gui::disabledVeil_` (appended after `spinner_`) fills it in `loadAssets()`. Unset =
+  today's veil and today's text colour, call for call; set, `Style::disabled(ctx, rect)` fills the theme's colour at
+  its alpha and `Style::disabledColor(ctx, normal)` gives the `description` role for a disabled row's text -
+  `abgui::List::drawRow` (label and value), `ActionMenu` (the title) and, in the launcher, the System menu,
+  Extensions, Scanner processors and the game editor (`TextRenderer::RowRole::Disabled`, and
+  `renderDisabledBox(ctx, ...)`, both appended) use them. The **`storeInstalled`** icon is a plain
+  `launcher.icons` name (the Store's "Installed" badge; no built-in file, so the theme's own only). `layout.h` holds
+  two pure rect rules the Store shares with the tests: `trailingBadgeRect(innerRight, rowTop, rowHeight, w, h, inset =
+  BadgeInset 24)` and `centredIn(outer, w, h)` (the letter-jump box). Test theme: a `storeInstalled` icon (a tile with
+  a check cut out; orange 1x, sky blue @2x) and `"colors": { "disabled": { "color": "#7828c8", "alpha": 130 } }` (a
+  purple veil). Tests: `tests/gui/test_ab_gui_layout.cpp`, `tests/core/test_theme_spec.cpp`.
+- **The last Renderer-only calls, the inactive alphas and the plain text** (G5r7, G5r9; the standardisation audit). The
+  Store's spinner and tab underline, the pad wizard's element-row selection and hold bar, the game detail pane's rule
+  and cover plate and the Store's download bar go through the Context overloads (`Style::spinner/tab/selection/
+  progress/vrule/box(ctx, ...)`), so a theme's spinner strip, `selection` frame and roles reach them; no theme = the same
+  calls. The hard-coded inactive alphas (Resume 120, an inactive set-picker tab 120, the notification bubble's bar
+  track 120) are `abgui::InactiveAlphas` (style.h: `resume`, `tab`, `barTrack`, each `Unset` = -1 or 0..255,
+  `orToday(value, today)`), a theme's own `launcher.inactive` block (`ableem::readThemeInactiveAlphas(path)`/
+  `loadThemeInactiveAlphas(dir)` -> `ThemeInactiveAlphas`, every key optional, clamped) - **not a `Style`/`ThemeSpec`
+  member** (SDK layouts, no `AB_SDK_ABI` bump), handed out by the Context (`inactiveProvider`, `inactiveAlphas()`,
+  appended after `veilProvider`), `Gui::inactiveAlphas_` (appended after `disabledVeil_`) filled in `loadAssets()`.
+  `Style::progress(ctx, ...)` with `StyleAlpha` takes the `barTrack` value when the theme has one, else
+  `progressTrackAlpha`. **G5g** (progress frames): the same overload draws the theme's `progressTrack` frame into the
+  whole bar and its `progressFill` frame into `Style::progressFillWidth(...)` of it (not at 0 px), each one falling back
+  on its own to the code-drawn fill; `Busy`'s bar calls this overload now. `Style::progressBox(renderer/ctx, bar,
+  fraction)` is the Software Update prompt's outlined bar (`edge` at 120, the `text` fill 2 px in - `progressBoxFillRect`;
+  the two frames instead, the fill over the bar's whole height). Test theme: `progressTrack` (hot pink / dark green)
+  and `progressFill` (light blue / burnt orange), 16 x 8, slice 4/2 - its frames are fourteen. G5i adds `tile` (teal / plum, 72 x 72, slice 24, bleed 4), `tileSelected` (amber / crimson, same size) and `band` (lime / navy, 64 x 64, slice 24, no bleed) - nineteen then; G5j adds `play` (the Play button) - twenty-one then; G5l adds `plate` (the pad battery plate, brick red / turquoise, 48 x 48, slice 16, bleed 2) - twenty-two now, with `PadBatteryCharge::rect` (`core/services/pad_battery.h`) the inner rect of the `battery` icon the launcher fills the charge into; the launcher draws them (the game menu row, the resume-slot picker) through `Style::drawFrame(ctx, name, box, alpha)`, no core code. A disabled row's text in `description` (G5t's `Style::disabledColor`) was already in every own row
+  loop (System menu, Extensions, Processors, the editor); the Store has no disabled row since G5t. `GuiTextPage`'s lines
+  take the theme's `row` role when its `launcher.colors` sets one (a colour or a name), else the classic text colour as
+  before (the role is unset on `default`/`ab2`). `text_renderer.cpp`'s back plate builds a default `abgui::Style()` only
+  for `box(Tone::Black, 70, Tone::None)`, which reads no style colour - left as it is. Test theme: `"row": "#ffe680"` and
+  `"inactive": { "resume": 40, "tab": 50, "barTrack": 200 }`. Tests: `tests/gui/test_ab_gui_layout.cpp`,
+  `tests/core/test_theme_spec.cpp`.
+- **`abgui::HintBar`** (`hint_bar.h`, G5e) - the layout of the launcher's two hint lines in the theme's
+  `launcher.hintBar`, pure (no drawing, no fonts): `layout(bar, count1, measure1, count2, measure2)` fits each line
+  into its half (`topLine`/`bottomLine`; the whole bar and line 1 only when `oneLineOnly` - under `TwoLineMinHeight`
+  48 px) at the largest of `FontSizes` (22 down to 14) that fits the width less `Inset` (16) each side, then closes
+  the gaps (`WidestGap` 28 down to `TightestGap` 10, 2 px a step), then - line 2 only - drops hints from the right
+  (never the first); the line is centred, labels and the 30 px buttons centred on its height. The caller measures
+  through `HintMeasure` (`buttonsWidth(i)`, `labelWidth(size, i)`, `lineHeight(size)`) and gets `HintLineLayout`s
+  (the font size, the gap, `labelY`/`chipY`, a `HintPlace` - `chipX`/`labelX` - per hint shown). The rules are
+  `GuiLauncher::layoutHints()`' before G5e, rule for rule - its width estimate once the gaps close (4 px a hint per
+  step) included - so the hints stay put. The launcher keeps building the lines and its signature cache, maps a size
+  to its fonts (22 = `FONT_22_MED`, else the medium face at that size) and draws the theme's **`hintBar` frame**
+  (`Style::drawFrame(ctx, "hintBar", bar)`) into the bar in the footer image's place - right after the footer, under
+  the carousel and the lines; no frame = nothing drawn. Test theme: the `hintBar` frame (salmon / olive, 80 x 80,
+  slice 28, bleed 8). Tests: `tests/gui/test_ab_gui_hint_bar.cpp` (hand-worked lines, and the launcher's line shapes
+  plus 3000 generated lines and bars against a frozen copy of the old code), `tests/core/test_theme_spec.cpp`. **UIREV-36 (the fixed grid)**: the launcher no longer lays two free lines out - `HintBar::layoutGrid(bar, HintGridMeasure)` (pure) gives a `HintGridLayout`: ONE font for both lines (the largest of `FontSizes` at which four columns, each its widest item over every state + `GridColumnPad` 22, fit `bar.w` less `Inset` each side), the spare width shared evenly, `itemX[col]` (column left + `GridItemInset` 12), `itemRoom[col]` (what a label may take - elide, never drop; the columns shrink in proportion only when even 14 px does not fit), the label/chip y of both lines (one line only under 48 px). `Style::buttonsFaded(ctx, markers, x, y, alpha)` draws a hint's buttons at an alpha (pictures, outlines, chip frame or box; a chip's text follows the program's `TextRenderer::setAlpha`) - the dimmed line 2 items (35 %). `layout`/`layoutLine` stay (their frozen-copy tests). Tests: `tests/gui/test_ab_gui_hint_bar.cpp`.
+- **`PanelStyle` is an `abgui::Style`** (since G3z; an adapter holding its own colours until then): the colour roles,
+  metrics and every primitive on a Renderer or a Context are the Style's; PanelStyle adds the old constants
+  (`HeaderHeight`...), `fromTheme` = `LauncherTheme` -> `ColorRoles` -> `Style`, `style()`/`fromStyle()`, and the
+  primitives that draw text or glyphs taking a `Gui&` (drawn with `gui.uiContext()`); `PanelStyle::HintItem` is
+  `abgui::HintItem`. Tests: `tests/gui/test_ab_gui_style.cpp`, `tests/classic/test_panel_style_roles.cpp`.
+
 ## UI styling standards (2026-09-21, the `feature/ui-fixes` pass)
 
 Every screen but the launcher's own carousel frame draws in **one look**, and new screens must too:
@@ -249,19 +584,35 @@ Every screen but the launcher's own carousel frame draws in **one look**, and ne
   `FONT_28_BOLD` at `RowInset` (24) + 18 from the top, a rule 8 px above the header's 74 px end), rows,
   and a **footer** band (`FooterHeight` 54). Colours come from `launcher.colors` (`text`, `secondary`,
   `hint`) - never hard-coded. `Gui::panelStyle()` resolves it for the current theme.
+- **Style roles** (UIREV-29, the owner's "like CSS": one block, change it once and every window follows).
+  Every row, heading, value and description draws in a `PanelStyle` role resolved from `launcher.colors`:
+  `row` (an unselected row), `rowSelected` (the selected row, label and value), `heading` (text on a
+  heading band), `value` (an unselected row's right-hand value), `description` (second lines, subtitles,
+  the strip, the footer counter), `footer` (member `footerText`: the footer's hint labels), `selectionBand`
+  (the band and bar), `edge` (the sheet's edge, rules, the heading band). A role is `#rrggbb` or the name
+  of another colour in the block (`"row": "secondary"`), resolved after the merge over the default theme;
+  unset falls back (row/heading/description/edge -> secondary, rowSelected/footer/selectionBand -> text,
+  value -> row). The look: unselected rows dim, the selected row bright (the Quick menu's). Compact panels
+  use `style.rowColor(selected)`/`valueColor(selected)`/`description`; the classic rows get it through
+  `TextRenderer::setRowRole` (`Row`/`Selected`/`Heading`/`FactRow`, `RowRoleScope`) - `GuiMenuBase::renderLines`
+  sets it per row for every menu built on it, a screen with its own row loop sets it itself, and `Plain`
+  (the font's own colour) is what everything else keeps. A facts page (no cursor) draws labels in `row`,
+  values in `rowSelected`. The table is the launcher's `docs/theme-format.md`.
 - **Two panel shapes.** A *full* panel (the classic screens: Options, the editors, Game Manager, Memory
   Cards, Hardware Information, the keyboard, pages): `Gui::renderTextBar()` + `renderHeader(title)` +
   rows + `renderStatus(hints)`; its rect is the theme's `classic.menuPanel` down to the status line
   (`Gui::classicPanel()`), rows live in `classicContent()`, the footer in `classicFooter()`. A *compact*
   panel centred on the screen (the system menu, the set picker, the update prompt, Confirm): 800 wide,
   as tall as its rows, `PanelStyle::Margin` (40) from the edges, the launcher's captured frame under it
-  (`renderer.captureNextFrame(); render(); background = renderer.lastCapture()`). A dialog with one
+  (since G5r5 the launcher hands one snapshot of itself to `Gui::setLauncherBackdrop`, and `renderBackground()` /
+  the Context's `backdropDrawer` draw it - `abgui::BackdropSnapshot`, dropped to the theme's background when the render
+  targets were lost; a screen never captures its own). A dialog with one
   question is compact, never full.
 - **Rows.** Text at `RowInset + 8` (32 px) from the panel's edge - the header's text x. The classic
   screens' rows use the theme's classic font at its own line height, one under the other, **as many as
   fit** (`Gui::classicRowsThatFit(font)`), scrolling a row at a time with **markers**
   (`Gui::renderScrollMarkers` - triangles at the content's right edge). The selected row is
-  `renderSelectionBox`: a band in the text colour at alpha 38 with a 5 px bar at the panel's left edge
+  `renderSelectionBox`: a band in the `selectionBand` colour at alpha 38 with a 5 px bar at the panel's left edge
   (`PanelStyle::selection`); a heading between rows is `renderLabelBox` (a faint band). A row that cannot be changed is drawn, then greyed over
   with `renderDisabledBox` (`PanelStyle::disabled`, black at alpha 150) - still selectable, so the cursor
   can pass it. Compact panels
@@ -275,7 +626,7 @@ Every screen but the launcher's own carousel frame draws in **one look**, and ne
   game: the cover on a plate, a screenshot when there is one, then facts as `FONT_15_BOLD` label over
   `FONT_20_BOLD` value, a rule to its left.
 - **Footers are structured** and drawn by `PanelStyle::footer` from the `"|@X| Label  |@O| Label"`
-  protocol (`parseHints`): the hints **sorted** Cross, Circle, Triangle, Square, Start, Select, L1/R1,
+  protocol (`parseHints`): the hints **sorted** Cross, Circle, Triangle, Square, the d-pad (Left/Right), Start, Select, L1/R1,
   L2/R2, keyboard keys; icons 30 px (the launcher's hint images for X/O/T, the theme's buttons for the
   rest); labels in the largest launcher font that fits; a counter ("Game 3/21") at the right edge in the
   secondary colour. **Labels**: Circle is "Back" wherever leaving loses nothing, "Cancel" only where
@@ -288,6 +639,21 @@ Every screen but the launcher's own carousel frame draws in **one look**, and ne
   `endBusy()` with `Gui::tickBusy()` in its loops (the spinner over the dimmed screen); a blocking call
   with no loop goes through `Gui::drawText(message)` (background, logo, spinner). Background work
   reports in the launcher's `NotificationBubble` (top-right, slides in and out), never in a status line.
+- **Input across a busy job (the busy rule, CONSOLE-13).** While a spinner shows every pad and key input is
+  ignored, and when the job ends the input starts clean - nothing held, no hold-repeat carried over. It is
+  done once, in `Input` (`Gui::endBusy()` -> `Input::flushInputEvents()`, and `poll()`), never per screen:
+  a press made before the job's end and not yet handed out is dropped (CONSOLE-11); every press a screen was
+  handed and not the release of is released at the job's end (a `ButtonUp`/`DpadUp`/`KeyUp`, the first
+  things `poll()` hands out, `padEventPending()` true until read, the d-pad state centred), whether or not the
+  player let go (CONSOLE-12's hold stops on it); and `poll()` never hands out a release of a press it did not
+  hand out, nor a key's repeat or its text while no screen holds that key - so the player's own later release,
+  or a press made during the job and held past it, never reaches a screen. A screen or an extension gets it
+  for free by ending a hold on any one of: its release event (`GuiScreen`'s loop, the launcher's L1/R1),
+  `padEventPending()` (`fastForwardUntilAnotherEvent`, the list menus), or the live d-pad state read once a
+  frame (`HoldRepeat` + a `holdTick` as Options and the game editor do). A hold that can outlive a screen
+  opened over it must use the live state: that screen may read the release, the one under it never sees it
+  (the launcher's carousel, e57dfa4). Never act on a `...Up` event as if it were a press. Tests:
+  `tests/classic/test_busy_input.cpp` (and `test_input_flush.cpp`).
 - **Every string on screen is `_()`** and lands in all 16 language files in the same commit
   (`tools/lang_tools.py extract`/`update`, then translate); no `=` in a key.
 - **Testing a screen** is `tools/ab_drive.py` (`start --show`, `run "menu 6; wait_screen GuiOptions; shot
@@ -306,6 +672,9 @@ executable/abpad files and points here for the rest.
 | `core/services/environment_setup.*` | `EnvironmentSetup` | The layouts a program can be started with (2026-09-18, was `main.cpp`'s `setupEnvironment()`): `fromRoot(root)` (everything under one root - the console's `/media`, the Pi's data partition, the 1-arg debug mode: `Games/`, `System/Databases/`, `Autobleem/bin/autobleem` as the resources dir, `Autobleem/bin/db`, `themes/`; the Sony data tree is the console's own or `<resources>/sony` under `AB_ROOT_RELATIVE_LAYOUT`), `fromDbAndGames()` (the 2-arg debug layout), `fromArguments()` (autobleem-gui's command line) and `forTool(argc, argv, name)` for a console tool in `Apps/<tool>` (optional root, `/media` by default on the console; pins `Env::getAppDir()` - the tool's own folder, `getPathToAppLangDir()` its `lang/` - before anything can chdir). Every one applies `PlatformConfig`. The only place besides `Env::platformName()` that spells `/media` or `/usr/sony`. Tested in `tests/core/test_environment_setup.cpp`. |
 | `app_base.*` | `AppBase` | The model of any program drawn with the classic UI: `Config`, `Lang`, `Theme`, `Clock`, the `Gui` singleton (whose window title it sets - `Gui::setWindowTitle` before the first `getInstance()`) and `AppAudio`. Top of `ab_classic`; every `GuiScreen`'s `app` member is one. `AppBase::get()` for the non-screens (Gui, Theme, AppAudio, Fonts). |
 | `core/model/session.h` | `Session` | Where we are across one run: `menuOption` (`MENU_OPTION_IDLE`/`RETRO`/`START`/`UPDATE`/`POWEROFF` - the classic-UI values are gone), the game being started (`runningGame`, `EmuMode`, `resumePoint`), and `launcher`, the carousel's `GameSetSelection`. |
+| `core/services/carousel_session.*` | `CarouselSession` | BUG-40: the carousel's `GameSetSelection` as a small `key=value` file (`<runtime>/carousel.session`, `version=1`) that carries the place across a launcher that exits and is started over (Options -> Display and "Restart launcher": rc/boot.sh on the console, the session script on a Pi / PC stick). `AutoBleem::run()` `save()`s it as it leaves for that and `take()`s it once at the next start (read, then deleted). Pure and tested in `tests/core/test_carousel_session.cpp`. |
+| `core/model/cover_light.h` | `CoverLight` | The launcher carousel's selected-cover light as pure geometry (header-only, CA1 of `docs/ab-gui-plan.md` decision 11): `glowBox(face, scale)` (the face grown by 44 px x scale, width and height each their own) and `shineSlice(face, t, texSide)` (which whole columns of the square `evoimg/sheen.png` land where while its diagonal band crosses the face at t 0..1 - drawn at the face's height, clipped to its width). The launcher's `Carousel::drawGlow/drawShine` draw them. Tested in `tests/core/test_cover_light.cpp`. |
+| `core/services/cover_aspect.*` | `CoverAspectTable`, `CoverAspect` | The typical box-art shape of each RetroArch system (CA4 of `docs/ab-gui-plan.md` decision 11): the launcher's `resources/platform/cover_aspects.cfg` (`#` comments, `<database name>=<w>:<h>`, whole numbers 1..99) via `load(path)`/`parse(text)`, `aspectFor(db_name)` - 1:1 for an unlisted system or an empty name (an App); bad lines ignored, a later line wins, a playlist's `.lpl` suffix ignored. SDL-free. The launcher's carousel draws a RetroArch game or App with no art as a two-layer placeholder at that shape. Tested in `tests/core/test_cover_aspect.cpp`. |
 | `core/services/online_assets.*` | `OnlineAssets` | The scan's online side (2026-09-19): `probe()` (one request per instance), `fetch(url, file)` through the platform's `download_command` (`%u`/`%o`, `std::system`, a `.part` renamed on success), `ensureDatabases(rdbDir)` (the 40 MB `database-rdb.zip` unpacked when there is no `.rdb`), `fetchBoxArt(thumbnailsDir, db, label)` -> Fetched / AlreadyThere / Missing (remembered in `Named_Boxarts/.autobleem-missing.txt` after a re-probe) / Failed (the network went). `boxArtUrl()`/`urlEncode()` spell the libretro-thumbnails URL. `CommandRunner` is the test seam. Made per scan cycle by `ScanService` from what `setOnline()` was given (`App::applyOnlineSetting()`: config.ini `online` + `Env::downloadCommand()`). |
 | `core/services/scan_service.*` | `ScanService` | The background scan: one worker thread (lowest OS priority - `System::lowerCurrentThreadPriority()`) does the filesystem work (`GamesFingerprint`, `GameScanner`, its own `CoverDatabase`, and - with RetroArch detected, `romScanEnabled()` - `ableem::RetroArchScanner` over the ROM folders with its own `CoreInfoTable`) and queues `WorkerEvent`s; `poll()`, called once a frame from `GuiLauncher::loop()`, applies every regional.db write on the main thread, has `RetroArchService` reload rewritten playlists, and returns a `ScanUpdate` (added/updated/removed games, `playlistsWritten`, progress, finished with the game and ROM counts). `requestScan()`/`scanning()`/`setWatching()`; `checkForChanges()` is the watcher's debounce over both `games.fingerprint` and `roms.fingerprint`, checked every `ScanWatchInterval` when nothing was requested directly; `fingerprintsMatchDisk()` is the startup check. **A moved game keeps its row** (2026-09-21): the rows whose folder is not where the database says are kept aside at `ScanStarted` (`VanishedGame`: id, folder name, disc names), a verified game at a new path with the same folder name and disc file names claims one (`claimMovedGame` -> `GameDatabase::updateGamePath`, reported in `updatedGames`, so id/history/last_played and the carousel's selection survive a drag into a sub-folder), and the unclaimed are deleted at `Finished`; a *renamed* folder is a new game. The ROM pass gets `<state>/roms.scanstate` (`romScanStateFilePath()`) as the scanner's per-folder state, so a rescan skips every ROM folder nothing changed in. Owned by `App` (`app.scans()`, constructed with `&retroArch_`). |
 | `core/main.h` | | The `using` declarations that bring the lib_ableem engine names (`DirEntry`, `sep`, `ImageType`, `GAME_INI`, `trim`/`lcase`, `IniFile`, `GameDatabase`, ...) into the app's global namespace. |
@@ -314,18 +683,21 @@ executable/abpad files and points here for the rest.
 | `core/services/system.*` | `System` | The process/console helpers: `execUnixCommand` (popen, returns "" on failure), **`runAndWait(exe, args)`** - the only fork/exec in the code base, `powerOff`, `getAvailableSpace`, `getRandom*`. The string helpers are `Strings::` (`ableem::Strings`, via `main.h`). |
 | `core/main.h` | `_()` | The app's `_("...")` is `ableem::translate()`, which goes through the `ableem::Lang` the `App` owns and registered (`app.lang()`); `resources/lang/<Language>.txt` is `English text=Translated text` lines under a `#` header (since 2026-09-18; the old pairs-of-lines layout is still read when the first line is not a comment). **`tools/lang_tools.py`** keeps them in step: `extract` (English.txt from every `_("...")`), `update [--remove-obsolete]`, `validate` (run by `make_win.sh`), `compare <Lang>`, `convert`, `merge <dir>`. A key cannot contain `=` - decorate at render time (`".-= " + _("Testing") + " =-."`). Emoji markers like `\|@X\|` in strings are replaced by button textures by `TextRenderer`. |
 | `core/services/clock.*` | `Clock` | The "last played" time as text: `displayTime(t)` in config.ini's `datetimeformat`, "" for a time the console could not have known (before 2020 - no battery clock). Owned by `App` (`app.clock()`). |
-| `core/services/config.*` | `Config` | `config.ini` on top of `ableem::IniFile`: app defaults (`language`, `aspect`, ...; keys are lower-cased on load, e.g. `values["theme"]`) and a few obsolete keys dropped on load, `ui` (the classic UI is gone) among them. Owned by `App`; read as `app.config().inifile.values["..."]`. |
-| `core/services/theme.*` | `Theme` | The current theme's `theme.json` merged over `themes/default/theme.json` (so every key has a value), every file resolved to the theme's own or the default's. `load()` converts an old-layout folder first (`ThemeConverter`). Owned by `App`; read as `app.theme().classic().menuPanel.x`, `app.theme().launcher().footer`, `app.theme().sounds().cursor`. No platform `#ifdef`s - the paths come from `Env`. |
-| `core/services/theme_installer.*` | `ThemeInstaller` | `<themes>/<name>.zip` -> `<themes>/<name>/` (root files or one folder inside; replaces an existing folder; a non-theme becomes `.zip.bad`). Run by `Theme::load()` and the Options theme list before they look at folders. |
-| `core/services/theme_converter.*` | `ThemeConverter` | `theme.ini` + the PSC data tree -> `theme.json` + role-named files, in place: json first, then the renames, then the deletes. `needsConversion(dir)` is also what makes an old folder count as a theme in the Options menu. `tools/theme_convert` wraps it. |
+| `core/services/config.*` | `Config` | `config.ini` on top of `ableem::IniFile`: app defaults (`language`, `aspect`, ...; keys are lower-cased on load, e.g. `values["theme"]`) and a few obsolete keys dropped on load, `ui` (the classic UI is gone) among them. `showingtimeout` ("Notification timeout", seconds, 0 = the informational bubbles do not show) converts a stored 0 - which meant "stay up" before 2026-09-29 - to 2 once, `showingtimeoutmigrated=1` marks it done (G5r1); `splashscreen` (default `true`) is the boot splash switch. Owned by `App`; read as `app.config().inifile.values["..."]`. |
+| `core/services/theme.*` | `Theme` | The current theme's `theme.json` merged over `themes/default/theme.json` (so every key has a value), every file resolved to the theme's own or the default's. `load()` first has `ThemeZipCache` unpack a picked zip theme, then converts an old-layout folder (`ThemeConverter`). Owned by `App`; read as `app.theme().classic().menuPanel.x`, `app.theme().launcher().footer`, `app.theme().sounds().cursor`. No platform `#ifdef`s - the paths come from `Env`. |
+| `core/services/theme_installer.*` | `ThemeInstaller` | `<themes>/<name>.zip` -> `<themes>/<name>/` (root files or one folder inside; replaces an existing folder; a non-theme becomes `.zip.bad`). Only `tools/theme_convert` runs it since G6z1 - the launcher keeps a zip a zip (`ThemeZipCache`); `findThemeRoot`/`themeName` are shared. |
+| `core/services/theme_zip_cache.*` | `ThemeZipCache` | Themes left as `<themes>/<name>.zip` (G6z1, UIREV-34): `listZipThemes()` lists them from the zip's central directory only (theme.json/theme.ini at the root or in the one real folder; a folder of the same name wins), `Theme::load()` calls `prepare(themes, picked)`: everything in `<themes>/.cache/` that is not the picked theme (the previous pick, a `.<name>.unzip` left by a power cut) is deleted, and a picked zip is unpacked into `.cache/.<name>.unzip`, a 1.0 one converted there, `.source` (the zip's size) written, then renamed to `.cache/<name>/` - so the cache is complete or absent, the conversion stays for the next start, a replaced zip (other size) is unpacked again. Free-space check first (`setFreeSpaceProbe` for tests); a corrupt or theme-less zip -> `.zip.bad`, a full stick leaves the zip alone. Nothing is written until a zip theme is picked (quiet stick). Tests `tests/core/test_theme_zip_cache.cpp`. |
+| `core/services/theme_color_deriver.*` | `ThemeColorDeriver` | G6c1 (called by `ThemeConverter` since G6c2): the 2.0 colour roles of a 1.0 theme from its background picture (a plain RGB/RGBA buffer) and the optional 1.0 colours (colors.ini fg/sec, Text_fg, Main_bg). Pure, SDL-free. `derive(input)` -> `ThemeColorRoles` (the sheet + alpha 200; accent = `edge` = `selectionBand`; `text`/`rowSelected`/`footer`; `row`/`value`; `description`/`secondary`/`hint`; `heading`; the `disabled` veil {sheet colour, alpha 120}; `notes` and `fallbacks` saying where each came from and why a role fell back). The palette is Pillow's - a Lanczos downscale to 160x90 and a median cut to 12 clusters, ported from its quantiser - so it matches the Python prototype; the maths is sRGB -> CIELAB/LCH and WCAG contrast, every threshold a named constant in `namespace themecolor`. Every text role is >= 4.5:1 and the accent >= 3:1 against the sheet by construction; a monochrome picture takes the grey accent (#646464 lifted, about #6b6b6b), own text below 4.5:1 becomes the accent with near-white text. `fromPalette` is `derive` minus the picture. Tested in `tests/core/test_theme_color_deriver.cpp` (our own fixtures in `tests/data/color-fixtures/`, drawn by `make_color_fixtures.py`). |
+| `core/services/theme_converter.*` | `ThemeConverter` | `theme.ini` + the PSC data tree -> `theme.json` + role-named files, in place: json first, then the renames, then the deletes. `needsConversion(dir)` is also what makes an old folder count as a theme in the Options menu. `tools/theme_convert` wraps it. **The bridge (G6c2)**: `convert()` also reads the background (`ableem::readImagePixels`, stb_image, no SDL) and derives the roles (`rolesFor`, before `theme.ini`/`colors.ini` go), then `ableem::mergeThemeJson` adds what `ThemeSpec` cannot hold: the roles, `launcher.colors.sheet` (dark, alpha 200) and `disabled` (alpha 120), `launcher.frames` = the ONE shared bridge set (ten frames, images written `bridge:frames/<name>.png`, resolved by `loadThemeFrames(dir, bridgeDir)` under the launcher's `bridge/` resources), `launcher.logo` from `Logo`/`Lposition*`/`Lw`/`Lh` (none for an empty rect, an empty `Logo=` or a missing file), and `converter {stamp, sum}`; `GR/Squere_Btn_ICN.png` is a launcher role now (`hints.square`). `needsUpgrade(dir, stamp)`/`upgrade(dir, stamp)` (`Theme::load()` calls them) derive a stamped theme again, once, when the stamp is below `StampVersion` and the blocks match the sum (`digestThemeJson`) - an edited or unstamped theme is never touched. Tests: `tests/core/test_theme_converter.cpp`, `test_image_pixels.cpp`. |
+| `gui/gui.*` (sheet) | `Gui::panelSheet_` | G6c2: the theme's `launcher.colors.sheet` (`ableem::loadThemeSheet`, the theme's own only), handed out as the Context's `sheetProvider` (`abgui::PanelSheet`; appended, no ABI bump). `Style::sheet(ctx, rect)` fills it over the panel before the `panel` frame (or the code-drawn edge) - so the bridge's rim-only panel frame has its sheet; `Style::toast` falls back to it. Unset = the black sheet as before. |
 | `gui/app_audio.*` | `AppAudio` | The background music track and the five UI sounds (`cursor`, `cancel`, `home_up`, `home_down`, `resume`), plus which track to play (theme's or the user's from `resources/music`) at which sample rate. Owned by `App`: `app.audio().cursor.play()`. Sits on `gui->audio()`, which is only lib_ableem's mixer device. |
 | `gui/gui.*` | `Gui` singleton | The screen only: SDL window/renderer (via `ableem::GuiBase`), `assets()`, `text()`, and the background/logo/status drawing that combines them. `display(resume)` (re)inits and shows the splash (`resume=false`, boot only) or sets `session().resumingGui` for the launcher to pick up (`resume=true`, after a game exits). |
-| `gui/screens/gui_splash.*` | `GuiSplash` | Fades in, holds at full brightness for `SplashHoldDuration` (2s), fades back out, then returns - `Gui::display(false)` is its only caller, once at boot. |
-| `gui/theme_assets.*` | `ThemeAssets` | The current theme's textures (background, logo, jewel case, the `|@X|` button markers) and fonts (`themeFont` at the theme's size, plus the `themeFonts`/`sonyFonts` sets). `load()` re-reads theme.json (`Theme::load()`) and reloads everything from the resolved paths. Screens use `gui->assets()`. |
+| `gui/screens/gui_splash.*` | `GuiSplash` | A plain screen (UIREV-48): declared Fade in (after `SplashSettleDuration` of black) and no out, held `SplashHoldDuration` (2s) at full brightness - the screen stack plays the fade, no own loop or alpha - `Gui::display(false)` is its only caller, once at boot, and skips it when config.ini's `splashscreen` is `false` (Options -> Interface -> "Splash screen", G5r1; on by default; `AB_NO_SPLASH` on a dev host still skips it, checked in `Gui::display`). After it the launcher drops in from the top over the splash picture (the stack's start transition; a root screen closing without a Fade leaves its picture as the old one). |
+| `gui/theme_assets.*` | `ThemeAssets` | The current theme's textures (background, logo, jewel case, the `|@X|` button markers) and fonts (`themeFont` at the theme's size, plus the `themeFonts`/`sonyFonts` sets). `load()` re-reads theme.json (`Theme::load()`) and reloads everything from the resolved paths. Screens use `gui->assets()`. Every image goes through the static `loadImage(renderer, file)` (G4f): the `@2x` file above output scale 1 when the theme ships one, else the very call it always was - the launcher's evoui images load through it too. The icon table (G5a): `builtInIcons`/`iconSpecs`/`iconHalo` (statics), which the d-pad arrows and `Gui`'s IconSet load from. |
 | `gui/text_renderer.*` | `TextRenderer` | The classic UI's text drawing: `|@X|` button markers laid out inline with text, `renderTextLine/ToColumns/Options`, selection and label boxes, the theme's menu-panel/status-bar rects, `toColor()`. Holds references to `Gui`'s theme font and button textures; screens use `gui->text()`. |
 | `gui/gui_screen.h` | `GuiScreen` | Base for every screen: `init/render/loop` + virtual `doCross_Pressed()`-style handlers; `show()` runs them. Set `menuVisible=false` to exit. Carries `gui`, `renderer` and `app` (an `AppBase &` - see `app_base.*`). |
 | `gui/menus/gui_*` | `GuiMenuBase`, `GuiOptionsMenuBase`, ... | Header-only templated list menus (string, two-column, playlist, game dir) and concrete Options / Memory Cards / Game Manager / Game Editor menus. |
-| `gui/screens/gui_*` | | The rest of the classic screens, shown from the launcher's L2+R2 system menu or its sub-screens: About (`credits` settable by the caller, AutoBleem's by default - a tool shows its own), Confirm dialog, on-screen Keyboard (`GuiKeyboard`, rebuilt 2026-09-24 as ABI 3: pages of letters, symbols - `/ \ : ? & = % @ #` and the rest a URL, path or password needs - and two of accented letters, a function row with Shift/caps lock, the page key, Space, Backspace and Done; L1 Shift, R1 the next page, L2/R2 move the cursor; a USB keyboard types alongside the pad, Esc cancels, and while it shows a dev host's keyboard-as-pad is off; UTF-8 by whole characters; keys and field drawn as plain text, never parsed for `|@X|` markers), memcard select, `GuiTextPage` (a titled page of static `lines`, Circle back - a tool's instructions). `gui/starfx.*` is the star field the About screen draws. (`GuiScrollWin`/`GuiPadTest` were deleted on 2026-09-18 - nothing had shown them since the classic menu went.) |
+| `gui/screens/gui_*` | | The rest of the classic screens, shown from the launcher's L2+R2 system menu or its sub-screens: About (`credits` settable by the caller, AutoBleem's by default - a tool shows its own), Confirm dialog, on-screen Keyboard (`GuiKeyboard`, rebuilt 2026-09-24 as ABI 3: pages of letters, symbols - `/ \ : ? & = % @ #` and the rest a URL, path or password needs - and two of accented letters, a function row with Shift/caps lock, the page key, Space, Backspace and Done; L1 Shift, R1 the next page, L2/R2 move the cursor; a USB keyboard types alongside the pad, Esc cancels, and while it shows a dev host's keyboard-as-pad is off; UTF-8 by whole characters; keys and field drawn as plain text, never parsed for `|@X|` markers), memcard select, `GuiTextPage` (a titled page of static `lines`, Circle back - a tool's instructions). `gui/starfx.*` is the star field the About screen draws. **The surprise game** ("BleemStrike: Reloaded", UIREV-39, design: autobleem-design `launcher/surprise/README.md`): `gui/surprise_game.*` the rules, `gui/surprise_layout.h` the pure numbers (halo'd frames drawn at README offsets over the unchanged hitboxes, strip frames, zero-padded score, timer segments - `tests/classic/test_surprise_layout.cpp`), `gui/surprise_art.*` `SurpriseHud` (the Oxanium lettering - chrome gradient fill cut with the Mask blend, dark outline, glow, lean - and the smoked-glass plates, built once into render targets and rebuilt when `Renderer::targetsLost()` changes); START shows the title, START again plays; the pictures and `Oxanium-*.ttf` (static instances of the variable font) are launcher resources. (`GuiScrollWin`/`GuiPadTest` were deleted on 2026-09-18 - nothing had shown them since the classic menu went.) |
 | `gui/screens/gui_facts_page.*`, `gui_action_menu.*` | `GuiFactsPage`, `GuiActionMenu` | Two reusable classic screens (2026-09-21, for the console tools): a facts page - sections with a heading band and label/value rows, scrolling, re-read every `refreshInterval`, a subclass gives `title()`/`collect()` and takes its own buttons through `onButton()`/`extraHints()` (Hardware Information and PSC-Bios's opening screen) - and an action menu in the system menu's look (rows of a name over a description, Cross picks into `result`, Circle leaves; ABFlashKit's screen). |
 | `gui/screens/gui_hardware_info.*` | `GuiHardwareInfo` | The Hardware Information screen (2026-09-26): a `GuiFactsPage` built in on every platform with `SystemInfoService`'s sections - system (os, hostname, uptime, load), hardware (model, CPU cores, clock, thermal zone, RAM), storage (the data root and every block filesystem), network (IPv4 adapters, time zone from timedatectl), display (render driver + MSAA, video driver, display mode, canvas/scale, audio driver, SDL version), pads (by name with their mapping file in use - `Env::padMappingFiles()`'s first file found). Rows paged like Options, re-read every second. `autobleem-gui <root> --sysinfo` prints the sections to stdout and exits (minus display) - for bug reports and checking the Linux branch over ssh. The System menu's Hardware Information item (2026-09-26) opens this screen on every platform; the Network & Controllers item (when an installed extension provides the `network` entry - see below) opens that extension at its network entry through `Extension::runEntry("network")` (ABI 4), which on the console and a Pi/PC stick opens PSC-Bios's hub for Wi-Fi settings, Bluetooth pairing, DualShock 3 pairing and controller mapping. `GuiHardwareInfo` serves as fallback where Network & Controllers is not provided. |
 | `core/services/system_info.*` | `SystemInfoService` | What that screen shows, SDL-free: `collect()` = `system()` (os-release/uname, hostname, uptime, load; the registry on Windows), `hardware()` (device-tree model, cpuinfo, cpufreq, thermal_zone0, meminfo), `storage()` (the data root first, then every block filesystem in `/proc/mounts` - or the fixed/removable drives - with `statvfs`/`GetDiskFreeSpaceEx`), `network()` (IPv4 per interface, `getifaddrs`/`GetAdaptersAddresses` - ab_core links `iphlpapi ws2_32` on Windows), `software()` (version, build, platform, roots, RetroArch). The parsers and formatters are static and tested (`tests/core/test_system_info.cpp`). |

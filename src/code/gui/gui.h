@@ -10,6 +10,10 @@
 #include "../core/services/system.h"
 #include "gui_font.h"
 #include "panel_style.h"
+#include <ab_gui/backdrop.h>
+#include <ab_gui/context.h>
+#include <ab_gui/icon.h>
+#include <ab_gui/spinner.h>
 
 #include <functional>
 #include "text_renderer.h"
@@ -96,6 +100,12 @@ public:
 
     // the shared look, resolved from the current theme
     PanelStyle panelStyle();
+    // AutoBleem's abgui::Context (ab_gui, docs/ab-gui-plan.md): the renderer, the input and the platform's ticks,
+    // and as providers asked at draw time the launcher's fonts by role, the button glyphs, the text renderer, _(),
+    // the current theme's Style and its UI sounds (AppAudio's).
+    // Nothing in it is cached, so it stays valid across a theme reload and the display's release for a game.
+    // Its stack() is Gui's screen stack: a screen's render() is stack().frame(its drawing) - clear, draw, present.
+    abgui::Context &uiContext() { return uiContext_; }
 
     // A busy state for a long job that runs on the main thread (applying settings, reloading the theme,
     // deleting a game): beginBusy keeps the screen as it is - `redraw` renders and presents it once, and
@@ -103,6 +113,7 @@ public:
     // backdrop dimmed with a spinner and the message over it (at most every 40 ms, so a tight loop is not
     // slowed). endBusy drops the backdrop. Gui::tickBusy() is the static form for code without a Gui at
     // hand (the theme loader, the carousel's texture loads) and is a no-op when nothing is busy.
+    // All of it is ab_gui's abgui::Busy (uiContext().stack().busy(), step G3l); these forward to it.
     void beginBusy(const std::string &message, const std::function<void()> &redraw);
     void busyTick();
     // a bar under the spinner's message, done/total (total 0 = no bar); drawn by the next busyTick
@@ -115,7 +126,7 @@ public:
     // A short list (Memory Cards, the memory card picker, a tool's menu) draws in a compact panel centred
     // on the screen instead of the full one, like a dialog: 800 wide, as tall as its `rows` rows of `font`
     // plus the header and the footer. Set before the screen draws, cleared after present()
-    void setCompactPanel(int rows, const ableem::Font &font);
+    void setCompactPanel(int rows, const ableem::Font &font, const std::string &footerLine = std::string());
     void clearCompactPanel();
     // the part of it between the header and the footer band: where a screen's rows go
     ableem::Rect classicContent();
@@ -129,20 +140,75 @@ public:
 
     // the "please wait" screen a program shows around a blocking call it cannot tick from (the tools'
     // network scan, the flasher, the exit): the theme's background and logo, the spinner, the message
+    // (abgui::Busy::waitScreen)
     void drawText(const std::string &text, const string &topLine = "");
 
 private:
-    void drawBusyFrame();
-    // the ring of dots turning about (cx, cy) with `message` under it - the busy frames and drawText share it
-    void drawSpinner(int cx, int cy, const std::string &message);
-
     ThemeAssets assets_;
     TextRenderer text_; // after assets_: it holds references to the theme font and the button textures
-    bool compact_ = false;
-    ableem::Rect compactPanel_;
-    bool busy_ = false;
-    int busyDone_ = 0, busyTotal_ = 0;
-    std::string busyMessage_;
-    ableem::Texture busyBackdrop_;
-    unsigned int busyStarted_ = 0, busyLastFrame_ = 0;
+    // AutoBleem's Context; the compact panel is its own (setCompactPanel), the busy state its stack's (abgui::Busy)
+    abgui::Context uiContext_;
+    void wireUiContext();
+    // where every frame of the classic screens and Gui's own is presented - uiContext().stack()
+    abgui::ScreenStack stack_;
+    // the current theme's frames (its own theme.json's launcher.frames, ab_gui G4): refilled by loadAssets(), their
+    // textures dropped by releaseDisplay(), handed out as the Context's frameProvider. Last on purpose: appended, so
+    // every member an extension reaches through gui.h's inline code keeps its offset (AB_SDK_ABI stays 7)
+    abgui::FrameSet frames_;
+    // the current theme's icons (ab_gui G5a: launcher.icons - the theme's own, else the default's, else the built-in
+    // evoimg/ files, ThemeAssets::iconSpecs): refilled by loadAssets(), their textures and halos dropped by
+    // releaseDisplay(), handed out as the Context's iconProvider/iconHaloProvider. Appended last, as frames_ was
+    abgui::IconSet icons_;
+    // the launcher's logo element (ab_gui G5q: the theme's own launcher.logo, never the default's) and the resume
+    // picture's mask (G5s: launcher.menuIcons.resumePictureMask): loaded by loadAssets(), dropped by releaseDisplay().
+    // Appended last, as icons_ was
+    ableem::Texture launcherLogo_;
+    ableem::Rect launcherLogoRect_;
+    ableem::Texture resumeMask_;
+
+    // the current theme's busy spinner strip (ab_gui G5p: its own theme.json's launcher.spinner, never the default's):
+    // refilled by loadAssets(), its texture dropped by releaseDisplay(), handed out as the Context's spinnerProvider.
+    // Appended last, as icons_ was
+    abgui::SpinnerStrip spinner_;
+
+    // the current theme's `disabled` role (ab_gui G5t: launcher.colors.disabled of its own theme.json - unset = the
+    // code's black at 150): refilled by loadAssets(), handed out as the Context's veilProvider. Appended last, as
+    // spinner_ was
+    abgui::DisabledVeil disabledVeil_;
+
+    // the current theme's inactive-state alphas (ab_gui G5r9: launcher.inactive of its own theme.json - a value it does
+    // not set stays Unset = the code's own alpha): refilled by loadAssets(), handed out as the Context's
+    // inactiveProvider. Appended last, as disabledVeil_ was
+    abgui::InactiveAlphas inactiveAlphas_;
+
+    // the launcher snapshot every screen opened from the launcher draws over (ab_gui G5r5): held while such a screen
+    // runs, drawn by the Context's backdropDrawer (renderBackground) in place of the theme's background and logo,
+    // dropped by releaseDisplay(). Appended last, as inactiveAlphas_ was (no SDK layout change, no AB_SDK_ABI bump)
+    abgui::BackdropSnapshot backdrop_;
+
+    // the current theme's `sheet` role (G6c2: launcher.colors.sheet of its own theme.json - unset = the code's black at
+    // 200): refilled by loadAssets(), handed out as the Context's sheetProvider. Appended last, as backdrop_ was
+    abgui::PanelSheet panelSheet_;
+
+public:
+    // The launcher hands over its frame (taken without the hint band and the bubbles) before it opens a screen and
+    // takes it back after: every screen started meanwhile - the classic ones through renderBackground(), the ab_gui
+    // ones and the extensions' (the Store, PSC-Bios) through uiContext().drawBackdrop() - draws over it, and the
+    // theme's logo is not drawn over it (logoDrawer). An invalid frame is ignored. If the render targets are lost while
+    // it is held the screens fall back to the theme's background at once (never a black or garbage frame). Out of line:
+    // no ABI change.
+    void setLauncherBackdrop(const ableem::Texture &frame);
+    void clearLauncherBackdrop();
+    bool hasLauncherBackdrop() const;
+
+    // the theme's launcher logo and the logical rect it is drawn in; an invalid texture = the theme has none
+    const ableem::Texture &launcherLogo() const { return launcherLogo_; }
+    const ableem::Rect &launcherLogoRect() const { return launcherLogoRect_; }
+    // where the resume picture goes on the resume icon (and on the slot picker's 2.7x copy), in the icon's pixels: the
+    // theme's launcher.menuIcons.resumePicture, else the original frame's window (25, 33, 68, 52)
+    ableem::Rect resumePictureWindow();
+    // `picture` (a save-state screenshot) with the theme's resume picture mask multiplied into its alpha, composed once
+    // into a target of the window's size x PictureMask::ComposeScale - the picture itself when the theme has no mask
+    // (or `picture` is not valid), so a theme without one draws as before. Call on the render thread
+    ableem::Texture maskedResumePicture(const ableem::Texture &picture);
 };

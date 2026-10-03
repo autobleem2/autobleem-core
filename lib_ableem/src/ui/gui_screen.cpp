@@ -1,9 +1,23 @@
 #include "ableem/ui/gui_screen.h"
 #include "ableem/ui/debug_driver.h"
 
+#include <ableem/engine/ext_trace.h>
+#include <string>
 #include <typeinfo>
 
 namespace ableem {
+
+namespace {
+GuiScreenObserver *screenObserver = nullptr;
+}
+
+void GuiScreen::setObserver(GuiScreenObserver *observer) {
+    screenObserver = observer;
+}
+
+GuiScreenObserver *GuiScreen::observer() {
+    return screenObserver;
+}
 
 //*******************************
 // GuiScreen::show
@@ -11,9 +25,18 @@ namespace ableem {
 void GuiScreen::show() {
     DebugDriver::pushScreen(typeid(*this).name());
     gui.input().pushFrameNeed(); // Active until the screen says otherwise (init() or its loop)
+    // the extension hand-off trap (BUG-31): a screen shown by an extension opens and closes a window of frame lines
+    if (ext_trace::inExtension())
+        ext_trace::begin(std::string("screen opens ") + typeid(*this).name());
+    if (screenObserver)
+        screenObserver->screenOpens(*this); // before init(): the picture on display is still the one under it
     init();
     render();
     loop();
+    if (screenObserver)
+        screenObserver->screenCloses(*this); // the screen exists still: its picture is the one on display
+    if (ext_trace::inExtension())
+        ext_trace::begin(std::string("screen closed ") + typeid(*this).name());
     gui.input().popFrameNeed();
     DebugDriver::popScreen();
 }
@@ -30,154 +53,187 @@ void GuiScreen::loop() {
         while (input.poll(e)) {
             if (handleQuit(e))
                 continue;
-
-            switch (e.type) {
-            case Event::Type::DpadDown:
-            case Event::Type::DpadUp:
-                // priority order matches the original PadMapper behavior: report whichever direction is
-                // currently held, not just the one this particular event changed.
-                if (input.dpadUp())
-                    doJoyUp();
-                else if (input.dpadDown())
-                    doJoyDown();
-                else if (input.dpadRight())
-                    doJoyRight();
-                else if (input.dpadLeft())
-                    doJoyLeft();
-                else if (input.dpadCentered())
-                    doJoyCenter();
-                break;
-
-            case Event::Type::ButtonDown:
-                switch (e.button) {
-                case Button::Cross:
-                    doCross_Pressed();
-                    break;
-                case Button::Circle:
-                    doCircle_Pressed();
-                    break;
-                case Button::Triangle:
-                    doTriangle_Pressed();
-                    break;
-                case Button::Square:
-                    doSquare_Pressed();
-                    break;
-                case Button::Start:
-                    doStart_Pressed();
-                    break;
-                case Button::Select:
-                    doSelect_Pressed();
-                    break;
-                case Button::L1:
-                    doL1_Pressed();
-                    break;
-                case Button::R1:
-                    doR1_Pressed();
-                    break;
-                case Button::L2:
-                    doL2_Pressed();
-                    break;
-                case Button::R2:
-                    doR2_Pressed();
-                    break;
-                default:
-                    break;
-                }
-                break;
-
-            case Event::Type::ButtonUp:
-                switch (e.button) {
-                case Button::Cross:
-                    doCross_Released();
-                    break;
-                case Button::Circle:
-                    doCircle_Released();
-                    break;
-                case Button::Triangle:
-                    doTriangle_Released();
-                    break;
-                case Button::Square:
-                    doSquare_Released();
-                    break;
-                case Button::Start:
-                    doStart_Released();
-                    break;
-                case Button::Select:
-                    doSelect_Released();
-                    break;
-                case Button::L1:
-                    doL1_Released();
-                    break;
-                case Button::R1:
-                    doR1_Released();
-                    break;
-                case Button::L2:
-                    doL2_Released();
-                    break;
-                case Button::R2:
-                    doR2_Released();
-                    break;
-                default:
-                    break;
-                }
-                break;
-
-            case Event::Type::KeyDown:
-                switch (e.key) {
-                case Key::Up:
-                    doKeyUp();
-                    break;
-                case Key::Down:
-                    doKeyDown();
-                    break;
-                case Key::Right:
-                    doKeyRight();
-                    break;
-                case Key::Left:
-                    doKeyLeft();
-                    break;
-                case Key::PageDown:
-                    doPageDown();
-                    break;
-                case Key::PageUp:
-                    doPageUp();
-                    break;
-                case Key::Home:
-                    doHome();
-                    break;
-                case Key::End:
-                    doEnd();
-                    break;
-                case Key::Return:
-                    doEnter();
-                    break;
-                case Key::Delete:
-                    doDelete();
-                    break;
-                case Key::Backspace:
-                    doBackspace();
-                    break;
-                case Key::Tab:
-                    doTab();
-                    break;
-                case Key::Escape:
-                    doEscape();
-                    break;
-                default:
-                    break;
-                }
-                break;
-
-            case Event::Type::TextInput:
-                doTextInput(e.text);
-                break;
-
-            default:
-                break;
-            }
+            dispatchEvent(e);
         }
         if (input.frameDue()) // the pacer: every pass unless the screen said it rests
             render();
+    }
+}
+
+//*******************************
+// GuiScreen::dispatchEvent
+//*******************************
+void GuiScreen::dispatchEvent(const Event &e) {
+    switch (e.type) {
+    case Event::Type::DpadDown:
+    case Event::Type::DpadUp:
+        dispatchDpad();
+        break;
+
+    case Event::Type::ButtonDown:
+        dispatchButton(e.button, true);
+        break;
+
+    case Event::Type::ButtonUp:
+        dispatchButton(e.button, false);
+        break;
+
+    case Event::Type::KeyDown:
+        dispatchKey(e.key);
+        break;
+
+    case Event::Type::TextInput:
+        doTextInput(e.text);
+        break;
+
+    default:
+        break;
+    }
+}
+
+//*******************************
+// GuiScreen::dispatchDpad
+//*******************************
+void GuiScreen::dispatchDpad() {
+    Input &input = gui.input();
+    // priority order matches the original PadMapper behavior: report whichever direction is
+    // currently held, not just the one this particular event changed.
+    if (input.dpadUp())
+        doJoyUp();
+    else if (input.dpadDown())
+        doJoyDown();
+    else if (input.dpadRight())
+        doJoyRight();
+    else if (input.dpadLeft())
+        doJoyLeft();
+    else if (input.dpadCentered())
+        doJoyCenter();
+}
+
+//*******************************
+// GuiScreen::dispatchButton
+//*******************************
+void GuiScreen::dispatchButton(Button button, bool pressed) {
+    if (pressed) {
+        switch (button) {
+        case Button::Cross:
+            doCross_Pressed();
+            break;
+        case Button::Circle:
+            doCircle_Pressed();
+            break;
+        case Button::Triangle:
+            doTriangle_Pressed();
+            break;
+        case Button::Square:
+            doSquare_Pressed();
+            break;
+        case Button::Start:
+            doStart_Pressed();
+            break;
+        case Button::Select:
+            doSelect_Pressed();
+            break;
+        case Button::L1:
+            doL1_Pressed();
+            break;
+        case Button::R1:
+            doR1_Pressed();
+            break;
+        case Button::L2:
+            doL2_Pressed();
+            break;
+        case Button::R2:
+            doR2_Pressed();
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+
+    switch (button) {
+    case Button::Cross:
+        doCross_Released();
+        break;
+    case Button::Circle:
+        doCircle_Released();
+        break;
+    case Button::Triangle:
+        doTriangle_Released();
+        break;
+    case Button::Square:
+        doSquare_Released();
+        break;
+    case Button::Start:
+        doStart_Released();
+        break;
+    case Button::Select:
+        doSelect_Released();
+        break;
+    case Button::L1:
+        doL1_Released();
+        break;
+    case Button::R1:
+        doR1_Released();
+        break;
+    case Button::L2:
+        doL2_Released();
+        break;
+    case Button::R2:
+        doR2_Released();
+        break;
+    default:
+        break;
+    }
+}
+
+//*******************************
+// GuiScreen::dispatchKey
+//*******************************
+void GuiScreen::dispatchKey(Key key) {
+    switch (key) {
+    case Key::Up:
+        doKeyUp();
+        break;
+    case Key::Down:
+        doKeyDown();
+        break;
+    case Key::Right:
+        doKeyRight();
+        break;
+    case Key::Left:
+        doKeyLeft();
+        break;
+    case Key::PageDown:
+        doPageDown();
+        break;
+    case Key::PageUp:
+        doPageUp();
+        break;
+    case Key::Home:
+        doHome();
+        break;
+    case Key::End:
+        doEnd();
+        break;
+    case Key::Return:
+        doEnter();
+        break;
+    case Key::Delete:
+        doDelete();
+        break;
+    case Key::Backspace:
+        doBackspace();
+        break;
+    case Key::Tab:
+        doTab();
+        break;
+    case Key::Escape:
+        doEscape();
+        break;
+    default:
+        break;
     }
 }
 

@@ -47,10 +47,18 @@ void Lang::load(const string &langDir, const string &languageName) {
     translations_.clear();
     untranslated_.clear();
     currentLanguage_ = languageName;
-    loadMore(langDir);
+    readFile(langDir);
+    for (const string &extra : extraDirs_) // a tool's own strings survive a language change
+        readFile(extra);
 }
 
 void Lang::loadMore(const string &langDir) {
+    if (std::find(extraDirs_.begin(), extraDirs_.end(), langDir) == extraDirs_.end())
+        extraDirs_.push_back(langDir);
+    readFile(langDir);
+}
+
+void Lang::readFile(const string &langDir) {
     if (currentLanguage_ == SourceLanguage)
         return;
 

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <ableem/engine/log.h>
+#include <sys/stat.h>
 
 using namespace std;
 
@@ -105,28 +106,36 @@ string ResumePointService::pictureForSlot(const PsGame &game, int slot) const {
 }
 
 //*******************************
+// ResumePointService::timeForSlot
+//*******************************
+time_t ResumePointService::timeForSlot(const PsGame &game, int slot) const {
+    if (game.foreign)
+        return 0;
+    string name;
+    if (!readStateNameForSlot(game, slot, &name))
+        return 0;
+    struct stat info;
+    if (stat(keptStateFile(game, name, slot).c_str(), &info) != 0)
+        return 0;
+    return info.st_mtime;
+}
+
+//*******************************
 // ResumePointService::lastPicture
 //*******************************
-// Whichever slot the game last stopped in - the first one that has a filename file of its own, else the
-// shared one. Note it then looks for slot 0's picture name whatever slot it found, which is how this has
-// always worked.
+// The picture of the first slot that has one - slot 0 when it is kept, else the next slot that is. (It used
+// to read slot 0's picture name whatever slot it found a filename file for, so a game saved only in slots
+// 1-2 had no picture: BUG-37.)
 string ResumePointService::lastPicture(const PsGame &game) const {
     if (game.foreign)
         return "";
 
-    string path = keptFilenameFile(game);
     for (int slot = 0; slot < SlotCount; slot++) {
-        if (DirEntry::exists(slotFilenameFile(game, slot))) {
-            path = slotFilenameFile(game, slot);
-            break;
-        }
+        string picture = pictureForSlot(game, slot);
+        if (!picture.empty())
+            return picture;
     }
-
-    string name;
-    if (!readStateName(path, &name))
-        return "";
-    string picture = keptPictureFile(game, name, 0);
-    return DirEntry::exists(picture) ? picture : "";
+    return "";
 }
 
 //*******************************

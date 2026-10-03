@@ -96,6 +96,7 @@ struct Fixture {
         options.repoUrl = Site;
         options.buildbotUrl = Buildbot;
         options.scratchDir = tmp.makeSubDir("scratch");
+        tmp.writeFile("Program Files/AutoBleem/Themes/ab2.0.0/theme.json", "{ab2.0.0}");
         tmp.writeFile("Program Files/AutoBleem/Themes/ab2/theme.json", "{ab2}");
         tmp.writeFile("Program Files/AutoBleem/Themes/ab2/images/bg.png", "png");
         tmp.writeFile("Program Files/AutoBleem/Themes/default/theme.json", "{default}");
@@ -207,7 +208,7 @@ TEST_CASE("a fresh install: the data tree, the shipped themes and the three cove
     CHECK(fx.tmp.readFile("Documents/AutoBleem/Themes/ab2/theme.json") == "{ab2}");
     CHECK(fx.has("Themes/ab2/images/bg.png"));
     CHECK(fx.has("Themes/default/theme.json"));
-    CHECK(fx.out.said("2 themes copied in"));
+    CHECK(fx.out.said("3 themes copied in"));
     for (const char *r : {"J", "U", "P"})
         CHECK(fx.tmp.readFile(string("Documents/AutoBleem/System/Databases/covers") + r + ".db") ==
               string("sqlite covers") + r + ".db");
@@ -220,6 +221,8 @@ TEST_CASE("a fresh install: the data tree, the shipped themes and the three cove
     // the shipped processor is in the data tree
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe") == "exe 1.0.1");
     CHECK(fx.out.said("1 scanner processors"));
+    // a fresh install decides nothing about on/off: no sequence.ini, so every processor starts off (SDK-11)
+    CHECK_FALSE(fx.has("System/Processors/sequence.ini"));
     // and the shipped extension in the data tree's Extensions/
     CHECK(fx.tmp.readFile("Documents/AutoBleem/Extensions/store/bin/win/store.dll") == "dll 1.0.1");
     CHECK(fx.out.said("1 extensions"));
@@ -231,12 +234,18 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     fx.tmp.writeFile("Documents/AutoBleem/System/games.fingerprint", "old");
     fx.tmp.writeFile("Documents/AutoBleem/System/roms.fingerprint", "old");
     fx.tmp.writeFile("Documents/AutoBleem/Themes/ab2/theme.json", "{edited}");
+    // the default theme was there already: the user's choice stays
+    fx.tmp.writeFile("Documents/AutoBleem/Themes/ab2.0.0/theme.json", "{mine}");
     fx.tmp.writeFile("Documents/AutoBleem/Games/Tekken 3/Tekken 3.cue", "cue");
     fx.tmp.writeFile("Documents/AutoBleem/System/Databases/coversU.db", "sqlite coversU.db");
     fx.tmp.writeFile("Documents/AutoBleem/System/Processors/README.txt", "my notes");
     // an older unzip, switched off by the user
     fx.tmp.writeFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe", "exe 1.0.0");
-    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/sequence.ini", "[ps1]\n-unzip\n");
+    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/sequence.ini", "[ps1]\n-unzip\nmine\n");
+    // a processor the user installed, switched on, with the data folder it keeps for itself (SDK-11)
+    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/mine/processor.ini", "[Processor]\nVersion=1.0\n");
+    fx.tmp.writeFile("Documents/AutoBleem/System/Processors/mine/bin/windows-x86_64/mine.exe", "exe mine");
+    fx.tmp.writeFile("Documents/AutoBleem/Home/processors/mine/cache.dat", "data");
     // an older Store with a file the new one has not, the Store's own state, one of the user's own extensions
     fx.tmp.writeFile("Documents/AutoBleem/Extensions/store/bin/win/store.dll", "dll 1.0.0");
     fx.tmp.writeFile("Documents/AutoBleem/Extensions/store/stale.txt", "old");
@@ -254,7 +263,11 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/README.txt") == "my notes"); // never rewritten
     // the update brings the new program; the user's order and on/off stay
     CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/unzip/bin/windows-x86_64/unzip.exe") == "exe 1.0.1");
-    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/sequence.ini") == "[ps1]\n-unzip\n");
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/sequence.ini") == "[ps1]\n-unzip\nmine\n");
+    // a processor the user installed stays, with its program and its data folder
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Processors/mine/bin/windows-x86_64/mine.exe") == "exe mine");
+    CHECK(fx.has("System/Processors/mine/processor.ini"));
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/Home/processors/mine/cache.dat") == "data");
     // the Store replaced whole; its state, the crash guard's list and the user's extension kept
     CHECK(fx.tmp.readFile("Documents/AutoBleem/Extensions/store/bin/win/store.dll") == "dll 1.0.1");
     CHECK_FALSE(fx.has("Extensions/store/stale.txt"));
@@ -275,6 +288,26 @@ TEST_CASE("an update keeps the user's settings and themes, removes the scan fing
     CHECK(fx.out.said("coversU.db is already there"));
     CHECK(fx.site.count("coversJ.db") == 0);
     CHECK(fx.out.said("Updated."));
+}
+
+TEST_CASE("an update that brings the default theme to a data tree without it switches the theme once") {
+    Fixture fx;
+    fx.tmp.writeFile("Documents/AutoBleem/System/config.ini", "theme=aergb\nlanguage=Polish\n");
+    fx.tmp.writeFile("Documents/AutoBleem/Themes/ab2/theme.json", "{ab2}");
+    fx.options.update = true;
+    fx.options.coversJapan = fx.options.coversUsa = fx.options.coversPal = false;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    {
+        const string cfg = fx.tmp.readFile("Documents/AutoBleem/System/config.ini");
+        CHECK(cfg.find("Theme=ab2.0.0") != string::npos);
+        CHECK(cfg.find("Language=Polish") != string::npos);
+    }
+    CHECK(fx.has("Themes/ab2.0.0/theme.json"));
+    // the next update: the folder is there, the user's choice stays
+    fx.tmp.writeFile("Documents/AutoBleem/System/config.ini", "theme=aergb\n");
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/config.ini").find("Theme=aergb") != string::npos);
 }
 
 TEST_CASE("RetroArch and its cores from the download repository, then the BIOS files and the samples") {

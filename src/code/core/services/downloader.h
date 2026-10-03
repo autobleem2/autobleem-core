@@ -18,6 +18,10 @@ struct DownloadRequest {
     uint64_t size = 0;   // expected size; 0 = unknown
     std::string sha256;  // expected sum (lower-case hex); "" = unknown
     bool resume = false; // keep and continue a .part an earlier attempt left (the resume command must exist)
+    // a command that fails with a status this says yes to keeps the .part as it is, even a resumed one that got
+    // no new bytes (which is otherwise thrown away, so that a server with no ranges starts over): the failure was
+    // the line's, not the file's - the network dropped, and the next attempt continues. null = never
+    std::function<bool(int status)> keepPartOnStatus;
 };
 
 //******************
@@ -38,8 +42,12 @@ public:
     // the target is already there and right (by sha256, else by size when that is all there is), or it is
     // fetched: the command into the .part, the .part checked, renamed over the target. A failed or wrong
     // download removes the .part unless the request resumes and it merely failed (the next attempt
-    // continues it); a wrong size or sum always removes it - continuing a wrong file cannot make it right.
+    // continues it - and a resume that got no new bytes keeps it only when keepPartOnStatus says so); a wrong
+    // size or sum always removes it - continuing a wrong file cannot make it right.
     Result fetch(const DownloadRequest &request, std::string &error);
+
+    // the exit status of the last command fetch() ran (0 when it ran none)
+    int lastStatus() const { return lastStatus_; }
 
     static std::string partPath(const std::string &target) { return target + ".part"; }
     static std::string commandFor(const std::string &commandTemplate, const std::string &url,
@@ -50,4 +58,5 @@ public:
 private:
     std::string command_, resumeCommand_;
     CommandRunner runner_;
+    int lastStatus_ = 0;
 };

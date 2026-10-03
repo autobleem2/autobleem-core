@@ -11,6 +11,9 @@ build, runtime and project picture.
   ini/cfg, the SQLite `GameDatabase`, covers, disc images, the scanner, RetroArch playlists/cores/rdb, zip, md5,
   crc32, `Lang`, `ThemeSpec`) and `ableem` (`include/ableem/ui/` - owns every SDL call: Platform, Renderer,
   Texture, Font, Audio, Input, Joystick, GuiBase, GuiScreen, the DebugDriver).
+- **`ab_gui`** (`ab_gui/`, namespace `abgui`, `AB_CORE_UI`): the User Interface Library - the look as data (`Style`,
+  `Context`), panels, the screen stack and transitions, tweens, actions and the widgets (list, keyboard, confirm, ...). Links
+  `ableem` only, **no SDL**. Plan: `docs/ab-gui-plan.md`; reference: developer guide "ab_gui".
 - **`ab_core`** (`src/code/core/`): the launcher's SDL-free model + services (`model/`, `services/`: Env,
   PlatformConfig, Config, Theme, ScanService, LaunchService, GameSettingsService, MemcardService, ...).
 - **`ab_classic`** (`src/code/app_base.*`, `src/code/gui/`): Gui, ThemeAssets, TextRenderer, PanelStyle, Fonts,
@@ -42,5 +45,7 @@ touching a path uses `tests/support/env_fixture.h`; scratch trees via `tests/sup
 lib_ableem (engine: Environment, DirEntry, Lang, MemcardImage, IniFile/ConfigFileEditor/MemcardManager,
 GameDatabase, MetadataLookup, ThumbnailLookup, DiscSuffix, the scanner, SerialScanner, RetroArchPlaylist,
 CoreInfoTable, RetroArchScanner, ThemeSpec, ZipArchive/ZipWriter, Md5, Crc32; ui: Platform, output scale, MSAA,
-Renderer, Texture, Font, Sound/Music/Audio, Joystick, Input, GuiBase/GuiScreen, CMake) - UI styling standards -
+Renderer, Texture, Font, Sound/Music/Audio, Joystick, Input, GuiBase/GuiScreen, CMake) - ab_gui (Style, Context,
+Panel, ScreenStack, transitions, Tween, Action/ActionMap, Screen, the widgets, frames, icons, spinner, logo/mask) -
+UI styling standards -
 Source map: the core-owned files - Tests.

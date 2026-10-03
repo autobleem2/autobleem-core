@@ -5,6 +5,23 @@
 
 namespace ableem {
 
+class GuiScreen;
+
+//******************
+// GuiScreenObserver
+//******************
+// Told when a screen opens and closes (GuiScreen::show): the program's screen stack (ab_gui's ScreenStack, the plan's
+// 7a transitions) keeps the picture under a screen that opens and the last one of a screen that closes. One for the
+// program (GuiScreen::setObserver); none = nothing told.
+class ABLEEM_API GuiScreenObserver {
+public:
+    virtual ~GuiScreenObserver() = default;
+    // show() is about to init() the screen: the screen under it is still the one on display
+    virtual void screenOpens(GuiScreen &screen) = 0;
+    // its loop() has returned, the screen still exists: it is what is on display
+    virtual void screenCloses(GuiScreen &screen) = 0;
+};
+
 //******************
 // GuiScreen
 //******************
@@ -35,6 +52,10 @@ public:
     // init, one render, then the loop until menuVisible goes false; the screen's class name is on the
     // DebugDriver's screen stack meanwhile (its `screen` command)
     void show();
+
+    // the program's one observer of every show() (nullptr: none) - static, so no screen's layout changes
+    static void setObserver(GuiScreenObserver *observer);
+    static GuiScreenObserver *observer();
 
     // controller dpad/joystick pressed
     virtual void doJoyUp() {}
@@ -89,6 +110,20 @@ public:
     // the power button / Esc case is handled by Input itself (Platform::setPowerOffHandler), so screens no
     // longer need to check for it themselves.
     bool handleQuit(const Event &e);
+
+    // What loop() does with each event it polls (a Quit aside): the hook the event is for. Non-virtual, so a
+    // screen's layout and vtable are what they were; a loop of a subclass that reads the events itself
+    // (abgui::Screen's, through its ActionMap) reaches the hooks through the same code.
+    // one event: a d-pad event -> dispatchDpad(), a button -> dispatchButton(), a KeyDown -> dispatchKey(), a
+    // TextInput -> doTextInput(); anything else (a KeyUp, a device event) reaches no hook
+    void dispatchEvent(const Event &e);
+    // the d-pad hook of the live d-pad state, whichever direction the event was: up, down, right, left, else
+    // centre (the old PadMapper's priority)
+    void dispatchDpad();
+    // Cross..R2's pressed (or released) hook; nothing for another button
+    void dispatchButton(Button button, bool pressed);
+    // a KeyDown's hook (Up..Escape); nothing for a key without one
+    void dispatchKey(Key key);
 };
 
 } // namespace ableem

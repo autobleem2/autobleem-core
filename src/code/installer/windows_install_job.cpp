@@ -1,5 +1,6 @@
 #include "installer/windows_install_job.h"
 #include "installer/install_job_base.h"
+#include "core/services/default_theme.h"
 #include "core/services/extension_catalog.h"
 #include "core/services/processor_catalog.h"
 
@@ -127,6 +128,7 @@ private:
         // the shipped themes, copied in once: the launcher reads them from the data tree (a user drops
         // their own next to these) - a theme already there is the user's, edited or not
         const string shipped = opt.programDir + "/Themes";
+        const bool hadDefaultTheme = DirEntry::isDirectory(at(string("Themes/") + DefaultTheme::Name));
         int copied = 0;
         if (DirEntry::isDirectory(shipped)) {
             for (const DirEntry &t : DirEntry::diru_DirsOnly(shipped)) {
@@ -173,6 +175,12 @@ private:
         // config.ini already here said
         if (info.installed && setIniValue(at(ConfigIni), "emulator", "pcsx-abnxt"))
             say("  PS1 emulator set to pcsx-abnxt");
+        // the default theme on a data tree that did not have it: the theme setting switches to it once (a tree
+        // that had the folder keeps the user's choice; a fresh install has no config.ini - the launcher's default)
+        if (info.installed &&
+            DefaultTheme::switchesTo(DirEntry::isDirectory(shipped + "/" + DefaultTheme::Name), hadDefaultTheme) &&
+            setIniValue(at(ConfigIni), "theme", DefaultTheme::Name))
+            say(string("  theme set to ") + DefaultTheme::Name);
         return true;
     }
 

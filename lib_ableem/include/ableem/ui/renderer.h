@@ -54,6 +54,14 @@ public:
     // copy(tex)) - the backdrop a busy overlay draws on while a long job runs. A frame that starts with
     // clear() is drawn straight into a target on the GPU (no read-back); one that does not is read back
     void captureNextFrame();
+    // the same capture, but a snapshot of something that is not on the screen: when the frame goes into a target
+    // (it starts with clear()) present() keeps it as lastCapture() and leaves the window alone - no copy, no buffer
+    // swap, no frame-rate wait, no frame-cache copy - so what the window shows does not change for the snapshot
+    // (the launcher's bare carousel under the System menu, BUG-31). A frame that does not start with clear() is read
+    // back and presented as with captureNextFrame()
+    void captureNextFrameSilently();
+    // a silent capture is asked for: the next frame is a snapshot, never shown (the screen transitions leave it alone)
+    bool silentCapturePending() const;
     Texture lastCapture() const;
 
     void setDrawColor(Color c);

@@ -3,6 +3,7 @@
 #include "ableem/engine/strings.h"
 
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -69,6 +70,22 @@ void readColor(const json &j, const char *key, ThemeColor &out) {
         ThemeColor::parseHex(v->get<string>(), out);
 }
 
+// a style role: "#rrggbb", or a bare name (letters only) of another colour in the block
+void readRole(const json &j, const char *key, ThemeColorRole &out) {
+    const json *v = child(j, key);
+    if (!v || !v->is_string())
+        return;
+    const string s = v->get<string>();
+    if (ThemeColor::parseHex(s, out.color))
+        return;
+    if (s.empty())
+        return;
+    for (char c : s)
+        if (!isalpha(static_cast<unsigned char>(c)))
+            return;
+    out.ref = s;
+}
+
 // x/y/w/h (set when x is there), colour and alpha, each optional on its own
 void readRect(const json &j, int &x, int &y, int &w, int &h, bool &set) {
     readInt(j, "x", x, set);
@@ -103,6 +120,13 @@ void putStr(ordered_json &o, const char *key, const string &s) {
 void putColor(ordered_json &o, const char *key, const ThemeColor &c) {
     if (c.set)
         o[key] = c.toHex();
+}
+
+void putRole(ordered_json &o, const char *key, const ThemeColorRole &r) {
+    if (r.color.set)
+        o[key] = r.color.toHex();
+    else if (!r.ref.empty())
+        o[key] = r.ref;
 }
 
 void putOptInt(ordered_json &o, const char *key, const Opt<int> &v) {
@@ -144,6 +168,11 @@ void mergeStr(string &mine, const string &base) {
 
 void mergeColor(ThemeColor &mine, const ThemeColor &base) {
     if (!mine.set)
+        mine = base;
+}
+
+void mergeRole(ThemeColorRole &mine, const ThemeColorRole &base) {
+    if (!mine.isSet())
         mine = base;
 }
 
@@ -309,6 +338,7 @@ bool ThemeSpec::load(const string &path) {
             readStr(*h, "cross", launcher.hints.cross);
             readStr(*h, "circle", launcher.hints.circle);
             readStr(*h, "triangle", launcher.hints.triangle);
+            readStr(*h, "square", launcher.hints.square);
         }
         if (const json *m = child(*l, "menuIcons")) {
             readStr(*m, "settings", launcher.menuIcons.settings);
@@ -338,6 +368,15 @@ bool ThemeSpec::load(const string &path) {
             readColor(*c, "secondary", launcher.colors.secondary);
             readColor(*c, "hint", launcher.colors.hint);
             readColor(*c, "selection", launcher.colors.selection);
+            auto &cl = launcher.colors;
+            readRole(*c, "row", cl.row);
+            readRole(*c, "rowSelected", cl.rowSelected);
+            readRole(*c, "heading", cl.heading);
+            readRole(*c, "value", cl.value);
+            readRole(*c, "description", cl.description);
+            readRole(*c, "footer", cl.footer);
+            readRole(*c, "selectionBand", cl.selectionBand);
+            readRole(*c, "edge", cl.edge);
         }
     }
 
@@ -465,6 +504,7 @@ bool ThemeSpec::save(const string &path) const {
             putStr(h, "cross", launcher.hints.cross);
             putStr(h, "circle", launcher.hints.circle);
             putStr(h, "triangle", launcher.hints.triangle);
+            putStr(h, "square", launcher.hints.square);
             putObject(l, "hints", h);
         }
         {
@@ -502,6 +542,15 @@ bool ThemeSpec::save(const string &path) const {
             putColor(c, "secondary", launcher.colors.secondary);
             putColor(c, "hint", launcher.colors.hint);
             putColor(c, "selection", launcher.colors.selection);
+            const auto &cl = launcher.colors;
+            putRole(c, "row", cl.row);
+            putRole(c, "rowSelected", cl.rowSelected);
+            putRole(c, "heading", cl.heading);
+            putRole(c, "value", cl.value);
+            putRole(c, "description", cl.description);
+            putRole(c, "footer", cl.footer);
+            putRole(c, "selectionBand", cl.selectionBand);
+            putRole(c, "edge", cl.edge);
             putObject(l, "colors", c);
         }
         putObject(j, "launcher", l);
@@ -562,6 +611,16 @@ void ThemeSpec::mergeOver(const ThemeSpec &base) {
     mergeColor(launcher.colors.secondary, base.launcher.colors.secondary);
     mergeColor(launcher.colors.hint, base.launcher.colors.hint);
     mergeColor(launcher.colors.selection, base.launcher.colors.selection);
+    // a role inherits the default's as it is written - a name stays a name, resolved against this theme's
+    // own colours (PanelStyle::fromTheme), so a theme that sets only `secondary` moves every role naming it
+    mergeRole(launcher.colors.row, base.launcher.colors.row);
+    mergeRole(launcher.colors.rowSelected, base.launcher.colors.rowSelected);
+    mergeRole(launcher.colors.heading, base.launcher.colors.heading);
+    mergeRole(launcher.colors.value, base.launcher.colors.value);
+    mergeRole(launcher.colors.description, base.launcher.colors.description);
+    mergeRole(launcher.colors.footer, base.launcher.colors.footer);
+    mergeRole(launcher.colors.selectionBand, base.launcher.colors.selectionBand);
+    mergeRole(launcher.colors.edge, base.launcher.colors.edge);
 
     // every file field, in one go
     vector<string *> mine = fileFields();
@@ -638,6 +697,7 @@ vector<string *> ThemeSpec::fileFields() {
         &l.hints.cross,
         &l.hints.circle,
         &l.hints.triangle,
+        &l.hints.square,
         &l.menuIcons.settings,
         &l.menuIcons.guide,
         &l.menuIcons.memcard,
@@ -657,6 +717,585 @@ vector<string *> ThemeSpec::fileFields() {
 vector<const string *> ThemeSpec::fileFields() const {
     vector<string *> mutableFields = const_cast<ThemeSpec *>(this)->fileFields();
     return vector<const string *>(mutableFields.begin(), mutableFields.end());
+}
+
+//*******************************
+// readThemeFrames / loadThemeFrames
+//*******************************
+namespace {
+
+// a number (all four) or { "left", "top", "right", "bottom" } (each optional); anything else leaves `out` alone
+void readInsets(const json &j, const char *key, ThemeInsets &out) {
+    const json *v = child(j, key);
+    if (!v)
+        return;
+    if (v->is_number_integer()) {
+        const int n = v->get<int>();
+        out.left = out.top = out.right = out.bottom = n;
+        return;
+    }
+    readInt(*v, "left", out.left);
+    readInt(*v, "top", out.top);
+    readInt(*v, "right", out.right);
+    readInt(*v, "bottom", out.bottom);
+}
+
+// "frames/panel.png" -> "frames/panel@2x.png" (the dot of the file name, not of a folder)
+string at2x(const string &file) {
+    const size_t slash = file.find_last_of("/\\");
+    const size_t dot = file.find_last_of('.');
+    if (dot == string::npos || (slash != string::npos && dot < slash))
+        return file + "@2x";
+    return file.substr(0, dot) + "@2x" + file.substr(dot);
+}
+
+} // namespace
+
+vector<ThemeFrame> readThemeFrames(const string &path) {
+    vector<ThemeFrame> frames;
+    ifstream in(path, ifstream::binary);
+    if (!in.is_open())
+        return frames;
+    json j;
+    try {
+        in >> j;
+    } catch (const json::exception &) {
+        return frames; // ThemeSpec::load has logged it
+    }
+    const json *launcher = child(j, "launcher");
+    const json *block = launcher ? child(*launcher, "frames") : nullptr;
+    if (!block || !block->is_object())
+        return frames;
+    for (auto it = block->begin(); it != block->end(); ++it) {
+        if (!it->is_object())
+            continue;
+        ThemeFrame f;
+        f.name = it.key();
+        readStr(*it, "image", f.image);
+        readStr(*it, "image2x", f.image2x);
+        if (f.image.empty() && f.image2x.empty())
+            continue;
+        readInsets(*it, "slice", f.slice);
+        readInsets(*it, "bleed", f.bleed);
+        const json *fill = child(*it, "fill");
+        if (fill && fill->is_boolean())
+            f.fill = fill->get<bool>();
+        readStr(*it, "tint", f.tint);
+        frames.push_back(f);
+    }
+    return frames;
+}
+
+namespace {
+
+const char *BridgeMarker = "bridge:";
+
+// `file` as written in a theme.json -> the path it names: under `bridgeDir` for a "bridge:" file ("" when there is no
+// such dir), else under the theme's `dir`; "" for no file
+string framePath(const string &dir, const string &bridgeDir, const string &file) {
+    if (file.empty())
+        return string();
+    const string marker = BridgeMarker;
+    if (file.compare(0, marker.size(), marker) != 0)
+        return dir + sep + file;
+    return bridgeDir.empty() ? string() : bridgeDir + sep + file.substr(marker.size());
+}
+
+} // namespace
+
+vector<ThemeFrame> loadThemeFrames(const string &dir, const string &bridgeDir) {
+    vector<ThemeFrame> frames;
+    for (ThemeFrame f : readThemeFrames(dir + sep + "theme.json")) {
+        const string named = framePath(dir, bridgeDir, f.image);
+        const string image = !named.empty() && DirEntry::exists(named) ? named : string();
+        string image2x;
+        if (!f.image2x.empty()) {
+            const string named2x = framePath(dir, bridgeDir, f.image2x);
+            if (!named2x.empty() && DirEntry::exists(named2x))
+                image2x = named2x;
+        } else if (!named.empty() && DirEntry::exists(at2x(named))) {
+            image2x = at2x(named);
+        }
+        if (image.empty() && image2x.empty()) {
+            PLOG_WARNING << "Theme frame '" << f.name << "': no image in " << dir << " - drawn by the code instead";
+            continue;
+        }
+        f.image = image;
+        f.image2x = image2x;
+        frames.push_back(f);
+    }
+    return frames;
+}
+
+//*******************************
+// readThemeIcons / loadThemeIcons / resolveThemeIcons
+//*******************************
+namespace {
+
+// the "launcher" object of the theme.json at `path` into `out`; false when the file is missing, invalid or has none
+bool readLauncher(const string &path, json &out) {
+    ifstream in(path, ifstream::binary);
+    if (!in.is_open())
+        return false;
+    json j;
+    try {
+        in >> j;
+    } catch (const json::exception &) {
+        return false; // ThemeSpec::load has logged it
+    }
+    const json *launcher = child(j, "launcher");
+    if (!launcher || !launcher->is_object())
+        return false;
+    out = *launcher;
+    return true;
+}
+
+// `file` (relative to `dir`) as an absolute path when it is there, else ""
+string existing(const string &dir, const string &file) {
+    if (file.empty())
+        return string();
+    const string path = dir + sep + file;
+    return DirEntry::exists(path) ? path : string();
+}
+
+} // namespace
+
+vector<ThemeIcon> readThemeIcons(const string &path) {
+    vector<ThemeIcon> icons;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return icons;
+    const json *block = child(launcher, "icons");
+    if (!block || !block->is_object())
+        return icons;
+    for (auto it = block->begin(); it != block->end(); ++it) {
+        ThemeIcon icon;
+        icon.name = it.key();
+        if (it->is_string()) {
+            icon.image = it->get<string>();
+        } else {
+            readStr(*it, "image", icon.image);
+            readStr(*it, "image2x", icon.image2x);
+        }
+        if (icon.image.empty() && icon.image2x.empty())
+            continue;
+        icons.push_back(icon);
+    }
+    return icons;
+}
+
+bool readThemeIconHalo(const string &path, bool &halo) {
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return false;
+    const json *v = child(launcher, "iconHalo");
+    if (!v || !v->is_boolean())
+        return false;
+    halo = v->get<bool>();
+    return true;
+}
+
+vector<ThemeIcon> loadThemeIcons(const string &dir) {
+    vector<ThemeIcon> icons;
+    for (ThemeIcon icon : readThemeIcons(dir + sep + "theme.json")) {
+        const string image = existing(dir, icon.image);
+        string image2x;
+        if (!icon.image2x.empty())
+            image2x = existing(dir, icon.image2x);
+        else if (!image.empty() && DirEntry::exists(at2x(image)))
+            image2x = at2x(image);
+        if (image.empty() && image2x.empty()) {
+            PLOG_WARNING << "Theme icon '" << icon.name << "': no image in " << dir << " - it falls back";
+            continue;
+        }
+        icon.image = image;
+        icon.image2x = image2x;
+        icons.push_back(icon);
+    }
+    return icons;
+}
+
+vector<ThemeIcon> resolveThemeIcons(const string &themeDir, const string &defaultDir,
+                                    const map<string, string> &builtIn) {
+    map<string, ThemeIcon> table;
+    // the built-in files first, then the default theme's entries over them, then the theme's own over those
+    for (const auto &b : builtIn) {
+        if (b.second.empty() || !DirEntry::exists(b.second))
+            continue;
+        ThemeIcon icon;
+        icon.name = b.first;
+        icon.image = b.second;
+        if (DirEntry::exists(at2x(b.second)))
+            icon.image2x = at2x(b.second);
+        table[b.first] = icon;
+    }
+    for (const ThemeIcon &icon : loadThemeIcons(defaultDir))
+        table[icon.name] = icon;
+    if (themeDir != defaultDir)
+        for (const ThemeIcon &icon : loadThemeIcons(themeDir))
+            table[icon.name] = icon;
+    vector<ThemeIcon> icons;
+    for (const auto &t : table)
+        icons.push_back(t.second);
+    return icons;
+}
+
+bool resolveThemeIconHalo(const string &themeDir, const string &defaultDir) {
+    bool halo = true;
+    if (!readThemeIconHalo(themeDir + sep + "theme.json", halo))
+        readThemeIconHalo(defaultDir + sep + "theme.json", halo);
+    return halo;
+}
+
+//*******************************
+// readThemeLogo / loadThemeLogo / readThemeResumeMask / loadThemeResumeMask
+//*******************************
+ThemeLauncherLogo readThemeLogo(const string &path) {
+    ThemeLauncherLogo logo;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return logo;
+    const json *block = child(launcher, "logo");
+    if (!block || !block->is_object())
+        return logo;
+    readStr(*block, "file", logo.file);
+    readInt(*block, "x", logo.x);
+    readInt(*block, "y", logo.y);
+    readInt(*block, "w", logo.w);
+    readInt(*block, "h", logo.h);
+    logo.set = !logo.file.empty() && logo.w > 0 && logo.h > 0;
+    return logo;
+}
+
+ThemeLauncherLogo loadThemeLogo(const string &dir) {
+    ThemeLauncherLogo logo = readThemeLogo(dir + sep + "theme.json");
+    if (!logo.set)
+        return logo;
+    const string file = existing(dir, logo.file);
+    if (file.empty()) {
+        PLOG_WARNING << "Theme logo '" << logo.file << "': not in " << dir << " - no logo drawn";
+        return ThemeLauncherLogo();
+    }
+    logo.file = file;
+    return logo;
+}
+
+string readThemeResumeMask(const string &path) {
+    string file;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return file;
+    const json *icons = child(launcher, "menuIcons");
+    if (icons)
+        readStr(*icons, "resumePictureMask", file);
+    return file;
+}
+
+string loadThemeResumeMask(const string &dir) {
+    const string file = readThemeResumeMask(dir + sep + "theme.json");
+    if (file.empty())
+        return file;
+    const string path = existing(dir, file);
+    if (path.empty()) {
+        PLOG_WARNING << "Theme resume picture mask '" << file << "': not in " << dir << " - a plain rectangle";
+    }
+    return path;
+}
+
+//*******************************
+// readThemeDisabledVeil / loadThemeDisabledVeil
+//*******************************
+constexpr int ThemeDisabledVeil::DefaultAlpha;
+
+ThemeDisabledVeil readThemeDisabledVeil(const string &path) {
+    ThemeDisabledVeil veil;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return veil;
+    const json *colors = child(launcher, "colors");
+    const json *value = colors ? child(*colors, "disabled") : nullptr;
+    if (!value)
+        return veil;
+    ThemeColor color;
+    if (value->is_string()) {
+        if (!ThemeColor::parseHex(value->get<string>(), color))
+            return veil;
+    } else if (value->is_object()) {
+        const json *c = child(*value, "color");
+        if (c) {
+            if (!c->is_string() || !ThemeColor::parseHex(c->get<string>(), color))
+                return veil;
+        } else {
+            color = ThemeColor(0, 0, 0);
+        }
+        const json *a = child(*value, "alpha");
+        if (a) {
+            if (!a->is_number_integer())
+                return veil;
+            const long long alpha = a->get<long long>();
+            veil.alpha = alpha < 0 ? 0 : alpha > 255 ? 255 : static_cast<int>(alpha);
+        }
+    } else {
+        return veil;
+    }
+    veil.color = color;
+    veil.set = true;
+    return veil;
+}
+
+ThemeDisabledVeil loadThemeDisabledVeil(const string &dir) {
+    return readThemeDisabledVeil(dir + sep + "theme.json");
+}
+
+//*******************************
+// readThemeSheet / loadThemeSheet
+//*******************************
+constexpr int ThemeSheet::DefaultAlpha;
+
+ThemeSheet readThemeSheet(const string &path) {
+    ThemeSheet sheet;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return sheet;
+    const json *colors = child(launcher, "colors");
+    const json *value = colors ? child(*colors, "sheet") : nullptr;
+    if (!value)
+        return sheet;
+    ThemeColor color;
+    if (value->is_string()) {
+        if (!ThemeColor::parseHex(value->get<string>(), color))
+            return sheet;
+    } else if (value->is_object()) {
+        const json *c = child(*value, "color");
+        if (c) {
+            if (!c->is_string() || !ThemeColor::parseHex(c->get<string>(), color))
+                return sheet;
+        } else {
+            color = ThemeColor(0, 0, 0);
+        }
+        const json *a = child(*value, "alpha");
+        if (a) {
+            if (!a->is_number_integer())
+                return sheet;
+            const long long alpha = a->get<long long>();
+            sheet.alpha = alpha < 0 ? 0 : alpha > 255 ? 255 : static_cast<int>(alpha);
+        }
+    } else {
+        return sheet;
+    }
+    sheet.color = color;
+    sheet.set = true;
+    return sheet;
+}
+
+ThemeSheet loadThemeSheet(const string &dir) {
+    return readThemeSheet(dir + sep + "theme.json");
+}
+
+//*******************************
+// readThemeInactiveAlphas / loadThemeInactiveAlphas
+//*******************************
+ThemeInactiveAlphas readThemeInactiveAlphas(const string &path) {
+    ThemeInactiveAlphas alphas;
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return alphas;
+    const json *block = child(launcher, "inactive");
+    if (!block || !block->is_object())
+        return alphas;
+    auto alphaOf = [&](const char *key, int &out) {
+        const json *value = child(*block, key);
+        if (!value || !value->is_number_integer())
+            return;
+        const long long alpha = value->get<long long>();
+        out = alpha < 0 ? 0 : alpha > 255 ? 255 : static_cast<int>(alpha);
+    };
+    alphaOf("resume", alphas.resume);
+    alphaOf("tab", alphas.tab);
+    alphaOf("barTrack", alphas.barTrack);
+    return alphas;
+}
+
+ThemeInactiveAlphas loadThemeInactiveAlphas(const string &dir) {
+    return readThemeInactiveAlphas(dir + sep + "theme.json");
+}
+
+string themeImageFile(const string &file, float outputScale, float &pixelScale) {
+    pixelScale = 1.0f;
+    if (outputScale <= 1.0f || file.empty())
+        return file; // at scale 1 the disk is not even asked
+    const string hiRes = at2x(file);
+    if (!DirEntry::exists(hiRes))
+        return file;
+    pixelScale = 2.0f;
+    return hiRes;
+}
+
+//*******************************
+// readThemeSpinner / loadThemeSpinner
+//*******************************
+constexpr int ThemeSpinner::DefaultFps;
+
+bool readThemeSpinner(const string &path, ThemeSpinner &out) {
+    json launcher;
+    if (!readLauncher(path, launcher))
+        return false;
+    const json *block = child(launcher, "spinner");
+    if (!block || !block->is_object())
+        return false;
+    ThemeSpinner s;
+    readStr(*block, "image", s.image);
+    readStr(*block, "image2x", s.image2x);
+    if (s.image.empty() && s.image2x.empty())
+        return false;
+    const json *frames = child(*block, "frames");
+    if (!frames || !frames->is_number_integer() || frames->get<int>() < 1)
+        return false;
+    s.frames = frames->get<int>();
+    const json *fps = child(*block, "fps");
+    s.fps = fps && fps->is_number_integer() && fps->get<int>() >= 1 ? fps->get<int>() : ThemeSpinner::DefaultFps;
+    out = s;
+    return true;
+}
+
+bool loadThemeSpinner(const string &dir, ThemeSpinner &out) {
+    ThemeSpinner s;
+    if (!readThemeSpinner(dir + sep + "theme.json", s))
+        return false;
+    const string image = existing(dir, s.image);
+    string image2x;
+    if (!s.image2x.empty())
+        image2x = existing(dir, s.image2x);
+    else if (DirEntry::exists(at2x(dir + sep + s.image)))
+        image2x = at2x(dir + sep + s.image); // found next to the 1x's name even when the 1x itself is not there
+    if (image.empty() && image2x.empty()) {
+        PLOG_WARNING << "Theme spinner: no image in " << dir << " - the ring of dots is drawn instead";
+        return false;
+    }
+    s.image = image;
+    s.image2x = image2x;
+    out = s;
+    return true;
+}
+
+//*******************************
+// readThemeHidden / loadThemeHidden
+//*******************************
+bool readThemeHidden(const string &path) {
+    ifstream in(path, ifstream::binary);
+    if (!in.is_open())
+        return false;
+    json j;
+    try {
+        in >> j;
+    } catch (const json::exception &) {
+        return false;
+    }
+    const json *hidden = child(j, "hidden");
+    return hidden && hidden->is_boolean() && hidden->get<bool>();
+}
+
+bool loadThemeHidden(const string &dir) {
+    return readThemeHidden(dir + sep + "theme.json");
+}
+
+//*******************************
+// mergeThemeJson / readThemeJsonInt / digestThemeJson
+//*******************************
+namespace {
+
+// `into` gets `patch`'s keys: objects on both sides merge key by key, anything else is replaced
+void mergeInto(ordered_json &into, const ordered_json &patch) {
+    for (auto it = patch.begin(); it != patch.end(); ++it) {
+        if (it->is_object() && into.contains(it.key()) && into[it.key()].is_object())
+            mergeInto(into[it.key()], *it);
+        else
+            into[it.key()] = *it;
+    }
+}
+
+// the theme.json at `path` parsed into `out`; false when missing, invalid or not an object
+template <class Json> bool parseObjectFile(const string &path, Json &out) {
+    ifstream in(path, ifstream::binary);
+    if (!in.is_open())
+        return false;
+    try {
+        in >> out;
+    } catch (const typename Json::exception &) {
+        return false;
+    }
+    return out.is_object();
+}
+
+} // namespace
+
+bool mergeThemeJson(const string &path, const string &patch) {
+    ordered_json patchJson;
+    try {
+        patchJson = ordered_json::parse(patch);
+    } catch (const ordered_json::exception &) {
+        return false;
+    }
+    if (!patchJson.is_object())
+        return false;
+    ordered_json j;
+    if (!parseObjectFile(path, j))
+        return false;
+    mergeInto(j, patchJson);
+    ofstream o(path, ofstream::binary);
+    if (!DirEntry::checkWritable(o, path))
+        return false;
+    o << setw(2) << j << "\n";
+    o.flush();
+    o.close();
+    return o.good();
+}
+
+int readThemeJsonInt(const string &path, const string &pointer, int fallback) {
+    json j;
+    if (!parseObjectFile(path, j))
+        return fallback;
+    try {
+        const json &v = j.at(json::json_pointer(pointer));
+        return v.is_number_integer() ? v.get<int>() : fallback;
+    } catch (const json::exception &) {
+        return fallback;
+    }
+}
+
+string readThemeJsonString(const string &path, const string &pointer) {
+    json j;
+    if (!parseObjectFile(path, j))
+        return string();
+    try {
+        const json &v = j.at(json::json_pointer(pointer));
+        return v.is_string() ? v.get<string>() : string();
+    } catch (const json::exception &) {
+        return string();
+    }
+}
+
+string digestThemeJson(const string &path, const vector<string> &pointers) {
+    json j;
+    if (!parseObjectFile(path, j))
+        return string();
+    string text;
+    for (const string &pointer : pointers) {
+        json value; // null when the pointer leads nowhere
+        try {
+            value = j.at(json::json_pointer(pointer));
+        } catch (const json::exception &) {
+        }
+        text += pointer + "=" + value.dump() + "\n"; // json keeps its keys sorted: the same blocks, the same text
+    }
+    uint64_t hash = 1469598103934665603ULL; // FNV-1a, 64 bit
+    for (const char c : text) {
+        hash ^= static_cast<unsigned char>(c);
+        hash *= 1099511628211ULL;
+    }
+    char hex[17];
+    snprintf(hex, sizeof(hex), "%016llx", static_cast<unsigned long long>(hash));
+    return hex;
 }
 
 } // namespace ableem

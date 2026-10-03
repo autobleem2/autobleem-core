@@ -1,23 +1,19 @@
 //
 // Created by screemer on 2019-01-24.
 //
+// GuiConfirm: a yes/no question in a compact dialog - ab_gui's abgui::Confirm (docs/ab-gui-plan.md, G3j) as a classic
+// screen (G3z): `label`, `title`, `confirmLabel`/`cancelLabel`, show(), then `result`.
+//
 #pragma once
 
-#include <string>
+#include <ab_gui/confirm.h>
+
 #include "../gui_screen.h"
 
 //********************
 // GuiConfirm
 //********************
-class GuiConfirm : public GuiScreen {
+class GuiConfirm : public ClassicScreen<abgui::Confirm> {
 public:
-    void render() override;
-    void loop() override;
-
-    std::string label = "";
-    std::string title;                     // the header; empty = "Please confirm"
-    std::string confirmLabel, cancelLabel; // the footer's hints; empty = "Confirm" / "Cancel"
-    bool result = false;
-
-    using GuiScreen::GuiScreen;
+    explicit GuiConfirm(ableem::GuiBase &_gui) : ClassicScreen<abgui::Confirm>(_gui) {}
 };

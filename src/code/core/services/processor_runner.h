@@ -45,6 +45,9 @@ public:
         std::string logFile; // System/Logs/processors.log ("" = no log)
         std::string tmpBase; // AB_TMP is <tmpBase>/<processor name>, made empty before a run, removed after
         std::vector<std::pair<std::string, std::string>> env; // AB_ROOT, AB_GAMES_DIR, ... (the protocol's)
+        // HOME and AB_HOME are <homeBase>/<processor name>, made when missing - where a processor keeps its own data,
+        // on the stick ("" = neither is set: the processor inherits the launcher's HOME)
+        std::string homeBase;
     };
 
     struct Outcome {

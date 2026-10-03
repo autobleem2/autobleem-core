@@ -181,8 +181,10 @@ TEST_CASE("every shipped platform ini loads, and each target's file is there" *
         CHECK_FALSE(cfg.retroarchDir.empty());
         CHECK(DirEntry::exists(dir + "/" + name + ".cores.cfg"));
     }
-    // the console never goes online; the appliances update RetroArch from their own catalog
-    CHECK(PlatformConfig::load(PlatformConfig::pathFor(AB_RESOURCES_DIR, "psc")).downloadCommand.empty());
+    // the console fetches box art with its own abfetch (only when a network answers the scan's probe); the
+    // appliances update RetroArch from their own catalog
+    CHECK(PlatformConfig::load(PlatformConfig::pathFor(AB_RESOURCES_DIR, "psc")).downloadCommand.find("%r/abfetch") !=
+          std::string::npos);
     CHECK(PlatformConfig::load(PlatformConfig::pathFor(AB_RESOURCES_DIR, "rpi")).retroarchCatalog ==
           "rpi/retroarch/latest.json");
     CHECK(PlatformConfig::load(PlatformConfig::pathFor(AB_RESOURCES_DIR, "pcusb")).retroarchCatalog ==

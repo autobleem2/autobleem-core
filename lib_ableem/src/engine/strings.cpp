@@ -196,4 +196,69 @@ vector<string> Strings::getTokens(const string &str, char delim) {
     return ret;
 }
 
+namespace {
+
+// the upper-case form of a code point below U+0800 (the ranges upperUtf8 documents); the point itself otherwise
+unsigned upperPoint(unsigned c) {
+    if (c < 0x80)
+        return (c >= 'a' && c <= 'z') ? c - 32 : c;
+    if (c >= 0xE0 && c <= 0xFE && c != 0xF7) // Latin-1: a-grave .. thorn
+        return c - 32;
+    if (c == 0xFF)
+        return 0x178;
+    if (c == 0x131) // dotless i
+        return 'I';
+    if ((c >= 0x100 && c <= 0x137 && c != 0x130 && c != 0x131 && c != 0x138) || (c >= 0x14A && c <= 0x177))
+        return (c & 1) ? c - 1 : c; // Latin Extended-A: the lower case is the odd one of a pair
+    if ((c >= 0x139 && c <= 0x148) || (c >= 0x179 && c <= 0x17E))
+        return (c & 1) ? c : c - 1; // ... and the even one in these runs
+    if (c == 0x3AC)
+        return 0x386;
+    if (c >= 0x3AD && c <= 0x3AF)
+        return c - 37;
+    if (c == 0x3CC)
+        return 0x38C;
+    if (c == 0x3CD || c == 0x3CE)
+        return c - 63;
+    if (c == 0x3C2)
+        return 0x3A3; // final sigma
+    if ((c >= 0x3B1 && c <= 0x3CB) && c != 0x3C2)
+        return c - 32; // Greek alpha .. omega (+ the two dialytika letters)
+    if (c >= 0x430 && c <= 0x44F)
+        return c - 32; // Cyrillic
+    if (c >= 0x450 && c <= 0x45F)
+        return c - 80;
+    return c;
+}
+
+} // namespace
+
+//*******************************
+// Strings::upperUtf8
+//*******************************
+string Strings::upperUtf8(const string &s) {
+    string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size();) {
+        const unsigned char b = static_cast<unsigned char>(s[i]);
+        if (b < 0x80) {
+            out += static_cast<char>(upperPoint(b));
+            i++;
+        } else if ((b & 0xE0) == 0xC0 && i + 1 < s.size() && (static_cast<unsigned char>(s[i + 1]) & 0xC0) == 0x80) {
+            const unsigned c = ((b & 0x1Fu) << 6) | (static_cast<unsigned char>(s[i + 1]) & 0x3Fu);
+            const unsigned u = upperPoint(c);
+            if (u < 0x80) {
+                out += static_cast<char>(u);
+            } else {
+                out += static_cast<char>(0xC0 | (u >> 6));
+                out += static_cast<char>(0x80 | (u & 0x3F));
+            }
+            i += 2;
+        } else {
+            out += s[i++]; // a longer sequence or a broken byte: copied as it is
+        }
+    }
+    return out;
+}
+
 } // namespace ableem

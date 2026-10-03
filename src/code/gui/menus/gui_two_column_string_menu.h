@@ -11,6 +11,11 @@ struct TwoColumnsOfText {
     TwoColumnsOfText(std::string left, std::string right) : line_L(left), line_R(right) {}
 };
 
+// the row's name for the DebugDriver: both columns, as displayed
+inline std::string driverRowName(const TwoColumnsOfText &line) {
+    return line.line_R.empty() ? line.line_L : line.line_L + " " + line.line_R;
+}
+
 //*******************************
 // class GuiTwoColumnStringMenu
 //*******************************
