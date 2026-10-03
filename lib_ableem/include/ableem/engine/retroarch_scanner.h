@@ -115,6 +115,10 @@ public:
         uint64_t maxCrcBytes = 64 * 1024 * 1024;
         // where the per-folder digests of the last scan are kept ("" = every folder is scanned every time)
         std::string stateFile;
+        // a file whose absence makes this scan move every entry under the ROM folders to the system's current
+        // core (hand picks included - once, after an update changed the picks), and which it then writes;
+        // "" = never
+        std::string coreMigrationMarker;
     };
 
     explicit RetroArchScanner(ScanProgressListener *listener = nullptr) : listener_(listener) {}

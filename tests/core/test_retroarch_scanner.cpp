@@ -1150,3 +1150,68 @@ TEST_CASE("scan: a core picked for a game survives the rescan that names the gam
     CHECK(entries[0].core_name == "Nintendo - NES / Famicom (Nestopia UE)");
     CHECK(entries[0].core_path == t.tmp.at("retroarch/cores/nestopia_libretro.so"));
 }
+
+TEST_CASE("scan: once per stick every entry of ours moves to the current core, then a hand pick stays") {
+    RomsTree t;
+    t.addCore("km_fceumm_legacy_libretro", "Nintendo - NES (km_FCEUmm Legacy)", "nes|fds", NES);
+    t.addCore("km_fceumm_libretro", "Nintendo - NES (km_FCEUmm)", "nes|fds", NES);
+    t.tmp.writeFile("cores.cfg", string(NES) + " = km_fceumm\n");
+    t.options.stateFile = t.tmp.at("scanstate");
+    t.options.coreMigrationMarker = t.tmp.at("picks.done");
+    const string nes = string("roms/") + NES;
+    t.tmp.makeSubDir(nes);
+    t.tmp.writeFile(nes + "/A.nes", "rom");
+    t.tmp.writeFile(nes + "/B.nes", "rom2");
+    t.tmp.writeFile("elsewhere/Mine.nes", "rom3");
+    const string legacy = t.tmp.at("retroarch/cores/km_fceumm_legacy_libretro.so");
+    const string current = t.tmp.at("retroarch/cores/km_fceumm_libretro.so");
+    const string target = t.tmp.at(nes);
+
+    // an old playlist: the scanner's entries on the legacy core, and the user's own addition elsewhere
+    RetroArchPlaylistEntries old;
+    for (const char *file : {"A.nes", "B.nes", "../../elsewhere/Mine.nes"}) {
+        RetroArchPlaylistEntry e;
+        e.path = target + "/" + file;
+        e.label = file;
+        e.core_path = legacy;
+        e.core_name = "Nintendo - NES (km_FCEUmm Legacy)";
+        e.crc32 = "00000000|crc";
+        e.db_name = string(NES) + ".lpl";
+        old.push_back(e);
+    }
+    old[2].path = t.tmp.at("elsewhere/Mine.nes");
+    old[2].label = "Mine";
+    old[0].label = "A";
+    old[1].label = "B";
+    REQUIRE(RetroArchPlaylist::save(t.playlist(NES), old));
+
+    RetroArchSystems systems = RetroArchScanner::systemsFrom(t.cores(t.tmp.at("cores.cfg")));
+    RetroArchScanner scanner;
+    scanner.scan(t.options, systems);
+    RetroArchPlaylistEntries now = t.loadPlaylist(NES);
+    REQUIRE(now.size() == 3);
+    for (const auto &e : now) {
+        if (e.label == "Mine")
+            CHECK(e.core_path == legacy); // not ours: untouched
+        else
+            CHECK(e.core_path == current);
+    }
+    CHECK(DirEntry::exists(t.options.coreMigrationMarker));
+
+    // a pick made after that survives the next scan, even one that looks at the folder again
+    for (auto &e : now) {
+        if (e.label == "A")
+            e.core_path = legacy;
+    }
+    REQUIRE(RetroArchPlaylist::save(t.playlist(NES), now));
+    t.tmp.writeFile(nes + "/C.nes", "rom4");
+    scanner.scan(t.options, systems);
+    now = t.loadPlaylist(NES);
+    REQUIRE(now.size() == 4);
+    for (const auto &e : now) {
+        if (e.label == "A" || e.label == "Mine")
+            CHECK(e.core_path == legacy);
+        else
+            CHECK(e.core_path == current);
+    }
+}

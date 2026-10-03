@@ -372,10 +372,12 @@ int RetroArchScanner::seedCrcsFromPlaylist(ScannedRoms &roms, const RetroArchPla
     return seeded;
 }
 
-// an entry that names a core ("DETECT" and empty mean RetroArch picks one)
+// a core named ("DETECT" and empty mean RetroArch picks one)
+static bool isRealCore(const string &name, const string &path) {
+    return !path.empty() && path != "DETECT" && !name.empty() && name != "DETECT";
+}
 static bool isRealCore(const RetroArchPlaylistEntry &entry) {
-    return !entry.core_path.empty() && entry.core_path != "DETECT" && !entry.core_name.empty() &&
-           entry.core_name != "DETECT";
+    return isRealCore(entry.core_name, entry.core_path);
 }
 
 //*******************************
@@ -513,6 +515,9 @@ RetroArchScanResult RetroArchScanner::scan(const Options &options, const RetroAr
     for (const RetroArchSystem &system : systems)
         byName[system.name] = &system;
 
+    // the one-time move of every entry of ours to the current core: while the marker file is missing
+    const bool migrate = !options.coreMigrationMarker.empty() && !DirEntry::exists(options.coreMigrationMarker);
+
     DirEntries folders = DirEntry::diru_DirsOnly(romsDir);
     sort(folders.begin(), folders.end(), DirEntry::sortDirEntryByName);
     vector<pair<string, string>> known; // folder name, database name
@@ -577,7 +582,7 @@ RetroArchScanResult RetroArchScanner::scan(const Options &options, const RetroAr
         if (!options.stateFile.empty()) {
             folderFingerprint = GamesFingerprint::takeAllFiles(sourceFolder).text();
             auto last = lastState.find(name);
-            if (last != lastState.end() &&
+            if (!migrate && last != lastState.end() &&
                 last->second == folderDigest(folderFingerprint, playlistPath, rdbPath, targetFolder, system)) {
                 RetroArchPlaylistEntries entries;
                 if (DirEntry::exists(playlistPath) && !RetroArchPlaylist::load(playlistPath, entries, nullptr)) {
@@ -623,6 +628,23 @@ RetroArchScanResult RetroArchScanner::scan(const Options &options, const RetroAr
         }
 
         RetroArchPlaylistEntries merged = merge(existing, fresh, sourceFolder, targetFolder);
+        if (migrate && isRealCore(system.coreName, system.corePath)) {
+            // once per stick: the entries under this folder move to the system's current core
+            int moved = 0;
+            for (RetroArchPlaylistEntry &entry : merged) {
+                const string file = forwardSlashes(filePart(entry.path));
+                const bool ours = startsWith(file, forwardSlashes(targetFolder) + "/") ||
+                                  startsWith(file, forwardSlashes(sourceFolder) + "/");
+                if (ours && (entry.core_path != system.corePath || entry.core_name != system.coreName)) {
+                    entry.core_path = system.corePath;
+                    entry.core_name = system.coreName;
+                    moved++;
+                }
+            }
+            if (moved > 0)
+                PLOG_INFO << "Core picks v1: " << system.name << ".lpl - " << moved << " entries moved to "
+                          << system.coreName;
+        }
 
         int ours = countOurs(merged);
         result.systemsScanned++;
@@ -654,6 +676,11 @@ RetroArchScanResult RetroArchScanner::scan(const Options &options, const RetroAr
 
     if (!options.stateFile.empty() && newState != lastState)
         saveScanState(options.stateFile, newState);
+    if (migrate) {
+        ofstream marker(options.coreMigrationMarker, ios::binary);
+        if (DirEntry::checkWritable(marker, options.coreMigrationMarker))
+            marker << "core picks v1\n";
+    }
     return result;
 }
 

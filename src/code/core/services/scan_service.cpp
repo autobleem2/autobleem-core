@@ -315,6 +315,7 @@ int ScanService::scanRetroArchRoms(Listener &listener, vector<string> &playlists
                                                    ableem::RetroArchScanner::loadSkipList(romsSkipListPath()));
     options.rdbDir = Env::getPathToRetroarchRdbDir(); // a missing one just means nothing gets identified
     options.stateFile = romScanStateFilePath();       // so a folder nothing changed in is not scanned again
+    options.coreMigrationMarker = Env::getPathToStateDir() + sep + "core-picks-1.done"; // once per stick
     ableem::RetroArchScanner scanner(&listener);
     ableem::RetroArchScanResult result = scanner.scan(options, ableem::RetroArchScanner::systemsFrom(cores));
     playlistsWritten = result.playlistsWritten;
