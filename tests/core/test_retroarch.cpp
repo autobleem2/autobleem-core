@@ -482,4 +482,7 @@ TEST_CASE(
     CHECK_FALSE(ableem::DirEntry::exists(RetroArchService::userCoresCfgPath()));
     CHECK(games[0]->core_path == ra.core("mesen2_libretro"));
     CHECK(games[1]->core_path == ra.core("bsnes_libretro"));
+    // a system on the scan's skip list has no ROM folder and so no row
+    ra.tmp.writeFile("platform/roms_skip.cfg", "# not here\n" + db + "\n");
+    CHECK(ra.service.corePlatforms().empty());
 }

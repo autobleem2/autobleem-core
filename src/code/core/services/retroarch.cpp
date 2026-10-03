@@ -4,6 +4,7 @@
 #include "retroarch.h"
 #include "environment.h"
 #include "../main.h"
+#include "scan_service.h"
 
 #include <ableem/engine/rdb_reader.h>
 #include <ableem/engine/retroarch_playlist.h>
@@ -486,7 +487,11 @@ string RetroArchService::userCoresCfgPath() {
 vector<RACorePlatform> RetroArchService::corePlatforms() {
     ensureLoaded();
     vector<RACorePlatform> out;
+    // the systems the scan makes no ROM folder for (PlayStation, the versioned MAME builds ...) have no games here
+    const set<string> skip = ableem::RetroArchScanner::loadSkipList(ScanService::romsSkipListPath());
     for (const string &db : cores_.databases()) { // sorted
+        if (skip.count(toLowerCopy(db)))
+            continue;
         RACorePlatform row;
         row.database = db;
         row.cores = cores_.platformOrder(db);
