@@ -737,6 +737,7 @@ private:
     string savedConfig;
     string themeCfg;
     string ab2Cfg;
+    string themeAssets; // the RetroArch zip's theme/assets tree, moved aside until the bundles are in
     bool hadDefaultTheme = false; // Themes/<DefaultTheme::Name> was on the stick before this run
     bool newBinary = false;
 };
