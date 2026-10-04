@@ -995,7 +995,7 @@ TEST_CASE("the console's RetroArch update that fails leaves the old RetroArch as
     }
 }
 
-TEST_CASE("the zip-only mode makes its scratch folder, parents and all, when it is not there yet (abupdate's /tmp one)") {
+TEST_CASE("the zip-only mode makes its scratch folder and its parents when they are not there yet") {
     Fixture fx;
     fx.options.packageFile.clear();
     fx.options.retroarchZip = fx.tmp.at("site/retroarch-psc-v1.22.2-4.zip");
