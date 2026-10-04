@@ -145,8 +145,13 @@ struct Fixture {
             REQUIRE(zip.open(tmp.at("site/retroarch-psc-v1.22.2-4.zip")));
             zip.addBytes("retroarch", "ELF retroarch");
             zip.addBytes("VERSION", "v1.22.2-4\n");
-            zip.addBytes("theme/Autobleem2.png", "png");
-            zip.addBytes("theme/selawik-light.ttf", "ttf");
+            zip.addBytes("theme/ab2-1280x720.png", "wallpaper");
+            // the theme's assets tree: the whole folder is taken, whatever names the designer adds to it
+            zip.addBytes("theme/assets/xmb/custom/png/bg.png", "bg");
+            zip.addBytes("theme/assets/xmb/custom/png/phase2-new.png", "phase 2");
+            zip.addBytes("theme/assets/xmb/custom/font.ttf", "red hat");
+            zip.addBytes("theme/assets/xmb/monochrome/png/setting.png", "ab2 setting");
+            zip.addBytes("theme/assets/ozone/regular.ttf", "ozone font");
             zip.addBytes("theme/retroarch-psc.cfg", "# the keys\nxmb_theme = \"7\"\nquit_on_close_content = \"2\"\n");
             REQUIRE(zip.close());
             string zipPath = tmp.at("site/retroarch-psc-v1.22.2-4.zip");
@@ -181,6 +186,8 @@ struct Fixture {
             string path = tmp.at(string("site/") + b + ".zip");
             REQUIRE(zip.open(path));
             zip.addBytes(string(b) + "-file.txt", b);
+            if (string(b) == "assets")
+                zip.addBytes("xmb/monochrome/png/setting.png", "stock setting");
             REQUIRE(zip.close());
             site.files[string(Site) + "/buildbot/" + b + ".zip"] = path;
         }
@@ -474,8 +481,17 @@ TEST_CASE("RetroArch, its cores, libraries, apps and bundles, then the BIOS file
     // RetroArch/bin: the binary, the theme where the cfg keys look, the cfg with the directories
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF retroarch");
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/VERSION") == "v1.22.2-4\n");
-    CHECK(fx.has("RetroArch/bin/Retroarch themes/Autobleem2.png"));
-    CHECK(fx.has("RetroArch/bin/fonts/selawik-light.ttf"));
+    CHECK(fx.has("RetroArch/bin/Retroarch themes/ab2-1280x720.png"));
+    // the theme over libretro's assets bundle: ours wins, the stock file is kept once as .prab2, the bundle's
+    // own files are still there (the theme went in after it, not before)
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png") == "ab2 setting");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png.prab2") == "stock setting");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/custom/png/phase2-new.png") == "phase 2");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/custom/font.ttf") == "red hat");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/ozone/regular.ttf") == "ozone font");
+    CHECK_FALSE(fx.has("RetroArch/bin/assets/xmb/custom/png/bg.png.prab2")); // nothing stock to keep
+    CHECK(fx.has("RetroArch/bin/assets/assets-file.txt"));
+    CHECK(fx.out.said("the AutoBleem 2 theme: 5 files"));
     string cfg = fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg");
     CHECK(cfg.find("system_directory = \"/media/RetroArch/bios\"") != string::npos);
     CHECK(cfg.find("rgui_browser_directory = \"/media/RetroArch/roms/\"") != string::npos);
@@ -832,4 +848,24 @@ TEST_CASE("a channel: the stick package and UpdateRoms come from that channel's 
           vector<string>{"nightly/latest.json", "releases/unstable.json", "releases/latest.json"});
     CHECK(InstallerJob::channelLists("testing") == vector<string>{"releases/unstable.json", "releases/latest.json"});
     CHECK(InstallerJob::channelLists("release") == vector<string>{"releases/latest.json"});
+}
+
+TEST_CASE("the theme over an updated stick: only the build's cfg keys change, the stock backup stays the stock file") {
+    Fixture fx;
+    fx.options.retroarch = true;
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "ELF 1.9.0");
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch.cfg", "video_smooth = \"true\"
+xmb_theme = \"8\"
+");
+    // assets already on the stick (the bundle is skipped), with a stock file and an earlier backup of it
+    fx.tmp.writeFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png", "our old copy");
+    fx.tmp.writeFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png.prab2", "the stock file");
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.out.said("assets: already there"));
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png") == "ab2 setting");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png.prab2") == "the stock file");
+    CHECK(fx.has("RetroArch/bin/assets/xmb/custom/png/phase2-new.png"));
+    string cfg = fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg");
+    CHECK(cfg.find("video_smooth = \"true\"") != string::npos);
 }

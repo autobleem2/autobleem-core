@@ -421,9 +421,7 @@ private:
                 const char *to;
             };
             for (const Place &p : {Place{"retroarch", "retroarch"}, Place{"VERSION", "VERSION"},
-                                   Place{"theme/Autobleem2.png", "Retroarch themes/Autobleem2.png"},
-                                   Place{"theme/selawik-light.ttf", "fonts/selawik-light.ttf"},
-                                   Place{"theme/OFL.txt", "fonts/OFL.txt"}}) {
+                                   Place{"theme/ab2-1280x720.png", "Retroarch themes/ab2-1280x720.png"}}) {
                 if (!DirEntry::exists(unpacked + "/" + p.from))
                     continue;
                 DirEntry::removeFile(bin + "/" + p.to);
@@ -433,6 +431,12 @@ private:
                 }
             }
             themeCfg = readText(unpacked + "/theme/retroarch-psc.cfg");
+            // the theme's assets tree waits for the bundles below: a folder of ours under assets/ would
+            // make a fresh install skip libretro's own assets bundle as "already there"
+            themeAssets = scratch + "/ra-theme-assets";
+            DirEntry::removeDirAndContents(themeAssets);
+            if (DirEntry::isDirectory(unpacked + "/theme/assets"))
+                DirEntry::renameFile(unpacked + "/theme/assets", themeAssets);
             DirEntry::removeDirAndContents(unpacked);
             DirEntry::removeFile(zip);
             newBinary = true;
@@ -455,6 +459,7 @@ private:
             return false;
         // libretro's bundles
         phase("RetroArch assets");
+        bool assetsReady = true;
         for (const Bundle &b : Bundles) {
             if (stopped(error))
                 return false;
@@ -468,12 +473,54 @@ private:
             if (!download(opt.buildbotUrl + "/" + b.name + ".zip", zip, error)) {
                 say("  could not download " + string(b.name) + ".zip: " + error + " - going on without it");
                 error.clear();
+                if (string(b.name) == "assets")
+                    assetsReady = false;
                 continue;
             }
-            if (!ZipArchive::extract(zip, dest))
+            if (!ZipArchive::extract(zip, dest)) {
                 say("  could not unpack " + string(b.name) + ".zip - going on without it");
+                if (string(b.name) == "assets")
+                    assetsReady = false;
+            }
             error.clear();
             DirEntry::removeFile(zip);
+        }
+        // the AutoBleem 2 look over RetroArch's assets (a new RetroArch build brings it)
+        if (!themeAssets.empty()) {
+            if (assetsReady) {
+                int count = 0;
+                if (!applyThemeTree(themeAssets, bin + "/assets", count, error))
+                    return false;
+                say("  the AutoBleem 2 theme: " + to_string(count) + " files");
+            } else {
+                // putting our folders in would make the next run take the assets bundle for done
+                say("  the AutoBleem 2 theme waits: RetroArch's assets are not on the stick yet");
+            }
+            DirEntry::removeDirAndContents(themeAssets);
+        }
+        return true;
+    }
+
+    // `from` copied over `to`, folder by folder. A stock file of RetroArch's that this overwrites is kept once
+    // as <name>.prab2 (a later run sees the .prab2 and keeps the first one - the stock file, not our copy)
+    bool applyThemeTree(const string &from, const string &to, int &count, string &error) {
+        DirEntry::createDirs(to);
+        for (const DirEntry &e : DirEntry::diru(from)) {
+            const string src = from + "/" + e.name, dst = to + "/" + e.name;
+            if (e.isDir) {
+                if (!applyThemeTree(src, dst, count, error))
+                    return false;
+                continue;
+            }
+            const string backup = dst + ".prab2";
+            if (DirEntry::exists(dst) && !DirEntry::exists(backup))
+                DirEntry::copyFile(dst, backup);
+            DirEntry::removeFile(dst);
+            if (!DirEntry::copyFile(src, dst)) {
+                error = "cannot write " + dst;
+                return false;
+            }
+            count++;
         }
         return true;
     }
