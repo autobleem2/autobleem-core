@@ -1,5 +1,5 @@
 //
-// UpdateService: the launcher's online update - is there a newer AutoBleem (or RetroArch, on a Pi) on the
+// UpdateService: the launcher's online update - is there a newer AutoBleem (or RetroArch: Pi, PC stick, console) on the
 // download repository, and fetching it when the user says yes. Built only with AB_ONLINE_UPDATE (CMake: on
 // everywhere since 2026-09-23; the console checks only when it has a network - Config::networkUp, a default
 // route, which only the AutoBleem kernel with WiFi gives it - and fetches with the kernel payload's curl).
@@ -18,7 +18,8 @@
 // The download: each needed tarball into <usb>/System/Updates/, sha256-checked against the catalog, then
 // pending.json for the Pi's autobleem-update script (the launcher exits with MENU_OPTION_UPDATE and the
 // session loop runs it - payload_linux/system/autobleem-session.sh) or, on the console, for the launcher's
-// abupdate (rc/selection.sh runs it: InstallerJob over the stick). Progress is the growing file's size.
+// abupdate (rc/selection.sh runs it: InstallerJob over the stick, and the RetroArch zip over its RetroArch/bin;
+// the console's catalog lists that zip as its one "zip" entry). Progress is the growing file's size.
 //
 #pragma once
 

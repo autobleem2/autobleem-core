@@ -895,3 +895,95 @@ TEST_CASE("the theme's cfg keys wait with the theme: no assets bundle, no keys t
     CHECK(cfg.find("xmb_theme = \"6\"") == string::npos);
     CHECK(cfg.find("xmb_font") == string::npos);
 }
+
+TEST_CASE("the console's own RetroArch update lays the downloaded zip over the RetroArch that is on the stick") {
+    Fixture fx;
+    fx.options.packageFile.clear(); // no AutoBleem package in this run
+    fx.options.retroarchZip = fx.tmp.at("site/retroarch-psc-v1.22.2-4.zip");
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "ELF old");
+    fx.tmp.writeFile("stick/RetroArch/bin/VERSION", "v1.22.2-1\n");
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch.cfg", "video_smooth = \"true\"\nxmb_theme = \"8\"\n");
+    fx.tmp.writeFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png", "stock setting");
+    fx.tmp.writeFile("stick/RetroArch/bin/assets/mine.txt", "mine");
+    fx.tmp.writeFile("stick/RetroArch/bin/cores/snes9x_libretro.so", "core");
+    fx.tmp.writeFile("stick/RetroArch/bin/saves/Crash.srm", "srm");
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF launcher");
+
+    StickInfo before = InstallerJob::inspect(fx.options);
+    CHECK(InstallerJob::phasesFor(fx.options, before) == vector<string>{"RetroArch"});
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.out.phases == vector<string>{"RetroArch"});
+    // the binary, the docs, the wallpaper
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF retroarch");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/fonts/OFL.txt") == "ofl");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/Retroarch themes/ab2-1280x720.png") == "wallpaper");
+    // the theme over the assets: ours wins, the stock file kept once, the user's own file and the bundle stay
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png") == "ab2 setting");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png.prab2") == "stock setting");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/custom/font.ttf") == "red hat");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/mine.txt") == "mine");
+    CHECK(fx.out.said("the AutoBleem 2 theme: 5 files"));
+    // retroarch.cfg: the user's keys stay, the build's two and the theme's two are set, in that order
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg") ==
+          "video_smooth = \"true\"\nxmb_theme = \"6\"\nquit_on_close_content = \"2\"\n"
+          "xmb_font = \":/assets/xmb/custom/font.ttf\"\n");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/VERSION") == "v1.22.2-4\n");
+    // nothing else of the stick is touched: no cores, libraries, apps, covers, no new AutoBleem
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/cores/snes9x_libretro.so") == "core");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/saves/Crash.srm") == "srm");
+    CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/autobleem-gui") == "ELF launcher");
+    CHECK_FALSE(fx.has("Autobleem/lib/modules/xpad.ko"));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroarch.new"));
+    CHECK(fx.site.fetched.empty()); // the zip was downloaded by the launcher already
+
+    // a second run keeps the first stock file, not our copy
+    string again;
+    REQUIRE_MESSAGE(fx.run(again), again);
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png.prab2") == "stock setting");
+}
+
+TEST_CASE("the console's RetroArch update waits for the assets bundle and stamps the version last") {
+    Fixture fx;
+    fx.options.packageFile.clear();
+    fx.options.retroarchZip = fx.tmp.at("site/retroarch-psc-v1.22.2-4.zip");
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "ELF old");
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.out.said("the AutoBleem 2 theme waits"));
+    CHECK_FALSE(fx.has("RetroArch/bin/assets"));
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF retroarch");
+    // no cfg yet: written, with the build's keys
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg").find("quit_on_close_content = \"2\"") != string::npos);
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/VERSION") == "v1.22.2-4\n");
+}
+
+TEST_CASE("the console's RetroArch update that fails leaves the old RetroArch as it was") {
+    // no RetroArch on the stick: nothing is made
+    {
+        Fixture fx;
+        fx.options.packageFile.clear();
+        fx.options.retroarchZip = fx.tmp.at("site/retroarch-psc-v1.22.2-4.zip");
+        string error;
+        CHECK_FALSE(fx.run(error));
+        CHECK(error.find("not on the stick") != string::npos);
+        CHECK_FALSE(fx.has("RetroArch"));
+    }
+    // a zip that is not one, and one that is not there
+    for (bool missing : {false, true}) {
+        Fixture fx;
+        fx.options.packageFile.clear();
+        fx.tmp.writeFile("site/broken.zip", "this is not a zip");
+        fx.options.retroarchZip = fx.tmp.at(missing ? "site/none.zip" : "site/broken.zip");
+        fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "ELF old");
+        fx.tmp.writeFile("stick/RetroArch/bin/VERSION", "v1.22.2-1\n");
+        fx.tmp.writeFile("stick/RetroArch/bin/retroarch.cfg", "video_smooth = \"true\"\n");
+        string error;
+        CHECK_FALSE(fx.run(error));
+        CHECK_FALSE(error.empty());
+        CHECK(fx.out.said("RetroArch was not updated"));
+        CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF old");
+        CHECK(fx.tmp.readFile("stick/RetroArch/bin/VERSION") == "v1.22.2-1\n");
+        CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg") == "video_smooth = \"true\"\n");
+    }
+}

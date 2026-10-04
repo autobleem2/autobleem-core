@@ -270,6 +270,36 @@ TEST_CASE("UpdateService: RetroArch's catalog is wherever the platform says, or 
         CHECK(site.fetched("http://site/rpi/retroarch/latest.json") == 0);
     }
 
+    SUBCASE("the console reads psc/retroarch/latest.json, whose one build is the \"zip\" entry") {
+        // the catalog as the site has it: the stick's zip and a manifest URL, no per-architecture entries
+        site.files["http://site/psc/retroarch/latest.json"] =
+            "{\"version\": \"v1.22.2-5\", \"zip\": {\"name\": \"retroarch-psc-v1.22.2-5.zip\", \"size\": 5129344, "
+            "\"sha256\": \"RAPSC\", \"url\": \"http://site/psc/retroarch/v1.22.2-5/retroarch-psc-v1.22.2-5.zip\", "
+            "\"uploaded\": \"2026-09-23 14:53 UTC\"}, \"manifest\": "
+            "\"http://site/psc/retroarch/v1.22.2-5/manifest.json\"}";
+        UpdateService::Config c = config(tmp);
+        c.platformKey = "psc-fs";
+        c.arch = "zip";
+        c.retroarchCatalog = "psc/retroarch/latest.json";
+        c.installedRetroArch = "v1.22.2-4"; // RetroArch/bin/VERSION
+        UpdateService service(site.runner());
+        service.configure(c);
+        service.startCheck(1000);
+        UpdateService::Status s = waitFor(service);
+        CHECK(s.phase == UpdateService::Phase::Checked);
+        CHECK(s.info.retroarchVersion == "v1.22.2-5");
+        CHECK(s.info.retroarch.name == "retroarch-psc-v1.22.2-5.zip");
+        CHECK(s.info.retroarch.sha256 == "RAPSC");
+        CHECK(s.info.retroarch.size == 5129344);
+        CHECK(site.fetched("http://site/psc/retroarch/latest.json") == 1);
+        // the same version installed: nothing to offer
+        c.installedRetroArch = "v1.22.2-5";
+        UpdateService again(site.runner());
+        again.configure(c);
+        again.startCheck(1000);
+        CHECK(waitFor(again).info.retroarchVersion.empty());
+    }
+
     SUBCASE("no catalog (Windows: RetroArch updates itself) - no RetroArch check, AutoBleem's still made") {
         UpdateService::Config c = config(tmp);
         c.retroarchCatalog.clear();

@@ -84,6 +84,12 @@ public:
                 << "AutoBleemInstaller: " << opt.packageFile << " (" << info.packageVersion << ") onto " << root
                 << (info.installed ? ", an update of " + info.installedVersion : string(", a fresh install")) << "\n";
         }
+        if (!opt.retroarchZip.empty()) {
+            const bool zipped = retroarchZip(error);
+            if (!zipped)
+                say("  RetroArch was not updated: " + error);
+            return zipped;
+        }
         bool ok =
             package(error) && prepare(error) && legacy(error) && unpack(error) && updateRoms(error) && covers(error);
         if (ok && opt.retroarch)
@@ -404,46 +410,9 @@ private:
             const string zip = scratch + "/" + ra.zip.name;
             if (!downloadVerified(ra.zip, zip, error))
                 return false;
-            const string unpacked = scratch + "/retroarch";
-            DirEntry::removeDirAndContents(unpacked);
-            if (!ZipArchive::extract(zip, unpacked)) {
-                if (error.empty())
-                    error = "cannot unpack " + ra.zip.name;
+            if (!installZip(zip, ra.zip.name, error))
                 return false;
-            }
-            for (const char *dir : {"", "Retroarch themes", "fonts", "playlists", "saves", "savestates", "screenshots",
-                                    "config", "logs", "thumbnails", "downloads", "records", "cores", "info"})
-                DirEntry::createDirs(bin + (*dir ? string("/") + dir : ""));
-            DirEntry::createDirs(at("RetroArch/bios"));
-            DirEntry::createDirs(at("RetroArch/roms"));
-            struct Place {
-                const char *from;
-                const char *to;
-            };
-            for (const Place &p : {Place{"retroarch", "retroarch"}, Place{"VERSION", "VERSION"},
-                                   Place{"theme/Autobleem2.png", "Retroarch themes/Autobleem2.png"},
-                                   Place{"theme/selawik-light.ttf", "fonts/selawik-light.ttf"},
-                                   Place{"theme/OFL.txt", "fonts/OFL.txt"},
-                                   Place{"theme/ab2-1280x720.png", "Retroarch themes/ab2-1280x720.png"}}) {
-                if (!DirEntry::exists(unpacked + "/" + p.from))
-                    continue;
-                DirEntry::removeFile(bin + "/" + p.to);
-                if (!DirEntry::copyFile(unpacked + "/" + p.from, bin + "/" + p.to)) {
-                    error = "cannot write RetroArch/bin/" + string(p.to);
-                    return false;
-                }
-            }
-            themeCfg = readText(unpacked + "/theme/retroarch-psc.cfg");
-            ab2Cfg = readText(unpacked + "/theme/ab2-theme.cfg"); // applied once the theme files have landed
-            // the theme's assets tree waits for the bundles below: a folder of ours under assets/ would
-            // make a fresh install skip libretro's own assets bundle as "already there"
-            themeAssets = scratch + "/ra-theme-assets";
-            DirEntry::removeDirAndContents(themeAssets);
-            if (DirEntry::isDirectory(unpacked + "/theme/assets"))
-                DirEntry::renameFile(unpacked + "/theme/assets", themeAssets);
-            DirEntry::removeDirAndContents(unpacked);
             DirEntry::removeFile(zip);
-            newBinary = true;
         }
         if (!writeRetroArchCfg(error))
             return false;
@@ -489,22 +458,115 @@ private:
             error.clear();
             DirEntry::removeFile(zip);
         }
-        // the AutoBleem 2 look over RetroArch's assets (a new RetroArch build brings it)
-        if (!themeAssets.empty()) {
-            if (assetsReady) {
-                int count = 0;
-                if (!applyThemeTree(themeAssets, bin + "/assets", count, error))
-                    return false;
-                say("  the AutoBleem 2 theme: " + to_string(count) + " files");
-                if (!ab2Cfg.empty() && !setCfgKeys(ab2Cfg, error))
-                    return false;
-            } else {
-                // putting our folders in would make the next run take the assets bundle for done
-                say("  the AutoBleem 2 theme waits: RetroArch's assets are not on the stick yet");
+        return applyTheme(assetsReady, error) && stampVersion(error);
+    }
+
+    // a RetroArch zip (the site's retroarch-psc-<v>.zip) unpacked and laid over RetroArch/bin: the binary, the
+    // docs and the theme's loose files; the theme's assets tree, its cfg keys and the VERSION wait for
+    // applyTheme and stampVersion. Every file goes in under a temporary name and is renamed over the old one, so
+    // a write that fails half way leaves the old file; the zip is unpacked before anything on the stick is
+    // touched. The console's own update (retroarchZip) and the PC installer share this.
+    bool installZip(const string &zip, const string &zipName, string &error) {
+        const string bin = at("RetroArch/bin");
+        const string unpacked = scratch + "/retroarch";
+        DirEntry::removeDirAndContents(unpacked);
+        if (!ZipArchive::extract(zip, unpacked)) {
+            if (error.empty())
+                error = "cannot unpack " + zipName;
+            DirEntry::removeDirAndContents(unpacked);
+            return false;
+        }
+        for (const char *dir : {"", "Retroarch themes", "fonts", "playlists", "saves", "savestates", "screenshots",
+                                "config", "logs", "thumbnails", "downloads", "records", "cores", "info"})
+            DirEntry::createDirs(bin + (*dir ? string("/") + dir : ""));
+        DirEntry::createDirs(at("RetroArch/bios"));
+        DirEntry::createDirs(at("RetroArch/roms"));
+        struct Place {
+            const char *from;
+            const char *to;
+        };
+        for (const Place &p :
+             {Place{"retroarch", "retroarch"}, Place{"theme/Autobleem2.png", "Retroarch themes/Autobleem2.png"},
+              Place{"theme/selawik-light.ttf", "fonts/selawik-light.ttf"}, Place{"theme/OFL.txt", "fonts/OFL.txt"},
+              Place{"theme/ab2-1280x720.png", "Retroarch themes/ab2-1280x720.png"}}) {
+            if (!DirEntry::exists(unpacked + "/" + p.from))
+                continue;
+            const string dst = bin + "/" + p.to, tmpName = dst + ".new";
+            DirEntry::removeFile(tmpName);
+            if (!DirEntry::copyFile(unpacked + "/" + p.from, tmpName) || !DirEntry::replaceFile(tmpName, dst)) {
+                DirEntry::removeFile(tmpName);
+                error = "cannot write RetroArch/bin/" + string(p.to);
+                DirEntry::removeDirAndContents(unpacked);
+                return false;
             }
-            DirEntry::removeDirAndContents(themeAssets);
+        }
+        newVersion = readText(unpacked + "/VERSION");
+        themeCfg = readText(unpacked + "/theme/retroarch-psc.cfg");
+        ab2Cfg = readText(unpacked + "/theme/ab2-theme.cfg"); // applied once the theme files have landed
+        // the theme's assets tree waits for the bundles: a folder of ours under assets/ would make a fresh
+        // install skip libretro's own assets bundle as "already there"
+        themeAssets = scratch + "/ra-theme-assets";
+        DirEntry::removeDirAndContents(themeAssets);
+        if (DirEntry::isDirectory(unpacked + "/theme/assets"))
+            DirEntry::renameFile(unpacked + "/theme/assets", themeAssets);
+        DirEntry::removeDirAndContents(unpacked);
+        newBinary = true;
+        return true;
+    }
+
+    // the AutoBleem 2 look over RetroArch's assets (a new RetroArch build brings it), then the theme's cfg keys
+    bool applyTheme(bool assetsReady, string &error) {
+        if (themeAssets.empty())
+            return true;
+        if (assetsReady) {
+            int count = 0;
+            if (!applyThemeTree(themeAssets, at("RetroArch/bin/assets"), count, error))
+                return false;
+            say("  the AutoBleem 2 theme: " + to_string(count) + " files");
+            if (!ab2Cfg.empty() && !setCfgKeys(ab2Cfg, error))
+                return false;
+        } else {
+            // putting our folders in would make the next run take the assets bundle for done
+            say("  the AutoBleem 2 theme waits: RetroArch's assets are not on the stick yet");
+        }
+        DirEntry::removeDirAndContents(themeAssets);
+        return true;
+    }
+
+    // RetroArch/bin/VERSION, last: a run that failed before it is offered again, not taken for done
+    bool stampVersion(string &error) {
+        if (newVersion.empty())
+            return true;
+        const string file = at("RetroArch/bin/VERSION");
+        if (!writeText(file, newVersion)) {
+            error = "cannot write RetroArch/bin/VERSION";
+            return false;
         }
         return true;
+    }
+
+    // the console's own update: the RetroArch zip the launcher downloaded, over the RetroArch that is on the
+    // stick. The same result as retroarch() on such a stick - the binary and its docs, the theme over
+    // RetroArch/bin/assets (stock files kept once as .prab2), the wallpaper, retroarch.cfg's merge, the theme's
+    // cfg keys after its files, the VERSION stamp - without the cores, libraries, apps and bundles.
+    bool retroarchZip(string &error) {
+        phase("RetroArch");
+        if (stopped(error))
+            return false;
+        if (!info.hasRetroArch || !DirEntry::isDirectory(at("RetroArch/bin"))) {
+            error = "RetroArch is not on the stick - the PC installer puts it there";
+            return false;
+        }
+        if (opt.retroarchZip.empty() || !DirEntry::exists(opt.retroarchZip)) {
+            error = "No RetroArch zip: " + opt.retroarchZip;
+            return false;
+        }
+        say("  " + opt.retroarchZip);
+        if (!installZip(opt.retroarchZip, opt.retroarchZip, error) || !writeRetroArchCfg(error))
+            return false;
+        const string assets = at("RetroArch/bin/assets");
+        const bool assetsReady = DirEntry::isDirectory(assets) && !DirEntry::diru(assets).empty();
+        return applyTheme(assetsReady, error) && stampVersion(error);
     }
 
     // `from` copied over `to`, folder by folder. A stock file of RetroArch's that this overwrites is kept once
@@ -737,7 +799,8 @@ private:
     string savedConfig;
     string themeCfg;
     string ab2Cfg;
-    string themeAssets; // the RetroArch zip's theme/assets tree, moved aside until the bundles are in
+    string newVersion;            // the RetroArch zip's VERSION, written last
+    string themeAssets;           // the RetroArch zip's theme/assets tree, moved aside until the bundles are in
     bool hadDefaultTheme = false; // Themes/<DefaultTheme::Name> was on the stick before this run
     bool newBinary = false;
 };
@@ -864,6 +927,8 @@ StickInfo InstallerJob::inspect(const InstallOptions &options) {
 // InstallerJob::phasesFor
 //*******************************
 vector<string> InstallerJob::phasesFor(const InstallOptions &options, const StickInfo &info) {
+    if (!options.retroarchZip.empty())
+        return {"RetroArch"};
     vector<string> phases{"Getting the package", info.installed ? "Preparing the update" : "Preparing the stick"};
     if (info.legacyLayout)
         phases.push_back("Bringing the old layout up to date");
@@ -893,6 +958,10 @@ bool InstallerJob::run(const InstallOptions &input, Downloader &downloader, Inst
     if (!info.isStick) {
         error = "No such drive: " + options.root;
         return false;
+    }
+    if (!options.retroarchZip.empty()) { // the console's RetroArch update: no package, no channel
+        Run zipRun(options, info, downloader, listener, shouldStop);
+        return zipRun.go(error);
     }
     if (info.packageVersion.empty() && options.channel.empty()) { // a channel's package is read in the run
         error = info.error.empty() ? "The package has no VERSION" : info.error;
