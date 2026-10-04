@@ -16,8 +16,10 @@
 // off; ';' or '#' starts a comment. load() merges the file with what is installed:
 //   - the file's order is kept for every processor still installed and belonging to that sequence;
 //   - a processor not in the file yet goes to the end, switched OFF (SDK-11: it does nothing until the user turns
-//     it on; several new ones by Order=, then name) - Order is the author's suggestion for a new one, never a
-//     reason to reorder what the user sorted; one the file already lists keeps its setting;
+//     it on; several new ones by Order=, then name) - or ON when its processor.ini says Default=on (a processor
+//     the launcher ships for a job it must do from the start); Order is the author's suggestion for a new one,
+//     never a reason to reorder what the user sorted; one the file already lists keeps its setting, so a user's
+//     Off stays Off;
 //   - a name that is not installed (or does not belong there) is dropped.
 // A processor with no binary for this machine stays in its place (the stick may go to another machine).
 class ProcessorSequences {

@@ -161,6 +161,42 @@ TEST_CASE("ProcessorSequences: a processor already set keeps its setting, a new 
     CHECK(names(again.entries(ProcessorSequence::Ps1)) == vector<string>{"unzip", "-patch", "-fresh"});
 }
 
+TEST_CASE("ProcessorSequences: Default=on comes up ON the first time it is met, and a user's Off stays Off") {
+    TempDir tmp("sequences_default_on");
+    processor(tmp, "unzip", unzipIni);
+    processor(tmp, "pe", "[Processor]\nExec=bin/{key}/pe\nKinds=mods\nOrder=20\nDefault=on   ; on from the start\n");
+    ProcessorCatalog catalog(tmp.at("Processors"), {"psc"});
+    catalog.scan();
+    REQUIRE(catalog.find("pe") != nullptr);
+    CHECK(catalog.find("pe")->defaultOn);
+    CHECK_FALSE(catalog.find("unzip")->defaultOn); // no Default=: off
+
+    // first contact: the one with Default=on is on, the other off as ever
+    ProcessorSequences seq(tmp.at("Processors/sequence.ini"));
+    CHECK(seq.load(catalog.processors()));
+    CHECK(names(seq.entries(ProcessorSequence::Ps1)) == vector<string>{"-unzip", "pe"});
+    vector<const ProcessorInfo *> chain = seq.chain(ProcessorSequence::Ps1, catalog.processors());
+    REQUIRE(chain.size() == 1);
+    CHECK(chain[0]->name == "pe");
+    REQUIRE(seq.save());
+
+    // the user switches it off: the next boots keep it off
+    ProcessorSequences user(tmp.at("Processors/sequence.ini"));
+    CHECK_FALSE(user.load(catalog.processors()));
+    user.setEnabled(ProcessorSequence::Ps1, 1, false);
+    REQUIRE(user.save());
+    ProcessorSequences again(tmp.at("Processors/sequence.ini"));
+    CHECK_FALSE(again.load(catalog.processors()));
+    CHECK(names(again.entries(ProcessorSequence::Ps1)) == vector<string>{"-unzip", "-pe"});
+
+    // an existing file that does not list it yet (a stick from before): added ON, the user's lines untouched
+    tmp.writeFile("Processors/sequence.ini", "[ps1]\nunzip\n\n[roms]\n-unzip\n");
+    ProcessorSequences older(tmp.at("Processors/sequence.ini"));
+    CHECK(older.load(catalog.processors()));
+    CHECK(names(older.entries(ProcessorSequence::Ps1)) == vector<string>{"unzip", "pe"});
+    CHECK(names(older.entries(ProcessorSequence::Roms)) == vector<string>{"-unzip"});
+}
+
 TEST_CASE("ProcessorSequences reads a hand-written file: comments, case, duplicates, strangers") {
     TempDir tmp("sequences_hand");
     processor(tmp, "unzip", unzipIni);

@@ -77,8 +77,10 @@ bool ProcessorSequences::load(const vector<ProcessorInfo> &installed) {
         stable_sort(fresh.begin(), fresh.end(), [](const ProcessorInfo *a, const ProcessorInfo *b) {
             return a->order != b->order ? a->order < b->order : a->name < b->name;
         });
+        // a processor met for the first time does nothing until the user turns it on - unless its author said
+        // Default=on; either way the file has it from now on, so the user's later choice is what counts
         for (const ProcessorInfo *p : fresh)
-            merged.push_back({p->name, false}); // a processor met for the first time does nothing until the user turns it on
+            merged.push_back({p->name, p->defaultOn});
 
         changed = changed || merged != fromFile[s];
         list(sequence) = merged;

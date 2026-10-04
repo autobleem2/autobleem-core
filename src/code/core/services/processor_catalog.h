@@ -41,6 +41,7 @@ struct ProcessorInfo {
     int order = 100;                  // Order=: where a new processor lands in a sequence
     int timeoutSeconds = 600;         // Timeout=: silence before it is killed; 0 = never
     bool modifies = true;             // Modifies=false: only reads - never stopped for a launch
+    bool defaultOn = false;           // Default=on: switched on the first time a sequence meets it (else off)
     AppManifest manifest;             // Exec= resolved for this machine's platform keys
 
     bool builtForThisSystem() const { return manifest.runnable(); }

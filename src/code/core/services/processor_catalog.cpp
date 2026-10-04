@@ -195,6 +195,7 @@ ProcessorInfo ProcessorCatalog::load(const string &folder, const vector<string> 
     if (!value("timeout").empty())
         info.timeoutSeconds = max(0, atoi(value("timeout").c_str()));
     info.modifies = AppManifest::parseFlag(value("modifies"), true);
+    info.defaultOn = AppManifest::parseFlag(value("default"), false);
     return info;
 }
 
@@ -221,8 +222,9 @@ Each processor is a folder of its own:
 
 Only the bin/ folders for your machines are needed. Unpack a processor here and it
 shows up in the System menu (L2+R2) -> Scanner processors switched OFF, for PS1 games
-and for RetroArch ROMs: it does nothing until you switch it on there. The same screen
-puts them in order; sequence.ini in this folder is that order and the on/off.
+and for RetroArch ROMs: it does nothing until you switch it on there (one made to work
+from the start says Default=on and comes up ON, once - switched off, it stays off). The
+same screen puts them in order; sequence.ini in this folder is that order and the on/off.
 
 Unzip comes with AutoBleem: it unpacks zipped PS1 games and ROMs. It is also the example
 to copy when you write your own:
