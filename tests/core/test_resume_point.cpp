@@ -497,3 +497,36 @@ TEST_CASE("RetroArch: the newest slot is the one kept last, -1 when there is non
     PsGame ps1;
     CHECK(r.service.newestSlot(ps1) == -1);
 }
+
+// --- a core that claims savestates but whose auto save fails ---
+
+TEST_CASE("RetroArch: its own 'Auto save state ... failed' line for this game is the failure, nothing else is") {
+    const string failed = "[INFO] [Core]: Content ran\n"
+                          "[ERROR] [State] Auto save state to \"/media/RetroArch/bin/savestates/Sonic The "
+                          "Hedgehog.state.auto\" failed.\n";
+    CHECK(ResumePointService::logSaysAutoSaveFailed(failed, "Sonic The Hedgehog.state.auto"));
+    // another game's, a success, a crash with no line, an empty log
+    CHECK_FALSE(ResumePointService::logSaysAutoSaveFailed(failed, "Other.state.auto"));
+    CHECK_FALSE(ResumePointService::logSaysAutoSaveFailed(
+        "[INFO] [State] Auto save state to \"/x/Sonic The Hedgehog.state.auto\" succeeded.\n",
+        "Sonic The Hedgehog.state.auto"));
+    CHECK_FALSE(ResumePointService::logSaysAutoSaveFailed("[ERROR] segfault\n", "Sonic The Hedgehog.state.auto"));
+    CHECK_FALSE(ResumePointService::logSaysAutoSaveFailed("", "Sonic The Hedgehog.state.auto"));
+}
+
+TEST_CASE("RetroArch: the launch's retroarch.log is read from the logs dir; a missing log is no failure") {
+    RaResume r;
+    ableem::Environment::setRuntimeDir(r.tmp.at("run"));
+    CHECK_FALSE(r.service.raAutoSaveFailed(*r.game)); // no log
+
+    r.tmp.writeFile("run/logs/retroarch.log",
+                    "[ERROR] [State] Auto save state to \"/s/Sonic The Hedgehog.state.auto\" failed.\n");
+    CHECK(r.service.raAutoSaveFailed(*r.game));
+
+    PsGame other = *r.game;
+    other.image_path = "/media/RetroArch/roms/Other.md";
+    CHECK_FALSE(r.service.raAutoSaveFailed(other));
+    PsGame ps1;
+    CHECK_FALSE(r.service.raAutoSaveFailed(ps1));
+    ableem::Environment::setRuntimeDir("");
+}

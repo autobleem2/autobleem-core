@@ -80,6 +80,12 @@ public:
     std::string raAutoState(const PsGame &game) const;
     // true when the run that just ended left a state (prepareRaLaunch removed the older one first)
     bool raStateWritten(const PsGame &game) const;
+    // true when the launch's retroarch.log (launch_rb.sh writes it fresh for every launch) holds RetroArch's own
+    // `[State] Auto save state to "<...>/<game>.state.auto" failed.` for this game: a core that claims savestates in
+    // its .info but cannot serialize. A crash or a kill prints nothing, so a missing state alone is never read as this.
+    bool raAutoSaveFailed(const PsGame &game) const;
+    // the decision on a log's text: any line saying the auto save of `stateFileName` failed
+    static bool logSaysAutoSaveFailed(const std::string &logText, const std::string &stateFileName);
     // Before a RetroArch launch: the last run's .state.auto and picture go; for slot >= 0 the slot is copied in as
     // .state.auto (+ picture) and true says "load it" (savestate_auto_load); -1, or a slot that is not there,
     // is false - a fresh start. The slots themselves are never touched.

@@ -341,6 +341,36 @@ bool ResumePointService::raStateWritten(const PsGame &game) const {
 }
 
 //*******************************
+// ResumePointService::raAutoSaveFailed / logSaysAutoSaveFailed
+//*******************************
+bool ResumePointService::logSaysAutoSaveFailed(const string &logText, const string &stateFileName) {
+    size_t pos = 0;
+    while (pos < logText.size()) {
+        size_t end = logText.find('\n', pos);
+        if (end == string::npos)
+            end = logText.size();
+        const string line = logText.substr(pos, end - pos);
+        pos = end + 1;
+        if (line.find("Auto save state to") != string::npos && line.find("failed") != string::npos &&
+            line.find(stateFileName) != string::npos)
+            return true;
+    }
+    return false;
+}
+
+bool ResumePointService::raAutoSaveFailed(const PsGame &game) const {
+    if (!isRa(game))
+        return false;
+    const string fileName = raBaseOf(game) + ".state.auto";
+    for (const string &dir : {Env::getPathToLogsDir(), Env::getPathToPersistentLogsDir()}) {
+        string text;
+        if (DirEntry::readFile(dir + sep + "retroarch.log", text) && logSaysAutoSaveFailed(text, fileName))
+            return true;
+    }
+    return false;
+}
+
+//*******************************
 // ResumePointService::raSupportsStates
 //*******************************
 // the core's .info: savestate = "false" (ScummVM, DOSBox, Quake...) means RetroArch can neither save nor load
