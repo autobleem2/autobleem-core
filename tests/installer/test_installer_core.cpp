@@ -994,3 +994,28 @@ TEST_CASE("the console's RetroArch update that fails leaves the old RetroArch as
         CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg") == "video_smooth = \"true\"\n");
     }
 }
+
+TEST_CASE("the zip-only mode makes its scratch folder, parents and all, when it is not there yet (abupdate's /tmp one)") {
+    Fixture fx;
+    fx.options.packageFile.clear();
+    fx.options.retroarchZip = fx.tmp.at("site/retroarch-psc-v1.22.2-4.zip");
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "ELF old");
+    fx.options.scratchDir = fx.tmp.at("not/yet/there/scratch");
+    REQUIRE_FALSE(DirEntry::exists(fx.options.scratchDir));
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF retroarch");
+}
+
+TEST_CASE("a scratch path that is a file (abupdate ran as /tmp/abupdate) fails at once, saying so") {
+    Fixture fx;
+    fx.options.packageFile.clear();
+    fx.options.retroarchZip = fx.tmp.at("site/retroarch-psc-v1.22.2-4.zip");
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "ELF old");
+    fx.tmp.writeFile("abupdate", "the program");
+    fx.options.scratchDir = fx.tmp.at("abupdate");
+    string error;
+    CHECK_FALSE(fx.run(error));
+    CHECK(error.find("scratch folder") != string::npos);
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF old");
+}

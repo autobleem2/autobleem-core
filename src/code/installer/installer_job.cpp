@@ -76,7 +76,11 @@ public:
 
     bool go(string &error) {
         phases = InstallerJob::phasesFor(opt, info);
-        DirEntry::createDirs(scratch);
+        if (!DirEntry::createDirs(scratch) || !DirEntry::isDirectory(scratch)) {
+            error = "cannot make the scratch folder " + scratch;
+            say("  " + error);
+            return false;
+        }
         // the run's own record on the stick, so a report from a tester can be read afterwards
         if (DirEntry::isDirectory(root) && DirEntry::createDirs(at("System/Logs"))) {
             logPath = at("System/Logs/installer.log");
