@@ -549,7 +549,8 @@ void RetroArchService::moveCore(const string &database, const ableem::CoreInfoPt
     if (!ableem::RetroArchPlaylist::load(playlistPath, entries, &header))
         return;
     const string usbRoot = Env::getPathToUSBRoot();
-    const string romsPrefix = Env::getPathToRetroarchRomsDir() + "/";
+    string romsPrefix = Env::getPathToRetroarchRomsDir() + "/";
+    replace(romsPrefix.begin(), romsPrefix.end(), '\\', '/'); // `ours` compares slash-normalised paths
     auto ours = [&](const string &path) {
         string mapped = mapPlaylistPath(path, usbRoot);
         replace(mapped.begin(), mapped.end(), '\\', '/');
