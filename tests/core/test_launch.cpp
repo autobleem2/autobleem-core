@@ -661,6 +661,22 @@ TEST_CASE("an App is started with AB_APP_PAD_MODE: the player's choice, else the
     CHECK(envValue(own, "AB_APP_PAD_MODE") == "x360");
 }
 
+TEST_CASE("an App is started with the d-pad / stick flags: the player's choice, else the ini's, else empty") {
+    Launching lib;
+    PsGamePtr plain = multiPlatformApp(lib);
+    LaunchPlan plainPlan = LaunchService::planApp(*plain);
+    CHECK(envValue(plainPlan, "AB_APP_DPAD2ANALOG") == "");
+    CHECK(envValue(plainPlan, "AB_APP_ANALOG2DPAD") == "");
+
+    lib.tmp.writeFile("Apps/Tyrian/app.ini", "Title=OpenTyrian\nExec=bin/{key}/tyrian\nDpad2Analog=1\nAnalog2Dpad=0\n");
+    LaunchPlan own = LaunchService::planApp(*plain);
+    CHECK(envValue(own, "AB_APP_DPAD2ANALOG") == "1");
+    CHECK(envValue(own, "AB_APP_ANALOG2DPAD") == "0");
+
+    REQUIRE(AppSettings::setFlagOverride(lib.tmp.at("Apps/Tyrian"), AppSettings::Analog2DpadKey, "1"));
+    CHECK(envValue(LaunchService::planApp(*plain), "AB_APP_ANALOG2DPAD") == "1"); // the choice wins
+}
+
 TEST_CASE("an App with no binary for this machine falls back to its Startup, as before") {
     Launching lib;
     lib.tmp.makeSubDir("Apps/Elsewhere/bin/nowhere");

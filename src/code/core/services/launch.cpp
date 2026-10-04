@@ -332,19 +332,26 @@ vector<pair<string, string>> LaunchService::appEnvironment(const AppManifest &m)
     string keys;
     for (const string &k : Env::appPlatformKeys())
         keys += (keys.empty() ? "" : " ") + k;
-    vector<pair<string, string>> env{{"AB_ROOT", Env::getPathToUSBRoot()},
-                                     {"AB_RC_DIR", Env::getPathToRCDir()},
-                                     {"AB_APP_DIR", m.folder},
-                                     {"AB_APP_EXEC", m.program},
-                                     {"AB_APP_ARGS", m.args},
-                                     {"AB_APP_LIB", m.libDir},
-                                     {"AB_APP_KEY", m.key},
-                                     {"AB_PLATFORM", Env::buildTargetKey()},
-                                     {"AB_PLATFORM_KEYS", keys},
-                                     {"AB_APP_VIRTUAL_PAD", m.usesVirtualPad() ? "1" : "0"},
-                                     // the player's Game settings choice, else the ini's PadMode=, else "" (old behaviour)
-                                     {"AB_APP_PAD_MODE", AppSettings::effectivePadMode(
-                                                             AppSettings::padModeOverride(m.folder), m.value("padmode"))}};
+    vector<pair<string, string>> env{
+        {"AB_ROOT", Env::getPathToUSBRoot()},
+        {"AB_RC_DIR", Env::getPathToRCDir()},
+        {"AB_APP_DIR", m.folder},
+        {"AB_APP_EXEC", m.program},
+        {"AB_APP_ARGS", m.args},
+        {"AB_APP_LIB", m.libDir},
+        {"AB_APP_KEY", m.key},
+        {"AB_PLATFORM", Env::buildTargetKey()},
+        {"AB_PLATFORM_KEYS", keys},
+        {"AB_APP_VIRTUAL_PAD", m.usesVirtualPad() ? "1" : "0"},
+        // the player's Game settings choice, else the ini's PadMode=, else "" (old behaviour)
+        {"AB_APP_PAD_MODE", AppSettings::effectivePadMode(AppSettings::padModeOverride(m.folder), m.value("padmode"))},
+        // the d-pad / stick flags the same way: the choice, else the ini's, else ""
+        {"AB_APP_DPAD2ANALOG",
+         AppSettings::effectiveFlag(AppSettings::flagOverride(m.folder, AppSettings::Dpad2AnalogKey),
+                                    m.value("dpad2analog"))},
+        {"AB_APP_ANALOG2DPAD",
+         AppSettings::effectiveFlag(AppSettings::flagOverride(m.folder, AppSettings::Analog2DpadKey),
+                                    m.value("analog2dpad"))}};
     for (const auto &kv : m.env)
         env.push_back(kv);
     return env;

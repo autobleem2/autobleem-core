@@ -10,12 +10,12 @@
 using namespace std;
 
 TEST_CASE("AppSettings: the effective pad mode is the player's choice, else the app.ini value, else empty") {
-    CHECK(AppSettings::effectivePadMode("x360", "psc") == "x360");                  // the choice wins
-    CHECK(AppSettings::effectivePadMode("", "psc-kernel") == "psc-kernel");         // Automatic: the App's own
-    CHECK(AppSettings::effectivePadMode("", "") == "");                             // nothing: the old behaviour
-    CHECK(AppSettings::effectivePadMode("", "  X360-Kernel ") == "x360-kernel");    // spelled loosely in an ini
-    CHECK(AppSettings::effectivePadMode("", "ps4") == "");                          // an unknown app.ini value counts as none
-    CHECK(AppSettings::effectivePadMode("nonsense", "psc") == "psc");               // an unknown choice is Automatic
+    CHECK(AppSettings::effectivePadMode("x360", "psc") == "x360");               // the choice wins
+    CHECK(AppSettings::effectivePadMode("", "psc-kernel") == "psc-kernel");      // Automatic: the App's own
+    CHECK(AppSettings::effectivePadMode("", "") == "");                          // nothing: the old behaviour
+    CHECK(AppSettings::effectivePadMode("", "  X360-Kernel ") == "x360-kernel"); // spelled loosely in an ini
+    CHECK(AppSettings::effectivePadMode("", "ps4") == "");            // an unknown app.ini value counts as none
+    CHECK(AppSettings::effectivePadMode("nonsense", "psc") == "psc"); // an unknown choice is Automatic
 }
 
 TEST_CASE("AppSettings: the pad mode override round-trips through the App's folder") {
@@ -49,4 +49,29 @@ TEST_CASE("AppSettings: a file written by hand is read loosely and other lines s
     CHECK(tmp.readFile("Apps/t/ab_settings.ini") == "Other=1\n"); // the file stays: it holds something else
 
     CHECK_FALSE(AppSettings::setPadModeOverride("", "psc")); // no folder, nothing written
+}
+
+TEST_CASE("AppSettings: the d-pad / stick flags - the player's choice, else the app.ini value, else empty") {
+    CHECK(AppSettings::normalizeFlag(" On ") == "1");
+    CHECK(AppSettings::normalizeFlag("FALSE") == "0");
+    CHECK(AppSettings::normalizeFlag("maybe") == "");
+    CHECK(AppSettings::effectiveFlag("0", "1") == "0");  // the choice wins
+    CHECK(AppSettings::effectiveFlag("", "yes") == "1"); // Automatic: the App's own
+    CHECK(AppSettings::effectiveFlag("", "") == "");     // nothing: the pad output's default
+
+    TempDir tmp("appsettings");
+    const string app = tmp.makeSubDir("Apps/t");
+    CHECK(AppSettings::flagOverride(app, AppSettings::Dpad2AnalogKey) == "");
+    REQUIRE(AppSettings::setPadModeOverride(app, "psc-kernel"));
+    REQUIRE(AppSettings::setFlagOverride(app, AppSettings::Dpad2AnalogKey, "1"));
+    REQUIRE(AppSettings::setFlagOverride(app, AppSettings::Analog2DpadKey, "off"));
+    CHECK(tmp.readFile("Apps/t/ab_settings.ini") == "PadMode=psc-kernel\nDpad2Analog=1\nAnalog2Dpad=0\n");
+    CHECK(AppSettings::flagOverride(app, AppSettings::Dpad2AnalogKey) == "1");
+    CHECK(AppSettings::flagOverride(app, AppSettings::Analog2DpadKey) == "0");
+    CHECK(AppSettings::padModeOverride(app) == "psc-kernel"); // one key's change leaves the others alone
+
+    REQUIRE(AppSettings::setFlagOverride(app, AppSettings::Dpad2AnalogKey, ""));
+    REQUIRE(AppSettings::setFlagOverride(app, AppSettings::Analog2DpadKey, ""));
+    REQUIRE(AppSettings::setPadModeOverride(app, ""));
+    CHECK_FALSE(DirEntry::exists(tmp.at("Apps/t/ab_settings.ini"))); // all Automatic: no file
 }
