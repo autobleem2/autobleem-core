@@ -502,7 +502,7 @@ private:
         }
         newVersion = readText(unpacked + "/VERSION");
         themeCfg = readText(unpacked + "/theme/retroarch-psc.cfg");
-        ab2Cfg = readText(unpacked + "/theme/ab2-theme.cfg"); // applied once the theme files have landed
+        ab2Cfg = readText(unpacked + "/theme/ab2-theme.cfg");     // applied once the theme files have landed
         statesCfg = readText(unpacked + "/theme/ab2-states.cfg"); // the save-state keys: no files to wait for
         // the theme's assets tree waits for the bundles: a folder of ours under assets/ would make a fresh
         // install skip libretro's own assets bundle as "already there"
@@ -805,9 +805,9 @@ private:
     string savedConfig;
     string themeCfg;
     string ab2Cfg;
-    string statesCfg; // theme/ab2-states.cfg: savestate_auto_save, the thumbnail, the folders and their sorting
-    string newVersion;            // the RetroArch zip's VERSION, written last
-    string themeAssets;           // the RetroArch zip's theme/assets tree, moved aside until the bundles are in
+    string statesCfg;   // theme/ab2-states.cfg: savestate_auto_save, the thumbnail, the folders and their sorting
+    string newVersion;  // the RetroArch zip's VERSION, written last
+    string themeAssets; // the RetroArch zip's theme/assets tree, moved aside until the bundles are in
     bool hadDefaultTheme = false; // Themes/<DefaultTheme::Name> was on the stick before this run
     bool newBinary = false;
 };

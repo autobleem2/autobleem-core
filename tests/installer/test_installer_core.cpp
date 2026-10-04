@@ -929,7 +929,8 @@ TEST_CASE("the console's own RetroArch update lays the downloaded zip over the R
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/custom/font.ttf") == "red hat");
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/mine.txt") == "mine");
     CHECK(fx.out.said("the AutoBleem 2 theme: 5 files"));
-    // retroarch.cfg: the user's keys stay, the build's two, the save-state two and the theme's two are set, in that order
+    // retroarch.cfg: the user's keys stay, the build's two, the save-state two and the theme's two are set, in that
+    // order
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg") ==
           "video_smooth = \"true\"\nxmb_theme = \"6\"\nquit_on_close_content = \"2\"\n"
           "savestate_auto_save = \"true\"\nsavestate_thumbnail_enable = \"true\"\n"

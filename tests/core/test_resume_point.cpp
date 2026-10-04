@@ -13,6 +13,7 @@
 
 #include <memory>
 #include <string>
+#include <utime.h>
 
 using std::string;
 
@@ -363,12 +364,15 @@ TEST_CASE("RetroArch: saving after a run keeps the state and its picture as the 
 
     r.service.saveAfterLaunch(*r.game, 2);
 
-    CHECK(r.tmp.readFile("RetroArch/bin/ab-states/picodrive_libretro/Sonic The Hedgehog/sstates/Sonic The Hedgehog.002.res") ==
+    CHECK(r.tmp.readFile(
+              "RetroArch/bin/ab-states/picodrive_libretro/Sonic The Hedgehog/sstates/Sonic The Hedgehog.002.res") ==
           "state one");
     CHECK(r.service.slotIsActive(*r.game, 2));
     CHECK(r.service.pictureForSlot(*r.game, 2) == r.slots("screenshots/Sonic The Hedgehog.2.png.res"));
-    CHECK(r.tmp.readFile("RetroArch/bin/ab-states/picodrive_libretro/Sonic The Hedgehog/screenshots/Sonic The Hedgehog.2.png.res") ==
-          "pic of state one");
+    CHECK(
+        r.tmp.readFile(
+            "RetroArch/bin/ab-states/picodrive_libretro/Sonic The Hedgehog/screenshots/Sonic The Hedgehog.2.png.res") ==
+        "pic of state one");
     CHECK(r.service.timeForSlot(*r.game, 2) > 0);
     CHECK_FALSE(r.service.slotIsActive(*r.game, 1));
     // RetroArch's own files are taken away, so the next run's state cannot be mistaken for this one
@@ -405,7 +409,8 @@ TEST_CASE("RetroArch: slots are separate per core and game, and one slot replace
     r.service.saveAfterLaunch(*r.game, 3);
     r.raExitsHavingWritten("third");
     r.service.saveAfterLaunch(*r.game, 0); // slot 0 again: replaced
-    CHECK(r.tmp.readFile("RetroArch/bin/ab-states/picodrive_libretro/Sonic The Hedgehog/sstates/Sonic The Hedgehog.000.res") ==
+    CHECK(r.tmp.readFile(
+              "RetroArch/bin/ab-states/picodrive_libretro/Sonic The Hedgehog/sstates/Sonic The Hedgehog.000.res") ==
           "third");
     CHECK(r.service.lastPicture(*r.game) == r.slots("screenshots/Sonic The Hedgehog.png.res"));
 
@@ -452,8 +457,9 @@ TEST_CASE("RetroArch: a core whose .info says savestate = false takes no part") 
     RaResume r;
     CHECK(r.service.raSupportsStates(*r.game)); // no .info at all: supported, as RetroArch has it
 
-    r.tmp.writeFile("RetroArch/bin/info/picodrive_libretro.info",
-                    "display_name = \"Sega - MS/GG/MD/MCD (PicoDrive)\"\nsavestate = \"true\"\nsavestate_features = \"basic\"\n");
+    r.tmp.writeFile(
+        "RetroArch/bin/info/picodrive_libretro.info",
+        "display_name = \"Sega - MS/GG/MD/MCD (PicoDrive)\"\nsavestate = \"true\"\nsavestate_features = \"basic\"\n");
     CHECK(r.service.raSupportsStates(*r.game));
 
     r.tmp.writeFile("RetroArch/bin/info/picodrive_libretro.info",
@@ -470,4 +476,24 @@ TEST_CASE("RetroArch: a core whose .info says savestate = false takes no part") 
     CHECK_FALSE(r.service.raSupportsStates(app));
     PsGame ps1;
     CHECK_FALSE(r.service.raSupportsStates(ps1));
+}
+
+TEST_CASE("RetroArch: the newest slot is the one kept last, -1 when there is none") {
+    RaResume r;
+    CHECK(r.service.newestSlot(*r.game) == -1);
+
+    r.raExitsHavingWritten("one");
+    r.service.saveAfterLaunch(*r.game, 2);
+    CHECK(r.service.newestSlot(*r.game) == 2);
+
+    // a state file's time is whole seconds: make slot 0's clearly newer by touching it forward
+    r.raExitsHavingWritten("two");
+    r.service.saveAfterLaunch(*r.game, 0);
+    const string newer = r.slots("sstates/Sonic The Hedgehog.000.res");
+    struct utimbuf times = {time(nullptr) + 100, time(nullptr) + 100};
+    REQUIRE(utime(newer.c_str(), &times) == 0);
+    CHECK(r.service.newestSlot(*r.game) == 0);
+
+    PsGame ps1;
+    CHECK(r.service.newestSlot(ps1) == -1);
 }

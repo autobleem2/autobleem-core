@@ -152,6 +152,24 @@ time_t ResumePointService::timeForSlot(const PsGame &game, int slot) const {
 }
 
 //*******************************
+// ResumePointService::newestSlot
+//*******************************
+int ResumePointService::newestSlot(const PsGame &game) const {
+    int newest = -1;
+    time_t newestTime = 0;
+    for (int slot = 0; slot < SlotCount; slot++) {
+        if (!slotIsActive(game, slot))
+            continue;
+        const time_t t = timeForSlot(game, slot);
+        if (newest == -1 || t > newestTime) {
+            newest = slot;
+            newestTime = t;
+        }
+    }
+    return newest;
+}
+
+//*******************************
 // ResumePointService::lastPicture
 //*******************************
 // The picture of the first slot that has one - slot 0 when it is kept, else the next slot that is. (It used

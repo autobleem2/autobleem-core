@@ -11,6 +11,7 @@
 #include "config.h"
 #include "memcard.h"
 #include "process_runner.h"
+#include "ra_options.h"
 #include "resume_point.h"
 
 #include <ableem/engine/game_library.h>
@@ -51,6 +52,9 @@ public:
     // leaves (RetroArch, the update, the power off). No file, or any other selection, is a crash to the
     // scripts - which is why nothing is written around a game any more.
     void writeSelectionScript();
+
+    // the per-game options of RetroArch games (the game editor's rows); none set = every game as it always was
+    void setRaOptions(const RaOptionsService *options) { raOptions_ = options; }
 
     // The launch itself, start to finish: the emulator is chosen from the game and the mode, the game's
     // memory cards go in and its resume point is prepared, the launcher script runs and is waited for, the
@@ -133,9 +137,12 @@ private:
     // states (active), and the slot to continue from was put in place (load)
     struct RaStates {
         bool active = false;
+        bool save = true; // RetroArch writes the game's state when it ends (the game's Resume option is not "never")
         bool load = false;
     };
     RaStates raStates_;
+    RaGameOptions
+        raGameOptions_; // this launch's per-game options (EMU-25), the default for anything but a RetroArch game
     // the game's card1.mcd goes to RetroArch's saves dir as <base>.srm for the run and comes back after
     void raMemcardIn(PsGame &game);
     void raMemcardOut(PsGame &game);
@@ -187,4 +194,5 @@ private:
     MemcardService &memcards_;
     ResumePointService &resumePoints_;
     ProcessRunner &runner_;
+    const RaOptionsService *raOptions_ = nullptr;
 };

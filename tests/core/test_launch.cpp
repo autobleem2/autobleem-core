@@ -454,7 +454,7 @@ TEST_CASE("with raconfig on, the game's pcsx.cfg settings are RetroArch's for th
     CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_dithering = \"enabled\""));
     CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_psxclock = \"57\""));
     CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_spu_interpolation = \"gaussian\""));
-    CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_frameskip_type = \"disabled\"")); // frameskip3 = 1: Off
+    CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_frameskip_type = \"disabled\""));    // frameskip3 = 1: Off
     CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_show_bios_bootlogo = \"enabled\"")); // no SlowBoot line = shown
     CHECK(contains(coreOptionsInPlay, "pcsx_rearmed_nocdaudio = \"enabled\""));
     // retroarch.cfg: the scanline overlay from pcsx.cfg, the viewport and filter from config.ini
@@ -552,14 +552,14 @@ TEST_CASE("rapersist=false: RetroArch is told not to save its config at exit; no
                                                               "video_fullscreen_x = \"0\"\n"
                                                               "video_fullscreen_y = \"0\"\n"
                                                               "savestate_directory = \"" +
-                                                              lib.tmp.at("RetroArch/bin/savestates") +
-                                                              "\"\n"
-                                                              "sort_savestates_enable = \"false\"\n"
-                                                              "sort_savestates_by_content_enable = \"false\"\n"
-                                                              "savestates_in_content_dir = \"false\"\n"
-                                                              "savestate_auto_save = \"true\"\n"
-                                                              "savestate_thumbnail_enable = \"true\"\n"
-                                                              "savestate_auto_load = \"false\"\n");
+                                                                  lib.tmp.at("RetroArch/bin/savestates") +
+                                                                  "\"\n"
+                                                                  "sort_savestates_enable = \"false\"\n"
+                                                                  "sort_savestates_by_content_enable = \"false\"\n"
+                                                                  "savestates_in_content_dir = \"false\"\n"
+                                                                  "savestate_auto_save = \"true\"\n"
+                                                                  "savestate_thumbnail_enable = \"true\"\n"
+                                                                  "savestate_auto_load = \"false\"\n");
     CHECK(before.changesTo(test_support::TreeSnapshot(lib.tmp.at("RetroArch"))) == vector<string>{});
 }
 
@@ -1081,13 +1081,15 @@ TEST_CASE("a RetroArch game: its states are pinned for the run, written on the w
     Launching lib;
     lib.configure("Raconfig=false\n");
     PsGamePtr game = lib.foreignGame(false);
-    lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "savestate_auto_save = \"false\"\nsort_savestates_enable = \"true\"\n");
+    lib.tmp.writeFile("RetroArch/bin/retroarch.cfg",
+                      "savestate_auto_save = \"false\"\nsort_savestates_enable = \"true\"\n");
     lib.tmp.writeFile("RetroArch/bin/savestates/rom.state.auto", "left by a crashed run");
 
     string append, stale;
     lib.runner.whileRunning = [&] {
         append = lib.tmp.readFile("System/Runtime/ra-append.cfg");
-        stale = ableem::DirEntry::exists(lib.tmp.at("RetroArch/bin/savestates/rom.state.auto")) ? "still there" : "gone";
+        stale =
+            ableem::DirEntry::exists(lib.tmp.at("RetroArch/bin/savestates/rom.state.auto")) ? "still there" : "gone";
     };
 
     lib.service->launch(game, EmuMode::RetroArch, -1);
@@ -1099,9 +1101,10 @@ TEST_CASE("a RetroArch game: its states are pinned for the run, written on the w
     CHECK(contains(append, "savestate_auto_save = \"true\""));
     CHECK(contains(append, "savestate_thumbnail_enable = \"true\""));
     CHECK(contains(append, "savestate_auto_load = \"false\"")); // -1: from the beginning
-    CHECK(stale == "gone");                                      // the crashed run's state is not offered as this one's
+    CHECK(stale == "gone");                                     // the crashed run's state is not offered as this one's
     // retroarch.cfg is the stick's own again afterwards
-    CHECK(lib.tmp.readFile("RetroArch/bin/retroarch.cfg") == "savestate_auto_save = \"false\"\nsort_savestates_enable = \"true\"\n");
+    CHECK(lib.tmp.readFile("RetroArch/bin/retroarch.cfg") ==
+          "savestate_auto_save = \"false\"\nsort_savestates_enable = \"true\"\n");
 }
 
 TEST_CASE("a RetroArch game resumed from a slot: the slot is the state RetroArch loads") {
@@ -1148,4 +1151,90 @@ TEST_CASE("a core without savestates, an App and a PS1 game in RetroArch get no 
         lib.service->launch(game, EmuMode::RetroArch, -1);
         CHECK_FALSE(contains(append, "savestate"));
     }
+}
+
+// --- the game editor's per-game options for RetroArch games (EMU-25) ---
+
+TEST_CASE("a RetroArch game's editor rows are RetroArch's lines for the run, over the global scaler") {
+    Launching lib;
+    lib.configure("Raconfig=true\nScaler=full\n");
+    PsGamePtr game = lib.foreignGame(false);
+    RaOptionsService options;
+    RaGameOptions chosen;
+    chosen.aspect = RaGameOptions::Aspect43;
+    chosen.smoothing = RaGameOptions::TriOff;
+    chosen.scanlines = RaGameOptions::ScanLight;
+    chosen.showFps = RaGameOptions::TriOn;
+    options.set(*game, chosen);
+    lib.service->setRaOptions(&options);
+
+    string append;
+    lib.runner.whileRunning = [&] { append = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+
+    CHECK(contains(append, "aspect_ratio_index = \"0\"")); // the game's, not the scaler's 23
+    CHECK_FALSE(contains(append, "aspect_ratio_index = \"23\""));
+    CHECK(contains(append, "video_smooth = \"false\""));
+    CHECK(contains(append, "input_overlay = \":/overlay/scanlines.cfg\""));
+    CHECK(contains(append, "input_overlay_opacity = \"0.250000\""));
+    CHECK(contains(append, "fps_show = \"true\""));
+    CHECK_FALSE(contains(append, "video_scale_integer"));
+    CHECK_FALSE(contains(append, "analog_dpad"));
+}
+
+TEST_CASE("with the rows untouched the append file is what it always was; another game's rows do not leak") {
+    Launching lib;
+    lib.configure("Raconfig=false\n");
+    PsGamePtr game = lib.foreignGame(false);
+    RaOptionsService options;
+    PsGame other = *game;
+    other.image_path = "/media/RetroArch/roms/md/Sonic.md";
+    RaGameOptions chosen;
+    chosen.showFps = RaGameOptions::TriOn;
+    options.set(other, chosen);
+    lib.service->setRaOptions(&options);
+
+    string append;
+    lib.runner.whileRunning = [&] { append = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+
+    CHECK_FALSE(contains(append, "fps_show"));
+    CHECK_FALSE(contains(append, "aspect_ratio_index"));
+    CHECK_FALSE(contains(append, "video_smooth"));
+}
+
+TEST_CASE("Resume: never writes no state when the game ends, but a slot picked from the icon still loads") {
+    Launching lib;
+    lib.configure("Raconfig=false\n");
+    PsGamePtr game = lib.foreignGame(false);
+    RaOptionsService options;
+    RaGameOptions chosen;
+    chosen.resume = RaGameOptions::ResumeNever;
+    options.set(*game, chosen);
+    lib.service->setRaOptions(&options);
+    lib.tmp.writeFile("RetroArch/bin/savestates/rom.state.auto", "kept");
+    lib.resumePoints->saveAfterLaunch(*game, 1);
+
+    string append;
+    lib.runner.whileRunning = [&] { append = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK(contains(append, "savestate_auto_save = \"false\""));
+    CHECK(contains(append, "savestate_auto_load = \"false\""));
+
+    lib.service->launch(game, EmuMode::RetroArch, 1);
+    CHECK(contains(append, "savestate_auto_save = \"false\""));
+    CHECK(contains(append, "savestate_auto_load = \"true\""));
+}
+
+TEST_CASE("the editor's rows do not touch an App or one of our PS1 games") {
+    Launching lib;
+    lib.configure("Raconfig=false\n");
+    RaOptionsService options;
+    lib.service->setRaOptions(&options);
+    PsGamePtr game = lib.usbGame();
+    string append;
+    lib.runner.whileRunning = [&] { append = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK_FALSE(contains(append, "fps_show"));
+    CHECK_FALSE(contains(append, "aspect_ratio_index"));
 }

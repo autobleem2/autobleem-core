@@ -664,8 +664,10 @@ void LaunchService::launchRetroArch(PsGame &game, int resumePoint) {
     // the game's own save-state slots (a playlist entry whose core can save): the slot to resume is put in place
     // now, and ra-append.cfg tells RetroArch where its states are, to write one on the way out and whether to load
     raStates_ = RaStates();
+    raGameOptions_ = raOptions_ != nullptr ? raOptions_->get(game) : RaGameOptions();
     if (game.foreign && !game.app && resumePoints_.raSupportsStates(game)) {
         raStates_.active = true;
+        raStates_.save = raGameOptions_.resume != RaGameOptions::ResumeNever;
         raStates_.load = resumePoints_.prepareRaLaunch(game, resumePoint);
     }
     prepareRaAppend(&game);
@@ -673,6 +675,7 @@ void LaunchService::launchRetroArch(PsGame &game, int resumePoint) {
     usleep(3 * 1000);
     restoreAppended();
     raStates_ = RaStates();
+    raGameOptions_ = RaGameOptions();
 }
 
 //*******************************
@@ -753,6 +756,8 @@ void LaunchService::prepareRaAppend(PsGame *game) {
 #endif
     if (game != nullptr && config_.inifile.values["raconfig"] == "true")
         raSettingsFor(*game, raConfig, coreOptions);
+    if (game != nullptr)
+        RaOptionsService::apply(raGameOptions_, raConfig); // the game editor's rows, over the scaler and the like
     if (raStates_.active) {
         // our slots (ResumePointService): RetroArch writes <game>.state.auto + picture when it ends and reads the
         // state the launcher put there only when asked to. The folder and the sorting are pinned so the file is
@@ -761,7 +766,7 @@ void LaunchService::prepareRaAppend(PsGame *game) {
         set(raConfig, "sort_savestates_enable", "false");
         set(raConfig, "sort_savestates_by_content_enable", "false");
         set(raConfig, "savestates_in_content_dir", "false");
-        set(raConfig, "savestate_auto_save", "true");
+        set(raConfig, "savestate_auto_save", raStates_.save ? "true" : "false");
         set(raConfig, "savestate_thumbnail_enable", "true");
         set(raConfig, "savestate_auto_load", raStates_.load ? "true" : "false");
     }
@@ -855,7 +860,9 @@ void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raCo
         if (interpolation >= 0 && interpolation <= 3)
             set(coreOptions, "pcsx_rearmed_spu_interpolation", interpolations[interpolation]);
         set(coreOptions, "pcsx_rearmed_frameskip_type",
-            frameskip == 0 ? "auto" : frameskip >= 2 && frameskip <= 4 ? "fixed_interval" : "disabled");
+            frameskip == 0                     ? "auto"
+            : frameskip >= 2 && frameskip <= 4 ? "fixed_interval"
+                                               : "disabled");
         if (frameskip >= 2 && frameskip <= 4)
             set(coreOptions, "pcsx_rearmed_frameskip_interval", to_string(frameskip - 1));
 

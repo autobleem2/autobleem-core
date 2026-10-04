@@ -48,6 +48,8 @@ public:
     // when the slot's kept state file was written (its mtime), 0 when the slot has none (UIREV-37: the resume-slot
     // screen's date)
     time_t timeForSlot(const PsGame &game, int slot) const;
+    // the slot kept last (the newest state file; the lower number when two are alike), -1 when the game has none
+    int newestSlot(const PsGame &game) const;
     // the picture for whichever slot the game last stopped in, "" when there is none
     std::string lastPicture(const PsGame &game) const;
 
