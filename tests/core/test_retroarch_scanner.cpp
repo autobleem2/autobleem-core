@@ -523,6 +523,62 @@ TEST_CASE("scan: a second run over the same tree writes nothing; a removed ROM r
     CHECK(labelsOf(t.loadPlaylist(NES)) == vector<string>{"A"});
 }
 
+TEST_CASE("scan: a playlist whose games all went away is removed, not left as an empty tab") {
+    RomsTree t;
+    t.addCore("nestopia_libretro", "Nintendo - NES / Famicom (Nestopia UE)", "nes|fds", NES);
+    t.addCore("snes9x_libretro", "Nintendo - SNES / SFC (Snes9x)", "sfc|smc", SNES);
+    t.tmp.writeFile(string("roms/") + NES + "/A.nes", "rom");
+    t.tmp.writeFile(string("roms/") + SNES + "/B.sfc", "rom");
+    t.options.stateFile = t.tmp.at("roms.scanstate");
+    RetroArchSystems systems = RetroArchScanner::systemsFrom(t.cores());
+    RetroArchScanner scanner;
+    REQUIRE(scanner.scan(t.options, systems).playlistsWritten.size() == 2);
+
+    DirEntry::removeFile(t.tmp.at(string("roms/") + NES + "/A.nes"));
+    RetroArchScanResult result = scanner.scan(t.options, systems);
+    CHECK_FALSE(DirEntry::exists(t.playlist(NES)));
+    CHECK(DirEntry::exists(t.playlist(SNES)));
+    CHECK(result.playlistsWritten.empty());
+    CHECK(result.gamesFound == 1);
+    // settled: the next scan skips both folders and does not bring the file back
+    RetroArchScanResult again = scanner.scan(t.options, systems);
+    CHECK(again.systemsSkipped == 2);
+    CHECK_FALSE(DirEntry::exists(t.playlist(NES)));
+    // the games come back: the playlist is written again
+    t.tmp.writeFile(string("roms/") + NES + "/A.nes", "rom");
+    CHECK(scanner.scan(t.options, systems).playlistsWritten == vector<string>{string(NES) + ".lpl"});
+    CHECK(labelsOf(t.loadPlaylist(NES)) == vector<string>{"A"});
+
+    // an entry of the user's own (not under the folder) keeps the playlist alive
+    DirEntry::removeFile(t.tmp.at(string("roms/") + NES + "/A.nes"));
+    RetroArchPlaylistEntries entries = t.loadPlaylist(NES);
+    RetroArchPlaylistEntry mine = entries[0];
+    mine.path = "/elsewhere/Mine.nes";
+    mine.label = "Mine";
+    REQUIRE(RetroArchPlaylist::save(t.playlist(NES), RetroArchPlaylistEntries{mine}));
+    scanner.scan(t.options, systems);
+    CHECK(labelsOf(t.loadPlaylist(NES)) == vector<string>{"Mine"});
+}
+
+TEST_CASE("scan: an empty playlist already there is removed on the next real scan; an unreadable one stays") {
+    RomsTree t;
+    t.addCore("nestopia_libretro", "Nintendo - NES / Famicom (Nestopia UE)", "nes|fds", NES);
+    t.addCore("snes9x_libretro", "Nintendo - SNES / SFC (Snes9x)", "sfc|smc", SNES);
+    t.tmp.makeSubDir(string("roms/") + NES);
+    t.tmp.makeSubDir(string("roms/") + SNES);
+    REQUIRE(RetroArchPlaylist::save(t.playlist(NES), RetroArchPlaylistEntries()));
+    t.tmp.writeFile("retroarch/playlists/" + string(SNES) + ".lpl", "{ \"items\": [ truncated");
+    t.tmp.writeFile("retroarch/playlists/Other - Unknown.lpl", "{}");
+    t.tmp.writeFile("retroarch/playlists/Favorites.lpl", "{}");
+    RetroArchSystems systems = RetroArchScanner::systemsFrom(t.cores());
+    RetroArchScanner scanner;
+    scanner.scan(t.options, systems);
+    CHECK_FALSE(DirEntry::exists(t.playlist(NES)));
+    CHECK(DirEntry::exists(t.playlist(SNES)));
+    CHECK(DirEntry::exists(t.tmp.at("retroarch/playlists/Other - Unknown.lpl")));
+    CHECK(DirEntry::exists(t.tmp.at("retroarch/playlists/Favorites.lpl")));
+}
+
 TEST_CASE("scan: a playlist RetroArch wrote keeps its header, its identified entries and the user's own") {
     RomsTree t;
     t.addCore("nestopia_libretro", "Nintendo - NES / Famicom (Nestopia UE)", "nes|fds", NES);
@@ -615,8 +671,8 @@ TEST_CASE("scan: the playlists name the target root, not where the ROMs are on t
     // and a second run recognises its own entries through that root
     CHECK(scanner.scan(t.options, systems).playlistsWritten.empty());
     DirEntry::removeFile(t.tmp.at(string("roms/") + NES + "/A.nes"));
-    CHECK(scanner.scan(t.options, systems).playlistsWritten.size() == 1);
-    CHECK(t.loadPlaylist(NES).empty());
+    CHECK(scanner.scan(t.options, systems).playlistsWritten.empty());
+    CHECK_FALSE(DirEntry::exists(t.playlist(NES))); // nothing left in it: no empty tab, the file is removed
 }
 
 TEST_CASE("scan: without a roms dir or without systems nothing happens") {

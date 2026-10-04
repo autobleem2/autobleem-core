@@ -653,7 +653,15 @@ RetroArchScanResult RetroArchScanner::scan(const Options &options, const RetroAr
 
         bool unchanged = hadPlaylist && merged.size() == existing.size() &&
                          equal(merged.begin(), merged.end(), existing.begin(), sameEntry);
-        if (!(unchanged || (!hadPlaylist && merged.empty()))) {
+        if (hadPlaylist && merged.empty()) {
+            // nothing left in it (the games went away, or it was empty already): RetroArch would show an empty
+            // tab, so the file goes. The digest below is taken without it, so the next scan leaves it alone
+            if (!DirEntry::removeFile(playlistPath)) {
+                PLOG_WARNING << "Could not remove " << playlistPath;
+                continue;
+            }
+            PLOG_INFO << "Playlist " << system.name << ".lpl: no entries left, removed";
+        } else if (!(unchanged || (!hadPlaylist && merged.empty()))) {
             // write beside it and swap: RetroArch may be reading the playlist this very moment
             const string tempPath = playlistPath + ".tmp";
             if (!RetroArchPlaylist::save(tempPath, merged, header) || !DirEntry::replaceFile(tempPath, playlistPath)) {
