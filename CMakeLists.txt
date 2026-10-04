@@ -103,6 +103,7 @@ add_library(ab_core STATIC
         src/code/core/services/plugin_loader.cpp
         src/code/core/services/config.cpp
         src/code/core/services/cover_aspect.cpp
+        src/code/core/services/retroarch_version.cpp
         src/code/core/services/environment.cpp
         src/code/core/services/environment_setup.cpp
         src/code/core/services/windows_host.cpp

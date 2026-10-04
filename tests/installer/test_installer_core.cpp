@@ -3,6 +3,7 @@
 
 #include "installer/installer_job.h"
 #include "installer/legacy_layout.h"
+#include "core/services/retroarch_version.h"
 
 #include <ableem/engine/filesystem.h>
 #include <ableem/engine/sha256.h>
@@ -963,6 +964,44 @@ TEST_CASE("the console's RetroArch update waits for the assets bundle and stamps
     // no cfg yet: written, with the build's keys
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg").find("quit_on_close_content = \"2\"") != string::npos);
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/VERSION") == "v1.22.2-4\n");
+}
+
+TEST_CASE("the console's RetroArch update stamps a version the launcher reads as installed, from a key=value zip") {
+    // RetroArch zips built up to v1.22.2-6 carry key=value lines only: the stick got that file as its stamp and
+    // Software Update offered the same build again for ever
+    Fixture fx;
+    fx.options.packageFile.clear();
+    fx.options.retroarchZip = fx.tmp.at("site/retroarch-psc-v1.22.2-6.zip");
+    {
+        ableem::ZipWriter zip;
+        REQUIRE(zip.open(fx.options.retroarchZip));
+        zip.addBytes("retroarch", "ELF retroarch");
+        zip.addBytes("VERSION", "retroarch_version=v1.22.2\npsc_build=6\nbuild_date=2026-10-04T05:27:09Z\n"
+                                "toolchain=autobleem-build-gcc6-glibc2.24\n");
+        REQUIRE(zip.close());
+    }
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "ELF old");
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(retroarch_version::installed(fx.tmp.at("stick")) == "v1.22.2-6");
+    CHECK(InstallerJob::inspect(fx.options).retroarchVersion == "v1.22.2-6");
+    // the first line is the version itself, the zip's own lines stay below it
+    const string stamp = fx.tmp.readFile("stick/RetroArch/bin/VERSION");
+    CHECK(stamp.compare(0, 10, "v1.22.2-6\n") == 0);
+    CHECK(stamp.find("psc_build=6") != string::npos);
+
+    // a zip with the tag as its first line is stamped as it is
+    {
+        ableem::ZipWriter zip;
+        REQUIRE(zip.open(fx.options.retroarchZip));
+        zip.addBytes("retroarch", "ELF retroarch");
+        zip.addBytes("VERSION", "v1.22.2-7\nretroarch_version=v1.22.2\npsc_build=7\n");
+        REQUIRE(zip.close());
+    }
+    string again;
+    REQUIRE_MESSAGE(fx.run(again), again);
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/VERSION") == "v1.22.2-7\nretroarch_version=v1.22.2\npsc_build=7\n");
+    CHECK(retroarch_version::installed(fx.tmp.at("stick")) == "v1.22.2-7");
 }
 
 TEST_CASE("the console's RetroArch update that fails leaves the old RetroArch as it was") {

@@ -4,6 +4,7 @@
 #include "core/services/default_theme.h"
 #include "core/services/extension_catalog.h"
 #include "core/services/processor_catalog.h"
+#include "core/services/retroarch_version.h"
 
 #include <ableem/engine/filesystem.h>
 #include <ableem/engine/log.h>
@@ -542,8 +543,14 @@ private:
     bool stampVersion(string &error) {
         if (newVersion.empty())
             return true;
+        // the stamp's first line is the version as the site lists it ("v1.22.2-6"): a zip built before it had that
+        // line carries only key=value lines (retroarch_version=, psc_build=), which are kept below it
+        string stamp = newVersion;
+        const string version = retroarch_version::parse(newVersion);
+        if (!version.empty() && firstLine(newVersion) != version)
+            stamp = version + "\n" + newVersion;
         const string file = at("RetroArch/bin/VERSION");
-        if (!writeText(file, newVersion)) {
+        if (!writeText(file, stamp)) {
             error = "cannot write RetroArch/bin/VERSION";
             return false;
         }
@@ -918,7 +925,7 @@ StickInfo InstallerJob::inspect(const InstallOptions &options) {
         info.legacyLayout = LegacyLayout::detect(root);
         info.hasRetroArch = DirEntry::exists(root + "/RetroArch/bin/retroarch") ||
                             (info.legacyLayout && DirEntry::exists(root + "/retroarch/retroarch"));
-        info.retroarchVersion = firstLine(readText(root + "/RetroArch/bin/VERSION"));
+        info.retroarchVersion = retroarch_version::installed(root);
         for (size_t i = 0; i < 3; i++)
             info.hasCovers[i] = DirEntry::exists(root + "/Autobleem/bin/db/" + Covers[i].file);
     }
