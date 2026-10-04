@@ -145,7 +145,13 @@ struct Fixture {
             REQUIRE(zip.open(tmp.at("site/retroarch-psc-v1.22.2-4.zip")));
             zip.addBytes("retroarch", "ELF retroarch");
             zip.addBytes("VERSION", "v1.22.2-4\n");
+            // the old theme files stay in the zip: installers already in the field copy them by these names
+            zip.addBytes("theme/Autobleem2.png", "old wallpaper");
+            zip.addBytes("theme/selawik-light.ttf", "ttf");
+            zip.addBytes("theme/OFL.txt", "ofl");
             zip.addBytes("theme/ab2-1280x720.png", "wallpaper");
+            zip.addBytes("theme/ab2-theme.cfg",
+                         "# the theme\nxmb_theme = \"6\"\nxmb_font = \":/assets/xmb/custom/font.ttf\"\n");
             // the theme's assets tree: the whole folder is taken, whatever names the designer adds to it
             zip.addBytes("theme/assets/xmb/custom/png/bg.png", "bg");
             zip.addBytes("theme/assets/xmb/custom/png/phase2-new.png", "phase 2");
@@ -496,8 +502,13 @@ TEST_CASE("RetroArch, its cores, libraries, apps and bundles, then the BIOS file
     CHECK(cfg.find("system_directory = \"/media/RetroArch/bios\"") != string::npos);
     CHECK(cfg.find("rgui_browser_directory = \"/media/RetroArch/roms/\"") != string::npos);
     CHECK(cfg.find("libretro_directory = \":/cores\"") != string::npos);
-    CHECK(cfg.find("xmb_theme = \"7\"") != string::npos);
+    // the build's keys first, then the theme's own, after its files landed
+    CHECK(cfg.find("xmb_theme = \"7\"") == string::npos);
+    CHECK(cfg.find("xmb_theme = \"6\"") != string::npos);
+    CHECK(cfg.find("quit_on_close_content = \"2\"") != string::npos);
     CHECK(cfg.find("# the keys") == string::npos);
+    CHECK(cfg.find("# the theme") == string::npos);
+    CHECK(fx.has("RetroArch/bin/Retroarch themes/Autobleem2.png")); // the old files still land
     CHECK(fx.has("RetroArch/bin/playlists"));
     CHECK(fx.has("RetroArch/roms"));
     // the packs
@@ -689,8 +700,11 @@ TEST_CASE("a new RetroArch build over a RetroBoot-era retroarch.cfg sets its own
     string error;
     REQUIRE_MESSAGE(fx.run(error), error);
     string cfg = fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg");
-    CHECK(cfg == "video_smooth = \"true\"\nxmb_theme = \"7\"\nmenu_driver = \"xmb\"\nquit_on_close_content = \"2\"\n");
+    // the build's two keys, then the theme's two (xmb_theme replaced again, xmb_font appended)
+    CHECK(cfg == "video_smooth = \"true\"\nxmb_theme = \"6\"\nmenu_driver = \"xmb\"\nquit_on_close_content = \"2\"\n"
+                 "xmb_font = \":/assets/xmb/custom/font.ttf\"\n");
     CHECK(fx.out.said("2 keys of this RetroArch build set in it"));
+    CHECK(fx.out.said("2 theme keys set"));
 }
 
 TEST_CASE("old ES-style ROM folders become the RetroArch database names the scan reads") {
@@ -868,4 +882,18 @@ xmb_theme = \"8\"
     CHECK(fx.has("RetroArch/bin/assets/xmb/custom/png/phase2-new.png"));
     string cfg = fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg");
     CHECK(cfg.find("video_smooth = \"true\"") != string::npos);
+    CHECK(cfg.find("xmb_theme = \"6\"") != string::npos);
+}
+
+TEST_CASE("the theme's cfg keys wait with the theme: no assets bundle, no keys that point at missing icons") {
+    Fixture fx;
+    fx.options.retroarch = true;
+    fx.site.files.erase(string(Site) + "/buildbot/assets.zip");
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.out.said("the AutoBleem 2 theme waits"));
+    string cfg = fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg");
+    CHECK(cfg.find("xmb_theme = \"7\"") != string::npos); // the build's own, as an old installer leaves it
+    CHECK(cfg.find("xmb_theme = \"6\"") == string::npos);
+    CHECK(cfg.find("xmb_font") == string::npos);
 }

@@ -421,6 +421,9 @@ private:
                 const char *to;
             };
             for (const Place &p : {Place{"retroarch", "retroarch"}, Place{"VERSION", "VERSION"},
+                                   Place{"theme/Autobleem2.png", "Retroarch themes/Autobleem2.png"},
+                                   Place{"theme/selawik-light.ttf", "fonts/selawik-light.ttf"},
+                                   Place{"theme/OFL.txt", "fonts/OFL.txt"},
                                    Place{"theme/ab2-1280x720.png", "Retroarch themes/ab2-1280x720.png"}}) {
                 if (!DirEntry::exists(unpacked + "/" + p.from))
                     continue;
@@ -431,6 +434,7 @@ private:
                 }
             }
             themeCfg = readText(unpacked + "/theme/retroarch-psc.cfg");
+            ab2Cfg = readText(unpacked + "/theme/ab2-theme.cfg"); // applied once the theme files have landed
             // the theme's assets tree waits for the bundles below: a folder of ours under assets/ would
             // make a fresh install skip libretro's own assets bundle as "already there"
             themeAssets = scratch + "/ra-theme-assets";
@@ -492,6 +496,8 @@ private:
                 if (!applyThemeTree(themeAssets, bin + "/assets", count, error))
                     return false;
                 say("  the AutoBleem 2 theme: " + to_string(count) + " files");
+                if (!ab2Cfg.empty() && !setCfgKeys(ab2Cfg, error))
+                    return false;
             } else {
                 // putting our folders in would make the next run take the assets bundle for done
                 say("  the AutoBleem 2 theme waits: RetroArch's assets are not on the stick yet");
@@ -547,6 +553,59 @@ private:
         return ok;
     }
 
+    // each `key = value` line of `keys` set in `text`: the key's line, wherever it is, replaced; appended when
+    // there is none. Every other line stays. Returns the number of keys set.
+    static int mergeKeys(string &text, const string &keys) {
+        int set = 0;
+        istringstream in(keys);
+        string line;
+        while (getline(in, line)) {
+            string t = trimmed(line);
+            if (t.empty() || t[0] == '#')
+                continue;
+            size_t eq = t.find('=');
+            if (eq == string::npos)
+                continue;
+            const string key = trimmed(t.substr(0, eq));
+            size_t pos = 0;
+            bool found = false;
+            while (pos < text.size()) {
+                size_t end = text.find('\n', pos);
+                if (end == string::npos)
+                    end = text.size();
+                string existing = text.substr(pos, end - pos);
+                string k = trimmed(existing.substr(0, existing.find('=')));
+                if (existing.find('=') != string::npos && k == key) {
+                    text.replace(pos, end - pos, t);
+                    found = true;
+                    break;
+                }
+                pos = end + 1;
+            }
+            if (!found) {
+                if (!text.empty() && text.back() != '\n')
+                    text += "\n";
+                text += t + "\n";
+            }
+            set++;
+        }
+        return set;
+    }
+
+    // the theme's own keys (ab2-theme.cfg) into retroarch.cfg: only after the theme's files are on the stick,
+    // so a menu never points at icons that are not there
+    bool setCfgKeys(const string &keys, string &error) {
+        const string cfg = at("RetroArch/bin/retroarch.cfg");
+        string text = readText(cfg);
+        const int set = mergeKeys(text, keys);
+        if (!writeText(cfg, text)) {
+            error = "cannot write " + cfg;
+            return false;
+        }
+        say("  retroarch.cfg: " + to_string(set) + " theme keys set");
+        return true;
+    }
+
     // retroarch.cfg, only when there is none: RetroArch keeps it up to date itself and the launcher edits
     // a few keys around each launch - both must keep what the user has set since
     bool writeRetroArchCfg(string &error) {
@@ -557,40 +616,7 @@ private:
             // the build's own keys go over it, everything else stays
             if (newBinary && !themeCfg.empty()) {
                 string text = readText(cfg);
-                int set = 0;
-                istringstream in(themeCfg);
-                string line;
-                while (getline(in, line)) {
-                    string t = trimmed(line);
-                    if (t.empty() || t[0] == '#')
-                        continue;
-                    size_t eq = t.find('=');
-                    if (eq == string::npos)
-                        continue;
-                    const string key = trimmed(t.substr(0, eq));
-                    // the key's line, wherever it is, replaced; appended when there is none
-                    size_t pos = 0;
-                    bool found = false;
-                    while (pos < text.size()) {
-                        size_t end = text.find('\n', pos);
-                        if (end == string::npos)
-                            end = text.size();
-                        string existing = text.substr(pos, end - pos);
-                        string k = trimmed(existing.substr(0, existing.find('=')));
-                        if (existing.find('=') != string::npos && k == key) {
-                            text.replace(pos, end - pos, t);
-                            found = true;
-                            break;
-                        }
-                        pos = end + 1;
-                    }
-                    if (!found) {
-                        if (!text.empty() && text.back() != '\n')
-                            text += "\n";
-                        text += t + "\n";
-                    }
-                    set++;
-                }
+                int set = mergeKeys(text, themeCfg);
                 if (!writeText(cfg, text)) {
                     error = "cannot write " + cfg;
                     return false;
@@ -710,6 +736,7 @@ private:
     vector<string> shippedExtensions; // the package's Extensions/<name>/ folders
     string savedConfig;
     string themeCfg;
+    string ab2Cfg;
     bool hadDefaultTheme = false; // Themes/<DefaultTheme::Name> was on the stick before this run
     bool newBinary = false;
 };
