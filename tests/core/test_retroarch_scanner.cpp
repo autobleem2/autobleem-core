@@ -19,6 +19,7 @@
 #include <ableem/engine/zip_writer.h>
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <map>
 #include <set>
@@ -1128,8 +1129,20 @@ TEST_CASE("createMissingFolders: a folder for every database an installed core p
     CHECK_FALSE(DirEntry::isDirectory(t.tmp.at("roms/MAME 2010")));
     CHECK_FALSE(DirEntry::isDirectory(t.tmp.at("roms/FBNeo - Arcade Games"))); // the "Arcade" alias is its home
     CHECK_FALSE(DirEntry::isDirectory(t.tmp.at("roms/Sega - Not Installed")));
-    CHECK_FALSE(DirEntry::isDirectory(t.tmp.at("roms/BK-0010")));        // not a usable folder name
-    CHECK_FALSE(DirEntry::isDirectory(t.tmp.at(string("roms/") + NES))); // the folder is there already
+    CHECK_FALSE(DirEntry::isDirectory(t.tmp.at("roms/BK-0010"))); // not a usable folder name
+    // the folder is there already (in another case): no second one is made. Counted by name, because on a
+    // case-insensitive file system (Windows, macOS) "roms/<NES>" IS the lower-case folder and isDirectory() says yes
+    int nesFolders = 0;
+    for (const DirEntry &e : DirEntry::diru(t.tmp.at("roms"))) {
+        string name = e.name, wanted = NES;
+        for (char &c : name)
+            c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        for (char &c : wanted)
+            c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        if (name == wanted)
+            nesFolders++;
+    }
+    CHECK(nesFolders == 1);
 
     // nothing left to make: a second pass does nothing, and what is in the folders stays
     CHECK(RetroArchScanner::createMissingFolders(t.options.romsDir, cores, aliases, skipped).empty());

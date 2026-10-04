@@ -18,6 +18,8 @@
 #include <chrono>
 #include <cstring>
 #include <map>
+#include <memory>
+#include <random>
 #include <string>
 #include <thread>
 
@@ -37,6 +39,37 @@ using namespace std;
 using namespace ableem;
 
 namespace {
+
+// A port taken from the clock collides with another test process when ctest runs the suites in parallel ("port N is
+// in use or not allowed", seen in CI). Pick a random port of the dynamic range and try the next random one when the
+// bind is refused.
+constexpr int portAttempts = 25;
+
+int randomPort() {
+    static mt19937 gen{random_device{}()};
+    return 20000 + static_cast<int>(gen() % 20000);
+}
+
+// listens on a free port, which is left in `port`
+bool listenOnFreePort(HttpServer &server, int &port, string &error, const string &bindAddress) {
+    for (int attempt = 0; attempt < portAttempts; ++attempt) {
+        port = randomPort();
+        if (server.listen(port, error, bindAddress))
+            return true;
+    }
+    return false;
+}
+
+// a LanServer started on a free port, which is left in `config.port`; null (and `error`) when none could be bound
+unique_ptr<LanServer> startOnFreePort(LanServer::Config &config, string &error) {
+    for (int attempt = 0; attempt < portAttempts; ++attempt) {
+        config.port = randomPort();
+        auto server = make_unique<LanServer>(config);
+        if (server->start(error))
+            return server;
+    }
+    return nullptr;
+}
 
 // every file under dir with its size - to prove the scan wrote nothing
 string listing(const string &dir) {
@@ -235,9 +268,9 @@ TEST_CASE("HttpServer::parseRange and decodePercent") {
 // prompt on the owner's test PC) - checked with getsockname(), not by trusting listen()'s own argument back.
 TEST_CASE("HttpServer::listen binds the address it is given, not always every interface") {
     HttpServer server([](const HttpServer::Request &) { return HttpServer::Response::text(200, "ok\n"); });
-    const int port = 20000 + static_cast<int>(chrono::steady_clock::now().time_since_epoch().count() % 20000);
+    int port = 0;
     string error;
-    REQUIRE_MESSAGE(server.listen(port, error, "127.0.0.1"), error);
+    REQUIRE_MESSAGE(listenOnFreePort(server, port, error, "127.0.0.1"), error);
     CHECK(server.boundAddress() == "127.0.0.1");
 }
 
@@ -250,7 +283,7 @@ TEST_CASE("HttpServer::listen's default is still every interface - never actuall
 
 TEST_CASE("HttpServer::listen refuses a bad bind address, naming it, without ever binding a socket") {
     HttpServer server([](const HttpServer::Request &) { return HttpServer::Response::text(200, "ok\n"); });
-    const int port = 20000 + static_cast<int>(chrono::steady_clock::now().time_since_epoch().count() % 20000) + 1;
+    const int port = randomPort(); // never bound: the address is refused first
     string error;
     CHECK_FALSE(server.listen(port, error, "not-an-address"));
     CHECK(error.find("not-an-address") != string::npos);
@@ -273,9 +306,9 @@ TEST_CASE("abstored over a socket: the list, a file resumed with a Range, a file
         }
         return HttpServer::Response::text(404, "no\n");
     });
-    const int port = 20000 + static_cast<int>(chrono::steady_clock::now().time_since_epoch().count() % 20000);
+    int port = 0;
     string error;
-    REQUIRE(server.listen(port, error, "127.0.0.1"));
+    REQUIRE_MESSAGE(listenOnFreePort(server, port, error, "127.0.0.1"), error);
     atomic<bool> stop{false};
     thread serving([&] { server.serve(stop); });
 
@@ -411,13 +444,13 @@ TEST_CASE("LanServer serves the library: the list, a file, the status page, what
     Games g;
     LanServer::Config c;
     c.library = g.config();
-    c.port = 20000 + static_cast<int>((chrono::steady_clock::now().time_since_epoch().count() / 7) % 20000);
     c.name = "Living room";
     c.version = "9.9";
     c.bindAddress = "127.0.0.1"; // this test only ever talks to itself - no firewall prompt on a test machine
-    LanServer server(c);
     string error;
-    REQUIRE_MESSAGE(server.start(error), error);
+    unique_ptr<LanServer> started = startOnFreePort(c, error); // c.port is the port it got
+    REQUIRE_MESSAGE(started, error);
+    LanServer &server = *started;
     CHECK(server.running());
 
     const string list = httpGet(c.port, "/store.tsv");
@@ -497,21 +530,21 @@ TEST_CASE(
     Games g;
     LanServer::Config c;
     c.library = g.config();
-    c.port = 20000 + static_cast<int>((chrono::steady_clock::now().time_since_epoch().count() / 11) % 20000);
     c.bindAddress = "127.0.0.1";
     {
-        LanServer off(c);
         string error;
-        REQUIRE_MESSAGE(off.start(error), error);
+        unique_ptr<LanServer> off = startOnFreePort(c, error); // c.port is the port it got
+        REQUIRE_MESSAGE(off, error);
         const string reply = httpSend(c.port, "PUT", "/upload/New/new.cue", "x", "t");
         CHECK(status(reply, 403));
         CHECK(body(reply).find("uploads are off") != string::npos);
     }
     c.uploads = true;
     c.uploadToken = "secret";
-    LanServer server(c);
     string error;
-    REQUIRE_MESSAGE(server.start(error), error);
+    unique_ptr<LanServer> started = startOnFreePort(c, error);
+    REQUIRE_MESSAGE(started, error);
+    LanServer &server = *started;
 
     CHECK(status(httpSend(c.port, "POST", "/store.tsv", "x", "secret"), 405)); // only an upload writes
     CHECK(status(httpSend(c.port, "PUT", "/upload/New/new.cue", "x", "wrong"), 403));

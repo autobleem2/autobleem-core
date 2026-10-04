@@ -57,17 +57,28 @@ struct RetroArchTree {
         string path, label, core_path, core_name, db_name;
     };
 
+    // a JSON string body: a Windows path (C:\...\core.dll) has backslashes that must be escaped
+    static string esc(const string &text) {
+        string out;
+        for (char c : text) {
+            if (c == '\\' || c == '"')
+                out += '\\';
+            out += c;
+        }
+        return out;
+    }
+
     static string json(const vector<Entry> &entries) {
         string out = "{\n  \"version\": \"1.0\",\n  \"items\": [\n";
         for (size_t i = 0; i < entries.size(); i++) {
             const Entry &e = entries[i];
-            out += "    {\n      \"path\": \"" + e.path + "\",\n      \"label\": \"" + e.label +
+            out += "    {\n      \"path\": \"" + esc(e.path) + "\",\n      \"label\": \"" + esc(e.label) +
                    "\",\n"
                    "      \"core_path\": \"" +
-                   e.core_path + "\",\n      \"core_name\": \"" + e.core_name +
+                   esc(e.core_path) + "\",\n      \"core_name\": \"" + esc(e.core_name) +
                    "\",\n"
                    "      \"crc32\": \"00000000|crc\",\n      \"db_name\": \"" +
-                   e.db_name + "\"\n    }";
+                   esc(e.db_name) + "\"\n    }";
             out += (i + 1 < entries.size()) ? ",\n" : "\n";
         }
         return out + "  ]\n}\n";
