@@ -1,7 +1,7 @@
 //
 // proc_helper: a scanner processor the tests can script (docs/scanner-processors-plan.md in the launcher).
 //
-// It picks a script by what it was asked - version.txt, ismine.txt, games.txt, roms.txt, ps1.txt or rom.txt,
+// It picks a script by what it was asked - version.txt, ismine.txt, games.txt, roms.txt, mods.txt, ps1.txt or rom.txt,
 // read from its working directory (the processor's folder) - and appends one line per call to calls.txt
 // there: the arguments, then AB_PROCESSOR_PROTOCOL and AB_TMP. With PROC_LOG set (processor.ini's Env=) it
 // also appends "<AB_PROCESSOR_NAME> <arguments>" to that file - one log for several processors, in the order
@@ -13,6 +13,7 @@
 //   !sleep <ms>
 //   !exit <n>              exits at once with n (the default at the end is 0)
 //   !write <path>|<text>   writes a file
+//   !env <NAME>|<path>     writes the value of an environment variable to a file
 //   !mkdir <path>
 //   !move <from>|<to>      renames
 //   !remove <path>         deletes a file
@@ -122,6 +123,8 @@ int main(int argc, char **argv) {
         script = "version.txt";
     else if (has("--ismine"))
         script = "ismine.txt";
+    else if (has("--mods"))
+        script = "mods.txt";
     else if (has("--games"))
         script = "games.txt";
     else if (has("--roms"))
@@ -151,6 +154,9 @@ int main(int argc, char **argv) {
         } else if (line.compare(0, 7, "!write ") == 0) {
             auto a = two(line.substr(7), target);
             ofstream(a.first, ios::binary) << a.second;
+        } else if (line.compare(0, 5, "!env ") == 0) {
+            auto a = two(line.substr(5), target);
+            ofstream(a.second, ios::binary) << env(a.first.c_str());
         } else if (line.compare(0, 7, "!mkdir ") == 0) {
             string dir = replaceTarget(line.substr(7), target);
 #ifdef _WIN32

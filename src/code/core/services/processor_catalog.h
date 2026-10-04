@@ -14,7 +14,9 @@
 //******************
 // processor.ini's Kinds=: what a processor can be given. games-folder / roms-folder: the whole tree, once per
 // scan, before anything else (a preprocessor); ps1 / rom: one game folder or one ROM file at a time
-enum class ProcessorKind { GamesFolder, RomsFolder, Ps1, Rom };
+// mods: the Mods/ folder of PE mod packages, once per scan, started with --mods (it writes Apps/); it sits in the
+// PS1 sequence, so the Scanner processors screen lists and switches it with the PS1 ones
+enum class ProcessorKind { GamesFolder, RomsFolder, Ps1, Rom, Mods };
 
 //******************
 // ProcessorSequence
@@ -69,7 +71,7 @@ public:
     // "*.zip" against "Crash.ZIP": * any run, ? one character, no case
     static bool globMatch(const std::string &name, const std::string &pattern);
     static std::vector<ProcessorKind> parseKinds(const std::string &value);
-    static const char *kindName(ProcessorKind kind); // "games-folder", "roms-folder", "ps1", "rom"
+    static const char *kindName(ProcessorKind kind); // "games-folder", "roms-folder", "ps1", "rom", "mods"
     // a value with its trailing "  ; comment" (or "# comment") removed - a comment needs a blank before it
     static std::string stripComment(const std::string &value);
 

@@ -43,7 +43,7 @@ bool ProcessorInfo::has(ProcessorKind kind) const {
 
 bool ProcessorInfo::belongsTo(ProcessorSequence sequence) const {
     if (sequence == ProcessorSequence::Ps1)
-        return has(ProcessorKind::GamesFolder) || has(ProcessorKind::Ps1);
+        return has(ProcessorKind::GamesFolder) || has(ProcessorKind::Ps1) || has(ProcessorKind::Mods);
     return has(ProcessorKind::RomsFolder) || has(ProcessorKind::Rom);
 }
 
@@ -112,6 +112,8 @@ vector<ProcessorKind> ProcessorCatalog::parseKinds(const string &value) {
             kind = ProcessorKind::RomsFolder;
         else if (item == "ps1")
             kind = ProcessorKind::Ps1;
+        else if (item == "mods")
+            kind = ProcessorKind::Mods;
         else if (item == "rom")
             kind = ProcessorKind::Rom;
         else
@@ -135,6 +137,8 @@ const char *ProcessorCatalog::kindName(ProcessorKind kind) {
         return "ps1";
     case ProcessorKind::Rom:
         return "rom";
+    case ProcessorKind::Mods:
+        return "mods";
     }
     return "";
 }

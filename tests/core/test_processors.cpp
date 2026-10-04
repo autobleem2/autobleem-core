@@ -231,3 +231,26 @@ TEST_CASE("ProcessorState::digest: names and sizes, without what the launcher wr
     CHECK(file != ProcessorState::digest(tmp.at("Games/Crash/sub/extra.txt")));
     CHECK(file.size() == 32);
 }
+
+TEST_CASE("Kinds=mods: parsed, named, and listed with the PS1 processors - never in the ROMs sequence") {
+    TempDir tmp("processors_mods");
+    processor(tmp, "pe", "[Processor]\nExec=bin/{key}/pe\nKinds=mods ; PE packages\nMatch=*.mod\n");
+    ProcessorCatalog catalog(tmp.at("Processors"), {"psc"});
+    const vector<ProcessorInfo> &list = catalog.scan();
+    REQUIRE(list.size() == 1);
+    CHECK(list[0].kinds == vector<ProcessorKind>{ProcessorKind::Mods});
+    CHECK(list[0].has(ProcessorKind::Mods));
+    CHECK_FALSE(list[0].has(ProcessorKind::GamesFolder));
+    CHECK(list[0].belongsTo(ProcessorSequence::Ps1));
+    CHECK_FALSE(list[0].belongsTo(ProcessorSequence::Roms));
+    CHECK(list[0].matchesFile("OpenLara_1.0.mod"));
+    CHECK_FALSE(list[0].matchesFile("readme.txt"));
+    CHECK(string(ProcessorCatalog::kindName(ProcessorKind::Mods)) == "mods");
+    CHECK(ProcessorCatalog::parseKinds("games-folder, mods") ==
+          vector<ProcessorKind>{ProcessorKind::GamesFolder, ProcessorKind::Mods});
+
+    ProcessorSequences seq(tmp.at("Processors/sequence.ini"));
+    CHECK(seq.load(catalog.processors()));
+    CHECK(names(seq.entries(ProcessorSequence::Ps1)) == vector<string>{"-pe"}); // new: off
+    CHECK(seq.entries(ProcessorSequence::Roms).empty());
+}

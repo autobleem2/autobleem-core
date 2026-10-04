@@ -23,10 +23,11 @@ enum class Ps1SelectState : int { AllGames = 0, InternalOnly, Favorites, History
 // An App's app.ini `Category=` (2026-09-26, autobleem-main docs/archive/app-format-plan.md),
 // case-insensitive; anything else or missing is Other. All is not a category an app.ini can name - it is
 // the picker's "every app" row.
-// Keep the order Games/Emulators/Tools/Media/Other: it is the order the set picker and appCategories() list
-// them in.
-enum class AppCategory : int { All = 0, Games, Emulators, Tools, Media, Other };
-constexpr AppCategory AppCategoryLast = AppCategory::Other;
+// Keep the order Games/Emulators/Tools/Media/Other/PE: it is the order the set picker and appCategories() list
+// them in (and the number the carousel session file keeps - new ones only at the end). PE is the apps made from
+// PE mod packages (Category=PE, written by the mods processor); it is a row of its own only when there is one.
+enum class AppCategory : int { All = 0, Games, Emulators, Tools, Media, Other, PE };
+constexpr AppCategory AppCategoryLast = AppCategory::PE;
 
 // the untranslated English name - translate at the call site with _(); GameQueryService::apps()'s parser is
 // the read side of this table.
@@ -44,6 +45,8 @@ inline std::string appCategoryName(AppCategory category) {
         return "Media";
     case AppCategory::Other:
         return "Other";
+    case AppCategory::PE:
+        return "PE apps";
     }
     return "Other";
 }

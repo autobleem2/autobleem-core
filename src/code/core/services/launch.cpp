@@ -332,6 +332,7 @@ vector<pair<string, string>> LaunchService::appEnvironment(const AppManifest &m)
     for (const string &k : Env::appPlatformKeys())
         keys += (keys.empty() ? "" : " ") + k;
     vector<pair<string, string>> env{{"AB_ROOT", Env::getPathToUSBRoot()},
+                                     {"AB_RC_DIR", Env::getPathToRCDir()},
                                      {"AB_APP_DIR", m.folder},
                                      {"AB_APP_EXEC", m.program},
                                      {"AB_APP_ARGS", m.args},

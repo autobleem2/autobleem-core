@@ -106,6 +106,9 @@ string Environment::getPathToAutobleemDir() {
 string Environment::getPathToAppsDir() {
     return usbRoot + sep + "Apps";
 }
+string Environment::getPathToModsDir() {
+    return usbRoot + sep + "Mods";
+}
 string Environment::getPathToExtensionsDir() {
     return usbRoot + sep + "Extensions";
 }

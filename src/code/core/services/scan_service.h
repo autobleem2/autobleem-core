@@ -91,6 +91,10 @@ struct ScanUpdate {
     ProcessorActivity processor;
     std::vector<ProcessorNotice> processorNotices;
 
+    // a scanner processor changed what is in Apps/ (the mods processor turning a PE package into an App): the
+    // launcher reads the Apps set again
+    bool appsChanged = false;
+
     bool finished = false; // a whole scan cycle completed during this poll
     int finishedGameCount = 0;
     int finishedFailedCount = 0;
@@ -166,6 +170,8 @@ public:
     // requestScan() right away.
     static std::string fingerprintFilePath();
     static std::string romsFingerprintFilePath();
+    // <working>/mods.fingerprint - the same for Mods/ (watched only where a mods processor made the folder)
+    static std::string modsFingerprintFilePath();
     // <state>/roms.scanstate - the ROM scanner's per-folder digests (RetroArchScanner::Options::stateFile),
     // what lets a rescan skip every ROM folder nothing changed in
     static std::string romScanStateFilePath();
@@ -244,6 +250,7 @@ private:
             BoxArtFetched,
             ProcessorProgress,
             ProcessorNotice,
+            AppsChanged,
             Finished
         };
         Kind kind = Kind::Progress;
@@ -268,6 +275,7 @@ private:
         ableem::UsbGames gamesToAddToDB;
         ableem::GamesFingerprint fingerprint;
         ableem::GamesFingerprint romsFingerprint;
+        ableem::GamesFingerprint modsFingerprint;
         int failedCount = 0;
         ableem::FailedGames failedGames; // Finished: what the Game Manager lists
         int romCount = 0;
@@ -318,6 +326,9 @@ private:
     void openProcessors(ProcessorSession &session);
     // a sequence's folder processors over a whole tree (Games/ or roms/)
     void runFolderProcessors(ProcessorSession &session, ProcessorSequence sequence, const std::string &treeDir);
+    // the mods processors (Kinds=mods) of the PS1 sequence over Mods/: --start --mods <Mods>, once, when a file they
+    // match changed; tells the launcher when Apps/ changed under them
+    void runModsProcessors(ProcessorSession &session);
     // a sequence's item chain over every game folder (PS1) or ROM file (ROMs) in the tree; true when a
     // processor changed something (the caller goes round again, for what a step produced)
     bool runItemChains(ProcessorSession &session, ProcessorSequence sequence, const std::string &treeDir);
@@ -367,4 +378,6 @@ private:
     ableem::GamesFingerprint lastCheckFingerprint_;
     ableem::GamesFingerprint lastScannedRomsFingerprint_;
     ableem::GamesFingerprint lastCheckRomsFingerprint_;
+    ableem::GamesFingerprint lastScannedModsFingerprint_;
+    ableem::GamesFingerprint lastCheckModsFingerprint_;
 };

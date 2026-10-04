@@ -49,14 +49,15 @@ TEST_CASE("a default GameSetSelection opens on all PS1 games") {
     CHECK(selection.appCategory == AppCategory::All);
 }
 
-TEST_CASE("appCategoryName covers every AppCategory, Games/Emulators/Tools/Media/Other in that order") {
+TEST_CASE("appCategoryName covers every AppCategory, Games/Emulators/Tools/Media/Other/PE in that order") {
     CHECK(appCategoryName(AppCategory::All) == "All apps");
     CHECK(appCategoryName(AppCategory::Games) == "Games");
     CHECK(appCategoryName(AppCategory::Emulators) == "Emulators");
     CHECK(appCategoryName(AppCategory::Tools) == "Tools");
     CHECK(appCategoryName(AppCategory::Media) == "Media");
     CHECK(appCategoryName(AppCategory::Other) == "Other");
-    CHECK(AppCategoryLast == AppCategory::Other);
+    CHECK(appCategoryName(AppCategory::PE) == "PE apps");
+    CHECK(AppCategoryLast == AppCategory::PE);
 }
 
 TEST_CASE("GameSetSelection copies whole, which is what the save/restore relies on") {

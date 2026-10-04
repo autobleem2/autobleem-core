@@ -32,6 +32,8 @@ AppCategory parseAppCategory(const string &raw) {
         return AppCategory::Tools;
     if (value == "media")
         return AppCategory::Media;
+    if (value == "pe")
+        return AppCategory::PE;
     return AppCategory::Other;
 }
 } // namespace

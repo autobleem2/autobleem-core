@@ -617,7 +617,8 @@ struct ProcessorsOnStick {
     void switchOn(const string &name, const string &ini) {
         size_t at = ini.find("Kinds=");
         string kinds = at == string::npos ? "" : ini.substr(at, ini.find('\n', at) - at);
-        if (kinds.find("ps1") != string::npos || kinds.find("games-folder") != string::npos)
+        if (kinds.find("ps1") != string::npos || kinds.find("games-folder") != string::npos ||
+            kinds.find("mods") != string::npos)
             ps1.push_back(name);
         if (kinds.find("rom") != string::npos)
             roms.push_back(name);
@@ -822,6 +823,77 @@ TEST_CASE("processors: a ROM chain gets --rom and --system, and what a step made
     CHECK(ran[1].find("unzip --start --rom ") == 0);
     CHECK(ran[2].find("patch --ismine --rom ") == 0);
     CHECK(ran[3].find("Sonic.zip.nes --system Nintendo - Nintendo Entertainment System") != string::npos);
+}
+
+// Kinds=mods: the PE mod packages in Mods/, turned into Apps/ by a processor started once with --mods
+TEST_CASE("processors: Kinds=mods makes Mods/ where one is installed, and runs it once per change of Mods/") {
+    ScanServiceFixture fx;
+    ProcessorsOnStick procs(fx);
+    CHECK_FALSE(ableem::DirEntry::isDirectory(fx.tmp.at("Mods")));
+    fx.runAndPoll(); // no mods processor: no folder
+    CHECK_FALSE(ableem::DirEntry::isDirectory(fx.tmp.at("Mods")));
+
+    fx.tmp.makeSubDir("Apps"); // the helper's !mkdir makes one level
+    const string app = fx.tmp.at("Apps/pe-demo");
+    procs.add("pe", "Kinds=mods\nMatch=*.mod\n",
+              {{"mods.txt", "#Starting - Fake PE\n!env AB_MODS_DIR|" + fx.tmp.at("env_mods.txt") + "\n!env AB_APPS_DIR|" +
+                                fx.tmp.at("env_apps.txt") + "\n!mkdir " + app + "\n!write " + app +
+                                "/app.ini|Title=Demo\n#DONE\n"}});
+    ScanUpdate update = fx.runAndPoll();
+    CHECK(ableem::DirEntry::isDirectory(fx.tmp.at("Mods"))); // made, even though there is nothing in it yet
+    CHECK(procs.ran().empty());                              // and no .mod: the processor is not started
+    CHECK_FALSE(update.appsChanged);
+
+    fx.tmp.writeFile("Mods/demo.mod", "x");
+    fx.tmp.writeFile("Mods/notes.txt", "not a mod");
+    update = fx.runAndPoll();
+    CHECK(procs.ran() == vector<string>{"pe --start --mods ~/Mods"});
+    CHECK(fx.tmp.readFile("env_mods.txt") == fx.tmp.at("Mods"));
+    CHECK(fx.tmp.readFile("env_apps.txt") == fx.tmp.at("Apps"));
+    CHECK(update.appsChanged); // it wrote an App: the launcher reads the Apps again
+    CHECK(ableem::DirEntry::exists(app + "/app.ini"));
+
+    // nothing changed in Mods/: not started again, and no change of Apps/ announced
+    procs.clearLog();
+    update = fx.runAndPoll();
+    CHECK(procs.ran().empty());
+    CHECK_FALSE(update.appsChanged);
+
+    // another package: it runs again
+    fx.tmp.writeFile("Mods/other.mod", "y");
+    update = fx.runAndPoll();
+    CHECK(procs.ran() == vector<string>{"pe --start --mods ~/Mods"});
+    CHECK_FALSE(update.appsChanged); // it changed nothing in Apps/ this time
+}
+
+TEST_CASE("processors: a switched-off mods processor leaves Mods/ alone but the folder is there to drop into") {
+    ScanServiceFixture fx;
+    ProcessorsOnStick procs(fx);
+    procs.presetOn = false;
+    procs.add("pe", "Kinds=mods\nMatch=*.mod\n");
+    fx.tmp.makeSubDir("Mods");
+    fx.tmp.writeFile("Mods/demo.mod", "x");
+    fx.runAndPoll();
+    CHECK(procs.ran().empty());
+    CHECK(fx.tmp.readFile("System/Processors/sequence.ini").find("[ps1]\n-pe\n") != string::npos);
+}
+
+TEST_CASE("processors: a package dropped into Mods/ is a change the watcher and the startup check see") {
+    ScanServiceFixture fx;
+    ProcessorsOnStick procs(fx);
+    procs.add("pe", "Kinds=mods\nMatch=*.mod\n");
+    fx.runAndPoll();
+    CHECK(ScanService::fingerprintsMatchDisk());
+    CHECK_FALSE(fx.svc.checkForChanges());
+
+    fx.tmp.writeFile("Mods/demo.mod", "x");
+    CHECK_FALSE(ScanService::fingerprintsMatchDisk()); // the launcher starting later scans for it
+    CHECK_FALSE(fx.svc.checkForChanges());
+    CHECK(fx.svc.checkForChanges()); // seen twice: a scan is due
+
+    fx.runAndPoll();
+    CHECK(ScanService::fingerprintsMatchDisk());
+    CHECK_FALSE(fx.svc.checkForChanges());
 }
 
 TEST_CASE("at start the worker scans once when the core-picks marker is missing, with nothing else changed") {

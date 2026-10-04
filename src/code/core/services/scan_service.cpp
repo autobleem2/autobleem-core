@@ -90,6 +90,20 @@ string ScanService::romsFingerprintFilePath() {
 }
 
 //*******************************
+// ScanService::modsFingerprintFilePath
+//*******************************
+string ScanService::modsFingerprintFilePath() {
+    return Env::getPathToStateDir() + sep + "mods.fingerprint";
+}
+
+namespace {
+// Mods/ is only there where a mods processor is installed (openProcessors makes it) - no folder, nothing to watch
+bool modsWatched() {
+    return DirEntry::isDirectory(Env::getPathToModsDir());
+}
+} // namespace
+
+//*******************************
 // ScanService::romsFolderAliasesPath
 //*******************************
 string ScanService::romsFolderAliasesPath() {
@@ -153,6 +167,12 @@ bool ScanService::fingerprintsMatchDisk() {
     });
     if (!stored.load(fingerprintFilePath()) || stored != games)
         return false;
+    if (modsWatched()) {
+        GamesFingerprint storedMods;
+        if (!storedMods.load(modsFingerprintFilePath()) ||
+            storedMods != GamesFingerprint::takeAllFiles(Env::getPathToModsDir()))
+            return false;
+    }
     if (!romScanEnabled())
         return true;
     GamesFingerprint storedRoms;
@@ -212,6 +232,8 @@ void ScanService::threadMain() {
     lastCheckFingerprint_ = lastScannedFingerprint_;
     lastScannedRomsFingerprint_.load(romsFingerprintFilePath());
     lastCheckRomsFingerprint_ = lastScannedRomsFingerprint_;
+    lastScannedModsFingerprint_.load(modsFingerprintFilePath());
+    lastCheckModsFingerprint_ = lastScannedModsFingerprint_;
     if (corePicksScanDue())
         scanRequested_.store(true);
 
@@ -241,21 +263,24 @@ void ScanService::threadMain() {
 //*******************************
 bool ScanService::checkForChanges() {
     GamesFingerprint fresh = takeGamesFingerprint();
-    bool changedFromScanned = !(fresh == lastScannedFingerprint_);
-    bool stableSinceLastCheck = (fresh == lastCheckFingerprint_);
+    bool changed = !(fresh == lastScannedFingerprint_);
+    bool stable = (fresh == lastCheckFingerprint_);
     lastCheckFingerprint_ = fresh;
 
-    // the ROM folders, the same way; a change in either tree runs the whole cycle, once both are still
+    // Mods/ and the ROM folders, the same way; a change in any tree runs the whole cycle, once all are still
+    if (modsWatched()) {
+        GamesFingerprint freshMods = GamesFingerprint::takeAllFiles(Env::getPathToModsDir());
+        changed = changed || !(freshMods == lastScannedModsFingerprint_);
+        stable = stable && (freshMods == lastCheckModsFingerprint_);
+        lastCheckModsFingerprint_ = freshMods;
+    }
     if (romScanEnabled()) {
         GamesFingerprint freshRoms = GamesFingerprint::takeAllFiles(Env::getPathToRetroarchRomsDir());
-        bool romsChanged = !(freshRoms == lastScannedRomsFingerprint_);
-        bool romsStable = (freshRoms == lastCheckRomsFingerprint_);
+        changed = changed || !(freshRoms == lastScannedRomsFingerprint_);
+        stable = stable && (freshRoms == lastCheckRomsFingerprint_);
         lastCheckRomsFingerprint_ = freshRoms;
-        if (!stableSinceLastCheck || !romsStable)
-            return false;
-        return changedFromScanned || romsChanged;
     }
-    return changedFromScanned && stableSinceLastCheck;
+    return changed && stable;
 }
 
 //*******************************
@@ -366,6 +391,7 @@ void ScanService::runScan() {
         runFolderProcessors(processors, ProcessorSequence::Ps1, gamesDir);
         if (romScanEnabled())
             runFolderProcessors(processors, ProcessorSequence::Roms, Env::getPathToRetroarchRomsDir());
+        runModsProcessors(processors);
     }
 
     if (GameScanner::hasLooseGameFiles(gamesDir)) {
@@ -428,6 +454,11 @@ void ScanService::runScan() {
     }
     lastScannedRomsFingerprint_ = romsFp;
     lastCheckRomsFingerprint_ = romsFp;
+    GamesFingerprint modsFp;
+    if (modsWatched())
+        modsFp = GamesFingerprint::takeAllFiles(Env::getPathToModsDir());
+    lastScannedModsFingerprint_ = modsFp;
+    lastCheckModsFingerprint_ = modsFp;
 
     WorkerEvent finished;
     finished.kind = WorkerEvent::Kind::Finished;
@@ -435,6 +466,7 @@ void ScanService::runScan() {
     finished.gamesToAddToDB = scanner.gamesToAddToDB;
     finished.fingerprint = fp;
     finished.romsFingerprint = romsFp;
+    finished.modsFingerprint = modsFp;
     finished.failedCount = listener.failedCount;
     finished.failedGames = scanner.failedGames;
     finished.romCount = romCount;
@@ -605,6 +637,10 @@ ScanUpdate ScanService::poll() {
             update.processorNotices.push_back(event.notice);
             break;
 
+        case WorkerEvent::Kind::AppsChanged:
+            update.appsChanged = true;
+            break;
+
         case WorkerEvent::Kind::Finished: {
             // the vanished rows no moved game claimed are really gone - before the sub-dir rows are
             // rebuilt from what is left
@@ -622,6 +658,8 @@ ScanUpdate ScanService::poll() {
             library_.exportToRetroArchPlaylist();
             event.fingerprint.save(fingerprintFilePath());
             event.romsFingerprint.save(romsFingerprintFilePath());
+            if (modsWatched())
+                event.modsFingerprint.save(modsFingerprintFilePath());
 
             update.active = false;
             update.finished = true;
@@ -720,6 +758,8 @@ vector<pair<string, string>> ScanService::processorEnvironment() {
     return {{"AB_ROOT", Env::getPathToUSBRoot()},
             {"AB_GAMES_DIR", Env::getPathToGamesDir()},
             {"AB_ROMS_DIR", Env::getPathToRetroarchRomsDir()},
+            {"AB_MODS_DIR", Env::getPathToModsDir()},
+            {"AB_APPS_DIR", Env::getPathToAppsDir()},
             {"AB_RDB_DIR", Env::getPathToRetroarchRdbDir()},
             {"AB_PLATFORM", Env::buildTargetKey()},
             {"AB_PLATFORM_KEYS", keys},
@@ -735,6 +775,14 @@ void ScanService::openProcessors(ProcessorSession &session) {
         return;
     session.catalog.scan();
     watchPatterns_ = session.catalog.watchPatterns();
+    // the folder the PE mod packages are dropped into, made where a mods processor is installed for this machine
+    // (the console's package) - and left alone everywhere else
+    for (const ProcessorInfo &p : session.catalog.processors()) {
+        if (p.has(ProcessorKind::Mods) && p.builtForThisSystem()) {
+            DirEntry::createDirs(Env::getPathToModsDir());
+            break;
+        }
+    }
     if (session.sequences.load(session.catalog.processors()))
         session.sequences.save();
     session.state.load();
@@ -854,6 +902,43 @@ void ScanService::runFolderProcessors(ProcessorSession &session, ProcessorSequen
         runProcessor(
             session, *p, kind, {flag, treeDir}, "", "", ProcessorState::digest(treeDir),
             [&treeDir]() { return ProcessorState::digest(treeDir); }, false, nullptr);
+    }
+}
+
+//*******************************
+// ScanService::runModsProcessors
+//*******************************
+// Kinds=mods: once per scan over Mods/, as "--start --mods <Mods>" (it knows AB_MODS_DIR and AB_APPS_DIR as
+// well), when a file its Match takes is there and Mods/ changed since it last ran. It writes into Apps/, so
+// the launcher is told when that tree is not what it was.
+void ScanService::runModsProcessors(ProcessorSession &session) {
+    const string modsDir = Env::getPathToModsDir();
+    if (!DirEntry::isDirectory(modsDir))
+        return;
+    const string appsDir = Env::getPathToAppsDir();
+    for (const ProcessorInfo *p : session.sequences.chain(ProcessorSequence::Ps1, session.catalog.processors())) {
+        if (stopping_.load())
+            return;
+        if (!p->has(ProcessorKind::Mods))
+            continue;
+        bool any = false;
+        for (const auto &f : ProcessorState::files(modsDir)) {
+            if (p->matchesFile(DirEntry::getFileNameFromPath(f.first))) {
+                any = true;
+                break;
+            }
+        }
+        if (!any)
+            continue; // nothing it could want: not started at all
+        const string appsBefore = ProcessorState::digest(appsDir);
+        runProcessor(
+            session, *p, ProcessorKind::Mods, {"--mods", modsDir}, "", "", ProcessorState::digest(modsDir),
+            [&modsDir]() { return ProcessorState::digest(modsDir); }, false, nullptr);
+        if (ProcessorState::digest(appsDir) != appsBefore) {
+            WorkerEvent event;
+            event.kind = WorkerEvent::Kind::AppsChanged;
+            pushEvent(std::move(event));
+        }
     }
 }
 

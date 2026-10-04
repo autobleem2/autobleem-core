@@ -55,6 +55,7 @@ struct Environment {
     static std::string getPathToUSBRoot();
     static std::string getPathToAutobleemDir();       // usb:/Autobleem
     static std::string getPathToAppsDir();            // usb:/Apps
+    static std::string getPathToModsDir();            // usb:/Mods - PE mod packages (*.mod) the mods processor turns into Apps
     static std::string getPathToExtensionsDir();      // usb:/Extensions - the launcher's plugins, one folder each
     static std::string getPathToExtensionsStateDir(); // usb:/System/Extensions - theirs, and the crash guard's
     static std::string getPathToRCDir();              // usb:/Autobleem/rc

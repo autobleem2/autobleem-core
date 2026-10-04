@@ -622,6 +622,7 @@ TEST_CASE("a multi-platform App runs through rc/app_run.sh with what its ini nam
     CHECK(envValue(call, "AB_PLATFORM") == string(Env::buildTargetKey()));
     CHECK(envValue(call, "AB_PLATFORM_KEYS").find(key) == 0);
     CHECK(envValue(call, "AB_ROOT") == Env::getPathToUSBRoot());
+    CHECK(envValue(call, "AB_RC_DIR") == Env::getPathToRCDir()); // where a generated run.sh finds rc/pe_run.sh
     CHECK(envValue(call, "SDL_AUDIODRIVER") == "alsa");
     CHECK(envValue(call, "AB_APP_VIRTUAL_PAD") == "1"); // no VirtualPad= in its ini: the mapper is on
 }

@@ -11,6 +11,7 @@
 #include "core/services/environment.h"
 #include "core/services/game_query.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -450,4 +451,58 @@ TEST_CASE("gamesFor(Apps) reads the selection's category") {
     selection.appCategory = AppCategory::Tools;
 
     CHECK(titlesOf(query.gamesFor(selection)) == vector<string>{"Terminal"});
+}
+
+// Category=PE: the apps made from PE mod packages. A row of their own only when there is one, last in the list,
+// and they are not counted under Other; "All apps" still holds them.
+TEST_CASE("apps(): Category=PE is its own category, in All apps too, and the PE row appears only with one") {
+    FourApps lib;
+    ConfigIn cfg(lib.tmp, "Origames=false\n");
+    GameQueryService query(lib.library, *cfg);
+
+    // no PE app yet: no PE row, and a name that merely looks like it is Other
+    CHECK(query.apps(AppCategory::PE).empty());
+    for (const auto &c : query.appCategories())
+        CHECK(c.category != AppCategory::PE);
+
+    for (const string &name : {"pe-openlara", "pe-drastic"}) {
+        lib.tmp.makeSubDir("Apps/" + name);
+        lib.tmp.writeFile("Apps/" + name + "/app.ini", "Title=" + name + "\nStartup=run.sh\nCategory=PE\n");
+        lib.tmp.writeFile("Apps/" + name + "/run.sh", "#!/bin/sh\n");
+    }
+    lib.tmp.makeSubDir("Apps/pe-lower");
+    lib.tmp.writeFile("Apps/pe-lower/app.ini", "Title=pe-lower\nStartup=run.sh\nCategory=pe\n");
+    lib.tmp.writeFile("Apps/pe-lower/run.sh", "#!/bin/sh\n");
+
+    CHECK(titlesOf(query.apps(AppCategory::PE)) == vector<string>{"pe-drastic", "pe-lower", "pe-openlara"});
+    CHECK(query.apps(AppCategory::All).size() == 9);
+    CHECK(query.apps(AppCategory::Other).size() == 2); // the PE apps are not Other
+
+    auto counts = query.appCategories();
+    REQUIRE(counts.size() == 5);
+    CHECK(counts.back().category == AppCategory::PE); // after Other
+    CHECK(counts.back().count == 3);
+    CHECK(counts[3].category == AppCategory::Other);
+    CHECK(counts[3].count == 2);
+
+    GameSetSelection selection;
+    selection.set = GameSet::Apps;
+    selection.appCategory = AppCategory::PE;
+    CHECK(query.gamesFor(selection).size() == 3);
+}
+
+TEST_CASE("a PE app has nothing runnable on a machine that is not the console") {
+    // the generated app.ini names its program for the console only (Exec.psc): no other platform key finds it,
+    // so a Pi or a PC never lists it
+    FourApps lib;
+    ConfigIn cfg(lib.tmp, "Origames=false\n");
+    GameQueryService query(lib.library, *cfg);
+    lib.tmp.makeSubDir("Apps/pe-openlara");
+    lib.tmp.writeFile("Apps/pe-openlara/app.ini",
+                      "Title=OpenLara\nExec.psc=run.sh\nStartup=run.sh\nCategory=PE\n");
+    lib.tmp.writeFile("Apps/pe-openlara/run.sh", "#!/bin/sh\n");
+
+    const vector<string> keys = Env::appPlatformKeys();
+    const bool console = std::find(keys.begin(), keys.end(), "psc") != keys.end();
+    CHECK(query.apps(AppCategory::PE).size() == (console ? 1u : 0u));
 }
