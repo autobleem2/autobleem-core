@@ -868,9 +868,7 @@ TEST_CASE("the theme over an updated stick: only the build's cfg keys change, th
     Fixture fx;
     fx.options.retroarch = true;
     fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "ELF 1.9.0");
-    fx.tmp.writeFile("stick/RetroArch/bin/retroarch.cfg", "video_smooth = \"true\"
-xmb_theme = \"8\"
-");
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch.cfg", "video_smooth = \"true\"\nxmb_theme = \"8\"\n");
     // assets already on the stick (the bundle is skipped), with a stock file and an earlier backup of it
     fx.tmp.writeFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png", "our old copy");
     fx.tmp.writeFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png.prab2", "the stock file");
