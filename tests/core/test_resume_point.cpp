@@ -257,9 +257,10 @@ TEST_CASE("the last picture is slot 0's when it is kept") {
     CHECK(r.service.lastPicture(*r.game) == r.ss("screenshots/TEKKEN3.png.res"));
 }
 
-TEST_CASE("a foreign entry has no resume points at all") {
+TEST_CASE("an App has no resume points at all") {
     Resume r;
     r.game->foreign = true;
+    r.game->app = true;
     r.pcsxExitsHavingWritten("TEKKEN3");
 
     CHECK(r.service.exitedCleanly(*r.game)); // nothing writes one, so nothing can be missing
@@ -299,4 +300,174 @@ TEST_CASE("an emulator with an exit dir: the run's files are read there, and onl
     CHECK(load == r.ss("sstates/TEKKEN3.002.res"));
     CHECK_FALSE(r.exists("sstates/TEKKEN3.000"));
     CHECK_FALSE(ableem::DirEntry::exists(exitDir));
+}
+
+// --- games played through RetroArch ---
+
+namespace {
+
+// A playlist entry with RetroArch's tree under the temp dir: the states RetroArch leaves are in
+// RetroArch/bin/savestates, the slots under RetroArch/bin/ab-states/<core>/<game>.
+struct RaResume {
+    RaResume() : tmp("raresume") {
+        ableem::Environment::setRetroarchDir(tmp.at("RetroArch/bin"));
+        tmp.makeSubDir("RetroArch/bin/savestates");
+        tmp.makeSubDir("RetroArch/bin/info");
+        game = std::make_shared<PsGame>();
+        game->foreign = true;
+        game->title = "Sonic";
+        game->image_path = tmp.at("RetroArch/roms/Sonic The Hedgehog.md");
+        game->core_path = tmp.at("RetroArch/bin/cores/picodrive_libretro.so");
+    }
+    ~RaResume() { ableem::Environment::setRetroarchDir(""); }
+
+    string slots(const string &relative) const {
+        return tmp.at("RetroArch/bin/ab-states/picodrive_libretro/Sonic The Hedgehog/" + relative);
+    }
+    string autoState() const { return tmp.at("RetroArch/bin/savestates/Sonic The Hedgehog.state.auto"); }
+    // what RetroArch leaves when the game ends with savestate_auto_save on
+    void raExitsHavingWritten(const string &state, bool picture = true) {
+        tmp.writeFile("RetroArch/bin/savestates/Sonic The Hedgehog.state.auto", state);
+        if (picture)
+            tmp.writeFile("RetroArch/bin/savestates/Sonic The Hedgehog.state.auto.png", "pic of " + state);
+    }
+
+    TempDir tmp;
+    PsGamePtr game;
+    ResumePointService service;
+};
+
+} // namespace
+
+TEST_CASE("RetroArch: its state is named after the game file and sits in the pinned savestates folder") {
+    RaResume r;
+    CHECK(r.service.raAutoState(*r.game) == r.autoState());
+    CHECK(ResumePointService::raStatesDir() == r.tmp.at("RetroArch/bin/savestates"));
+    CHECK_FALSE(r.service.raStateWritten(*r.game));
+
+    r.raExitsHavingWritten("state one");
+    CHECK(r.service.raStateWritten(*r.game));
+
+    // an App has none, and neither does one of our own games
+    PsGame app;
+    app.foreign = true;
+    app.app = true;
+    CHECK(r.service.raAutoState(app) == "");
+    PsGame ps1;
+    CHECK(r.service.raAutoState(ps1) == "");
+}
+
+TEST_CASE("RetroArch: saving after a run keeps the state and its picture as the slot, in the PS1 layout") {
+    RaResume r;
+    r.raExitsHavingWritten("state one");
+
+    r.service.saveAfterLaunch(*r.game, 2);
+
+    CHECK(r.tmp.readFile("RetroArch/bin/ab-states/picodrive_libretro/Sonic The Hedgehog/sstates/Sonic The Hedgehog.002.res") ==
+          "state one");
+    CHECK(r.service.slotIsActive(*r.game, 2));
+    CHECK(r.service.pictureForSlot(*r.game, 2) == r.slots("screenshots/Sonic The Hedgehog.2.png.res"));
+    CHECK(r.tmp.readFile("RetroArch/bin/ab-states/picodrive_libretro/Sonic The Hedgehog/screenshots/Sonic The Hedgehog.2.png.res") ==
+          "pic of state one");
+    CHECK(r.service.timeForSlot(*r.game, 2) > 0);
+    CHECK_FALSE(r.service.slotIsActive(*r.game, 1));
+    // RetroArch's own files are taken away, so the next run's state cannot be mistaken for this one
+    CHECK_FALSE(ableem::DirEntry::exists(r.autoState()));
+    CHECK_FALSE(ableem::DirEntry::exists(r.autoState() + ".png"));
+    // and the picture step of the launcher's picker has nothing more to do
+    r.service.storePictureForSlot(*r.game, 2);
+    CHECK(r.service.slotIsActive(*r.game, 2));
+}
+
+TEST_CASE("RetroArch: a slot is active without a picture, and a state that was never written saves nothing") {
+    RaResume r;
+    r.service.saveAfterLaunch(*r.game, 1);
+    CHECK_FALSE(r.service.slotIsActive(*r.game, 1));
+
+    r.raExitsHavingWritten("state", false);
+    r.service.saveAfterLaunch(*r.game, 1);
+    CHECK(r.service.slotIsActive(*r.game, 1));
+    CHECK(r.service.pictureForSlot(*r.game, 1) == "");
+
+    // an empty file (a write cut short) is not a state
+    RaResume empty;
+    empty.raExitsHavingWritten("", false);
+    CHECK_FALSE(empty.service.raStateWritten(*empty.game));
+    empty.service.saveAfterLaunch(*empty.game, 0);
+    CHECK_FALSE(empty.service.slotIsActive(*empty.game, 0));
+}
+
+TEST_CASE("RetroArch: slots are separate per core and game, and one slot replaces the other's state") {
+    RaResume r;
+    r.raExitsHavingWritten("first");
+    r.service.saveAfterLaunch(*r.game, 0);
+    r.raExitsHavingWritten("second");
+    r.service.saveAfterLaunch(*r.game, 3);
+    r.raExitsHavingWritten("third");
+    r.service.saveAfterLaunch(*r.game, 0); // slot 0 again: replaced
+    CHECK(r.tmp.readFile("RetroArch/bin/ab-states/picodrive_libretro/Sonic The Hedgehog/sstates/Sonic The Hedgehog.000.res") ==
+          "third");
+    CHECK(r.service.lastPicture(*r.game) == r.slots("screenshots/Sonic The Hedgehog.png.res"));
+
+    // the same file played by another core is another set
+    PsGame other = *r.game;
+    other.core_path = r.tmp.at("RetroArch/bin/cores/genesis_plus_gx_libretro.so");
+    CHECK_FALSE(r.service.slotIsActive(other, 0));
+    CHECK_FALSE(r.service.slotIsActive(other, 3));
+}
+
+TEST_CASE("RetroArch: preparing a launch clears the last run's state and, for a slot, puts it in place to load") {
+    RaResume r;
+    r.raExitsHavingWritten("slot one state");
+    r.service.saveAfterLaunch(*r.game, 1);
+
+    // a crash left this one: it must not be offered as the next run's state
+    r.raExitsHavingWritten("crashed run");
+    CHECK_FALSE(r.service.prepareRaLaunch(*r.game, -1)); // start fresh
+    CHECK_FALSE(ableem::DirEntry::exists(r.autoState()));
+    CHECK_FALSE(ableem::DirEntry::exists(r.autoState() + ".png"));
+    CHECK(r.service.slotIsActive(*r.game, 1)); // the slot itself is never touched by starting fresh
+
+    CHECK(r.service.prepareRaLaunch(*r.game, 1)); // resume slot 1
+    CHECK(r.tmp.readFile("RetroArch/bin/savestates/Sonic The Hedgehog.state.auto") == "slot one state");
+
+    // a slot that is not there: a fresh start, nothing loaded
+    CHECK_FALSE(r.service.prepareRaLaunch(*r.game, 2));
+    CHECK_FALSE(ableem::DirEntry::exists(r.autoState()));
+}
+
+TEST_CASE("RetroArch: removing a slot clears its state and picture") {
+    RaResume r;
+    r.raExitsHavingWritten("state");
+    r.service.saveAfterLaunch(*r.game, 2);
+    REQUIRE(r.service.slotIsActive(*r.game, 2));
+
+    r.service.removeSlot(*r.game, 2);
+
+    CHECK_FALSE(r.service.slotIsActive(*r.game, 2));
+    CHECK_FALSE(ableem::DirEntry::exists(r.slots("screenshots/Sonic The Hedgehog.2.png.res")));
+}
+
+TEST_CASE("RetroArch: a core whose .info says savestate = false takes no part") {
+    RaResume r;
+    CHECK(r.service.raSupportsStates(*r.game)); // no .info at all: supported, as RetroArch has it
+
+    r.tmp.writeFile("RetroArch/bin/info/picodrive_libretro.info",
+                    "display_name = \"Sega - MS/GG/MD/MCD (PicoDrive)\"\nsavestate = \"true\"\nsavestate_features = \"basic\"\n");
+    CHECK(r.service.raSupportsStates(*r.game));
+
+    r.tmp.writeFile("RetroArch/bin/info/picodrive_libretro.info",
+                    "display_name = \"X\"\nsavestate_features = \"basic\"\nsavestate = \"false\"\n");
+    CHECK_FALSE(r.service.raSupportsStates(*r.game));
+
+    // savestate_features alone is not the switch
+    r.tmp.writeFile("RetroArch/bin/info/picodrive_libretro.info", "savestate_features = \"false\"\n");
+    CHECK(r.service.raSupportsStates(*r.game));
+
+    PsGame app;
+    app.foreign = true;
+    app.app = true;
+    CHECK_FALSE(r.service.raSupportsStates(app));
+    PsGame ps1;
+    CHECK_FALSE(r.service.raSupportsStates(ps1));
 }

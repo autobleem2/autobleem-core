@@ -550,7 +550,16 @@ TEST_CASE("rapersist=false: RetroArch is told not to save its config at exit; no
                                                               "content_runtime_log = \"false\"\n"
                                                               "content_runtime_log_aggregate = \"false\"\n"
                                                               "video_fullscreen_x = \"0\"\n"
-                                                              "video_fullscreen_y = \"0\"\n");
+                                                              "video_fullscreen_y = \"0\"\n"
+                                                              "savestate_directory = \"" +
+                                                              lib.tmp.at("RetroArch/bin/savestates") +
+                                                              "\"\n"
+                                                              "sort_savestates_enable = \"false\"\n"
+                                                              "sort_savestates_by_content_enable = \"false\"\n"
+                                                              "savestates_in_content_dir = \"false\"\n"
+                                                              "savestate_auto_save = \"true\"\n"
+                                                              "savestate_thumbnail_enable = \"true\"\n"
+                                                              "savestate_auto_load = \"false\"\n");
     CHECK(before.changesTo(test_support::TreeSnapshot(lib.tmp.at("RetroArch"))) == vector<string>{});
 }
 
@@ -1064,4 +1073,79 @@ TEST_CASE("Emulator screen scaling: launch.sh's aspect arg is 1 only for \"full\
     const FakeProcessRunner::Call &call = lib.runner.only();
     REQUIRE(call.args.size() > PcsxScriptAspectArgIndex);
     CHECK(call.args[PcsxScriptAspectArgIndex] == "1");
+}
+
+// --- RetroArch games' save-state slots ---
+
+TEST_CASE("a RetroArch game: its states are pinned for the run, written on the way out, and never loaded by default") {
+    Launching lib;
+    lib.configure("Raconfig=false\n");
+    PsGamePtr game = lib.foreignGame(false);
+    lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "savestate_auto_save = \"false\"\nsort_savestates_enable = \"true\"\n");
+    lib.tmp.writeFile("RetroArch/bin/savestates/rom.state.auto", "left by a crashed run");
+
+    string append, stale;
+    lib.runner.whileRunning = [&] {
+        append = lib.tmp.readFile("System/Runtime/ra-append.cfg");
+        stale = ableem::DirEntry::exists(lib.tmp.at("RetroArch/bin/savestates/rom.state.auto")) ? "still there" : "gone";
+    };
+
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+
+    CHECK(contains(append, "savestate_directory = \"" + lib.tmp.at("RetroArch/bin/savestates") + "\""));
+    CHECK(contains(append, "sort_savestates_enable = \"false\""));
+    CHECK(contains(append, "sort_savestates_by_content_enable = \"false\""));
+    CHECK(contains(append, "savestates_in_content_dir = \"false\""));
+    CHECK(contains(append, "savestate_auto_save = \"true\""));
+    CHECK(contains(append, "savestate_thumbnail_enable = \"true\""));
+    CHECK(contains(append, "savestate_auto_load = \"false\"")); // -1: from the beginning
+    CHECK(stale == "gone");                                      // the crashed run's state is not offered as this one's
+    // retroarch.cfg is the stick's own again afterwards
+    CHECK(lib.tmp.readFile("RetroArch/bin/retroarch.cfg") == "savestate_auto_save = \"false\"\nsort_savestates_enable = \"true\"\n");
+}
+
+TEST_CASE("a RetroArch game resumed from a slot: the slot is the state RetroArch loads") {
+    Launching lib;
+    lib.configure("Raconfig=false\n");
+    PsGamePtr game = lib.foreignGame(false);
+    lib.tmp.writeFile("RetroArch/bin/savestates/rom.state.auto", "the run that ends");
+    lib.resumePoints->saveAfterLaunch(*game, 1);
+    REQUIRE(lib.resumePoints->slotIsActive(*game, 1));
+
+    string append, loaded;
+    lib.runner.whileRunning = [&] {
+        append = lib.tmp.readFile("System/Runtime/ra-append.cfg");
+        loaded = lib.tmp.readFile("RetroArch/bin/savestates/rom.state.auto");
+    };
+
+    lib.service->launch(game, EmuMode::RetroArch, 1);
+
+    CHECK(contains(append, "savestate_auto_load = \"true\""));
+    CHECK(loaded == "the run that ends");
+    CHECK(lib.resumePoints->slotIsActive(*game, 1)); // kept for the next time
+    // a slot that is not there starts from the beginning
+    lib.service->launch(game, EmuMode::RetroArch, 3);
+    CHECK(contains(append, "savestate_auto_load = \"false\""));
+}
+
+TEST_CASE("a core without savestates, an App and a PS1 game in RetroArch get no save-state keys") {
+    {
+        Launching lib;
+        lib.configure("Raconfig=false\n");
+        PsGamePtr game = lib.foreignGame(false);
+        lib.tmp.writeFile("RetroArch/bin/info/snes9x_libretro.info", "display_name = \"x\"\nsavestate = \"false\"\n");
+        string append;
+        lib.runner.whileRunning = [&] { append = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+        lib.service->launch(game, EmuMode::RetroArch, 1);
+        CHECK_FALSE(contains(append, "savestate"));
+    }
+    {
+        Launching lib;
+        lib.configure("Raconfig=false\n");
+        PsGamePtr game = lib.usbGame();
+        string append;
+        lib.runner.whileRunning = [&] { append = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+        lib.service->launch(game, EmuMode::RetroArch, -1);
+        CHECK_FALSE(contains(append, "savestate"));
+    }
 }

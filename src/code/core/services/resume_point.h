@@ -25,7 +25,13 @@
 //   screenshots/<name>.<n>.png.res  the picture for slot n
 //   lastcdimg.txt / lastcdimg.<n>.txt   which disc image the slot was playing
 //
-// A foreign (RetroArch or App) entry has none of this, so every call is a no-op for one.
+// An App has none of this, so every call is a no-op for one. A game played through RetroArch (a playlist entry)
+// has the same four slots, kept in the same layout under its own folder, <RetroArch dir>/ab-states/<core>/<game>/
+// (a separate set per core - a state is bound to the core that wrote it): RetroArch itself writes the run's
+// <game>.state.auto (+ .png) in raStatesDir() when the launcher tells it to (LaunchService::raStateSettings), and
+// saveAfterLaunch() copies that into a slot. Resuming copies the slot back as .state.auto and
+// `savestate_auto_load` says to load it (prepareRaLaunch). Only a core whose .info does not say
+// `savestate = "false"` takes part (raSupportsStates).
 //
 // An emulator that takes $AB_EXIT_DIR (abfeatures: exitdir - docs/quiet-stick-plan.md) writes the run's
 // four files - filename.txt, lastcdimg.txt, sstates/<name>.000, screenshots/<name>.png - there instead, in
@@ -61,7 +67,24 @@ public:
     // where the emulator leaves the run's files ($AB_EXIT_DIR); "" = the game's save-state folder
     void setExitDir(const std::string &dir) { exitDir_ = dir; }
 
+    // --- games played through RetroArch ---
+    // where RetroArch keeps its states while the launcher runs it (savestate_directory in ra-append.cfg, with the
+    // sorting off, so the file is exactly <dir>/<game>.state.auto): <RetroArch dir>/savestates
+    static std::string raStatesDir();
+    // a RetroArch playlist entry that takes part: not an App, and its core's .info does not say savestate = false
+    // (no .info, or no such key: it does)
+    bool raSupportsStates(const PsGame &game) const;
+    // <raStatesDir()>/<game>.state.auto, "" for a game that is not a RetroArch playlist entry
+    std::string raAutoState(const PsGame &game) const;
+    // true when the run that just ended left a state (prepareRaLaunch removed the older one first)
+    bool raStateWritten(const PsGame &game) const;
+    // Before a RetroArch launch: the last run's .state.auto and picture go; for slot >= 0 the slot is copied in as
+    // .state.auto (+ picture) and true says "load it" (savestate_auto_load); -1, or a slot that is not there,
+    // is false - a fresh start. The slots themselves are never touched.
+    bool prepareRaLaunch(const PsGame &game, int slot);
+
 private:
+    void saveRaSlot(const PsGame &game, int slot);
     // the run's own file `relative` (under the exit dir or the save-state folder, whichever it is in)
     std::string fresh(const PsGame &game, const std::string &relative) const;
     std::string exitDir_;

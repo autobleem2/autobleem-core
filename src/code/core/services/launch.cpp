@@ -468,7 +468,7 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
             PcsxConfig::migrateLegacy(*game); // the RetroArch set-up reads the game's PCSX values
         }
         raMemcardIn(*game);
-        launchRetroArch(*game);
+        launchRetroArch(*game, resumePoint);
         raMemcardOut(*game);
         break;
 
@@ -612,7 +612,7 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::
 //*******************************
 // LaunchService::launchRetroArch
 //*******************************
-void LaunchService::launchRetroArch(PsGame &game) {
+void LaunchService::launchRetroArch(PsGame &game, int resumePoint) {
     PLOG_INFO << "calling LaunchService::launchRetroArch()";
 
     // one of our own games: a playlist entry's gameId is only its index in the playlist, and would name
@@ -661,10 +661,18 @@ void LaunchService::launchRetroArch(PsGame &game) {
     }
 
     restoreLegacyRaBackup();
+    // the game's own save-state slots (a playlist entry whose core can save): the slot to resume is put in place
+    // now, and ra-append.cfg tells RetroArch where its states are, to write one on the way out and whether to load
+    raStates_ = RaStates();
+    if (game.foreign && !game.app && resumePoints_.raSupportsStates(game)) {
+        raStates_.active = true;
+        raStates_.load = resumePoints_.prepareRaLaunch(game, resumePoint);
+    }
     prepareRaAppend(&game);
     runner_.run(planRetroArch(gameFile, RACore));
     usleep(3 * 1000);
     restoreAppended();
+    raStates_ = RaStates();
 }
 
 //*******************************
@@ -745,6 +753,18 @@ void LaunchService::prepareRaAppend(PsGame *game) {
 #endif
     if (game != nullptr && config_.inifile.values["raconfig"] == "true")
         raSettingsFor(*game, raConfig, coreOptions);
+    if (raStates_.active) {
+        // our slots (ResumePointService): RetroArch writes <game>.state.auto + picture when it ends and reads the
+        // state the launcher put there only when asked to. The folder and the sorting are pinned so the file is
+        // exactly where the launcher looks, whatever the stick's retroarch.cfg says
+        set(raConfig, "savestate_directory", ResumePointService::raStatesDir());
+        set(raConfig, "sort_savestates_enable", "false");
+        set(raConfig, "sort_savestates_by_content_enable", "false");
+        set(raConfig, "savestates_in_content_dir", "false");
+        set(raConfig, "savestate_auto_save", "true");
+        set(raConfig, "savestate_thumbnail_enable", "true");
+        set(raConfig, "savestate_auto_load", raStates_.load ? "true" : "false");
+    }
 
     DirEntry::createDirs(Env::getPathToRuntimeDir());
     if (!coreOptions.empty()) {

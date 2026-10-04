@@ -127,7 +127,15 @@ private:
     // read themselves - PcsxConfig; the autobleem.cfg this used to copy back after the run is gone)
 
     // --- RetroArch ---
-    void launchRetroArch(PsGame &game);
+    // resumePoint: the slot to continue from, -1 = from the beginning (a game with save-state slots only)
+    void launchRetroArch(PsGame &game, int resumePoint);
+    // this launch's save-state settings for RetroArch (prepareRaAppend writes them): the game's core can save
+    // states (active), and the slot to continue from was put in place (load)
+    struct RaStates {
+        bool active = false;
+        bool load = false;
+    };
+    RaStates raStates_;
     // the game's card1.mcd goes to RetroArch's saves dir as <base>.srm for the run and comes back after
     void raMemcardIn(PsGame &game);
     void raMemcardOut(PsGame &game);

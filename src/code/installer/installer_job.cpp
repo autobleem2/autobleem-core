@@ -503,6 +503,7 @@ private:
         newVersion = readText(unpacked + "/VERSION");
         themeCfg = readText(unpacked + "/theme/retroarch-psc.cfg");
         ab2Cfg = readText(unpacked + "/theme/ab2-theme.cfg"); // applied once the theme files have landed
+        statesCfg = readText(unpacked + "/theme/ab2-states.cfg"); // the save-state keys: no files to wait for
         // the theme's assets tree waits for the bundles: a folder of ours under assets/ would make a fresh
         // install skip libretro's own assets bundle as "already there"
         themeAssets = scratch + "/ra-theme-assets";
@@ -676,14 +677,17 @@ private:
             // an existing cfg is the user's - but a new RetroArch build brings keys the old one gets wrong
             // (a RetroBoot-era cfg on 1.22.2: the XMB theme enum, quit_on_close_content, the front buttons):
             // the build's own keys go over it, everything else stays
-            if (newBinary && !themeCfg.empty()) {
+            if (newBinary && (!themeCfg.empty() || !statesCfg.empty())) {
                 string text = readText(cfg);
                 int set = mergeKeys(text, themeCfg);
+                const int stateKeys = mergeKeys(text, statesCfg);
                 if (!writeText(cfg, text)) {
                     error = "cannot write " + cfg;
                     return false;
                 }
                 say("  retroarch.cfg kept, " + to_string(set) + " keys of this RetroArch build set in it");
+                if (stateKeys > 0)
+                    say("  retroarch.cfg: " + to_string(stateKeys) + " save-state keys set");
             } else {
                 say("  keeping the existing retroarch.cfg");
             }
@@ -721,12 +725,14 @@ private:
             "input_autodetect_enable = \"true\"\n"
             "menu_show_core_updater = \"false\"\n";
         // the build's own keys (the XMB theme, the front buttons, quit_on_close_content...), comments out
-        istringstream in(themeCfg);
-        string line;
-        while (getline(in, line)) {
-            string t = trimmed(line);
-            if (!t.empty() && t[0] != '#')
-                text += t + "\n";
+        for (const string *keys : {&themeCfg, &statesCfg}) {
+            istringstream in(*keys);
+            string line;
+            while (getline(in, line)) {
+                string t = trimmed(line);
+                if (!t.empty() && t[0] != '#')
+                    text += t + "\n";
+            }
         }
         if (!writeText(cfg, text)) {
             error = "cannot write " + cfg;
@@ -799,6 +805,7 @@ private:
     string savedConfig;
     string themeCfg;
     string ab2Cfg;
+    string statesCfg; // theme/ab2-states.cfg: savestate_auto_save, the thumbnail, the folders and their sorting
     string newVersion;            // the RetroArch zip's VERSION, written last
     string themeAssets;           // the RetroArch zip's theme/assets tree, moved aside until the bundles are in
     bool hadDefaultTheme = false; // Themes/<DefaultTheme::Name> was on the stick before this run

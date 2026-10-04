@@ -4,31 +4,57 @@
 //
 
 #include "resume_point.h"
+#include "environment.h"
 #include "../main.h"
 
 #include <fstream>
 #include <iostream>
 #include <ableem/engine/log.h>
+#include <algorithm>
 #include <sys/stat.h>
 
 using namespace std;
 
 namespace {
 
+// a RetroArch playlist entry (not an App)
+bool isRa(const PsGame &game) {
+    return game.foreign && !game.app;
+}
+// the slots exist for our own games and for RetroArch's, never for an App
+bool hasSlots(const PsGame &game) {
+    return !game.foreign || isRa(game);
+}
+string withoutExtension(const string &path) {
+    const string name = DirEntry::getFileNameFromPath(path);
+    const size_t dot = name.find_last_of('.');
+    return dot == string::npos || dot == 0 ? name : name.substr(0, dot);
+}
+// RetroArch names its state files after the content file without its last extension
+string raBaseOf(const PsGame &game) {
+    return withoutExtension(game.image_path);
+}
+// where a game's slots live: its !SaveStates folder, or for a RetroArch game one folder per core and game
+string folderOf(const PsGame &game) {
+    if (!isRa(game))
+        return game.ssFolder;
+    return Env::getPathToRetroarchDir() + sep + "ab-states" + sep + withoutExtension(game.core_path) + sep +
+           raBaseOf(game);
+}
 string filenameFile(const PsGame &game) {
-    return game.ssFolder + sep + "filename.txt";
+    return folderOf(game) + sep + "filename.txt";
 }
 string keptFilenameFile(const PsGame &game) {
-    return game.ssFolder + sep + "filename.txt.res";
+    return folderOf(game) + sep + "filename.txt.res";
 }
 string slotFilenameFile(const PsGame &game, int slot) {
-    return game.ssFolder + sep + "filename." + to_string(slot) + ".txt.res";
+    return folderOf(game) + sep + "filename." + to_string(slot) + ".txt.res";
 }
 string statesDir(const PsGame &game) {
-    return game.ssFolder + sep + "sstates";
+    return folderOf(game) + sep + "sstates";
 }
 string shotsDir(const PsGame &game) {
-    return game.ssFolder + sep + "screenshots";
+    return folderOf(game) + sep + "screenshots";
 }
 
 string keptStateFile(const PsGame &game, const string &name, int slot) {
@@ -89,6 +115,11 @@ string ResumePointService::fresh(const PsGame &game, const string &relative) con
 // ResumePointService::slotIsActive
 //*******************************
 bool ResumePointService::slotIsActive(const PsGame &game, int slot) const {
+    if (isRa(game)) {
+        // RetroArch's picture may be missing (a core whose frame cannot be read back): the state is the slot
+        string name;
+        return readStateNameForSlot(game, slot, &name) && DirEntry::exists(keptStateFile(game, name, slot));
+    }
     return !pictureForSlot(game, slot).empty();
 }
 
@@ -96,7 +127,7 @@ bool ResumePointService::slotIsActive(const PsGame &game, int slot) const {
 // ResumePointService::pictureForSlot
 //*******************************
 string ResumePointService::pictureForSlot(const PsGame &game, int slot) const {
-    if (game.foreign)
+    if (!hasSlots(game))
         return "";
     string name;
     if (!readStateNameForSlot(game, slot, &name))
@@ -109,7 +140,7 @@ string ResumePointService::pictureForSlot(const PsGame &game, int slot) const {
 // ResumePointService::timeForSlot
 //*******************************
 time_t ResumePointService::timeForSlot(const PsGame &game, int slot) const {
-    if (game.foreign)
+    if (!hasSlots(game))
         return 0;
     string name;
     if (!readStateNameForSlot(game, slot, &name))
@@ -127,7 +158,7 @@ time_t ResumePointService::timeForSlot(const PsGame &game, int slot) const {
 // to read slot 0's picture name whatever slot it found a filename file for, so a game saved only in slots
 // 1-2 had no picture: BUG-37.)
 string ResumePointService::lastPicture(const PsGame &game) const {
-    if (game.foreign)
+    if (!hasSlots(game))
         return "";
 
     for (int slot = 0; slot < SlotCount; slot++) {
@@ -163,7 +194,7 @@ void ResumePointService::storePictureForSlot(const PsGame &game, int slot) {
 // ResumePointService::removeSlot
 //*******************************
 void ResumePointService::removeSlot(const PsGame &game, int slot) {
-    if (game.foreign)
+    if (!hasSlots(game))
         return;
     string name;
     if (!readStateNameForSlot(game, slot, &name))
@@ -240,6 +271,10 @@ string ResumePointService::prepareForLaunch(const PsGame &game, int slot, bool l
 //*******************************
 // Keeps what the run just wrote as this slot: the state file, the filename file, and the disc image note.
 void ResumePointService::saveAfterLaunch(const PsGame &game, int slot) {
+    if (isRa(game)) {
+        saveRaSlot(game, slot);
+        return;
+    }
     const string filename = fresh(game, "filename.txt");
     if (!DirEntry::exists(filename))
         return; // the run did not exit cleanly, so there is nothing to keep
@@ -269,4 +304,98 @@ void ResumePointService::saveAfterLaunch(const PsGame &game, int slot) {
         if (lastCd.compare(0, game.ssFolder.size(), game.ssFolder) == 0 || exitDir_.empty())
             DirEntry::removeFile(lastCd); // the save-state folder's one (the exit dir's goes with the dir)
     }
+}
+
+//*******************************
+// ResumePointService::raStatesDir / raAutoState / raStateWritten
+//*******************************
+string ResumePointService::raStatesDir() {
+    return Env::getPathToRetroarchDir() + sep + "savestates";
+}
+
+string ResumePointService::raAutoState(const PsGame &game) const {
+    return isRa(game) ? raStatesDir() + sep + raBaseOf(game) + ".state.auto" : "";
+}
+
+bool ResumePointService::raStateWritten(const PsGame &game) const {
+    const string file = raAutoState(game);
+    return !file.empty() && DirEntry::exists(file) && DirEntry::fileSize(file) > 0;
+}
+
+//*******************************
+// ResumePointService::raSupportsStates
+//*******************************
+// the core's .info: savestate = "false" (ScummVM, DOSBox, Quake...) means RetroArch can neither save nor load
+bool ResumePointService::raSupportsStates(const PsGame &game) const {
+    if (!isRa(game))
+        return false;
+    const string info = Env::getPathToRetroarchDir() + sep + "info" + sep + withoutExtension(game.core_path) + ".info";
+    ifstream is(info.c_str());
+    string line;
+    while (is.is_open() && std::getline(is, line)) {
+        const size_t eq = line.find('=');
+        if (eq == string::npos)
+            continue;
+        string key = line.substr(0, eq), value = line.substr(eq + 1);
+        trim(key);
+        trim(value);
+        value.erase(std::remove(value.begin(), value.end(), '"'), value.end());
+        if (key == "savestate" && toLowerCopy(value) == "false")
+            return false;
+    }
+    return true;
+}
+
+//*******************************
+// ResumePointService::prepareRaLaunch
+//*******************************
+bool ResumePointService::prepareRaLaunch(const PsGame &game, int slot) {
+    const string state = raAutoState(game);
+    if (state.empty())
+        return false;
+    // whatever the last run (or a crash) left: only what this run writes may be offered as its state
+    for (const string &file : {state, state + ".png"}) {
+        if (DirEntry::exists(file))
+            DirEntry::removeFile(file);
+    }
+    if (slot < 0)
+        return false;
+    const string kept = keptStateFile(game, raBaseOf(game), slot);
+    if (!DirEntry::exists(kept))
+        return false;
+    DirEntry::createDirs(raStatesDir()); // only a resume writes here before the run (the quiet stick)
+    return DirEntry::copy(kept, state);
+}
+
+//*******************************
+// ResumePointService::saveRaSlot
+//*******************************
+// Keeps the state RetroArch just wrote (and its picture) as this slot, the way saveAfterLaunch keeps PCSX's.
+void ResumePointService::saveRaSlot(const PsGame &game, int slot) {
+    if (!raStateWritten(game))
+        return;
+    const string state = raAutoState(game);
+    const string name = raBaseOf(game);
+    DirEntry::createDirs(statesDir(game));
+    DirEntry::createDirs(shotsDir(game));
+
+    // copied beside the slot first: a full stick must not cost the slot it was meant to replace
+    const string kept = keptStateFile(game, name, slot), partial = kept + ".new";
+    DirEntry::removeFile(partial);
+    if (!DirEntry::copy(state, partial) || !DirEntry::replaceFile(partial, kept)) {
+        DirEntry::removeFile(partial);
+        PLOG_WARNING << "cannot keep '" << state << "' as slot " << slot;
+        return;
+    }
+    const string picture = keptPictureFile(game, name, slot);
+    DirEntry::removeFile(picture);
+    if (DirEntry::exists(state + ".png"))
+        DirEntry::copy(state + ".png", picture);
+
+    const string text = game.image_path + "\n" + name + "\n";
+    DirEntry::writeFileIfChanged(keptFilenameFile(game), text);
+    DirEntry::writeFileIfChanged(slotFilenameFile(game, slot), text);
+
+    DirEntry::removeFile(state);
+    DirEntry::removeFile(state + ".png");
 }
