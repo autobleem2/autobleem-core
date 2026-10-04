@@ -1,0 +1,52 @@
+//
+// AppSettings: the player's per-App choices (Game settings > Pad mode) and the mode an App is started with.
+//
+#include "doctest/doctest.h"
+
+#include "../support/temp_dir.h"
+#include "core/services/app_settings.h"
+#include "core/main.h"
+
+using namespace std;
+
+TEST_CASE("AppSettings: the effective pad mode is the player's choice, else the app.ini value, else empty") {
+    CHECK(AppSettings::effectivePadMode("x360", "psc") == "x360");                  // the choice wins
+    CHECK(AppSettings::effectivePadMode("", "psc-kernel") == "psc-kernel");         // Automatic: the App's own
+    CHECK(AppSettings::effectivePadMode("", "") == "");                             // nothing: the old behaviour
+    CHECK(AppSettings::effectivePadMode("", "  X360-Kernel ") == "x360-kernel");    // spelled loosely in an ini
+    CHECK(AppSettings::effectivePadMode("", "ps4") == "");                          // an unknown app.ini value counts as none
+    CHECK(AppSettings::effectivePadMode("nonsense", "psc") == "psc");               // an unknown choice is Automatic
+}
+
+TEST_CASE("AppSettings: the pad mode override round-trips through the App's folder") {
+    TempDir tmp("appsettings");
+    const string app = tmp.makeSubDir("Apps/t");
+
+    CHECK(AppSettings::padModeOverride(app) == ""); // no file: Automatic
+    for (const string &mode : AppSettings::padModes()) {
+        REQUIRE(AppSettings::setPadModeOverride(app, mode));
+        CHECK(AppSettings::padModeOverride(app) == mode);
+    }
+    CHECK(tmp.readFile("Apps/t/ab_settings.ini") == "PadMode=x360-kernel\n"); // one line, the last choice
+
+    REQUIRE(AppSettings::setPadModeOverride(app, "")); // back to Automatic
+    CHECK(AppSettings::padModeOverride(app) == "");
+    CHECK_FALSE(DirEntry::exists(tmp.at("Apps/t/ab_settings.ini"))); // nothing chosen, no file
+
+    REQUIRE(AppSettings::setPadModeOverride(app, "bogus")); // unknown = Automatic, no file either
+    CHECK_FALSE(DirEntry::exists(tmp.at("Apps/t/ab_settings.ini")));
+}
+
+TEST_CASE("AppSettings: a file written by hand is read loosely and other lines survive a change") {
+    TempDir tmp("appsettings");
+    const string app = tmp.makeSubDir("Apps/t");
+    tmp.writeFile("Apps/t/ab_settings.ini", "Other=1\r\n padmode = PSC \r\n");
+    CHECK(AppSettings::padModeOverride(app) == "psc");
+
+    REQUIRE(AppSettings::setPadModeOverride(app, "x360"));
+    CHECK(tmp.readFile("Apps/t/ab_settings.ini") == "Other=1\nPadMode=x360\n");
+    REQUIRE(AppSettings::setPadModeOverride(app, ""));
+    CHECK(tmp.readFile("Apps/t/ab_settings.ini") == "Other=1\n"); // the file stays: it holds something else
+
+    CHECK_FALSE(AppSettings::setPadModeOverride("", "psc")); // no folder, nothing written
+}

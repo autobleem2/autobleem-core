@@ -6,6 +6,7 @@
 
 #include "../support/tar_builder.h"
 #include "../support/temp_dir.h"
+#include "core/services/app_settings.h"
 #include "core/services/content_installer.h"
 #include "core/main.h"
 
@@ -73,6 +74,22 @@ TEST_CASE("AppInstaller: another platform's package of the same version merges; 
     CHECK(s.tmp.readFile("Apps/t/pad.ini") == "the user's pad");
 }
 
+
+TEST_CASE("AppInstaller: the player's Game settings (ab_settings.ini) survive an update, same version or new") {
+    Stick s;
+    zip(s.tmp.at("dl/t-psc.zip"), {{"Apps/t/app.ini", "Version=1\nExec=bin/{key}/t\n"}, {"Apps/t/bin/psc/t", "psc 1"}});
+    REQUIRE(AppInstaller::install(s.tmp.at("dl/t-psc.zip"), s.apps(), s.staging(), {"psc"}).ok);
+    REQUIRE(AppSettings::setPadModeOverride(s.apps() + sep + "t", "psc-kernel"));
+
+    REQUIRE(AppInstaller::install(s.tmp.at("dl/t-psc.zip"), s.apps(), s.staging(), {"psc"}).ok); // same version
+    CHECK(AppSettings::padModeOverride(s.apps() + sep + "t") == "psc-kernel");
+
+    zip(s.tmp.at("dl/t2-psc.zip"), {{"Apps/t/app.ini", "Version=2\nExec=bin/{key}/t\n"}, {"Apps/t/bin/psc/t", "psc 2"},
+                                    {"Apps/t/ab_settings.ini", "PadMode=x360\n"}}); // even if a package ships one
+    REQUIRE(AppInstaller::install(s.tmp.at("dl/t2-psc.zip"), s.apps(), s.staging(), {"psc"}).ok); // a new version
+    CHECK(s.tmp.readFile("Apps/t/bin/psc/t") == "psc 2");
+    CHECK(AppSettings::padModeOverride(s.apps() + sep + "t") == "psc-kernel");
+}
 
 TEST_CASE("AppInstaller: an App of the old kind (Startup=, no Exec) is replaced whole - nothing of it kept") {
     Stick s;

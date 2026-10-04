@@ -3,6 +3,7 @@
 //
 #include "content_installer.h"
 #include "app_manifest.h"
+#include "app_settings.h"
 #include "system.h"
 #include "../main.h"
 
@@ -240,8 +241,9 @@ InstallResult AppInstaller::install(const string &archive, const string &appsDir
     vector<string> files;
     filesUnder(root, "", files);
     for (const string &f : files) {
-        // the user's own pad profile stays; the package's is taken when there is none
-        if (ableem::toLowerCopy(f) == "pad.ini" && DirEntry::exists(dest + sep + f))
+        // the user's own pad profile and Game settings stay; the package's is taken when there is none
+        const string lower = ableem::toLowerCopy(f);
+        if ((lower == "pad.ini" || lower == AppSettings::FileName) && DirEntry::exists(dest + sep + f))
             continue;
         if (!moveFile(root + sep + f, dest + sep + f)) {
             r.error = "cannot write " + dest + sep + f;

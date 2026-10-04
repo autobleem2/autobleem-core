@@ -8,6 +8,7 @@
 #include "../support/tree_snapshot.h"
 #include "../support/string_maker.h"
 
+#include "core/services/app_settings.h"
 #include "core/services/launch.h"
 
 #include <algorithm>
@@ -637,6 +638,27 @@ TEST_CASE("a multi-platform App with a run.sh of its own runs that, with the sam
     const FakeProcessRunner::Call &call = lib.runner.only();
     CHECK(call.exe == lib.tmp.at("Apps/Tyrian/run.sh"));
     CHECK(envValue(call, "AB_APP_EXEC") != "<unset>");
+}
+
+TEST_CASE("an App is started with AB_APP_PAD_MODE: the player's choice, else the ini's PadMode=, else empty") {
+    Launching lib;
+    PsGamePtr plain = multiPlatformApp(lib);
+    LaunchPlan plainPlan = LaunchService::planApp(*plain);
+    CHECK(envValue(plainPlan, "AB_APP_PAD_MODE") == ""); // set, and empty: the old behaviour
+
+    lib.tmp.writeFile("Apps/Tyrian/app.ini", "Title=OpenTyrian\nExec=bin/{key}/tyrian\nPadMode=psc\n");
+    CHECK(envValue(LaunchService::planApp(*plain), "AB_APP_PAD_MODE") == "psc"); // Automatic: the App's own
+
+    REQUIRE(AppSettings::setPadModeOverride(lib.tmp.at("Apps/Tyrian"), "x360-kernel"));
+    CHECK(envValue(LaunchService::planApp(*plain), "AB_APP_PAD_MODE") == "x360-kernel"); // the choice wins
+
+    // the Startup= path gets the same environment
+    lib.tmp.writeFile("Apps/Tyrian/app.ini", "Exec=bin/{key}/tyrian\nStartup=run.sh\nPadMode=x360\n");
+    lib.tmp.writeFile("Apps/Tyrian/run.sh", "#!/bin/sh\n");
+    REQUIRE(AppSettings::setPadModeOverride(lib.tmp.at("Apps/Tyrian"), ""));
+    LaunchPlan own = LaunchService::planApp(*plain);
+    CHECK(own.exe == lib.tmp.at("Apps/Tyrian/run.sh"));
+    CHECK(envValue(own, "AB_APP_PAD_MODE") == "x360");
 }
 
 TEST_CASE("an App with no binary for this machine falls back to its Startup, as before") {

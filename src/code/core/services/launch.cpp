@@ -4,6 +4,7 @@
 #include "launch.h"
 #include "output_mode.h"
 #include "app_manifest.h"
+#include "app_settings.h"
 #include "environment.h"
 #include "../main.h"
 #include "system.h"
@@ -340,7 +341,10 @@ vector<pair<string, string>> LaunchService::appEnvironment(const AppManifest &m)
                                      {"AB_APP_KEY", m.key},
                                      {"AB_PLATFORM", Env::buildTargetKey()},
                                      {"AB_PLATFORM_KEYS", keys},
-                                     {"AB_APP_VIRTUAL_PAD", m.usesVirtualPad() ? "1" : "0"}};
+                                     {"AB_APP_VIRTUAL_PAD", m.usesVirtualPad() ? "1" : "0"},
+                                     // the player's Game settings choice, else the ini's PadMode=, else "" (old behaviour)
+                                     {"AB_APP_PAD_MODE", AppSettings::effectivePadMode(
+                                                             AppSettings::padModeOverride(m.folder), m.value("padmode"))}};
     for (const auto &kv : m.env)
         env.push_back(kv);
     return env;

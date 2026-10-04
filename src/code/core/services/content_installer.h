@@ -41,8 +41,8 @@ public:
     // unpacks `archive` into stagingDir, finds the App in it (app.ini at the root, in Apps/<name>/ or in its
     // one folder), checks this machine can run it (AppManifest over `keys`) and lays it over appsDir/<name>/:
     // the shared files and the ini replaced, other platforms' bin/<key>/ and lib/<key>/ kept - unless the
-    // Version= changed, when every platform's binaries go (no two versions mix) - and a pad.ini already there
-    // kept (the user's). Refused, and nothing under appsDir touched, when any step fails.
+    // Version= changed, when every platform's binaries go (no two versions mix) - and a pad.ini and an
+    // ab_settings.ini (AppSettings) already there kept (the user's). Refused, and nothing under appsDir touched, when any step fails.
     static InstallResult install(const std::string &archive, const std::string &appsDir, const std::string &stagingDir,
                                  const std::vector<std::string> &keys);
     // the App's folder, gone
