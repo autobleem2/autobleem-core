@@ -36,7 +36,7 @@ TEST_CASE("every row starts at its first value: a game nobody edited writes no l
     RaGameOptions options;
     CHECK(options.isDefault());
     ableem::ConfigFileEditor::CfgLines lines;
-    RaOptionsService::apply(options, lines);
+    RaOptionsService::apply(options, ":/overlay/scanlines.cfg", lines);
     CHECK(lines.empty());
 }
 
@@ -59,7 +59,7 @@ TEST_CASE("each row becomes its retroarch.cfg line, and replaces the line the sc
     lines.emplace_back("aspect_ratio_index", "aspect_ratio_index = \"0\"");
     lines.emplace_back("video_smooth", "video_smooth = \"true\"");
 
-    RaOptionsService::apply(options, lines);
+    RaOptionsService::apply(options, ":/overlay/scanlines.cfg", lines);
 
     CHECK(lineFor(lines, "aspect_ratio_index") == "aspect_ratio_index = \"24\"");
     CHECK(lineFor(lines, "video_smooth") == "video_smooth = \"false\"");
@@ -73,20 +73,20 @@ TEST_CASE("scanlines: off, light and strong use the overlay the PS1 games use") 
     RaGameOptions options;
     options.scanlines = RaGameOptions::ScanOff;
     ableem::ConfigFileEditor::CfgLines off;
-    RaOptionsService::apply(options, off);
+    RaOptionsService::apply(options, ":/overlay/scanlines.cfg", off);
     CHECK(lineFor(off, "input_overlay_enable") == "input_overlay_enable = \"false\"");
     CHECK(lineFor(off, "input_overlay") == "");
 
     options.scanlines = RaGameOptions::ScanLight;
     ableem::ConfigFileEditor::CfgLines light;
-    RaOptionsService::apply(options, light);
+    RaOptionsService::apply(options, ":/overlay/scanlines.cfg", light);
     CHECK(lineFor(light, "input_overlay") == "input_overlay = \":/overlay/scanlines.cfg\"");
     CHECK(lineFor(light, "input_overlay_enable") == "input_overlay_enable = \"true\"");
     CHECK(lineFor(light, "input_overlay_opacity") == "input_overlay_opacity = \"0.250000\"");
 
     options.scanlines = RaGameOptions::ScanStrong;
     ableem::ConfigFileEditor::CfgLines strong;
-    RaOptionsService::apply(options, strong);
+    RaOptionsService::apply(options, ":/overlay/scanlines.cfg", strong);
     CHECK(lineFor(strong, "input_overlay_opacity") == "input_overlay_opacity = \"0.600000\"");
 }
 
@@ -94,7 +94,7 @@ TEST_CASE("the analog stick row writes 0 for off, 1 for the left stick") {
     RaGameOptions options;
     options.analogAsDpad = RaGameOptions::TriOff;
     ableem::ConfigFileEditor::CfgLines lines;
-    RaOptionsService::apply(options, lines);
+    RaOptionsService::apply(options, ":/overlay/scanlines.cfg", lines);
     CHECK(lineFor(lines, "input_player1_analog_dpad_mode") == "input_player1_analog_dpad_mode = \"0\"");
 }
 

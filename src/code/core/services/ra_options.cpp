@@ -143,7 +143,8 @@ string RaOptionsService::aspectIndexFor(int aspect) {
 //*******************************
 // RaOptionsService::apply
 //*******************************
-void RaOptionsService::apply(const RaGameOptions &options, ableem::ConfigFileEditor::CfgLines &lines) {
+void RaOptionsService::apply(const RaGameOptions &options, const string &overlay,
+                             ableem::ConfigFileEditor::CfgLines &lines) {
     auto set = [&lines](const string &key, const string &value) {
         const string line = key + " = \"" + value + "\"";
         for (auto &existing : lines) {
@@ -173,7 +174,7 @@ void RaOptionsService::apply(const RaGameOptions &options, ableem::ConfigFileEdi
         break;
     case RaGameOptions::ScanLight:
     case RaGameOptions::ScanStrong:
-        set("input_overlay", ":/overlay/scanlines.cfg");
+        set("input_overlay", overlay);
         set("input_overlay_enable", "true");
         set("input_overlay_opacity", options.scanlines == RaGameOptions::ScanLight ? "0.250000" : "0.600000");
         break;

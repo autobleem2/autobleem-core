@@ -55,7 +55,9 @@ public:
 
     // The retroarch.cfg lines the options mean, over `lines` (a key already there is replaced, else added):
     // only what is not the default. analog_dpad: player 1's left stick as the D-pad.
-    static void apply(const RaGameOptions &options, ableem::ConfigFileEditor::CfgLines &lines);
+    // overlay: the scanlines overlay's cfg path (LaunchService::raScanlinesOverlay)
+    static void apply(const RaGameOptions &options, const std::string &overlay,
+                      ableem::ConfigFileEditor::CfgLines &lines);
     // the value of aspect_ratio_index for an Aspect row (RetroArch 1.22's gfx/video_defines.h), "" for the default
     static std::string aspectIndexFor(int aspect);
 

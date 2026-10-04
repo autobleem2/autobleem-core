@@ -560,7 +560,8 @@ TEST_CASE("rapersist=false: RetroArch is told not to save its config at exit; no
                                                                   "savestate_auto_save = \"true\"\n"
                                                                   "savestate_thumbnail_enable = \"true\"\n"
                                                                   "savestate_auto_load = \"false\"\n");
-    CHECK(before.changesTo(test_support::TreeSnapshot(lib.tmp.at("RetroArch"))) == vector<string>{});
+    // the only thing made on the stick is the empty savestates folder RetroArch needs (it makes none itself)
+    CHECK(before.changesTo(test_support::TreeSnapshot(lib.tmp.at("RetroArch"))) == vector<string>{"+ bin/savestates"});
 }
 
 // --- Apps ---
@@ -1237,4 +1238,56 @@ TEST_CASE("the editor's rows do not touch an App or one of our PS1 games") {
     lib.service->launch(game, EmuMode::RetroArch, -1);
     CHECK_FALSE(contains(append, "fps_show"));
     CHECK_FALSE(contains(append, "aspect_ratio_index"));
+}
+
+// --- return 1: the savestate folder, the scanlines overlay's path ---
+
+TEST_CASE("a RetroArch game on a fresh stick: the savestates folder is made before the run (RetroArch makes none)") {
+    Launching lib;
+    lib.configure("Raconfig=false\n");
+    PsGamePtr game = lib.foreignGame(false);
+    REQUIRE_FALSE(ableem::DirEntry::exists(lib.tmp.at("RetroArch/bin/savestates")));
+
+    bool thereDuringRun = false;
+    lib.runner.whileRunning = [&] {
+        thereDuringRun = ableem::DirEntry::isDirectory(lib.tmp.at("RetroArch/bin/savestates"));
+    };
+    lib.service->launch(game, EmuMode::RetroArch, -1); // from the beginning: no resume to make it
+
+    CHECK(thereDuringRun);
+}
+
+TEST_CASE("no savestates folder for a core without savestates, an App or a PS1 game") {
+    Launching lib;
+    lib.configure("Raconfig=false\n");
+    PsGamePtr game = lib.foreignGame(false);
+    lib.tmp.writeFile("RetroArch/bin/info/snes9x_libretro.info", "savestate = \"false\"\n");
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("RetroArch/bin/savestates")));
+}
+
+TEST_CASE("the scanlines overlay is named by the path it is shipped at, on every platform's resources dir") {
+    for (const char *platformDir : {"Autobleem/bin/autobleem", "pcusb/Autobleem/bin/autobleem", "pi/Autobleem/bin"}) {
+        Launching lib;
+        lib.configure("Raconfig=false\n");
+        const string dir = lib.tmp.makeSubDir(string(platformDir) + "/overlay");
+        lib.tmp.writeFile(string(platformDir) + "/overlay/scanlines.cfg", "overlays = 1\n");
+        ableem::Environment::setWorkingPath(lib.tmp.at(platformDir));
+
+        CHECK_MESSAGE(LaunchService::raScanlinesOverlay() == dir + "/scanlines.cfg", platformDir);
+
+        PsGamePtr game = lib.foreignGame(false);
+        RaOptionsService options;
+        RaGameOptions chosen;
+        chosen.scanlines = RaGameOptions::ScanStrong;
+        options.set(*game, chosen);
+        lib.service->setRaOptions(&options);
+        string append;
+        lib.runner.whileRunning = [&] { append = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+        lib.service->launch(game, EmuMode::RetroArch, -1);
+        CHECK_MESSAGE(contains(append, "input_overlay = \"" + dir + "/scanlines.cfg\""), platformDir);
+    }
+    // an install without the shipped file keeps the console's old name
+    Launching bare;
+    CHECK(LaunchService::raScanlinesOverlay() == ":/overlay/scanlines.cfg");
 }

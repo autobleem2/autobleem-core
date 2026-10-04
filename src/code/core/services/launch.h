@@ -179,9 +179,11 @@ public:
     static std::string pcsxExitDir();
 
     static std::string raSavesDir();
-    static std::string raConfigFile();             // retroarch.cfg
-    static std::string raCoreOptionsFile();        // config/retroarch-core-options.cfg
-    static std::string raAppendFile();             // <runtime>/ra-append.cfg
+    static std::string raConfigFile();      // retroarch.cfg
+    static std::string raCoreOptionsFile(); // config/retroarch-core-options.cfg
+    static std::string raAppendFile();      // <runtime>/ra-append.cfg
+    // the scanlines overlay's cfg: <resources>/overlay/scanlines.cfg when it is there, else ":/overlay/scanlines.cfg"
+    static std::string raScanlinesOverlay();
     static std::string raRuntimeCoreOptionsFile(); // <runtime>/ra-core-options.cfg
 
 private:

@@ -667,6 +667,8 @@ void LaunchService::launchRetroArch(PsGame &game, int resumePoint) {
     raGameOptions_ = raOptions_ != nullptr ? raOptions_->get(game) : RaGameOptions();
     if (game.foreign && !game.app && resumePoints_.raSupportsStates(game)) {
         raStates_.active = true;
+        // RetroArch does not make its savestate folder: without it the first game of a fresh stick writes no state
+        DirEntry::createDirs(ResumePointService::raStatesDir());
         raStates_.save = raGameOptions_.resume != RaGameOptions::ResumeNever;
         raStates_.load = resumePoints_.prepareRaLaunch(game, resumePoint);
     }
@@ -735,6 +737,17 @@ void LaunchService::restoreLegacyRaBackup() {
 }
 
 //*******************************
+// LaunchService::raScanlinesOverlay
+//*******************************
+// The scanlines overlay is shipped with the launcher (resources/overlay/) and named by its full path: ":/" is the
+// RetroArch binary's folder, which holds no overlay on a Pi or a PC stick (/usr/local/bin). A launcher without the
+// file (an old install) keeps the console's RetroBoot-era ":/overlay/scanlines.cfg".
+string LaunchService::raScanlinesOverlay() {
+    const string shipped = Env::getWorkingPath() + sep + "overlay" + sep + "scanlines.cfg";
+    return DirEntry::exists(shipped) ? shipped : string(":/overlay/scanlines.cfg");
+}
+
+//*******************************
 // LaunchService::prepareRaAppend / restoreAppended
 //*******************************
 void LaunchService::prepareRaAppend(PsGame *game) {
@@ -757,7 +770,8 @@ void LaunchService::prepareRaAppend(PsGame *game) {
     if (game != nullptr && config_.inifile.values["raconfig"] == "true")
         raSettingsFor(*game, raConfig, coreOptions);
     if (game != nullptr)
-        RaOptionsService::apply(raGameOptions_, raConfig); // the game editor's rows, over the scaler and the like
+        RaOptionsService::apply(raGameOptions_, raScanlinesOverlay(),
+                                raConfig); // the game editor's rows, over the scaler and the like
     if (raStates_.active) {
         // our slots (ResumePointService): RetroArch writes <game>.state.auto + picture when it ends and reads the
         // state the launcher put there only when asked to. The folder and the sorting are pinned so the file is
@@ -868,7 +882,7 @@ void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raCo
 
         if (scanlines != 0) {
             float opacity = scanline_level / 100.0f;
-            set(raConfig, "input_overlay", ":/overlay/scanlines.cfg");
+            set(raConfig, "input_overlay", raScanlinesOverlay());
             set(raConfig, "input_overlay_enable", "true");
             set(raConfig, "input_overlay_opacity", to_string(opacity));
         }
