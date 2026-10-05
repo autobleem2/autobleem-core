@@ -104,3 +104,16 @@ TEST_CASE("OutputMode: the default theme replaces one without a 4:3 layout - in 
     CHECK_FALSE(OutputMode::needsDefaultTheme(OutputMode::parse("1080"), false));
     CHECK_FALSE(OutputMode::needsDefaultTheme(OutputMode(), false));
 }
+
+TEST_CASE("OutputMode::themeToSwitchTo: after the confirm and at the start the same rule") {
+    const OutputMode crt = OutputMode::parse("720x480");
+    CHECK(OutputMode::themeToSwitchTo(crt, "other", false, "ab2.0.0", true) == "ab2.0.0");
+    // a theme with a 4:3 layout stays; so does the default itself
+    CHECK(OutputMode::themeToSwitchTo(crt, "other", true, "ab2.0.0", true).empty());
+    CHECK(OutputMode::themeToSwitchTo(crt, "ab2.0.0", false, "ab2.0.0", true).empty());
+    // no default theme installed: nothing to switch to
+    CHECK(OutputMode::themeToSwitchTo(crt, "other", false, "ab2.0.0", false).empty());
+    // another mode: never
+    CHECK(OutputMode::themeToSwitchTo(OutputMode::parse("720"), "other", false, "ab2.0.0", true).empty());
+    CHECK(OutputMode::themeToSwitchTo(OutputMode(), "other", false, "ab2.0.0", true).empty());
+}

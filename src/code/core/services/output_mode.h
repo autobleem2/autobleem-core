@@ -41,6 +41,15 @@ struct OutputMode {
     static bool needsDefaultTheme(const OutputMode &kept, bool themeSupports4x3) {
         return kept.isCrt() && !themeSupports4x3;
     }
+    // The theme to switch to for the mode in use (after the keep-mode confirm, or at the start with the mode
+    // config.ini already holds): `defaultTheme` when the rule above says so, the theme is not the default itself
+    // and the default is installed; "" - no switch - otherwise
+    static std::string themeToSwitchTo(const OutputMode &inUse, const std::string &theme, bool themeSupports4x3,
+                                       const std::string &defaultTheme, bool defaultInstalled) {
+        if (theme == defaultTheme || !defaultInstalled || !needsDefaultTheme(inUse, themeSupports4x3))
+            return "";
+        return defaultTheme;
+    }
     // The theme picker's list: all of `themes` outside the CRT mode; in it only those `supports` says have a 4:3
     // layout - and if none has, the whole list (an empty picker would be worse than a letterboxed theme)
     static std::vector<std::string> themesFor(const OutputMode &running, const std::vector<std::string> &themes,
