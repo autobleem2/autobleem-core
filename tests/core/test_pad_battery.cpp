@@ -137,6 +137,40 @@ TEST_CASE("the charge rect of the code-drawn glyph is what the old drawing compu
     }
 }
 
+TEST_CASE("the charging bolt: the designer's polygon cut into pixel rows, connected, inside the charge area") {
+    const auto strips = PadBatteryBolt::strips(10, 20, 29, 13);
+    // the polygon spans y 4.5..21.5 of the 26-high canvas: pixel rows 2..10 of the 13-high icon
+    REQUIRE(strips.size() == 9);
+    CHECK(strips.front().y == 22);
+    CHECK(strips.back().y == 30);
+    int minX = 1000, maxX = -1000;
+    for (size_t i = 0; i < strips.size(); ++i) {
+        CHECK(strips[i].h == 1);
+        CHECK(strips[i].w >= 1);
+        minX = std::min(minX, strips[i].x);
+        maxX = std::max(maxX, strips[i].x + strips[i].w);
+        if (i > 0) {
+            CHECK(strips[i].y == strips[i - 1].y + 1);
+            // each row touches or overlaps the one above it: a bolt, not dust
+            CHECK(strips[i].x <= strips[i - 1].x + strips[i - 1].w);
+            CHECK(strips[i].x + strips[i].w >= strips[i - 1].x);
+        }
+    }
+    // x 18.5..34 of the 58-wide canvas = 9.25..17 of the icon
+    CHECK(minX >= 10 + 8);
+    CHECK(maxX <= 10 + 18);
+    // it never reaches the body's outline or the nub, its dark edge included
+    const PadBatteryCharge area = PadBatteryCharge::rect(10, 20, 29, 13, 100);
+    CHECK(minX - PadBatteryBolt::Outline >= area.x);
+    CHECK(maxX + PadBatteryBolt::Outline <= area.x + area.w);
+    CHECK(strips.front().y - PadBatteryBolt::Outline >= area.y - 1);
+    CHECK(strips.back().y + 1 + PadBatteryBolt::Outline <= area.y + area.h + 1);
+    // the @2x icon draws the same bolt twice as big
+    const auto big = PadBatteryBolt::strips(0, 0, 58, 26);
+    CHECK(big.size() == 17);
+    CHECK(big.front().y == 4);
+}
+
 TEST_CASE("the charge fill takes the theme's accent colour, white when the theme sets none") {
     PadBatteryFill accent = PadBatteryFill::accentOrWhite(true, 200, 30, 90);
     CHECK(accent.r == 200);
