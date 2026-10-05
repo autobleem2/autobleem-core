@@ -1256,6 +1256,20 @@ TEST_CASE("readThemeHidden: only a top-level boolean true hides a theme") {
         CHECK_FALSE_MESSAGE(ableem::readThemeHidden(tmp.at(file)), file);
 }
 
+TEST_CASE("ThemeSpec::supports4x3: only a top-level layout4x3 object counts") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("yes.json", "{ \"format\": 1, \"layout4x3\": { \"play\": { \"x\": 1 } } }");
+    tmp.writeFile("empty.json", "{ \"layout4x3\": {} }");
+    tmp.writeFile("none.json", "{ \"format\": 1 }");
+    tmp.writeFile("text.json", "{ \"layout4x3\": \"yes\" }");
+    tmp.writeFile("nested.json", "{ \"launcher\": { \"layout4x3\": {} } }");
+    tmp.writeFile("bad.json", "{ nope");
+    CHECK(ableem::ThemeSpec::supports4x3(tmp.at("yes.json")));
+    CHECK(ableem::ThemeSpec::supports4x3(tmp.at("empty.json")));
+    for (const char *file : {"none.json", "text.json", "nested.json", "bad.json", "missing.json"})
+        CHECK_FALSE_MESSAGE(ableem::ThemeSpec::supports4x3(tmp.at(file)), file);
+}
+
 TEST_CASE("loadThemeHidden: reads the theme.json in the folder") {
     TempDir tmp("theme_spec");
     tmp.writeFile("a/theme.json", "{ \"hidden\": true }");
