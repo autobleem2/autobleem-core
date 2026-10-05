@@ -5,6 +5,7 @@
 #include "ableem/engine/filesystem.h"
 #include "ableem/engine/game_scanner.h"
 #include "ableem/engine/log.h"
+#include "ableem/engine/path_compare.h"
 #include "ableem/engine/strings.h"
 #include "ableem/engine/zip_archive.h"
 
@@ -48,11 +49,10 @@ bool startsWith(const string &s, const string &prefix) {
     return s.compare(0, prefix.size(), prefix) == 0;
 }
 
-// a path with forward slashes only: a Windows launcher's scan writes backslashes, a dev host's roots
-// may carry them, and paths are compared as strings here
-string forwardSlashes(string path) {
-    replace(path.begin(), path.end(), '\\', '/');
-    return path;
+// `rest` is what follows `folder` in `path`, when `path` is a file inside it. Paths are compared as PathCompare
+// does: a Windows launcher's scan writes backslashes, a dev host's roots may carry them, and "//" or "./" turn up.
+bool underFolder(const string &path, const string &folder, string &rest) {
+    return PathCompare::relativeTo(path, folder, rest) && !rest.empty();
 }
 
 // every file under `dir`, as forward-slash paths relative to it, in name order
@@ -89,6 +89,7 @@ bool labelLess(const RetroArchPlaylistEntry &a, const RetroArchPlaylistEntry &b)
     return lessCaseInsensitive(a.label, b.label);
 }
 
+// exact on purpose: an entry written another way is rewritten, not taken for unchanged
 bool sameEntry(const RetroArchPlaylistEntry &a, const RetroArchPlaylistEntry &b) {
     return a.path == b.path && a.label == b.label && a.core_path == b.core_path && a.core_name == b.core_name &&
            a.crc32 == b.crc32 && a.db_name == b.db_name;
@@ -344,25 +345,22 @@ int RetroArchScanner::identify(ScannedRoms &roms, const RdbReader &rdb, uint64_t
 //*******************************
 int RetroArchScanner::seedCrcsFromPlaylist(ScannedRoms &roms, const RetroArchPlaylistEntries &existing,
                                            const string &sourceFolder, const string &targetFolder) {
-    const string sourcePrefix = forwardSlashes(sourceFolder) + "/";
-    const string targetPrefix = forwardSlashes(targetFolder) + "/";
+    const string target = PathCompare::normalize(targetFolder);
     // the existing entries under our folder, by the path a fresh scan gives the same file
     map<string, uint32_t> known;
     for (const RetroArchPlaylistEntry &entry : existing) {
         uint32_t crc = 0;
         if (!Crc32::fromPlaylistText(entry.crc32, crc))
             continue;
-        string path = forwardSlashes(entry.path);
-        if (startsWith(path, sourcePrefix))
-            path = targetPrefix + path.substr(sourcePrefix.size());
-        if (startsWith(path, targetPrefix))
-            known[path] = crc;
+        string rest;
+        if (underFolder(entry.path, sourceFolder, rest) || underFolder(entry.path, targetFolder, rest))
+            known[target + "/" + rest] = crc;
     }
     int seeded = 0;
     for (ScannedRom &rom : roms) {
         if (rom.crc != 0 || rom.wholeArchive)
             continue;
-        auto it = known.find(forwardSlashes(rom.entry.path));
+        auto it = known.find(PathCompare::normalize(rom.entry.path));
         if (it == known.end())
             continue;
         rom.crc = it->second;
@@ -385,18 +383,15 @@ static bool isRealCore(const RetroArchPlaylistEntry &entry) {
 //*******************************
 RetroArchPlaylistEntries RetroArchScanner::merge(const RetroArchPlaylistEntries &existing, const ScannedRoms &fresh,
                                                  const string &sourceFolder, const string &targetFolder) {
-    const string sourcePrefix = forwardSlashes(sourceFolder) + "/";
-    const string targetPrefix = forwardSlashes(targetFolder) + "/";
+    const string source = PathCompare::normalize(sourceFolder);
+    const string target = PathCompare::normalize(targetFolder);
 
     // an entry's file as this machine finds it, "" when the entry is not under our folder at all. A
-    // Windows launcher's scan may have written backslashes; compared as forward slashes.
+    // Windows launcher's scan may have written backslashes; the paths are compared as PathCompare does.
     auto sourceFileOf = [&](const string &path) -> string {
-        string file = filePart(path);
-        replace(file.begin(), file.end(), '\\', '/');
-        if (startsWith(file, targetPrefix))
-            return sourcePrefix + file.substr(targetPrefix.size());
-        if (startsWith(file, sourcePrefix))
-            return file;
+        string rest;
+        if (underFolder(filePart(path), targetFolder, rest) || underFolder(filePart(path), sourceFolder, rest))
+            return source + "/" + rest;
         return "";
     };
 
@@ -438,10 +433,9 @@ RetroArchPlaylistEntries RetroArchScanner::merge(const RetroArchPlaylistEntries 
             // an entry that names this machine's folder (a scan run here, on a stick written for another
             // machine) is made to name the target's, as every fresh entry does
             RetroArchPlaylistEntry kept = entry;
-            string forward = kept.path;
-            replace(forward.begin(), forward.end(), '\\', '/');
-            if (sourcePrefix != targetPrefix && startsWith(forward, sourcePrefix))
-                kept.path = targetPrefix + forward.substr(sourcePrefix.size());
+            string rest;
+            if (!PathCompare::same(sourceFolder, targetFolder) && underFolder(kept.path, sourceFolder, rest))
+                kept.path = target + "/" + rest;
             merged.push_back(kept);
         }
         taken.insert(file);
@@ -568,8 +562,7 @@ RetroArchScanResult RetroArchScanner::scan(const Options &options, const RetroAr
             int ours = 0;
             for (const RetroArchPlaylistEntry &entry : entries) {
                 const string file = filePart(entry.path);
-                if (startsWith(forwardSlashes(file), forwardSlashes(targetFolder) + "/") ||
-                    startsWith(forwardSlashes(file), forwardSlashes(sourceFolder) + "/")) {
+                if (PathCompare::isUnder(file, targetFolder) || PathCompare::isUnder(file, sourceFolder)) {
                     ours++;
                     result.games.push_back({system.name, entry.label});
                 }
@@ -632,10 +625,10 @@ RetroArchScanResult RetroArchScanner::scan(const Options &options, const RetroAr
             // once per stick: the entries under this folder move to the system's current core
             int moved = 0;
             for (RetroArchPlaylistEntry &entry : merged) {
-                const string file = forwardSlashes(filePart(entry.path));
-                const bool ours = startsWith(file, forwardSlashes(targetFolder) + "/") ||
-                                  startsWith(file, forwardSlashes(sourceFolder) + "/");
-                if (ours && (entry.core_path != system.corePath || entry.core_name != system.coreName)) {
+                const string file = filePart(entry.path);
+                const bool ours = PathCompare::isUnder(file, targetFolder) || PathCompare::isUnder(file, sourceFolder);
+                if (ours &&
+                    (!PathCompare::same(entry.core_path, system.corePath) || entry.core_name != system.coreName)) {
                     entry.core_path = system.corePath;
                     entry.core_name = system.coreName;
                     moved++;

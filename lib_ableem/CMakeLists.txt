@@ -50,6 +50,7 @@ add_library(ableem_engine ${ABLEEM_LIB_KIND}
         src/engine/retroarch_playlist.cpp
         src/engine/retroarch_cores.cpp
         src/engine/crc32.cpp
+        src/engine/path_compare.cpp
         src/engine/retroarch_scanner.cpp
         src/engine/theme_spec.cpp
         src/engine/image_pixels.cpp

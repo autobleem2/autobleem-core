@@ -110,17 +110,6 @@ public:
     // root of a Windows host is written with backslashes, and RetroArch writes its own flavour.
     static std::string mapPlaylistPath(const std::string &path, const std::string &usbRoot);
 
-    // A path in one form for comparing: forward slashes only, no empty or "." parts, ".." resolved against
-    // the part before it, no trailing slash; lower case when `ignoreCase` (Windows paths). Textual only -
-    // nothing on disk is looked at.
-    static std::string normalizePath(const std::string &path, bool ignoreCase);
-    // whether two paths name the same file once normalised; case counts on every host but Windows
-    static bool samePath(const std::string &a, const std::string &b);
-    static bool samePath(const std::string &a, const std::string &b, bool ignoreCase);
-    // whether `path` is `dir` or inside it, compared as samePath does
-    static bool isUnder(const std::string &path, const std::string &dir);
-    static bool isUnder(const std::string &path, const std::string &dir, bool ignoreCase);
-
 private:
     PsGames allGames(bool withMetadata);
     void ensureLoaded();

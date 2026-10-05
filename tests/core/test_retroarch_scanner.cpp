@@ -1383,7 +1383,8 @@ TEST_CASE("scan: the core migration reaches entries whose ROM or core path is wr
         old.push_back(e);
     }
     old[0].path = target + "//./A.nes"; // ours, written with redundant parts
-    old[1].core_path = currentOdd;      // already on the current core: nothing to move
+    old[1].core_path = currentOdd; // already on the current core: nothing to move
+    old[1].core_name = "Nintendo - NES (km_FCEUmm)";
     REQUIRE(RetroArchPlaylist::save(t.playlist(NES), old));
 
     RetroArchSystems systems = RetroArchScanner::systemsFrom(t.cores(t.tmp.at("cores.cfg")));

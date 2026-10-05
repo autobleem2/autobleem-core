@@ -260,38 +260,6 @@ TEST_CASE("a playlist path is mapped whatever separators the USB root and the pa
 #endif
 }
 
-TEST_CASE("normalizePath: one form for separators, redundant parts and (on Windows) case") {
-    using S = RetroArchService;
-    CHECK(S::normalizePath("C:\\usb\\RetroArch\\x.sfc", false) == "C:/usb/RetroArch/x.sfc");
-    CHECK(S::normalizePath("/media//autobleem/./RetroArch/", false) == "/media/autobleem/RetroArch");
-    CHECK(S::normalizePath("/media/a/../b", false) == "/media/b");
-    CHECK(S::normalizePath("/../media", false) == "/media");
-    CHECK(S::normalizePath("C:/..", false) == "C:");
-    CHECK(S::normalizePath("a/../..", false) == "..");
-    CHECK(S::normalizePath("./", false) == ".");
-    CHECK(S::normalizePath("", false) == "");
-    CHECK(S::normalizePath("//server/share\\x", false) == "//server/share/x");
-    CHECK(S::normalizePath("DETECT", false) == "DETECT");
-    CHECK(S::normalizePath("C:\\Usb\\X.SFC", true) == "c:/usb/x.sfc");
-    CHECK(S::normalizePath("C:\\Usb\\X.SFC", false) == "C:/Usb/X.SFC");
-}
-
-TEST_CASE("samePath and isUnder: case counts only when asked to ignore it, a folder name is not a prefix") {
-    using S = RetroArchService;
-    CHECK(S::samePath("C:\\usb\\core.dll", "C:/usb/./core.dll", false));
-    CHECK_FALSE(S::samePath("C:/usb/core.dll", "c:/USB/Core.dll", false));
-    CHECK(S::samePath("C:/usb/core.dll", "c:/USB/Core.dll", true));
-    CHECK_FALSE(S::samePath("C:/usb/core.dll", "C:/usb/core2.dll", true));
-    CHECK(S::isUnder("C:\\usb\\RetroArch\\roms\\x.sfc", "C:/usb/RetroArch/roms", false));
-    CHECK(S::isUnder("c:/USB/retroarch/roms/x.sfc", "C:/usb/RetroArch/roms", true));
-    CHECK_FALSE(S::isUnder("c:/USB/retroarch/roms/x.sfc", "C:/usb/RetroArch/roms", false));
-    CHECK(S::isUnder("/media/x", "/media", false));
-    CHECK(S::isUnder("/media", "/media", false));
-    CHECK_FALSE(S::isUnder("/media2/x", "/media", false));
-    CHECK_FALSE(S::isUnder("/media/x", "", false));
-    CHECK(S::isUnder("/x", "/", false));
-}
-
 TEST_CASE("a core the entry names but which is not installed is re-detected") {
     RetroArchTree ra;
     ra.writePlaylist("Nintendo - SNES",
