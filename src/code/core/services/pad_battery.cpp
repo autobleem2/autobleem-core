@@ -131,6 +131,38 @@ PadBatteryCharge PadBatteryCharge::rect(int glyphX, int glyphY, int glyphWidth, 
 }
 
 //*******************************
+// PadBatteryBolt::strips
+//*******************************
+constexpr int PadBatteryBolt::Outline;
+
+vector<PadBatteryBolt::Strip> PadBatteryBolt::strips(int glyphX, int glyphY, int glyphWidth, int glyphHeight) {
+    // the designer's polygon on the 58 x 26 canvas (the 29 x 13 icon at @2x)
+    static const double poly[6][2] = {{30, 4.5}, {18.5, 14.5}, {25, 14.5}, {22.5, 21.5}, {34, 11.5}, {27.5, 11.5}};
+    const double sx = glyphWidth / 58.0, sy = glyphHeight / 26.0;
+    vector<Strip> out;
+    for (int row = 0; row < glyphHeight; ++row) {
+        const double yc = (row + 0.5) / sy; // the pixel row's centre, on the canvas
+        vector<double> crossings;
+        for (int i = 0; i < 6; ++i) {
+            const double *a = poly[i], *b = poly[(i + 1) % 6];
+            if ((a[1] <= yc && yc < b[1]) || (b[1] <= yc && yc < a[1]))
+                crossings.push_back(a[0] + (yc - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+        }
+        sort(crossings.begin(), crossings.end());
+        for (size_t i = 0; i + 1 < crossings.size(); i += 2) {
+            const int from = static_cast<int>(crossings[i] * sx + 0.5);
+            const int to = static_cast<int>(crossings[i + 1] * sx + 0.5);
+            Strip strip;
+            strip.x = glyphX + from;
+            strip.y = glyphY + row;
+            strip.w = max(1, to - from);
+            out.push_back(strip);
+        }
+    }
+    return out;
+}
+
+//*******************************
 // PadBatteryFill::accentOrWhite
 //*******************************
 PadBatteryFill PadBatteryFill::accentOrWhite(bool accentSet, int accentR, int accentG, int accentB) {
