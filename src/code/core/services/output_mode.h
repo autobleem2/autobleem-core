@@ -1,6 +1,8 @@
 #pragma once
 
+#include <functional>
 #include <string>
+#include <vector>
 
 //*******************************
 // OutputMode
@@ -23,9 +25,39 @@ struct OutputMode {
     bool operator==(const OutputMode &o) const { return (isAuto() && o.isAuto()) || (w == o.w && h == o.h); }
     bool operator!=(const OutputMode &o) const { return !(*this == o); }
 
+    // The CRT 4:3 mode: 720x480 (480p, 27 MHz) - shown as "CRT 4:3". While it runs the launcher offers only the
+    // themes that have a 4:3 layout (ThemeSpec::supports4x3), and a theme without one is replaced by the default
+    // theme once the keep-mode confirm has said the mode works.
+    bool isCrt() const { return w == 720 && h == 480; }
+    // the CRT mode's config.ini / emulator / boot.sh token
+    static const char *CrtToken() { return "720x480"; }
+
+    // `tokens` with the CRT mode moved right after the last of "720" / "1080" (a display's list is smallest-first
+    // by 16:9 and then the rest, so 720x480 would come last). Without those two it stays where it is; a list
+    // without the CRT mode is unchanged.
+    static std::vector<std::string> placeCrt(std::vector<std::string> tokens);
+    // After the keep-mode confirm: true when the theme must be replaced by the default one - the CRT mode is
+    // running and the theme has no 4:3 layout
+    static bool needsDefaultTheme(const OutputMode &kept, bool themeSupports4x3) {
+        return kept.isCrt() && !themeSupports4x3;
+    }
+    // The theme to switch to for the mode in use (after the keep-mode confirm, or at the start with the mode
+    // config.ini already holds): `defaultTheme` when the rule above says so, the theme is not the default itself
+    // and the default is installed; "" - no switch - otherwise
+    static std::string themeToSwitchTo(const OutputMode &inUse, const std::string &theme, bool themeSupports4x3,
+                                       const std::string &defaultTheme, bool defaultInstalled) {
+        if (theme == defaultTheme || !defaultInstalled || !needsDefaultTheme(inUse, themeSupports4x3))
+            return "";
+        return defaultTheme;
+    }
+    // The theme picker's list: all of `themes` outside the CRT mode; in it only those `supports` says have a 4:3
+    // layout - and if none has, the whole list (an empty picker would be worse than a letterboxed theme)
+    static std::vector<std::string> themesFor(const OutputMode &running, const std::vector<std::string> &themes,
+                                              const std::function<bool(const std::string &)> &supports);
+
     static OutputMode parse(const std::string &token); // anything unknown is auto
     std::string token() const;                         // "auto", "720", "1080" or "<w>x<h>"
-    std::string label() const;                         // "1080p", "2160p", "1280x1024"; "" for auto
+    std::string label() const; // "1080p", "2160p", "1280x1024", "CRT 4:3" (translated); "" for auto
 
     static const char *ConfigKey;                  // "outputmode"
     static std::string defaultToken();             // the console: "720"; everywhere else "auto"

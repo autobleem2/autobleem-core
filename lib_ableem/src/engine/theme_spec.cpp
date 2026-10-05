@@ -228,6 +228,23 @@ string ThemeColor::toHex() const {
 }
 
 //*******************************
+// ThemeSpec::supports4x3
+//*******************************
+bool ThemeSpec::supports4x3(const string &path) {
+    ifstream in(path, ifstream::binary);
+    if (!in.is_open())
+        return false;
+    json j;
+    try {
+        in >> j;
+    } catch (const json::exception &) {
+        return false;
+    }
+    const json *layout = child(j, "layout4x3");
+    return layout && layout->is_object();
+}
+
+//*******************************
 // ThemeSpec::load
 //*******************************
 bool ThemeSpec::load(const string &path) {

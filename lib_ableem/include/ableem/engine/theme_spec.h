@@ -222,6 +222,11 @@ struct ThemeSpec {
     // writes theme.json; only what is set is written, so a partial theme stays partial
     bool save(const std::string &path) const;
 
+    // A theme supports the 4:3 (CRT, 720x480) display mode when its theme.json has a `layout4x3` object. Read from
+    // the file, not kept in the spec (ThemeSpec's layout is the SDK's): `path` is a theme.json. False for a missing
+    // file, bad JSON, a missing key or a `layout4x3` that is not an object. Never throws.
+    static bool supports4x3(const std::string &path);
+
     // every value this theme does not set is taken from `base` - a partial theme over the default one
     void mergeOver(const ThemeSpec &base);
 
