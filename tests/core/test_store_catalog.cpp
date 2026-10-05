@@ -54,6 +54,36 @@ TEST_CASE("StoreCatalog: our catalog.json, files by disc, requires, bad items sk
     CHECK(game.serial == "SLUS-99999");
 }
 
+TEST_CASE("StoreCatalog: a PE item carries its licence and the source link; a link that is no http(s) address is dropped") {
+    const char *json = R"J({"schema": 1, "platform": "psc", "items": [
+        {"id": "pe/openlara", "kind": "pe", "title": "OpenLara", "version": "0.9.0-1", "licence": "BSD-2-Clause",
+         "source_url": "https://site/source/openlara/openlara-0.9.0-1-source.tar.gz",
+         "files": [{"name": "openlara-0.9.0-1.mod", "size": 407972, "sha256": "ab", "url": "https://site/x.mod"}]},
+        {"id": "pe/bad", "kind": "pe", "title": "Bad link", "source_url": "javascript:alert(1)",
+         "files": [{"url": "https://site/y.mod"}]},
+        {"id": "app/none", "kind": "app", "title": "No source", "files": [{"url": "https://site/z.zip"}]}]})J";
+    StoreCatalog c;
+    string error;
+    REQUIRE(c.loadJson(json, "AutoBleem", error));
+    REQUIRE(c.items.size() == 3);
+    CHECK(c.items[0].kind == "pe");
+    CHECK(c.items[0].licence == "BSD-2-Clause");
+    CHECK(c.items[0].sourceUrl == "https://site/source/openlara/openlara-0.9.0-1-source.tar.gz");
+    CHECK(c.items[0].files.size() == 1); // the source archive is not one of the item's files
+    CHECK(c.items[1].sourceUrl.empty());
+    CHECK(c.items[2].sourceUrl.empty());
+}
+
+TEST_CASE("StoreSourceTsv: licence and source_url columns") {
+    const string tsv = "kind\ttitle\turl\tlicence\tsource_url\n"
+                       "pe\tOpenLara\thttps://acme.example/openlara.mod\tBSD-2-Clause\thttps://acme.example/src.tar.gz\n";
+    StoreSourceTsv s = StoreSourceTsv::parse(tsv, "acme.tsv");
+    REQUIRE(s.items.size() == 1);
+    CHECK(s.items[0].kind == "pe");
+    CHECK(s.items[0].licence == "BSD-2-Clause");
+    CHECK(s.items[0].sourceUrl == "https://acme.example/src.tar.gz");
+}
+
 TEST_CASE("StoreCatalog: not a catalog") {
     StoreCatalog c;
     string error;

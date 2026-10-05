@@ -269,6 +269,122 @@ bool AppInstaller::remove(const string &appFolder, string &error) {
 }
 
 //*******************************
+// ModInstaller::install / remove
+//*******************************
+namespace {
+// a PE package is a Debian archive: "!<arch>\n" first
+bool looksLikeAr(const string &path) {
+    ifstream in(path, ios::binary);
+    char magic[8] = {};
+    in.read(magic, sizeof(magic));
+    return in.gcount() == 8 && string(magic, 8) == "!<arch>\n";
+}
+
+// the mods processor's marker for a package: Apps/.pe_state/<file>.ini
+string peMarker(const string &appsDir, const string &modName) {
+    return appsDir + sep + ".pe_state" + sep + modName + ".ini";
+}
+
+// the processor moves a converted package to Mods/done/
+const char *const DoneFolder = "done";
+
+// the .mod in both places (Mods/<name> and Mods/done/<name>), nothing else
+void removeModCopies(const string &modsDir, const string &name) {
+    for (const string &file : {modsDir + sep + name, modsDir + sep + DoneFolder + sep + name})
+        if (DirEntry::exists(file))
+            DirEntry::removeFile(file);
+}
+} // namespace
+
+string ModInstaller::modsDirOf(const string &modFile) {
+    const string dir = DirEntry::getDirNameFromPath(modFile);
+    return DirEntry::getFileNameFromPath(dir) == DoneFolder ? DirEntry::getDirNameFromPath(dir) : dir;
+}
+
+bool ModInstaller::present(const string &modFile, const string &appsDir) {
+    const string name = DirEntry::getFileNameFromPath(modFile);
+    const string modsDir = modsDirOf(modFile);
+    return DirEntry::exists(modsDir + sep + name) || DirEntry::exists(modsDir + sep + DoneFolder + sep + name) ||
+           DirEntry::exists(peMarker(appsDir, name));
+}
+
+InstallResult ModInstaller::install(const string &mod, const string &modsDir, const string &appsDir,
+                                    const string &replaces) {
+    InstallResult r;
+    const string name = DirEntry::getFileNameFromPath(mod);
+    if (!endsWith(lowerName(mod), ".mod") || name.empty() || name[0] == '.') {
+        r.error = name + " is not a PE package (.mod)";
+        return r;
+    }
+    if (!looksLikeAr(mod)) {
+        r.error = name + " is not a PE package (not a Debian archive)";
+        return r;
+    }
+    if (!DirEntry::createDirs(modsDir)) {
+        r.error = "cannot make " + modsDir;
+        return r;
+    }
+    const string target = modsDir + sep + name;
+    // the same filesystem: one rename, nothing half-written ever shows in Mods/
+    if (DirEntry::exists(target))
+        DirEntry::removeFile(target);
+    if (!DirEntry::renameFile(mod, target)) {
+        const string part = target + ".part";
+        DirEntry::removeFile(part);
+        if (!DirEntry::copyFile(mod, part) || !DirEntry::renameFile(part, target)) {
+            DirEntry::removeFile(part);
+            r.error = "cannot put " + name + " in " + modsDir;
+            return r;
+        }
+        DirEntry::removeFile(mod);
+    }
+    // a copy of this name left in Mods/done/ by an earlier conversion: the new file replaces it
+    const string doneCopy = modsDir + sep + DoneFolder + sep + name;
+    if (DirEntry::exists(doneCopy))
+        DirEntry::removeFile(doneCopy);
+    // the version being updated: its package goes from Mods/ and Mods/done/ (the new one makes the App over), the
+    // Apps stay
+    if (!replaces.empty()) {
+        const string oldName = DirEntry::getFileNameFromPath(replaces);
+        if (oldName != name) {
+            removeModCopies(modsDir, oldName);
+            DirEntry::removeFile(peMarker(appsDir, oldName));
+        }
+    }
+    r.ok = true;
+    r.path = target;
+    r.name = name;
+    return r;
+}
+
+bool ModInstaller::remove(const string &modFile, const string &appsDir, string &error) {
+    const string name = DirEntry::getFileNameFromPath(modFile);
+    const string modsDir = modsDirOf(modFile);
+    for (const string &file : {modsDir + sep + name, modsDir + sep + DoneFolder + sep + name}) {
+        if (DirEntry::exists(file) && !DirEntry::removeFile(file)) {
+            error = "cannot remove " + file;
+            return false;
+        }
+    }
+    // the Apps the processor made from it: its own, by the PeSource= it wrote - never an App of anyone else's
+    for (const DirEntry &e : DirEntry::diru_DirsOnly(appsDir)) {
+        if (e.name.compare(0, 3, "pe-") != 0)
+            continue;
+        const string folder = appsDir + sep + e.name;
+        if (!DirEntry::exists(folder + sep + "app.ini"))
+            continue;
+        IniFile ini;
+        ini.load(folder + sep + "app.ini");
+        if (Strings::trim(ini.values["pesource"]) == name && !DirEntry::removeDirAndContents(folder)) {
+            error = "cannot remove " + folder;
+            return false;
+        }
+    }
+    DirEntry::removeFile(peMarker(appsDir, name));
+    return true;
+}
+
+//*******************************
 // GameInstaller::folderNameFor / cueFor
 //*******************************
 string GameInstaller::folderNameFor(const string &title) {

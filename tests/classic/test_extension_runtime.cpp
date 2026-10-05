@@ -316,7 +316,7 @@ TEST_CASE("ExtensionRuntime::runProvider runs whichever runnable extension provi
 
 TEST_CASE("the SDK stamp names the ABI, the compiler and the target") {
     string stamp = AB_SDK_STAMP;
-    CHECK(AB_SDK_ABI == 8); // the Downloader keeps a .part on chosen statuses (keepPartOnStatus)
+    CHECK(AB_SDK_ABI == 9); // StoreItem gained sourceUrl (PE Apps in the Store)
     CHECK(stamp.find("sdk=" + to_string(AB_SDK_ABI) + ";") == 0);
     CHECK(stamp.find(";cxx=") != string::npos);
     CHECK(stamp.find(";target=") != string::npos);
