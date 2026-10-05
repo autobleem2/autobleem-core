@@ -106,7 +106,20 @@ public:
     // a path from a playlist, as this machine sees it: a console playlist says /media/..., which is the
     // USB root there; on a dev host that prefix is mapped onto the fake USB tree, and a path that already
     // starts with the USB root (a Pi writes its real mount point, /media/autobleem/...) is left alone
+    // Separators, a drive letter's case and redundant parts ("//", "/./") never matter to the match: the USB
+    // root of a Windows host is written with backslashes, and RetroArch writes its own flavour.
     static std::string mapPlaylistPath(const std::string &path, const std::string &usbRoot);
+
+    // A path in one form for comparing: forward slashes only, no empty or "." parts, ".." resolved against
+    // the part before it, no trailing slash; lower case when `ignoreCase` (Windows paths). Textual only -
+    // nothing on disk is looked at.
+    static std::string normalizePath(const std::string &path, bool ignoreCase);
+    // whether two paths name the same file once normalised; case counts on every host but Windows
+    static bool samePath(const std::string &a, const std::string &b);
+    static bool samePath(const std::string &a, const std::string &b, bool ignoreCase);
+    // whether `path` is `dir` or inside it, compared as samePath does
+    static bool isUnder(const std::string &path, const std::string &dir);
+    static bool isUnder(const std::string &path, const std::string &dir, bool ignoreCase);
 
 private:
     PsGames allGames(bool withMetadata);

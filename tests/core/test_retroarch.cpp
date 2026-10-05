@@ -253,6 +253,43 @@ TEST_CASE("a playlist path is mapped whatever separators the USB root and the pa
           "/media//autobleem/./RetroArch/x.sfc");
     // "/media" is a folder name, not a prefix of any name
     CHECK(RetroArchService::mapPlaylistPath("/mediafiles/x.sfc", "C:/usb") == "/mediafiles/x.sfc");
+#ifdef _WIN32
+    // a Windows host does not tell "/media/Autobleem" from "/media/autobleem"
+    CHECK(RetroArchService::mapPlaylistPath("/media/Autobleem/RetroArch/x.sfc", "/media/autobleem") ==
+          "/media/Autobleem/RetroArch/x.sfc");
+#endif
+}
+
+TEST_CASE("normalizePath: one form for separators, redundant parts and (on Windows) case") {
+    using S = RetroArchService;
+    CHECK(S::normalizePath("C:\\usb\\RetroArch\\x.sfc", false) == "C:/usb/RetroArch/x.sfc");
+    CHECK(S::normalizePath("/media//autobleem/./RetroArch/", false) == "/media/autobleem/RetroArch");
+    CHECK(S::normalizePath("/media/a/../b", false) == "/media/b");
+    CHECK(S::normalizePath("/../media", false) == "/media");
+    CHECK(S::normalizePath("C:/..", false) == "C:");
+    CHECK(S::normalizePath("a/../..", false) == "..");
+    CHECK(S::normalizePath("./", false) == ".");
+    CHECK(S::normalizePath("", false) == "");
+    CHECK(S::normalizePath("//server/share\\x", false) == "//server/share/x");
+    CHECK(S::normalizePath("DETECT", false) == "DETECT");
+    CHECK(S::normalizePath("C:\\Usb\\X.SFC", true) == "c:/usb/x.sfc");
+    CHECK(S::normalizePath("C:\\Usb\\X.SFC", false) == "C:/Usb/X.SFC");
+}
+
+TEST_CASE("samePath and isUnder: case counts only when asked to ignore it, a folder name is not a prefix") {
+    using S = RetroArchService;
+    CHECK(S::samePath("C:\\usb\\core.dll", "C:/usb/./core.dll", false));
+    CHECK_FALSE(S::samePath("C:/usb/core.dll", "c:/USB/Core.dll", false));
+    CHECK(S::samePath("C:/usb/core.dll", "c:/USB/Core.dll", true));
+    CHECK_FALSE(S::samePath("C:/usb/core.dll", "C:/usb/core2.dll", true));
+    CHECK(S::isUnder("C:\\usb\\RetroArch\\roms\\x.sfc", "C:/usb/RetroArch/roms", false));
+    CHECK(S::isUnder("c:/USB/retroarch/roms/x.sfc", "C:/usb/RetroArch/roms", true));
+    CHECK_FALSE(S::isUnder("c:/USB/retroarch/roms/x.sfc", "C:/usb/RetroArch/roms", false));
+    CHECK(S::isUnder("/media/x", "/media", false));
+    CHECK(S::isUnder("/media", "/media", false));
+    CHECK_FALSE(S::isUnder("/media2/x", "/media", false));
+    CHECK_FALSE(S::isUnder("/media/x", "", false));
+    CHECK(S::isUnder("/x", "/", false));
 }
 
 TEST_CASE("a core the entry names but which is not installed is re-detected") {
@@ -524,7 +561,7 @@ TEST_CASE("a pick moves the entries whose core or ROM path is the same file writ
     // the same core file as the cores table has it, with redundant parts: "./" and a doubled separator
     const string oddCore = ra.tmp.at("RetroArch/bin/./cores//mesen2_libretro.so");
     ra.writePlaylist(db, {{"/media/RetroArch/roms/snes/Chrono Trigger.sfc", "Chrono Trigger", oddCore, "Mesen2", db},
-                          {"/media/RetroArch/roms/./snes//Earthbound.sfc", "Earthbound", ra.core("mesen2_libretro"),
+                          {"/media/RetroArch//roms/./snes/Earthbound.sfc", "Earthbound", ra.core("mesen2_libretro"),
                            "Mesen2", db}});
     PsGames games = ra.service.gamesInPlaylist(db);
     REQUIRE(games.size() == 2);

@@ -251,11 +251,87 @@ PsGames RetroArchService::readGamesFromPlaylistFile(const string &path) {
 // RetroArchService::mapPlaylistPath
 //********************
 string RetroArchService::mapPlaylistPath(const string &path, const string &usbRoot) {
-    if (path.rfind("/media", 0) != 0 || usbRoot == "/media")
+    if (!isUnder(path, "/media", false) || samePath(usbRoot, "/media", false))
         return path;
-    if (path.rfind(usbRoot + "/", 0) == 0 || path == usbRoot)
+    if (isUnder(path, usbRoot))
         return path;
-    return usbRoot + path.substr(6);
+    const string root = normalizePath(usbRoot, false);
+    return (root == "/" ? "" : root) + normalizePath(path, false).substr(6);
+}
+
+//********************
+// RetroArchService::normalizePath / samePath / isUnder
+//********************
+string RetroArchService::normalizePath(const string &path, bool ignoreCase) {
+    string slashed = path;
+    replace(slashed.begin(), slashed.end(), '\\', '/');
+    const bool absolute = !slashed.empty() && slashed[0] == '/';
+    const bool unc = slashed.size() > 2 && slashed.compare(0, 2, "//") == 0 && slashed[2] != '/'; // //host/share
+
+    vector<string> parts;
+    size_t start = 0;
+    while (start <= slashed.size()) {
+        size_t end = slashed.find('/', start);
+        if (end == string::npos)
+            end = slashed.size();
+        string part = slashed.substr(start, end - start);
+        start = end + 1;
+        if (part.empty() || part == ".")
+            continue;
+        if (part == "..") {
+            const bool driveOnly = parts.size() == 1 && parts[0].size() == 2 && parts[0][1] == ':'; // C:/..
+            if (!parts.empty() && parts.back() != ".." && !driveOnly) {
+                parts.pop_back();
+                continue;
+            }
+            if (absolute || driveOnly)
+                continue;
+        }
+        parts.push_back(part);
+    }
+
+    string out = unc ? "//" : (absolute ? "/" : "");
+    for (size_t i = 0; i < parts.size(); i++)
+        out += (i ? "/" : "") + parts[i];
+    if (out.empty() && !path.empty())
+        out = "."; // "./" and the like: the folder itself
+    if (ignoreCase) {
+        for (char &c : out)
+            c = (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+    return out;
+}
+
+namespace {
+// Windows paths do not care about case; every other host's do
+#ifdef _WIN32
+const bool kPathsIgnoreCase = true;
+#else
+const bool kPathsIgnoreCase = false;
+#endif
+} // namespace
+
+bool RetroArchService::samePath(const string &a, const string &b) {
+    return samePath(a, b, kPathsIgnoreCase);
+}
+
+bool RetroArchService::samePath(const string &a, const string &b, bool ignoreCase) {
+    return normalizePath(a, ignoreCase) == normalizePath(b, ignoreCase);
+}
+
+bool RetroArchService::isUnder(const string &path, const string &dir) {
+    return isUnder(path, dir, kPathsIgnoreCase);
+}
+
+bool RetroArchService::isUnder(const string &path, const string &dir, bool ignoreCase) {
+    const string root = normalizePath(dir, ignoreCase);
+    if (root.empty())
+        return false;
+    const string full = normalizePath(path, ignoreCase);
+    if (full == root)
+        return true;
+    const string prefix = root.back() == '/' ? root : root + "/";
+    return full.compare(0, prefix.size(), prefix) == 0;
 }
 
 //********************
@@ -318,7 +394,7 @@ void RetroArchService::reloadSpecialPlaylist(const string &displayName, const st
         for (auto &info : playlistInfos_) {
             if (info.displayName != displayName) {
                 auto it = find_if(begin(info.psGames), end(info.psGames),
-                                  [&](const PsGamePtr &original) { return original->image_path == game->image_path; });
+                                  [&](const PsGamePtr &original) { return samePath(original->image_path, game->image_path); });
                 if (it != end(info.psGames)) {
                     ensureMetadata(info); // the source playlist's database, if it has not been read yet
                     if (copyTitle)
@@ -442,7 +518,7 @@ bool RetroArchService::setGameCore(PsGame &game, const ableem::CoreInfoPtr &core
     const string usbRoot = Env::getPathToUSBRoot();
     bool found = false;
     for (auto &entry : entries) {
-        if (mapPlaylistPath(entry.path, usbRoot) != game.image_path)
+        if (!samePath(mapPlaylistPath(entry.path, usbRoot), game.image_path))
             continue;
         entry.core_path = core->core_path;
         entry.core_name = core->name;
@@ -465,7 +541,7 @@ bool RetroArchService::setGameCore(PsGame &game, const ableem::CoreInfoPtr &core
     game.core_name = core->name;
     for (auto &info : playlistInfos_) {
         for (auto &other : info.psGames) {
-            if (other->image_path == game.image_path && other->db_name == game.db_name) {
+            if (samePath(other->image_path, game.image_path) && other->db_name == game.db_name) {
                 other->core_path = core->core_path;
                 other->core_name = core->name;
             }
@@ -549,16 +625,11 @@ void RetroArchService::moveCore(const string &database, const ableem::CoreInfoPt
     if (!ableem::RetroArchPlaylist::load(playlistPath, entries, &header))
         return;
     const string usbRoot = Env::getPathToUSBRoot();
-    string romsPrefix = Env::getPathToRetroarchRomsDir() + "/";
-    replace(romsPrefix.begin(), romsPrefix.end(), '\\', '/'); // `ours` compares slash-normalised paths
-    auto ours = [&](const string &path) {
-        string mapped = mapPlaylistPath(path, usbRoot);
-        replace(mapped.begin(), mapped.end(), '\\', '/');
-        return mapped.rfind(romsPrefix, 0) == 0;
-    };
+    const string romsDir = Env::getPathToRetroarchRomsDir();
+    auto ours = [&](const string &path) { return isUnder(mapPlaylistPath(path, usbRoot), romsDir); };
     int moved = 0;
     for (auto &entry : entries) {
-        if (ours(entry.path) && mapPlaylistPath(entry.core_path, usbRoot) == from->core_path) {
+        if (ours(entry.path) && samePath(mapPlaylistPath(entry.core_path, usbRoot), from->core_path)) {
             entry.core_path = to->core_path;
             entry.core_name = to->name;
             moved++;
@@ -577,7 +648,7 @@ void RetroArchService::moveCore(const string &database, const ableem::CoreInfoPt
         if (info.displayName != database)
             continue;
         for (auto &game : info.psGames) {
-            if (game->core_path == from->core_path && ours(game->image_path)) {
+            if (samePath(game->core_path, from->core_path) && ours(game->image_path)) {
                 game->core_path = to->core_path;
                 game->core_name = to->name;
             }
