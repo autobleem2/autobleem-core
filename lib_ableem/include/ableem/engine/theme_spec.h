@@ -354,9 +354,10 @@ ThemeDisabledVeil loadThemeDisabledVeil(const std::string &dir);
 // The panel sheet (launcher.colors.sheet, G6c)
 //******************
 // The colour and alpha of the sheet under every panel (abgui::Style::sheet): `"sheet": "#rrggbb"` (alpha stays
-// DefaultAlpha) or `"sheet": { "color": "#rrggbb", "alpha": 0..255 }` (a missing alpha is DefaultAlpha, a missing colour
-// black). It is what a bridge theme's rim-only `panel` frame (`"fill": false`) is drawn over. Kept out of ThemeSpec for
-// ThemeFrame's reason and read from the theme's own theme.json only; unset = the code's black at its own alpha, as before.
+// DefaultAlpha) or `"sheet": { "color": "#rrggbb", "alpha": 0..255 }` (a missing alpha is DefaultAlpha, a missing
+// colour black). It is what a bridge theme's rim-only `panel` frame (`"fill": false`) is drawn over. Kept out of
+// ThemeSpec for ThemeFrame's reason and read from the theme's own theme.json only; unset = the code's black at its own
+// alpha, as before.
 struct ThemeSheet {
     static constexpr int DefaultAlpha = 200;
     ThemeColor color = ThemeColor(0, 0, 0);
@@ -422,6 +423,44 @@ bool readThemeSpinner(const std::string &path, ThemeSpinner &out);
 // the ring of dots - when there is no block or neither file exists (logged).
 bool loadThemeSpinner(const std::string &dir, ThemeSpinner &out);
 
+//******************
+// ThemeLayout4x3 (layout4x3, the 4:3 / CRT 480p layout)
+//******************
+// The top-level `layout4x3` object of a theme.json: where the launcher puts things on its 640x480 canvas when the
+// output is 4:3 (ableem::CanvasMapping), and the pictures it draws there instead of the 16:9 ones. A theme supports the
+// 4:3 mode when it has the object (ThemeSpec::supports4x3). Kept out of ThemeSpec for ThemeFrame's reason (no SDK
+// layout change) and read from the theme's own theme.json only. The engine does not know what the numbers mean - the
+// launcher does (its evoui layout profile), and takes its own 4:3 default for any value a theme leaves out:
+//  - `"images": { "<name>": "<file>" }` - pictures by name ("background", "footer", "settingsPanel",
+//    "classicBackground"), relative to the theme folder;
+//  - every other block is numbers, flattened to "<block>.<key>" (nested objects too: "a.b.c"): `"carousel":
+//    { "centreX": 196 }` is "carousel.centreX" = 196. Strings, booleans and arrays outside "images" are skipped.
+struct ThemeLayout4x3 {
+    bool set = false; // the theme.json has a layout4x3 object
+    std::map<std::string, std::string> images;
+    std::map<std::string, double> values;
+
+    bool has(const std::string &key) const { return values.find(key) != values.end(); }
+    // the value at `key`, `fallback` when the theme does not give it
+    double value(const std::string &key, double fallback) const {
+        auto it = values.find(key);
+        return it == values.end() ? fallback : it->second;
+    }
+    // the picture named `name`: the file as written (readThemeLayout4x3) or an absolute path (loadThemeLayout4x3);
+    // "" when the theme has none
+    std::string image(const std::string &name) const {
+        auto it = images.find(name);
+        return it == images.end() ? std::string() : it->second;
+    }
+};
+
+// layout4x3 of the theme.json at `path`, the files as written; unset (set false) for no block, a block that is not an
+// object or a bad file. Never throws.
+ThemeLayout4x3 readThemeLayout4x3(const std::string &path);
+// the layout of the theme in `dir` (its own theme.json only), each picture an absolute path; a picture not in the
+// folder is dropped (logged), so the launcher keeps its 16:9 one
+ThemeLayout4x3 loadThemeLayout4x3(const std::string &dir);
+
 // The top-level `"hidden": true` of a theme.json: the theme stays installed and loads when a config.ini names it, but
 // the Options theme picker (and its random pick) does not list it. Not merged from the default theme. False for a
 // missing file, bad JSON, a missing key or a non-boolean value. Never throws.
@@ -431,11 +470,12 @@ bool loadThemeHidden(const std::string &dir); // the theme.json in `dir`
 //******************
 // Editing a written theme.json (the converter, G6c2)
 //******************
-// ThemeSpec::save writes only what ThemeSpec holds; the keys kept out of it (frames, logo, the disabled veil, the sheet)
-// and the converter's stamp are added to the file afterwards with these. All three never throw.
+// ThemeSpec::save writes only what ThemeSpec holds; the keys kept out of it (frames, logo, the disabled veil, the
+// sheet) and the converter's stamp are added to the file afterwards with these. All three never throw.
 
 // Merges `patch` (JSON text of an object) into the theme.json at `path`: objects are merged key by key, anything else
-// replaces. False (file untouched) when `patch` is not an object, or the file is missing, not an object or not writable.
+// replaces. False (file untouched) when `patch` is not an object, or the file is missing, not an object or not
+// writable.
 bool mergeThemeJson(const std::string &path, const std::string &patch);
 // The integer at `pointer` (a JSON pointer, "/converter") of the theme.json at `path`; `fallback` when the file, the
 // key or an integer there is missing.

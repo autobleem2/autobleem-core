@@ -153,6 +153,8 @@ if (AB_CORE_UI)
     ab_add_test(test_headless classic/test_headless.cpp LIBS ableem)
     # the Display row's list from a display's modes - pure, no display needed
     ab_add_test(test_display_modes classic/test_display_modes.cpp LIBS ableem)
+    # the Renderer's canvas math (the 4:3 output's frame target and stretch) - pure, no display needed
+    ab_add_test(test_canvas_mapping classic/test_canvas_mapping.cpp LIBS ableem)
     # CONSOLE-11: Input::flushInputEvents() driven with real SDL events through a real GuiBase - needs a
     # working renderer (see the file's opening comment; it skips itself when this environment has none), so
     # it links SDL directly, the one exception to "nothing SDL-shaped in a consumer" (see lib_ableem's own
