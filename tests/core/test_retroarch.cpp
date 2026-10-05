@@ -236,6 +236,25 @@ TEST_CASE("a playlist path is mapped onto the USB root only when it is not there
     CHECK(RetroArchService::mapPlaylistPath("C:/usb/RetroArch/roms/x.sfc", "C:/usb") == "C:/usb/RetroArch/roms/x.sfc");
 }
 
+TEST_CASE("a playlist path is mapped whatever separators the USB root and the path are written with") {
+    // a Windows USB root with backslashes: the mapped path is one clean path, not a mix
+    CHECK(RetroArchService::mapPlaylistPath("/media/RetroArch/roms/x.sfc", "C:\\usb") == "C:/usb/RetroArch/roms/x.sfc");
+    CHECK(RetroArchService::mapPlaylistPath("/media/RetroArch/roms/x.sfc", "C:\\usb\\") ==
+          "C:/usb/RetroArch/roms/x.sfc");
+    // a playlist written with backslashes is a /media path as well
+    CHECK(RetroArchService::mapPlaylistPath("\\media\\RetroArch\\roms\\x.sfc", "C:/usb") ==
+          "C:/usb/RetroArch/roms/x.sfc");
+    // already on the USB root, only written differently: left alone, not prefixed a second time
+    CHECK(RetroArchService::mapPlaylistPath("/media/autobleem\\RetroArch\\x.sfc", "/media/autobleem") ==
+          "/media/autobleem\\RetroArch\\x.sfc");
+    CHECK(RetroArchService::mapPlaylistPath("/media/autobleem/RetroArch/x.sfc", "/media/autobleem/") ==
+          "/media/autobleem/RetroArch/x.sfc");
+    CHECK(RetroArchService::mapPlaylistPath("/media//autobleem/./RetroArch/x.sfc", "/media/autobleem") ==
+          "/media//autobleem/./RetroArch/x.sfc");
+    // "/media" is a folder name, not a prefix of any name
+    CHECK(RetroArchService::mapPlaylistPath("/mediafiles/x.sfc", "C:/usb") == "/mediafiles/x.sfc");
+}
+
 TEST_CASE("a core the entry names but which is not installed is re-detected") {
     RetroArchTree ra;
     ra.writePlaylist("Nintendo - SNES",
@@ -496,4 +515,31 @@ TEST_CASE(
     // a system on the scan's skip list has no ROM folder and so no row
     ra.tmp.writeFile("platform/roms_skip.cfg", "# not here\n" + db + "\n");
     CHECK(ra.service.corePlatforms().empty());
+}
+
+TEST_CASE("a pick moves the entries whose core or ROM path is the same file written another way") {
+    RetroArchTree ra;
+    const string db = "Nintendo - Super Nintendo Entertainment System";
+    ra.addCore("mesen2_libretro", "Nintendo - SNES (Mesen2)", "sfc|smc|fig|swc", db);
+    // the same core file as the cores table has it, with redundant parts: "./" and a doubled separator
+    const string oddCore = ra.tmp.at("RetroArch/bin/./cores//mesen2_libretro.so");
+    ra.writePlaylist(db, {{"/media/RetroArch/roms/snes/Chrono Trigger.sfc", "Chrono Trigger", oddCore, "Mesen2", db},
+                          {"/media/RetroArch/roms/./snes//Earthbound.sfc", "Earthbound", ra.core("mesen2_libretro"),
+                           "Mesen2", db}});
+    PsGames games = ra.service.gamesInPlaylist(db);
+    REQUIRE(games.size() == 2);
+
+    vector<RACorePlatform> rows = ra.service.corePlatforms();
+    REQUIRE(rows.size() == 1);
+    ableem::CoreInfoPtr snes9x = rows[0].cores[2];
+    REQUIRE(snes9x->stem == "snes9x");
+    CHECK(ra.service.saveCorePicks({{db, snes9x}}) == 1);
+
+    CHECK(games[0]->core_path == ra.core("snes9x_libretro"));
+    CHECK(games[1]->core_path == ra.core("snes9x_libretro"));
+    ableem::RetroArchPlaylistEntries entries;
+    REQUIRE(ableem::RetroArchPlaylist::load(ra.tmp.at("RetroArch/bin/playlists/" + db + ".lpl"), entries));
+    REQUIRE(entries.size() == 2);
+    CHECK(entries[0].core_path == ra.core("snes9x_libretro"));
+    CHECK(entries[1].core_path == ra.core("snes9x_libretro"));
 }
