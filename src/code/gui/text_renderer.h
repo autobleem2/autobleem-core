@@ -97,7 +97,8 @@ public:
     void setRowRole(RowRole role) { rowRole_ = role; }
 
     // The Context whose `switchOn`/`switchOff` icons renderTextLineOptions draws (G5m, UIREV-10); Gui sets it in
-    // wireUiContext. Static - the one Gui's - so no object layout changes (SDK); null (a tool with no Gui) = ON/OFF text.
+    // wireUiContext. Static - the one Gui's - so no object layout changes (SDK); null (a tool with no Gui) = ON/OFF
+    // text.
     static void setSwitchContext(abgui::Context *ctx) { switchContext_ = ctx; }
     RowRole rowRole() const { return rowRole_; }
     struct RowRoleScope {
@@ -139,6 +140,8 @@ public:
 
     int getCheckIconWidth(); // returns the width of the check icon texture.  used to compute the x position.
     static int align_xPosition(XAlignment xAlign, int x, int width);
+    // the same on the canvas of the frame being drawn (Renderer::width(): 1280, or 640 on a 4:3 layout's frame)
+    int alignOnCanvas(XAlignment xAlign, int x, int width) const;
 
     //*******************************
     // Text tokenizing structure routines

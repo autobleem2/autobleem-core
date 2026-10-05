@@ -139,6 +139,16 @@ int TextRenderer::align_xPosition(XAlignment xAlign, int x, int width) {
     return x;
 }
 
+int TextRenderer::alignOnCanvas(XAlignment xAlign, int x, int width) const {
+    const int canvas = renderer_.width();
+    if (xAlign == XALIGN_CENTER) {
+        x = (canvas / 2) - width / 2;
+    } else if (xAlign == XALIGN_RIGHT) {
+        x = canvas - x - width;
+    }
+    return x;
+}
+
 //*******************************
 // TextRenderer::AllTextOrEmojiTokenInfo::compute_xy_relativeOffsets
 // compute x offset, center the y offset of each token to the total height
@@ -230,7 +240,7 @@ void TextRenderer::AllTextOrEmojiTokenInfo::render(int x, int y, XAlignment xAli
 
     // adjust the upper left corner postion if needed
     if (xAlign != XALIGN_LEFT)
-        x = align_xPosition(xAlign, x, totalSize.w);
+        x = text.alignOnCanvas(xAlign, x, totalSize.w);
 
     if (drawBackgroundRect) {
         // render a grey box behind the text
@@ -458,9 +468,9 @@ int TextRenderer::renderTextLineOptions(const string &_text, int line, int yoffs
         return h; // there is no check/uncheck emoji on this line
     }
 
-    // the theme's switch image at the row's right edge when it ships both `switchOn` and `switchOff` (G5m, UIREV-10), else the
-    // value as text, like any other option's value (the old check/uncheck images went on 2026-09-29 - the owner: a
-    // plain OFF/ON choice)
+    // the theme's switch image at the row's right edge when it ships both `switchOn` and `switchOff` (G5m, UIREV-10),
+    // else the value as text, like any other option's value (the old check/uncheck images went on 2026-09-29 - the
+    // owner: a plain OFF/ON choice)
     if (switchContext_ != nullptr) {
         Rect opscreen = getOpscreenRectOfTheme();
         const int right = abgui::List::valueRight(opscreen, rowMetrics(), rightEdge);
@@ -482,8 +492,7 @@ void TextRenderer::renderRowValue(const string &value, int line, int yoffset, in
     const int right = abgui::List::valueRight(opscreen, rowMetrics(), rightEdge);
     int y = abgui::List::rowTop(line, yoffset, font.lineHeight());
     Color color;
-    renderText(font, value, ableem::GuiBase::ScreenWidth - right, y, XALIGN_RIGHT,
-               rowRoleColor(true, color) ? &color : nullptr);
+    renderText(font, value, renderer_.width() - right, y, XALIGN_RIGHT, rowRoleColor(true, color) ? &color : nullptr);
 }
 
 //*******************************
