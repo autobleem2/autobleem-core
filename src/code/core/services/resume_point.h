@@ -43,6 +43,16 @@ class ResumePointService {
 public:
     static const int SlotCount = 4;
 
+    // The game editor's Resume row (EMU-26 for our PS1 games, the same three values as RetroArch games' - EMU-25):
+    // ask: Play starts from the beginning and the Resume icon picks a slot (today's behaviour). last: Play continues
+    // from the newest slot there is. never: the game never offers a slot - the state the run writes on the way out
+    // is dropped (discardRun) instead of offered
+    enum Mode { Ask, Last, Never, ModeCount };
+
+    // the slot Play starts from under `mode`: the newest one for Last, -1 (from the beginning) for the others and
+    // for a Last game with no slot
+    int slotForPlay(const PsGame &game, int mode) const;
+
     bool slotIsActive(const PsGame &game, int slot) const;
     std::string pictureForSlot(const PsGame &game, int slot) const;
     // when the slot's kept state file was written (its mtime), 0 when the slot has none (UIREV-37: the resume-slot
@@ -65,6 +75,9 @@ public:
     // returned, for $AB_LOAD_STATE; otherwise (and when there is none) "".
     std::string prepareForLaunch(const PsGame &game, int slot, bool loadInPlace = false);
     void saveAfterLaunch(const PsGame &game, int slot);
+    // Drops what the run just wrote (its filename file, state, screenshot and disc note) without keeping it as a
+    // slot; the kept slots are never touched
+    void discardRun(const PsGame &game);
 
     // where the emulator leaves the run's files ($AB_EXIT_DIR); "" = the game's save-state folder
     void setExitDir(const std::string &dir) { exitDir_ = dir; }

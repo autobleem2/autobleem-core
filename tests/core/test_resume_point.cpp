@@ -530,3 +530,54 @@ TEST_CASE("RetroArch: the launch's retroarch.log is read from the logs dir; a mi
     CHECK_FALSE(r.service.raAutoSaveFailed(ps1));
     ableem::Environment::setRuntimeDir("");
 }
+
+// --- the Resume row of our PS1 games (EMU-26): what Play starts from ---
+
+TEST_CASE("slotForPlay: ask and never start from the beginning, last from the newest slot") {
+    Resume r;
+    r.pcsxExitsHavingWritten("one");
+    r.service.saveAfterLaunch(*r.game, 1);
+    r.service.storePictureForSlot(*r.game, 1);
+    r.pcsxExitsHavingWritten("two");
+    r.service.saveAfterLaunch(*r.game, 3);
+    r.service.storePictureForSlot(*r.game, 3);
+    // a state file's time is whole seconds: make slot 1's clearly newer by touching it forward
+    const string newer = r.ss("sstates/one.001.res");
+    struct utimbuf times = {time(nullptr) + 100, time(nullptr) + 100};
+    REQUIRE(utime(newer.c_str(), &times) == 0);
+
+    CHECK(r.service.slotForPlay(*r.game, ResumePointService::Ask) == -1);
+    CHECK(r.service.slotForPlay(*r.game, ResumePointService::Never) == -1);
+    CHECK(r.service.slotForPlay(*r.game, ResumePointService::Last) == 1);
+
+    r.service.removeSlot(*r.game, 1);
+    CHECK(r.service.slotForPlay(*r.game, ResumePointService::Last) == 3);
+}
+
+TEST_CASE("slotForPlay: a game with no slot (or an App) starts from the beginning whatever the mode") {
+    Resume r;
+    CHECK(r.service.slotForPlay(*r.game, ResumePointService::Last) == -1);
+    PsGame app;
+    app.foreign = true;
+    app.app = true;
+    CHECK(r.service.slotForPlay(app, ResumePointService::Last) == -1);
+}
+
+TEST_CASE("discardRun drops what the run wrote and keeps every slot") {
+    Resume r;
+    r.pcsxExitsHavingWritten("kept");
+    r.service.saveAfterLaunch(*r.game, 2);
+    r.service.storePictureForSlot(*r.game, 2);
+    r.pcsxExitsHavingWritten("fresh");
+
+    r.service.discardRun(*r.game);
+
+    CHECK_FALSE(r.exists("filename.txt"));
+    CHECK_FALSE(r.exists("sstates/fresh.000"));
+    CHECK_FALSE(r.exists("screenshots/fresh.png"));
+    CHECK_FALSE(r.exists("lastcdimg.txt"));
+    CHECK_FALSE(r.service.exitedCleanly(*r.game));
+    CHECK(r.service.slotIsActive(*r.game, 2));
+    CHECK(r.exists("sstates/kept.002.res"));
+    CHECK(r.exists("lastcdimg.2.txt"));
+}

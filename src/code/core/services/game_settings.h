@@ -4,6 +4,7 @@
 #pragma once
 
 #include "../model/ps_game.h"
+#include "resume_point.h"
 
 #include <ableem/engine/game_library.h>
 #include <ableem/engine/ini_file.h>
@@ -53,6 +54,7 @@ struct GameSettings {
     bool custom = false;
     ableem::IniFile ini;
     PcsxSettings pcsx;
+    int resume = ResumePointService::Ask; // the Resume row (ResumePointService::Mode)
 };
 
 //******************
@@ -87,6 +89,12 @@ public:
     // using RA on; off leaves Play using RA as it is. The editor keeps the Play using RA row locked while
     // the flag is on. RetroArch games are flagged elsewhere (LightgunService) - they have no Game.ini.
     void setLightgun(GameSettings &s, bool on);
+
+    // --- the Resume row (EMU-26): kept in the game's !SaveStates folder (resume.txt: "last" or "never"; ask, the
+    // default, has no file), so it works the same for a USB and an internal game and the scanner's Game.ini rewrites
+    // cannot lose it. What each value means: ResumePointService::Mode ---
+    static int resumeModeOf(const PsGame &game); // what the launcher asks at Play
+    void setResume(GameSettings &s, int mode);   // clamped to 0..ModeCount-1
 
     // --- Game.ini only; a no-op for an internal game ---
     // "Locked" is Automation=0: the user edited the ini, the scanner must not rewrite it. Only flips the

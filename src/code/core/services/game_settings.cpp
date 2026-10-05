@@ -131,6 +131,8 @@ GameSettings GameSettingsService::open(PsGamePtr game) const {
     }
     fallBackToSonyCardIfSetIsGone(s);
 
+    s.resume = resumeModeOf(*game);
+
     PcsxConfig::migrateLegacy(*game);
     s.custom = PcsxConfig::isCustom(*game);
     refreshPcsx(s);
@@ -247,6 +249,42 @@ void GameSettingsService::setLightgun(GameSettings &s, bool on) {
     }
     if (on && !s.game->play_using_ra)
         setPlayUsingRa(s, true);
+}
+
+//*******************************
+// GameSettingsService::resumeModeOf / setResume
+//*******************************
+namespace {
+string resumeFile(const PsGame &game) {
+    return game.ssFolder + sep + "resume.txt";
+}
+} // namespace
+
+int GameSettingsService::resumeModeOf(const PsGame &game) {
+    if (game.foreign || game.ssFolder.empty())
+        return ResumePointService::Ask;
+    string text;
+    if (!DirEntry::readFile(resumeFile(game), text))
+        return ResumePointService::Ask;
+    trim(text);
+    if (text == "last")
+        return ResumePointService::Last;
+    if (text == "never")
+        return ResumePointService::Never;
+    return ResumePointService::Ask;
+}
+
+void GameSettingsService::setResume(GameSettings &s, int mode) {
+    mode = clampTo(mode, 0, ResumePointService::ModeCount - 1);
+    s.resume = mode;
+    const string file = resumeFile(*s.game);
+    if (mode == ResumePointService::Ask) {
+        if (DirEntry::exists(file))
+            DirEntry::removeFile(file); // the default has no file (a remove is a write: only when it is there)
+        return;
+    }
+    DirEntry::createDirs(s.game->ssFolder);
+    DirEntry::writeFileIfChanged(file, mode == ResumePointService::Last ? "last\n" : "never\n");
 }
 
 //*******************************

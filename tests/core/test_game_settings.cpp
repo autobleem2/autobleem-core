@@ -591,3 +591,50 @@ TEST_CASE("an older build's leftovers just go when the game already has its own 
     CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/Driver 2/sstates/autobleem.cfg")));
     CHECK(ableem::DirEntry::diru_FilesOnly(lib.tmp.at("Games/Driver 2/sstates/cfg")).empty());
 }
+
+TEST_CASE("the Resume row (EMU-26): ask by default, last and never round-trip, ask removes the file") {
+    Editing lib;
+    GameSettings s = lib.service->open(lib.usbGame());
+    CHECK(s.resume == ResumePointService::Ask);
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/Driver 2/sstates/resume.txt")));
+
+    lib.service->setResume(s, ResumePointService::Last);
+    CHECK(s.resume == ResumePointService::Last);
+    CHECK(GameSettingsService::resumeModeOf(*s.game) == ResumePointService::Last);
+    CHECK(lib.service->open(lib.usbGame()).resume == ResumePointService::Last);
+
+    lib.service->setResume(s, ResumePointService::Never);
+    CHECK(lib.service->open(lib.usbGame()).resume == ResumePointService::Never);
+
+    lib.service->setResume(s, ResumePointService::Ask);
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/Driver 2/sstates/resume.txt")));
+    CHECK(lib.service->open(lib.usbGame()).resume == ResumePointService::Ask);
+
+    // out of range is clamped; a file with anything else in it is ask
+    lib.service->setResume(s, 9);
+    CHECK(s.resume == ResumePointService::Never);
+    lib.tmp.writeFile("Games/Driver 2/sstates/resume.txt", "sometimes\n");
+    CHECK(GameSettingsService::resumeModeOf(*s.game) == ResumePointService::Ask);
+}
+
+TEST_CASE("the Resume row works for an internal game too, and never touches a Game.ini") {
+    Editing lib;
+    lib.writeGameIni("[Game]\nTitle=Driver 2\nAutomation=1\n");
+    const string iniBefore = lib.readGameIni();
+
+    GameSettings s = lib.service->open(lib.internalGame());
+    lib.service->setResume(s, ResumePointService::Last);
+    CHECK(lib.service->open(lib.internalGame()).resume == ResumePointService::Last);
+    CHECK(ableem::DirEntry::exists(lib.tmp.at("Games/!SaveStates/10/resume.txt")));
+
+    GameSettings usb = lib.service->open(lib.usbGame());
+    lib.service->setResume(usb, ResumePointService::Never);
+    CHECK(lib.readGameIni() == iniBefore);
+
+    // an App (a foreign entry) has no slots and so no mode
+    PsGame app;
+    app.foreign = true;
+    app.app = true;
+    app.ssFolder = lib.tmp.at("Games/!SaveStates/10");
+    CHECK(GameSettingsService::resumeModeOf(app) == ResumePointService::Ask);
+}

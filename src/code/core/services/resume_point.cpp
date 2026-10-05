@@ -237,17 +237,36 @@ bool ResumePointService::exitedCleanly(const PsGame &game) const {
 }
 
 //*******************************
-// ResumePointService::prepareForLaunch
+// ResumePointService::slotForPlay
 //*******************************
-string ResumePointService::prepareForLaunch(const PsGame &game, int slot, bool loadInPlace) {
-    // whatever a previous crash left behind: PCSX will not overwrite it (each only when it is there - a
-    // remove is a write too)
+int ResumePointService::slotForPlay(const PsGame &game, int mode) const {
+    return mode == Last ? newestSlot(game) : -1;
+}
+
+//*******************************
+// ResumePointService::discardRun
+//*******************************
+// each only when it is there - a remove is a write too
+void ResumePointService::discardRun(const PsGame &game) {
+    if (game.foreign)
+        return;
     if (DirEntry::exists(filenameFile(game)))
         DirEntry::removeFile(filenameFile(game));
     removeFilesWithExtensionIn(statesDir(game), "000");
     removeFilesWithExtensionIn(shotsDir(game), "png");
+    const string lastCd = game.ssFolder + sep + "lastcdimg.txt";
+    if (DirEntry::exists(lastCd))
+        DirEntry::removeFile(lastCd);
     if (!exitDir_.empty())
         DirEntry::removeDirAndContents(exitDir_); // RAM: the last run's, which nobody kept
+}
+
+//*******************************
+// ResumePointService::prepareForLaunch
+//*******************************
+string ResumePointService::prepareForLaunch(const PsGame &game, int slot, bool loadInPlace) {
+    // whatever a previous crash left behind: PCSX will not overwrite it
+    discardRun(game);
 
     if (slot == -1)
         return ""; // starting from the beginning
