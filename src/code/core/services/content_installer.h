@@ -57,18 +57,27 @@ public:
 //******************
 // A PE package (.mod, a Debian archive) into Mods/ - exactly where a user's own mod goes. The mods scanner
 // processor (proc_pe) turns it into an App at the launcher's next scan (Apps/pe-<name>/, PeSource= naming the
-// file); this installer only places and removes the file and what the processor made of it.
+// file) and then moves the .mod to Mods/done/ (not deleted: the original stays); this installer only places and
+// removes the file - from Mods/ and from Mods/done/ alike - and what the processor made of it.
 class ModInstaller {
 public:
     // moves the downloaded `mod` to modsDir/<its file name> (the folder made when missing; a file of that name
     // there is replaced): renamed when it is on the same filesystem, else copied under "<name>.part" and renamed,
     // so the scan never meets half a file. Refused, and nothing placed, when it is no .mod or no ar archive.
-    // `replaces` (a path, "" = none): the mod of the version being updated, retired once the new one is in place.
+    // `replaces` (a path in Mods/ or Mods/done/, "" = none): the mod of the version being updated, retired - in both
+    // places - once the new one is in place. A copy of the new file's name in Mods/done/ goes too (the processor
+    // puts the new one there after the scan).
     static InstallResult install(const std::string &mod, const std::string &modsDir, const std::string &appsDir,
                                  const std::string &replaces = "");
-    // the .mod gone first (so a scan in between has nothing to make the App from again), then the Apps it made
-    // (every Apps/pe-* whose app.ini says PeSource=<this file>) and the processor's marker for it
+    // the .mod gone first from Mods/ and from Mods/done/ (so a scan in between has nothing to make the App from
+    // again), then the Apps it made (every Apps/pe-* whose app.ini says PeSource=<this file>) and the processor's
+    // marker for it. `modFile` is the file's path in either place.
     static bool remove(const std::string &modFile, const std::string &appsDir, std::string &error);
+    // installed = the .mod is in Mods/ or in Mods/done/, or the processor's marker for it is in Apps/.pe_state/.
+    // `modFile` is the file's path in either place.
+    static bool present(const std::string &modFile, const std::string &appsDir);
+    // the Mods/ folder of a path in Mods/ or Mods/done/
+    static std::string modsDirOf(const std::string &modFile);
 };
 
 //******************

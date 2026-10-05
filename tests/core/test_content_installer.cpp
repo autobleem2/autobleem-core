@@ -196,6 +196,68 @@ TEST_CASE("ModInstaller: an update retires the old version's package and its mar
     CHECK(DirEntry::exists(s.tmp.at("Apps/pe-t/app.ini"))); // the processor replaces it from the new package
 }
 
+TEST_CASE("ModInstaller: an update retires the old package from Mods/done/ too, and a done/ copy of the new name") {
+    Stick s;
+    s.tmp.makeSubDir("Mods/done");
+    s.tmp.writeFile("Mods/done/t-1.0.mod", "!<arch>\nold");
+    s.tmp.writeFile("Mods/done/t-1.1.mod", "!<arch>\nstale copy");
+    s.tmp.writeFile("Apps/.pe_state/t-1.0.mod.ini", "Version=1.0\nApps=pe-t\n");
+    s.tmp.writeFile("Apps/pe-t/app.ini", "Title=T\nPeSource=t-1.0.mod\n");
+    s.tmp.writeFile("dl/t-1.1.mod", "!<arch>\nnew");
+    // the Store passes the path it recorded (Mods/...), the file now being in done/
+    REQUIRE(ModInstaller::install(s.tmp.at("dl/t-1.1.mod"), s.tmp.at("Mods"), s.apps(), s.tmp.at("Mods/t-1.0.mod")).ok);
+    CHECK(s.tmp.readFile("Mods/t-1.1.mod") == "!<arch>\nnew");
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Mods/done/t-1.0.mod")));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Mods/done/t-1.1.mod")));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Apps/.pe_state/t-1.0.mod.ini")));
+    CHECK(DirEntry::exists(s.tmp.at("Apps/pe-t/app.ini")));
+}
+
+TEST_CASE("ModInstaller::present: the .mod in Mods/ or in Mods/done/, or the processor's marker") {
+    Stick s;
+    s.tmp.makeSubDir("Mods/done");
+    CHECK_FALSE(ModInstaller::present(s.tmp.at("Mods/a-1.0.mod"), s.apps()));
+    s.tmp.writeFile("Mods/a-1.0.mod", "!<arch>\na");
+    CHECK(ModInstaller::present(s.tmp.at("Mods/a-1.0.mod"), s.apps()));
+    CHECK(DirEntry::removeFile(s.tmp.at("Mods/a-1.0.mod")));
+    CHECK_FALSE(ModInstaller::present(s.tmp.at("Mods/a-1.0.mod"), s.apps()));
+    s.tmp.writeFile("Mods/done/a-1.0.mod", "!<arch>\na"); // the processor moved it
+    CHECK(ModInstaller::present(s.tmp.at("Mods/a-1.0.mod"), s.apps()));
+    CHECK(ModInstaller::present(s.tmp.at("Mods/done/a-1.0.mod"), s.apps())); // asked with the done/ path too
+    CHECK(DirEntry::removeFile(s.tmp.at("Mods/done/a-1.0.mod")));
+    s.tmp.writeFile("Apps/.pe_state/a-1.0.mod.ini", "Version=1.0\nApps=pe-a\n"); // only the marker is left
+    CHECK(ModInstaller::present(s.tmp.at("Mods/a-1.0.mod"), s.apps()));
+    CHECK(ModInstaller::modsDirOf(s.tmp.at("Mods/done/a-1.0.mod")) == s.tmp.at("Mods"));
+    CHECK(ModInstaller::modsDirOf(s.tmp.at("Mods/a-1.0.mod")) == s.tmp.at("Mods"));
+}
+
+TEST_CASE("ModInstaller::remove: a package that the processor moved to Mods/done/ goes too, with its App and marker") {
+    Stick s;
+    s.tmp.makeSubDir("Mods/done");
+    s.tmp.writeFile("Mods/done/a-1.0.mod", "!<arch>\na");
+    s.tmp.writeFile("Mods/done/b-1.0.mod", "!<arch>\nb");
+    s.tmp.writeFile("Apps/.pe_state/a-1.0.mod.ini", "Version=1.0\nApps=pe-a\n");
+    s.tmp.writeFile("Apps/pe-a/app.ini", "Title=A\nPeSource=a-1.0.mod\n");
+    s.tmp.writeFile("Apps/pe-b/app.ini", "Title=B\nPeSource=b-1.0.mod\n");
+    string error;
+    // asked with the Mods/ path the Store recorded, then with the done/ path itself
+    REQUIRE(ModInstaller::remove(s.tmp.at("Mods/a-1.0.mod"), s.apps(), error));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Mods/done/a-1.0.mod")));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Apps/pe-a")));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Apps/.pe_state/a-1.0.mod.ini")));
+    CHECK(DirEntry::exists(s.tmp.at("Mods/done/b-1.0.mod")));
+    CHECK(DirEntry::exists(s.tmp.at("Apps/pe-b/app.ini")));
+    REQUIRE(ModInstaller::remove(s.tmp.at("Mods/done/b-1.0.mod"), s.apps(), error));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Mods/done/b-1.0.mod")));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Apps/pe-b")));
+    // a copy in both places (the user dropped it again before the scan): both go
+    s.tmp.writeFile("Mods/done/c-1.0.mod", "!<arch>\nold");
+    s.tmp.writeFile("Mods/c-1.0.mod", "!<arch>\nnew");
+    REQUIRE(ModInstaller::remove(s.tmp.at("Mods/c-1.0.mod"), s.apps(), error));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Mods/done/c-1.0.mod")));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Mods/c-1.0.mod")));
+}
+
 TEST_CASE("ModInstaller refuses what is no PE package, and places nothing") {
     Stick s;
     s.tmp.writeFile("dl/game.zip", "!<arch>\nx");

@@ -284,7 +284,29 @@ bool looksLikeAr(const string &path) {
 string peMarker(const string &appsDir, const string &modName) {
     return appsDir + sep + ".pe_state" + sep + modName + ".ini";
 }
+
+// the processor moves a converted package to Mods/done/
+const char *const DoneFolder = "done";
+
+// the .mod in both places (Mods/<name> and Mods/done/<name>), nothing else
+void removeModCopies(const string &modsDir, const string &name) {
+    for (const string &file : {modsDir + sep + name, modsDir + sep + DoneFolder + sep + name})
+        if (DirEntry::exists(file))
+            DirEntry::removeFile(file);
+}
 } // namespace
+
+string ModInstaller::modsDirOf(const string &modFile) {
+    const string dir = DirEntry::getDirNameFromPath(modFile);
+    return DirEntry::getFileNameFromPath(dir) == DoneFolder ? DirEntry::getDirNameFromPath(dir) : dir;
+}
+
+bool ModInstaller::present(const string &modFile, const string &appsDir) {
+    const string name = DirEntry::getFileNameFromPath(modFile);
+    const string modsDir = modsDirOf(modFile);
+    return DirEntry::exists(modsDir + sep + name) || DirEntry::exists(modsDir + sep + DoneFolder + sep + name) ||
+           DirEntry::exists(peMarker(appsDir, name));
+}
 
 InstallResult ModInstaller::install(const string &mod, const string &modsDir, const string &appsDir,
                                     const string &replaces) {
@@ -316,10 +338,18 @@ InstallResult ModInstaller::install(const string &mod, const string &modsDir, co
         }
         DirEntry::removeFile(mod);
     }
-    // the version being updated: its package goes (the new one makes the App over), the Apps stay
-    if (!replaces.empty() && replaces != target && DirEntry::exists(replaces)) {
-        DirEntry::removeFile(replaces);
-        DirEntry::removeFile(peMarker(appsDir, DirEntry::getFileNameFromPath(replaces)));
+    // a copy of this name left in Mods/done/ by an earlier conversion: the new file replaces it
+    const string doneCopy = modsDir + sep + DoneFolder + sep + name;
+    if (DirEntry::exists(doneCopy))
+        DirEntry::removeFile(doneCopy);
+    // the version being updated: its package goes from Mods/ and Mods/done/ (the new one makes the App over), the
+    // Apps stay
+    if (!replaces.empty()) {
+        const string oldName = DirEntry::getFileNameFromPath(replaces);
+        if (oldName != name) {
+            removeModCopies(modsDir, oldName);
+            DirEntry::removeFile(peMarker(appsDir, oldName));
+        }
     }
     r.ok = true;
     r.path = target;
@@ -329,9 +359,12 @@ InstallResult ModInstaller::install(const string &mod, const string &modsDir, co
 
 bool ModInstaller::remove(const string &modFile, const string &appsDir, string &error) {
     const string name = DirEntry::getFileNameFromPath(modFile);
-    if (DirEntry::exists(modFile) && !DirEntry::removeFile(modFile)) {
-        error = "cannot remove " + modFile;
-        return false;
+    const string modsDir = modsDirOf(modFile);
+    for (const string &file : {modsDir + sep + name, modsDir + sep + DoneFolder + sep + name}) {
+        if (DirEntry::exists(file) && !DirEntry::removeFile(file)) {
+            error = "cannot remove " + file;
+            return false;
+        }
     }
     // the Apps the processor made from it: its own, by the PeSource= it wrote - never an App of anyone else's
     for (const DirEntry &e : DirEntry::diru_DirsOnly(appsDir)) {
