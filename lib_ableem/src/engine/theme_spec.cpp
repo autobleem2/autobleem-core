@@ -1196,6 +1196,67 @@ bool loadThemeSpinner(const string &dir, ThemeSpinner &out) {
 }
 
 //*******************************
+// readThemeLayout4x3 / loadThemeLayout4x3
+//*******************************
+namespace {
+// the numbers of `j` into `out` as "<prefix><key>" (nested objects "<prefix><key>.<inner>")
+void flattenNumbers(const json &j, const string &prefix, map<string, double> &out) {
+    for (auto it = j.begin(); it != j.end(); ++it) {
+        if (it->is_number())
+            out[prefix + it.key()] = it->get<double>();
+        else if (it->is_object())
+            flattenNumbers(*it, prefix + it.key() + ".", out);
+    }
+}
+} // namespace
+
+ThemeLayout4x3 readThemeLayout4x3(const string &path) {
+    ThemeLayout4x3 layout;
+    ifstream in(path, ifstream::binary);
+    if (!in.is_open())
+        return layout;
+    json j;
+    try {
+        in >> j;
+    } catch (const json::exception &) {
+        return layout;
+    }
+    const json *block = child(j, "layout4x3");
+    if (!block || !block->is_object())
+        return layout;
+    layout.set = true;
+    for (auto it = block->begin(); it != block->end(); ++it) {
+        if (it.key() == "images") {
+            if (!it->is_object())
+                continue;
+            for (auto image = it->begin(); image != it->end(); ++image)
+                if (image->is_string() && !image->get<string>().empty())
+                    layout.images[image.key()] = image->get<string>();
+        } else if (it->is_number()) {
+            layout.values[it.key()] = it->get<double>();
+        } else if (it->is_object()) {
+            flattenNumbers(*it, it.key() + ".", layout.values);
+        }
+    }
+    return layout;
+}
+
+ThemeLayout4x3 loadThemeLayout4x3(const string &dir) {
+    ThemeLayout4x3 layout = readThemeLayout4x3(dir + sep + "theme.json");
+    for (auto it = layout.images.begin(); it != layout.images.end();) {
+        const string file = existing(dir, it->second);
+        if (file.empty()) {
+            PLOG_WARNING << "Theme layout4x3 image '" << it->second << "': not in " << dir << " - the 16:9 one is used";
+            it = layout.images.erase(it);
+        } else {
+            it->second = file;
+            ++it;
+        }
+    }
+    return layout;
+}
+
+//*******************************
 // readThemeHidden / loadThemeHidden
 //*******************************
 bool readThemeHidden(const string &path) {
