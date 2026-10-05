@@ -54,15 +54,14 @@ struct PadBatteryCharge {
 //******************
 // PadBatteryBolt
 //******************
-// The code-drawn "charging" mark: a small lightning bolt (7 x 8 px) centred in the body of the battery glyph, as
-// eight one-pixel-tall strips - pure numbers, so the shape is tested without a renderer. The launcher draws the
-// strips grown by `Outline` px in a dark colour first (so the bolt reads on a light fill) and the bolt itself in the
-// theme's text colour. A theme's own `batteryCharging` icon replaces all of it.
+// The code-drawn "charging" mark: the designer's lightning bolt, the polygon (30,4.5) (18.5,14.5) (25,14.5)
+// (22.5,21.5) (34,11.5) (27.5,11.5) on the 58 x 26 (@2x) canvas of the 29 x 13 battery icon, scaled to the glyph and
+// cut into one-pixel-tall strips - pure numbers, so the shape is tested without a renderer. The launcher draws the
+// strips grown by `Outline` px in a dark edge colour first (so the bolt reads on any fill) and the bolt itself in
+// the theme's battery (accent) colour, over the outline and the live charge. A theme's own `batteryCharging` icon
+// (the same bolt as an overlay image) replaces it.
 struct PadBatteryBolt {
-    static constexpr int Width = 7;
-    static constexpr int Height = 8;
     static constexpr int Outline = 1;
-    static constexpr int Strips = 8;
 
     struct Strip {
         int x = 0, y = 0, w = 0, h = 1;
