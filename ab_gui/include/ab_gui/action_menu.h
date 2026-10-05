@@ -84,7 +84,8 @@ public:
     void onUnmapped(const ableem::Event &event) override;
 
 protected:
-    void moveSelection(int step);
+    void moveSelection(int step);              // a press: wraps (when `wrap`)
+    void moveSelection(int step, bool repeat); // repeat = a held d-pad's step: never wraps
     void dpad(); // a d-pad event: one step by the live state, and the hold-repeat's bookkeeping
     void pick();
     void leave();

@@ -73,12 +73,48 @@ private:
     Timing timing_ = rows();
 };
 
+// THE end-of-list rule of every menu (the owner, 2026-10-05): a single PRESS at the end wraps (last row to the first,
+// last value to the first, and the same backwards); a HELD direction's repeats stop at the end and never wrap.
+// The next index for one step of `dir` (+1/-1) over `count` rows/values; `repeat` is true for a step that came from a
+// hold's repeat (DpadHold/ValueHold::tick pass it), false for the press itself. `skip(i)` marks rows the cursor never
+// rests on (a heading). With nowhere to go (empty, only headings, or a repeat at the end) it returns `index`.
+template <class Skip> inline int stepIndex(int index, int dir, int count, bool repeat, Skip skip) {
+    if (count <= 0)
+        return index;
+    int i = index;
+    for (int tries = 0; tries < count; tries++) {
+        i += dir;
+        if (i < 0 || i >= count) {
+            if (repeat)
+                return index;          // held: stops at the end
+            i = i < 0 ? count - 1 : 0; // pressed: wraps
+        }
+        if (!skip(i))
+            return i;
+    }
+    return index;
+}
+inline int stepIndex(int index, int dir, int count, bool repeat) {
+    return stepIndex(index, dir, count, repeat, [](int) { return false; });
+}
+
+namespace detail {
+// a hold's step callback is `(int dir, bool repeat)` or, as before, `(int dir)` - the repeats of a hold are all `true`
+template <class Step> auto callStep(Step &step, int dir, int) -> decltype(step(dir, true), void()) {
+    step(dir, true);
+}
+template <class Step> void callStep(Step &step, int dir, long) {
+    step(dir);
+}
+} // namespace detail
+
 // A panel's loop (Up/Down held down a list): the screen keeps its own single step at the press and adds
 //   on Dpad events:   hold.track(input, now);
-//   once a pass:      hold.tick(input, now, [&](int dir) { move(dir); });
+//   once a pass:      hold.tick(input, now, [&](int dir, bool repeat) { move(dir, repeat); });
 // The pass then runs at the full frame rate while a direction is held (the loop rests between presses otherwise)
 // and every step is one row, at HoldRepeat's pace. Nothing held any more (a release lost during a dialog, a
-// busy job) ends it at the next pass.
+// busy job) ends it at the next pass. The press steps with repeat = false (it wraps), every step tick() gives is a
+// repeat (it stops at the end): stepIndex() above decides.
 class DpadHold {
 public:
     void track(ableem::Input &input, uint32_t now) {
@@ -102,7 +138,7 @@ public:
             return;
         }
         for (int n = hold_.due(now); n != 0; n -= dir)
-            step(dir);
+            detail::callStep(step, dir, 0);
     }
 
 private:

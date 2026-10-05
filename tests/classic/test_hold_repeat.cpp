@@ -5,6 +5,8 @@
 
 #include "gui/hold_repeat.h"
 
+#include <vector>
+
 TEST_CASE("HoldRepeat waits its delay, repeats, then repeats faster") {
     HoldRepeat hold;
     CHECK(hold.due(1000) == 0); // nothing held
@@ -88,4 +90,64 @@ TEST_CASE("every screen's held key uses the one shared pair") {
     CHECK(rows.interval == interval);
     CHECK(rows.fastAfter == fastAfter);
     CHECK(rows.fastInterval == fastInterval);
+}
+
+// THE end-of-list rule of every menu (the owner, 2026-10-05): a single press at the end wraps, a held key's repeats
+// stop at the end - for a list's rows and for a value row's values alike.
+TEST_CASE("stepIndex: a press wraps past the last and the first, a repeat stops there") {
+    using abgui::stepIndex;
+    // a press, in the middle and at both ends
+    CHECK(stepIndex(1, 1, 4, false) == 2);
+    CHECK(stepIndex(2, -1, 4, false) == 1);
+    CHECK(stepIndex(3, 1, 4, false) == 0);  // the last to the first
+    CHECK(stepIndex(0, -1, 4, false) == 3); // the first to the last
+    // a repeat: the same in the middle, stays at both ends
+    CHECK(stepIndex(1, 1, 4, true) == 2);
+    CHECK(stepIndex(2, -1, 4, true) == 1);
+    CHECK(stepIndex(3, 1, 4, true) == 3);
+    CHECK(stepIndex(0, -1, 4, true) == 0);
+    // one entry, none: nowhere to go
+    CHECK(stepIndex(0, 1, 1, false) == 0);
+    CHECK(stepIndex(0, -1, 1, true) == 0);
+    CHECK(stepIndex(0, 1, 0, false) == 0);
+    // a value row of two (on/off) wraps on a press too
+    CHECK(stepIndex(1, 1, 2, false) == 0);
+    CHECK(stepIndex(1, 1, 2, true) == 1);
+}
+
+TEST_CASE("stepIndex: headings are skipped, also round the ends; a repeat never goes round") {
+    using abgui::stepIndex;
+    const bool heading[] = {true, false, false, true, false, true}; // rows 1, 2 and 4 can be picked
+    auto skip = [&](int i) { return heading[i]; };
+    CHECK(stepIndex(1, 1, 6, false, skip) == 2);
+    CHECK(stepIndex(2, 1, 6, false, skip) == 4);  // past the heading in the middle
+    CHECK(stepIndex(4, 1, 6, false, skip) == 1);  // the last pickable row wraps to the first, past both headings
+    CHECK(stepIndex(1, -1, 6, false, skip) == 4); // and back
+    CHECK(stepIndex(4, 1, 6, true, skip) == 4);   // a repeat stays
+    CHECK(stepIndex(1, -1, 6, true, skip) == 1);
+    CHECK(stepIndex(2, -1, 6, true, skip) == 1);
+    // nothing to pick at all
+    const bool all[] = {true, true};
+    CHECK(stepIndex(0, 1, 2, false, [&](int i) { return all[i]; }) == 0);
+}
+
+TEST_CASE("DpadHold: the press is the screen's own, every step tick() gives is a repeat (callbacks of either shape)") {
+    HoldRepeat hold;
+    hold.press(1, 1000);
+    // the shape (dir, repeat): tick's steps are repeats
+    std::vector<int> dirs;
+    std::vector<bool> repeats;
+    auto both = [&](int dir, bool repeat) {
+        dirs.push_back(dir);
+        repeats.push_back(repeat);
+    };
+    for (int n = hold.due(1350); n != 0; n -= 1)
+        abgui::detail::callStep(both, 1, 0);
+    CHECK(dirs == std::vector<int>{1});
+    CHECK(repeats == std::vector<bool>{true});
+    // the old shape (dir) still works
+    int seen = 0;
+    auto one = [&](int dir) { seen += dir; };
+    abgui::detail::callStep(one, -1, 0);
+    CHECK(seen == -1);
 }

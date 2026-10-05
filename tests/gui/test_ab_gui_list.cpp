@@ -752,3 +752,60 @@ TEST_CASE("List::holdRows: a held d-pad steps at once, then at HoldRepeat's pace
     list.handle(polled); // the release: nothing held
     CHECK(list.selected == 4);
 }
+
+// the end-of-list rule (the owner, 2026-10-05): a press at the end wraps, a held d-pad stops there
+namespace {
+// holds `dir` (DpadDown/DpadUp) on a list at `from` until the clock reaches `until` ms, then releases; returns where
+// the cursor ended and how many sounds were played
+struct HeldRun {
+    int selected = -1;
+    size_t sounds = 0;
+};
+
+HeldRun holdFor(MaybeGui &g, int rows, int from, Button dir, unsigned int until) {
+    Side side(*g.gui);
+    unsigned int now = 0;
+    bool released = false;
+    side.ctx.clock = [&]() {
+        now += 2;
+        if (now >= until && !released) {
+            released = true;
+            g.gui->input().inject(dpad(false, dir)); // the release: pending, the hold ends
+        }
+        return now;
+    };
+    Quiet list(*g.gui, side.ctx, rows);
+    list.selected = from;
+    g.gui->input().inject(dpad(true, dir));
+    Event polled;
+    REQUIRE(g.gui->input().poll(polled));
+    list.handle(polled);
+    REQUIRE(g.gui->input().poll(polled)); // the release
+    list.handle(polled);
+    return {list.selected, side.sounds.size()};
+}
+} // namespace
+
+TEST_CASE("List::holdRows: a held Down stops at the last row, a held Up at the first - the repeats never wrap") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    // 6 rows from row 3: the press 4, the first repeat 5, and the repeats after that find the end (1 s held)
+    HeldRun down = holdFor(g, 6, 3, Button::DpadDown, 1000);
+    CHECK(down.selected == 5);
+    CHECK(down.sounds == 2); // the press and the one repeat that moved; the others at the end are silent
+    HeldRun up = holdFor(g, 6, 2, Button::DpadUp, 1000);
+    CHECK(up.selected == 0);
+    CHECK(up.sounds == 2);
+}
+
+TEST_CASE("List::holdRows: a single press at the last row wraps to the first, and at the first to the last") {
+    MaybeGui g;
+    if (!g.available())
+        return;
+    // released at once (before the first repeat is due): only the press
+    HeldRun down = holdFor(g, 6, 5, Button::DpadDown, 10);
+    CHECK(down.selected == 0);
+    HeldRun up = holdFor(g, 6, 0, Button::DpadUp, 10);
+    CHECK(up.selected == 5);
+}

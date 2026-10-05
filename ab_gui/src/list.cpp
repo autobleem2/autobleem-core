@@ -123,8 +123,8 @@ const char *List::screenName() {
 
 string List::entryStatus() {
     return ctx.translate("Entry") + " " + to_string(selected + 1) + "/" + to_string(size()) + "    |@L1/R1| " +
-           ctx.translate("First/last") + "   |@L2/R2| " + ctx.translate("Page") + "   |@X| " +
-           ctx.translate("Select") + "   |@O| " + ctx.translate("Back") + " |";
+           ctx.translate("First/last") + "   |@L2/R2| " + ctx.translate("Page") + "   |@X| " + ctx.translate("Select") +
+           "   |@O| " + ctx.translate("Back") + " |";
 }
 
 const ableem::Font &List::rowFont() const {
@@ -358,8 +358,9 @@ void List::redraw() {
     render();
 }
 
-// one step at the press, then - while nothing else comes from the pad or the keyboard - the same step again at
-// HoldRepeat's pace (the one every screen's held key uses): its delay first, then its interval, faster when held long
+// one step at the press (it wraps past the end), then - while nothing else comes from the pad or the keyboard - the
+// same step again at HoldRepeat's pace (the one every screen's held key uses): its delay first, then its interval,
+// faster when held long. A repeat never wraps: at the last (first) row it stays (stepIndex's rule)
 void List::holdRows(int by) {
     HoldRepeat hold;
     hold.press(by, ctx.ticks());
@@ -367,8 +368,10 @@ void List::holdRows(int by) {
     redraw();
     while (!gui.input().padEventPending()) {
         if (hold.due(ctx.ticks()) != 0) {
-            step(by);
-            redraw();
+            if (labelsOnly || stepIndex(selected, by, size(), true, [this](int i) { return skip(i); }) != selected) {
+                step(by);
+                redraw();
+            }
         } else {
             ctx.delay(2); // a few ms of repeat timing, not a core spinning on the queue
         }

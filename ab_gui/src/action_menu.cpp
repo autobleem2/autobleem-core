@@ -96,9 +96,14 @@ void ActionMenu::open() {
 }
 
 void ActionMenu::moveSelection(int step) {
+    moveSelection(step, false);
+}
+
+// a press wraps (when the menu wraps at all), a held d-pad's repeat stops at the first/last row
+void ActionMenu::moveSelection(int step, bool repeat) {
     if (items.empty())
         return;
-    selected = moved(items, selected, step, wrap);
+    selected = moved(items, selected, step, wrap && !repeat);
     const Style style = ctx.style();
     firstVisible_ = scrolledTo(style, items, selected, firstVisible_, room(style));
 }
@@ -179,9 +184,11 @@ void ActionMenu::loop() {
     while (menuVisible) {
         if (gui.input().frameDue())
             render();
-        hold_.tick(gui.input(), ctx.ticks(), [&](int dir) {
-            ctx.play(UiSound::Cursor);
-            moveSelection(dir);
+        hold_.tick(gui.input(), ctx.ticks(), [&](int dir, bool repeat) {
+            const int before = selected;
+            moveSelection(dir, repeat);
+            if (selected != before) // a repeat at the end stays put, silently
+                ctx.play(UiSound::Cursor);
         });
         Event e;
         while (gui.input().poll(e)) {
