@@ -25,9 +25,10 @@ struct StoreFile {
 //******************
 struct StoreItem {
     std::string id;   // unique per source: the catalog's id, or "<kind>/<title>" for a TSV line
-    std::string kind; // "app", "ps1" (later "theme", "rom:<system>"); an unknown kind is kept - the Store skips it
+    std::string kind; // "app", "ps1", "pe" (later "theme", "rom:<system>"); an unknown kind is kept - the Store skips it
     std::string title;
     std::string version, author, licence, description, serial;
+    std::string sourceUrl;             // where the item's corresponding source is (a GPL item's archive), "" = none
     std::string image;                 // a picture's URL
     std::vector<StoreFile> files;      // in disc order
     std::vector<std::string> dependsOn; // what must be installed first ("pack/psc-libs")
@@ -40,8 +41,9 @@ struct StoreItem {
 // StoreCatalog
 //******************
 // {"schema": 1, "platform": "psc", "date": "...", "items": [{"id", "kind", "title", "version", "author",
-//  "licence", "description", "serial", "image", "files": [{"name", "url", "size", "sha256", "disc"}],
-//  "requires": [...]}]} - an item without an id, a kind, a title or a file is skipped (and counted).
+//  "licence", "description", "serial", "source_url", "image", "files": [{"name", "url", "size", "sha256", "disc"}],
+//  "requires": [...]}]} - an item without an id, a kind, a title or a file is skipped (and counted). "source_url" is
+//  where the corresponding source of a GPL item is kept; it is only shown, never downloaded (not a file of the item).
 struct StoreCatalog {
     int schema = 0;
     std::string platform, date;
@@ -72,7 +74,8 @@ struct StoreCatalog {
 //
 // The other well-known list layout is read too, by its own column names (NoPayStation's: Title ID, Region,
 // Name, PKG direct link, Content ID, ..., File Size, SHA256): "PKG direct link" is the url, "File Size" the
-// size, "Title ID" the serial, and "Name" the title when the header has no "title" column. Its links are PSN
+// size, "Title ID" the serial, and "Name" the title when the header has no "title" column. (Columns "author",
+// "licence" and "source_url" are read too.) Its links are PSN
 // packages (.pkg), which the Store lists but does not install.
 struct StoreSourceTsv {
     std::string name; // "# name:", else the fallback given

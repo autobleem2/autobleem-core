@@ -166,6 +166,70 @@ TEST_CASE("AppInstaller::remove") {
     CHECK_FALSE(AppInstaller::remove(s.apps() + "/t", error));
 }
 
+TEST_CASE("ModInstaller: a .mod lands whole in Mods/ (made when missing), a same-name file is replaced") {
+    Stick s;
+    s.tmp.writeFile("dl/openlara-0.9.0-1.mod", string("!<arch>\n") + "package one");
+    InstallResult r = ModInstaller::install(s.tmp.at("dl/openlara-0.9.0-1.mod"), s.tmp.at("Mods"), s.apps());
+    REQUIRE(r.ok);
+    CHECK(r.path == s.tmp.at("Mods") + "/openlara-0.9.0-1.mod");
+    CHECK(r.name == "openlara-0.9.0-1.mod");
+    CHECK(s.tmp.readFile("Mods/openlara-0.9.0-1.mod") == "!<arch>\npackage one");
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("dl/openlara-0.9.0-1.mod"))); // moved, not copied
+    CHECK(DirEntry::diru(s.tmp.at("Mods")).size() == 1);                // no .part left
+
+    s.tmp.writeFile("dl/openlara-0.9.0-1.mod", string("!<arch>\n") + "package two");
+    REQUIRE(ModInstaller::install(s.tmp.at("dl/openlara-0.9.0-1.mod"), s.tmp.at("Mods"), s.apps()).ok);
+    CHECK(s.tmp.readFile("Mods/openlara-0.9.0-1.mod") == "!<arch>\npackage two");
+}
+
+TEST_CASE("ModInstaller: an update retires the old version's package and its marker, not its App") {
+    Stick s;
+    s.tmp.makeSubDir("Mods");
+    s.tmp.writeFile("Mods/t-1.0.mod", "!<arch>\nold");
+    s.tmp.writeFile("Apps/.pe_state/t-1.0.mod.ini", "Version=1.0\nApps=pe-t\n");
+    s.tmp.writeFile("Apps/pe-t/app.ini", "Title=T\nPeSource=t-1.0.mod\n");
+    s.tmp.writeFile("dl/t-1.1.mod", "!<arch>\nnew");
+    REQUIRE(ModInstaller::install(s.tmp.at("dl/t-1.1.mod"), s.tmp.at("Mods"), s.apps(), s.tmp.at("Mods/t-1.0.mod")).ok);
+    CHECK(DirEntry::exists(s.tmp.at("Mods/t-1.1.mod")));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Mods/t-1.0.mod")));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Apps/.pe_state/t-1.0.mod.ini")));
+    CHECK(DirEntry::exists(s.tmp.at("Apps/pe-t/app.ini"))); // the processor replaces it from the new package
+}
+
+TEST_CASE("ModInstaller refuses what is no PE package, and places nothing") {
+    Stick s;
+    s.tmp.writeFile("dl/game.zip", "!<arch>\nx");
+    s.tmp.writeFile("dl/garbage.mod", "this is not an archive");
+    CHECK_FALSE(ModInstaller::install(s.tmp.at("dl/game.zip"), s.tmp.at("Mods"), s.apps()).ok);
+    CHECK_FALSE(ModInstaller::install(s.tmp.at("dl/garbage.mod"), s.tmp.at("Mods"), s.apps()).ok);
+    CHECK_FALSE(ModInstaller::install(s.tmp.at("dl/none.mod"), s.tmp.at("Mods"), s.apps()).ok);
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Mods")));
+}
+
+TEST_CASE("ModInstaller::remove: the package, the Apps made from it and the marker - not an App of anyone else") {
+    Stick s;
+    s.tmp.makeSubDir("Mods");
+    s.tmp.writeFile("Mods/a-1.0.mod", "!<arch>\na");
+    s.tmp.writeFile("Mods/b-1.0.mod", "!<arch>\nb");
+    s.tmp.writeFile("Apps/.pe_state/a-1.0.mod.ini", "Version=1.0\nApps=pe-a\n");
+    s.tmp.writeFile("Apps/pe-a/app.ini", "Title=A\nPeSource=a-1.0.mod\n");
+    s.tmp.writeFile("Apps/pe-a/save.dat", "the player's save");
+    s.tmp.writeFile("Apps/pe-b/app.ini", "Title=B\nPeSource=b-1.0.mod\n");
+    s.tmp.writeFile("Apps/pe-mine/app.ini", "Title=Mine\n"); // no PeSource: not made by the processor
+    s.tmp.writeFile("Apps/opentyrian/app.ini", "Title=OpenTyrian\n");
+    string error;
+    REQUIRE(ModInstaller::remove(s.tmp.at("Mods/a-1.0.mod"), s.apps(), error));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Mods/a-1.0.mod")));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Apps/pe-a")));
+    CHECK_FALSE(DirEntry::exists(s.tmp.at("Apps/.pe_state/a-1.0.mod.ini")));
+    CHECK(DirEntry::exists(s.tmp.at("Mods/b-1.0.mod")));
+    CHECK(DirEntry::exists(s.tmp.at("Apps/pe-b/app.ini")));
+    CHECK(DirEntry::exists(s.tmp.at("Apps/pe-mine/app.ini")));
+    CHECK(DirEntry::exists(s.tmp.at("Apps/opentyrian/app.ini")));
+    // already gone: still fine (the Store forgets it)
+    CHECK(ModInstaller::remove(s.tmp.at("Mods/a-1.0.mod"), s.apps(), error));
+}
+
 TEST_CASE("GameInstaller: a two-disc game from two archives, nested folders, into one folder") {
     Stick s;
     zip(s.tmp.at("dl/d1.zip"), {{"Some Game (Disc 1)/Some Game (Disc 1).cue", "FILE \"Some Game (Disc 1).bin\" BINARY"},

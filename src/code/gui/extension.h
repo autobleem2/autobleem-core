@@ -37,7 +37,9 @@ class AppBase;
 //    is an abgui::Style, Gui lost its dead busy and compact-panel members - an extension built for 6 is refused
 // 8: DownloadRequest keeps a .part on chosen statuses (2026-10-02) - the Downloader's layout changed; the Store and
 //    PSC-Bios are rebuilt, an extension built for 7 is refused
-#define AB_SDK_ABI 8
+// 9: ableem::StoreItem gained sourceUrl (2026-10-05, PE Apps in the Store; the Store builds StoreItems itself) - an
+//    extension built for 8 is refused
+#define AB_SDK_ABI 9
 
 #define AB_SDK_STR2(x) #x
 #define AB_SDK_STR(x) AB_SDK_STR2(x)

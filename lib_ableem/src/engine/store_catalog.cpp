@@ -121,6 +121,9 @@ bool StoreCatalog::loadJson(const string &text, const string &sourceName, string
         item.licence = str(j, "licence");
         item.description = str(j, "description");
         item.serial = str(j, "serial");
+        item.sourceUrl = str(j, "source_url");
+        if (!isUrl(item.sourceUrl))
+            item.sourceUrl.clear(); // shown as a link: only an http(s) address is one
         item.image = str(j, "image");
         item.source = sourceName;
         auto files = j.find("files");
@@ -275,6 +278,9 @@ StoreSourceTsv StoreSourceTsv::parse(const string &text, const string &fallbackN
         fill(item.description, "description");
         fill(item.author, "author");
         fill(item.licence, "licence");
+        fill(item.sourceUrl, "source_url");
+        if (!isUrl(item.sourceUrl))
+            item.sourceUrl.clear();
     }
     // ids: <kind>/<title>, with /<serial> where two items share a title, and #n past that
     map<string, int> uses;
