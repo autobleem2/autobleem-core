@@ -137,6 +137,35 @@ TEST_CASE("the charge rect of the code-drawn glyph is what the old drawing compu
     }
 }
 
+TEST_CASE("the charging bolt: eight strips, connected, centred in the body, inside the charge area") {
+    const auto strips = PadBatteryBolt::strips(10, 20, 29, 13);
+    REQUIRE(strips.size() == static_cast<size_t>(PadBatteryBolt::Strips));
+    // body 26 wide: (26 - 7) / 2 = 9 -> left 19; (13 - 8) / 2 = 2 -> top 22
+    CHECK(strips[0].y == 22);
+    CHECK(strips[7].y == 29);
+    int minX = 1000, maxX = -1000;
+    for (size_t i = 0; i < strips.size(); ++i) {
+        CHECK(strips[i].h == 1);
+        CHECK(strips[i].w > 0);
+        minX = std::min(minX, strips[i].x);
+        maxX = std::max(maxX, strips[i].x + strips[i].w);
+        if (i > 0) {
+            CHECK(strips[i].y == strips[i - 1].y + 1);
+            // each strip touches or overlaps the one above (a bolt, not dust)
+            CHECK(strips[i].x <= strips[i - 1].x + strips[i - 1].w);
+            CHECK(strips[i].x + strips[i].w >= strips[i - 1].x);
+        }
+    }
+    CHECK(minX == 19);
+    CHECK(maxX - minX == PadBatteryBolt::Width);
+    // it never reaches the nub or the body's outline, outline included
+    const PadBatteryCharge area = PadBatteryCharge::rect(10, 20, 29, 13, 100);
+    CHECK(minX - PadBatteryBolt::Outline >= area.x);
+    CHECK(maxX + PadBatteryBolt::Outline <= area.x + area.w);
+    CHECK(strips[0].y - PadBatteryBolt::Outline >= 20 + 1);
+    CHECK(strips[7].y + 1 + PadBatteryBolt::Outline <= 20 + 13 - 1);
+}
+
 TEST_CASE("the charge fill takes the theme's accent colour, white when the theme sets none") {
     PadBatteryFill accent = PadBatteryFill::accentOrWhite(true, 200, 30, 90);
     CHECK(accent.r == 200);

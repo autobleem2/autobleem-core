@@ -131,6 +131,31 @@ PadBatteryCharge PadBatteryCharge::rect(int glyphX, int glyphY, int glyphWidth, 
 }
 
 //*******************************
+// PadBatteryBolt::strips
+//*******************************
+constexpr int PadBatteryBolt::Width;
+constexpr int PadBatteryBolt::Height;
+constexpr int PadBatteryBolt::Outline;
+constexpr int PadBatteryBolt::Strips;
+
+vector<PadBatteryBolt::Strip> PadBatteryBolt::strips(int glyphX, int glyphY, int glyphWidth, int glyphHeight) {
+    // x offset and width of each row, top to bottom: down-left, a wide middle bar, down-left again
+    static const int rows[Strips][2] = {{4, 2}, {3, 2}, {2, 2}, {1, 6}, {3, 2}, {2, 2}, {1, 2}, {0, 2}};
+    const int bodyWidth = glyphWidth - PadBatteryCharge::NubWidth;
+    const int left = glyphX + (bodyWidth - Width) / 2;
+    const int top = glyphY + (glyphHeight - Height) / 2;
+    vector<Strip> out;
+    for (int i = 0; i < Strips; ++i) {
+        Strip strip;
+        strip.x = left + rows[i][0];
+        strip.y = top + i;
+        strip.w = rows[i][1];
+        out.push_back(strip);
+    }
+    return out;
+}
+
+//*******************************
 // PadBatteryFill::accentOrWhite
 //*******************************
 PadBatteryFill PadBatteryFill::accentOrWhite(bool accentSet, int accentR, int accentG, int accentB) {
