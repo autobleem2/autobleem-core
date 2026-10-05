@@ -1,5 +1,6 @@
 #pragma once
 
+#include "canvas.h"
 #include "types.h"
 
 #include <string>
@@ -115,6 +116,13 @@ public:
     // the logical canvas, in the app's coordinates
     int width() const;
     int height() const;
+    // A 4:3 output (CanvasMapping, canvas.h - a 720x480 CRT mode): the canvas of the frame about to be drawn, until
+    // the next present() - a screen laid out for 4:3 asks for FourByThreeCanvasW x FourByThreeCanvasH before its
+    // frame's clear() (GuiScreen::prepareFrame), and present() goes back to the program's own (the Platform's logical
+    // size, 1280x720), letterboxed at its shape. False, and nothing changes, on a wide output or for a size <= 0.
+    bool setCanvas(int w, int h);
+    // the output is taken as a 4:3 picture: frames go through a frame target that present() stretches (canvas.h)
+    bool fourByThreeOutput() const;
     // output pixels per logical pixel (1 unless the window is bigger than the canvas)
     float outputScale() const;
     // the SDL render driver in use ("opengl", "opengles2", "direct3d"; "" without a renderer)
