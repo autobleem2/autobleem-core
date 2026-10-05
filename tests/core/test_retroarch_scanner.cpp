@@ -1319,3 +1319,82 @@ TEST_CASE("CoreInfoTable: the user's file is read after the platform's and wins;
     REQUIRE(CoreInfoTable::saveUserPicks(user, {}));
     CHECK_FALSE(DirEntry::exists(user));
 }
+
+TEST_CASE("seedCrcsFromPlaylist: an entry's path with redundant parts is still the same file") {
+    TempDir tmp("seedodd");
+    tmp.makeSubDir("nes");
+    tmp.writeFile("nes/toads.nes", "other rom");
+    ScannedRoms roms = RetroArchScanner::scanFolder(tmp.at("nes"), "/r/nes", nesSystem());
+    REQUIRE(roms.size() == 1);
+
+    RetroArchPlaylistEntry toads;
+    toads.path = "/r//nes/./toads.nes";
+    toads.label = "toads";
+    toads.crc32 = "089A93F8|crc";
+    CHECK(RetroArchScanner::seedCrcsFromPlaylist(roms, {toads}, tmp.at("nes"), "/r/nes") == 1);
+    CHECK(roms[0].entry.crc32 == "089A93F8|crc");
+}
+
+TEST_CASE("merge: an existing entry whose path has redundant parts is ours, not a second game") {
+    TempDir tmp("mergeodd");
+    tmp.makeSubDir("roms/nes");
+    tmp.writeFile("roms/nes/Kept.nes", "rom");
+    RetroArchPlaylistEntry old;
+    old.path = "/media/roms//nes/./Kept.nes";
+    old.label = "Kept As Written";
+    old.core_path = "DETECT";
+    old.core_name = "DETECT";
+    old.crc32 = "AAAAAAAA|crc";
+    RetroArchPlaylistEntry fresh = old;
+    fresh.path = "/media/roms/nes/Kept.nes";
+    fresh.label = "Kept";
+    fresh.crc32 = "00000000|crc";
+
+    RetroArchPlaylistEntries merged =
+        RetroArchScanner::merge({old}, scanned({fresh}), tmp.at("roms/nes"), "/media/roms/nes");
+    CHECK(labelsOf(merged) == vector<string>{"Kept As Written"});
+}
+
+TEST_CASE("scan: the core migration reaches entries whose ROM or core path is written another way") {
+    RomsTree t;
+    t.addCore("km_fceumm_legacy_libretro", "Nintendo - NES (km_FCEUmm Legacy)", "nes|fds", NES);
+    t.addCore("km_fceumm_libretro", "Nintendo - NES (km_FCEUmm)", "nes|fds", NES);
+    t.tmp.writeFile("cores.cfg", string(NES) + " = km_fceumm\n");
+    t.options.stateFile = t.tmp.at("scanstate");
+    t.options.coreMigrationMarker = t.tmp.at("picks.done");
+    const string nes = string("roms/") + NES;
+    t.tmp.makeSubDir(nes);
+    t.tmp.writeFile(nes + "/A.nes", "rom");
+    t.tmp.writeFile(nes + "/B.nes", "rom2");
+    const string legacy = t.tmp.at("retroarch/cores/km_fceumm_legacy_libretro.so");
+    const string current = t.tmp.at("retroarch/cores/km_fceumm_libretro.so");
+    const string currentOdd = t.tmp.at("retroarch/cores/./km_fceumm_libretro.so"); // the current core, spelled oddly
+    const string target = t.tmp.at(nes);
+
+    RetroArchPlaylistEntries old;
+    for (const char *file : {"A", "B"}) {
+        RetroArchPlaylistEntry e;
+        e.label = file;
+        e.path = target + "/" + file + ".nes";
+        e.core_path = legacy;
+        e.core_name = "Nintendo - NES (km_FCEUmm Legacy)";
+        e.crc32 = "00000000|crc";
+        e.db_name = string(NES) + ".lpl";
+        old.push_back(e);
+    }
+    old[0].path = target + "//./A.nes"; // ours, written with redundant parts
+    old[1].core_path = currentOdd;      // already on the current core: nothing to move
+    REQUIRE(RetroArchPlaylist::save(t.playlist(NES), old));
+
+    RetroArchSystems systems = RetroArchScanner::systemsFrom(t.cores(t.tmp.at("cores.cfg")));
+    RetroArchScanner scanner;
+    scanner.scan(t.options, systems);
+    RetroArchPlaylistEntries now = t.loadPlaylist(NES);
+    REQUIRE(now.size() == 2); // the odd A is the same game as the scanned A
+    for (const auto &e : now) {
+        if (e.label == "A")
+            CHECK(e.core_path == current);
+        else
+            CHECK(e.core_path == currentOdd); // the same core: left as it was written
+    }
+}
