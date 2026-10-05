@@ -433,7 +433,7 @@ void ScanService::runScan(ScanScope scope) {
     GamesHierarchy hierarchy;
     GamesFingerprint fp;
     UsbGames gamesToAddToDB;
-    FailedGames failedGames;
+    ableem::FailedGames failedGames;
     int failedCount = 0;
     if (ps1) {
         hierarchy.getHierarchy(gamesDir);
