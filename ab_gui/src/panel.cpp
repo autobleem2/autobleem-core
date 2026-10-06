@@ -36,7 +36,9 @@ Panel Panel::compact(Context &ctx, int rows, const ableem::Font &font, const std
 }
 
 int Panel::compactWidth(const Style &style, int footerNeeds, int canvasWidth) {
-    const int widest = std::max(CompactWidth, canvasWidth - 2 * style.margin);
+    // never wider than the canvas less its margins: on the 1280 canvas that is the full panel's width, on a narrower
+    // one (a 4:3 output's 800x600 or 640x480) the compact panel shrinks with it
+    const int widest = canvasWidth - 2 * style.margin;
     return std::min(std::max(CompactWidth, footerNeeds), widest);
 }
 

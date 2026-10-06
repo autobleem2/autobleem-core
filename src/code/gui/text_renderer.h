@@ -142,6 +142,10 @@ public:
     static int align_xPosition(XAlignment xAlign, int x, int width);
     // the same on the canvas of the frame being drawn (Renderer::width(): 1280, or 640 on a 4:3 layout's frame)
     int alignOnCanvas(XAlignment xAlign, int x, int width) const;
+    // a rect of the theme's classic block (made for the 1280x720 canvas) on the canvas of the frame being drawn: scaled
+    // per axis on a 4:3 canvas, as it is on 1280x720
+    ableem::Rect onCanvas(const ableem::Rect &themeRect) const;
+    static ableem::Rect onCanvas(const ableem::Rect &themeRect, int canvasW, int canvasH);
 
     //*******************************
     // Text tokenizing structure routines
