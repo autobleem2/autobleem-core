@@ -141,3 +141,24 @@ TEST_CASE("OutputMode::themeToSwitchTo: after the confirm and at the start the s
     CHECK(OutputMode::themeToSwitchTo(OutputMode::parse("720"), "other", false, "ab2.0.0", true).empty());
     CHECK(OutputMode::themeToSwitchTo(OutputMode(), "other", false, "ab2.0.0", true).empty());
 }
+
+TEST_CASE("OutputMode::is43: every 4:3 output, the tube (isCrt) only the 720x480 one") {
+    for (const char *token : {"720x480", "640x480", "1024x768", "800x600", "1280x1024"})
+        CHECK(OutputMode::parse(token).is43());
+    for (const char *token : {"720", "1080", "1280x800", "auto"})
+        CHECK_FALSE(OutputMode::parse(token).is43());
+    CHECK_FALSE(OutputMode::parse("640x480").isCrt());
+    CHECK_FALSE(OutputMode::parse("1024x768").isCrt());
+    CHECK(OutputMode::parse("640x480").label() == "640x480"); // plain labels
+}
+
+TEST_CASE("OutputMode: the default theme is forced on any 4:3 output, not only the tube") {
+    const std::vector<string> themes{"ab2.0.0", "other"};
+    auto supports = [](const string &name) { return name == "ab2.0.0"; };
+    for (const char *token : {"640x480", "1024x768"}) {
+        const OutputMode mode = OutputMode::parse(token);
+        CHECK(OutputMode::needsDefaultTheme(mode, false));
+        CHECK(OutputMode::themesFor(mode, themes, supports) == std::vector<string>{"ab2.0.0"});
+        CHECK(OutputMode::themeToSwitchTo(mode, "other", false, "ab2.0.0", true) == "ab2.0.0");
+    }
+}

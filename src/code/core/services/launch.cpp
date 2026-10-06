@@ -776,10 +776,10 @@ void LaunchService::prepareRaAppend(PsGame *game) {
     // of ours reads them (measured on the Pi 400: a write per RetroArch game)
     set(raConfig, "content_runtime_log", "false");
     set(raConfig, "content_runtime_log_aggregate", "false");
+    const OutputMode mode = OutputMode::parse(config_.inifile.values[OutputMode::ConfigKey]);
 #ifndef AB_PLATFORM_PSC
     // Options -> Display: RetroArch full screen in the launcher's mode (0 = the display's own); on the console
     // the mode is Weston's, whatever RetroArch asks for
-    const OutputMode mode = OutputMode::parse(config_.inifile.values[OutputMode::ConfigKey]);
     set(raConfig, "video_fullscreen_x", to_string(mode.isAuto() ? 0 : mode.w));
     set(raConfig, "video_fullscreen_y", to_string(mode.isAuto() ? 0 : mode.h));
 #endif
@@ -788,6 +788,8 @@ void LaunchService::prepareRaAppend(PsGame *game) {
     if (game != nullptr)
         RaOptionsService::apply(raGameOptions_, raScanlinesOverlay(),
                                 raConfig); // the game editor's rows, over the scaler and the like
+    if (mode.isCrt())
+        raCrtSettings(raConfig); // the 720x480 tube: 3:2 pixels at 8:9, the margin for the messages, no shaders
     if (raStates_.active) {
         // our slots (ResumePointService): RetroArch writes <game>.state.auto + picture when it ends and reads the
         // state the launcher put there only when asked to. The folder and the sorting are pinned so the file is
@@ -827,6 +829,46 @@ void LaunchService::prepareRaAppend(PsGame *game) {
                                                  ? line.first + " = \"" + value + "\""
                                                  : string());
     }
+}
+
+// A key of `lines` set to `value`: its line replaced, else added - none appears twice in the append file
+static void replaceLine(ConfigFileEditor::CfgLines &lines, const string &key, const string &value) {
+    const string line = key + " = \"" + value + "\"";
+    for (auto &existing : lines) {
+        if (existing.first == key) {
+            existing.second = line;
+            return;
+        }
+    }
+    lines.emplace_back(key, line);
+}
+
+// RetroArch on the CRT 4:3 mode (720x480, pixels 8:9, the safe margin): the 4:3 and the core's own picture are 1.5 on
+// the screen (aspect_ratio_index 20, "config": video_aspect_ratio - the 720x480 frame the tube shows at pixel aspect
+// 8:9 is 4:3 in the end), the custom viewport's "full" becomes the real Full (24), no shader and no integer scale
+// (both would fight the anamorphic frame), 59.94 Hz, and RetroArch's own messages inside the margin. Over what
+// raSettingsFor and the game's rows put in `lines`; the keys stay in raAppended_, so restoreAppended() puts them back
+void LaunchService::raCrtSettings(ConfigFileEditor::CfgLines &lines) {
+    string aspect;
+    for (const auto &line : lines)
+        if (line.first == "aspect_ratio_index")
+            ConfigFileEditor::valueIn(line.second, line.first, &aspect);
+    if (aspect == "0" || aspect == "22") { // 4:3, or what the core reports
+        replaceLine(lines, "aspect_ratio_index", "20");
+        replaceLine(lines, "video_aspect_ratio", "1.500000");
+    } else if (aspect == "23") { // the custom viewport (raSettingsFor's "full"): the whole screen
+        replaceLine(lines, "aspect_ratio_index", "24");
+    }
+    replaceLine(lines, "video_shader_enable", "false");
+    replaceLine(lines, "video_scale_integer", "false");
+    replaceLine(lines, "video_refresh_rate", "59.940000");
+    const double message = 0.05 + OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey]) / 100.0;
+    replaceLine(lines, "video_message_pos_x", to_string(message));
+    replaceLine(lines, "video_message_pos_y", to_string(message));
+    // the RetroArch patch's menu keys (an older RetroArch ignores them): the menu at pixel aspect 8:9, inside the margin
+    replaceLine(lines, "menu_pixel_aspect", "0.888889");
+    replaceLine(lines, "menu_scale_factor", "1.3"); // the starting value: XMB comes out small inside a 5 % margin (device round)
+    replaceLine(lines, "menu_safe_margin", to_string(OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey])));
 }
 
 void LaunchService::restoreAppended() {
@@ -904,12 +946,15 @@ void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raCo
         }
     }
 
-    // retroarch.cfg: 1280x720 for "full" scaling (config.ini scaler), 960x720 centred for the rest
+    // retroarch.cfg: 1280x720 for "full" scaling (config.ini scaler), 960x720 centred for the rest - not on the CRT
+    // 4:3 mode, whose output is not 16:9 (raCrtSettings turns the index into the 4:3 / Full ones)
     bool wide = config_.inifile.values["scaler"] == "full";
-    set(raConfig, "custom_viewport_width", wide ? "1280" : "960");
-    set(raConfig, "custom_viewport_height", "720");
-    set(raConfig, "custom_viewport_x", wide ? "0" : "160");
-    set(raConfig, "custom_viewport_y", "0");
+    if (!OutputMode::parse(config_.inifile.values[OutputMode::ConfigKey]).isCrt()) {
+        set(raConfig, "custom_viewport_width", wide ? "1280" : "960");
+        set(raConfig, "custom_viewport_height", "720");
+        set(raConfig, "custom_viewport_x", wide ? "0" : "160");
+        set(raConfig, "custom_viewport_y", "0");
+    }
     set(raConfig, "aspect_ratio_index", wide ? "23" : "0");
 
     // a PS1 game's own filter (its pcsx.cfg): RetroArch smooths or it does not - only Linear smooths, Sharp

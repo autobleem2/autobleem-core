@@ -87,7 +87,7 @@ vector<string> OutputMode::placeCrt(vector<string> tokens) {
 
 vector<string> OutputMode::themesFor(const OutputMode &running, const vector<string> &themes,
                                      const function<bool(const string &)> &supports) {
-    if (!running.isCrt())
+    if (!running.is43())
         return themes;
     vector<string> only;
     for (const string &name : themes)

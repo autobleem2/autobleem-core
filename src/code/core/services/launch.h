@@ -159,6 +159,8 @@ private:
     // game == nullptr: RetroArch's own menu, config_save_on_exit alone.
     void prepareRaAppend(PsGame *game);
     void restoreAppended();
+    // the CRT 4:3 mode (720x480): the aspect, shader, refresh and message-margin lines over `lines`
+    void raCrtSettings(ableem::ConfigFileEditor::CfgLines &lines);
     // the game's pcsx.cfg settings as retroarch.cfg lines and core-option lines
     void raSettingsFor(PsGame &game, ableem::ConfigFileEditor::CfgLines &raConfig,
                        ableem::ConfigFileEditor::CfgLines &coreOptions);
