@@ -14,7 +14,7 @@ const char *OutputMode::MarginKey = "crtmargin";
 int OutputMode::crtMargin(const string &value) {
     if (value.empty() || value.find_first_not_of("0123456789") != string::npos)
         return ableem::DefaultSafeMargin;
-    return ableem::clampSafeMargin(atoi(value.c_str()));
+    return std::min(ableem::MaxSafeMargin, atoi(value.c_str())); // digits only: never negative
 }
 
 //*******************************
