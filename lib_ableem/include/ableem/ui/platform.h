@@ -129,6 +129,8 @@ public:
     // what displayModes() makes of every mode the display lists (sizes repeated at each refresh rate): the
     // filter, the one refresh rate per size and the order - pure, no SDL
     static std::vector<DisplayMode> listableModes(const std::vector<DisplayMode> &all);
+    // the biggest of those modes (by area; {0, 0} for none): the display's own mode, which "Auto" picks - pure, no SDL
+    static Size largestMode(const std::vector<DisplayMode> &modes);
     // The mode full-screen windows are made in from now on - the next acquireDisplay() (or the first window):
     // 0x0 is the desktop's own mode (SDL_WINDOW_FULLSCREEN_DESKTOP, no modeset), anything else a real modeset
     // to that size at displayModes()' refresh rate. A size the display does not list falls back to the

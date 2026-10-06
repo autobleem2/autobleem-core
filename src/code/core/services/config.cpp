@@ -87,6 +87,9 @@ Config::Config() {
     }
     // the CRT 4:3 mode's safe margin (Options -> Display -> CRT margin), percent of the screen per side
     inifile.values[OutputMode::MarginKey] = std::to_string(OutputMode::crtMargin(inifile.values[OutputMode::MarginKey]));
+    // and the same for the square-pixel 4:3 modes (a VGA monitor), 0 unless the player set one
+    inifile.values[OutputMode::VgaMarginKey] =
+        std::to_string(OutputMode::vgaMargin(inifile.values[OutputMode::VgaMarginKey]));
 
     if (inifile.values["raconfig"] == "") {
         inifile.values["raconfig"] = "true";

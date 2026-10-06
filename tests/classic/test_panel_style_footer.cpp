@@ -30,6 +30,7 @@
 #include "doctest/doctest.h"
 
 #include <ab_gui/footer_shorten.h>
+#include <ab_gui/splash_picture.h>
 
 #include <algorithm>
 #include <cctype>
@@ -331,4 +332,36 @@ TEST_CASE("shortenFooterLabels: short labels are left alone (a cut would not gai
     vector<string> labels = {"Esc", "Back"};
     CHECK_FALSE(abgui::shortenFooterLabels(labels, 5, simpleMeasure));
     CHECK(labels == vector<string>{"Esc", "Back"});
+}
+
+//*******************************
+// footerHintsThatFit(): the 4:3 rule - the last hints are left out, not their labels cut (CONSOLE-17)
+//*******************************
+
+TEST_CASE("footerHintsThatFit: everything fits -> all hints stay") {
+    CHECK(abgui::footerHintsThatFit(6, 100, [](size_t n) { return static_cast<int>(n) * 10; }) == 6);
+}
+
+TEST_CASE("footerHintsThatFit: too wide -> the leading hints that fit, the last ones go") {
+    CHECK(abgui::footerHintsThatFit(6, 35, [](size_t n) { return static_cast<int>(n) * 10; }) == 3);
+}
+
+TEST_CASE("footerHintsThatFit: not even the first fits -> 0 (the caller cuts its label)") {
+    CHECK(abgui::footerHintsThatFit(4, 5, [](size_t n) { return static_cast<int>(n) * 10; }) == 0);
+}
+
+//*******************************
+// splashPicturePath(): the transition pictures' 4:3 twins (CONSOLE-17 round 2)
+//*******************************
+
+TEST_CASE("splashPicturePath: a 4:3 output takes <name>-4x3.<ext> when it exists, else the 16:9 picture") {
+    const auto has = [](const std::string &p) { return p == "res/splash/autobleem-4x3.jpg"; };
+    CHECK(abgui::splashPicturePath("res/splash/autobleem.jpg", true, has) == "res/splash/autobleem-4x3.jpg");
+    CHECK(abgui::splashPicturePath("res/splash/retroarch.jpg", true, has) == "res/splash/retroarch.jpg");
+    CHECK(abgui::splashPicturePath("res/splash/autobleem.jpg", false, has) == "res/splash/autobleem.jpg");
+}
+
+TEST_CASE("splashFourByThreeTwin: the extension is the last dot of the file name, not of a directory") {
+    CHECK(abgui::splashFourByThreeTwin("a.b/poweroff.jpg") == "a.b/poweroff-4x3.jpg");
+    CHECK(abgui::splashFourByThreeTwin("a.b/poweroff") == "a.b/poweroff-4x3");
 }

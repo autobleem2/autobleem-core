@@ -28,6 +28,8 @@
 
 #include <dirent.h>
 
+#include <SDL2/SDL.h>
+
 using namespace std;
 using ableem::Color;
 using ableem::GuiBase;
@@ -40,13 +42,13 @@ namespace {
 struct CrtGui {
     unique_ptr<GuiBase> gui;
 
-    CrtGui() {
+    explicit CrtGui(const char *size = "720x480") {
 #ifdef _WIN32
         _putenv_s("AB_HEADLESS", "1");
-        _putenv_s("AB_WINDOW_SIZE", "720x480");
+        _putenv_s("AB_WINDOW_SIZE", size);
 #else
         setenv("AB_HEADLESS", "1", 1);
-        setenv("AB_WINDOW_SIZE", "720x480", 1);
+        setenv("AB_WINDOW_SIZE", size, 1);
 #endif
         try {
             const int w = GuiBase::ScreenWidth, h = GuiBase::ScreenHeight; // copies: make_unique takes references
@@ -154,6 +156,79 @@ TEST_CASE("a 4:3 output's frames never present with a render target left set") {
         drawFrame(r, layer); // a captured frame
     }
     CHECK(r.strayPresents() == before);
+}
+
+TEST_CASE("a VGA 4:3 output (800x600) has no margin until one is set, and takes one live like the tube") {
+    CrtGui cg("800x600");
+    if (!cg.available())
+        return;
+    Renderer &r = cg.renderer();
+    REQUIRE(r.setRestCanvas(800, 600));
+    CHECK(r.safeMargin() == 0); // the margin is the 720x480 tube's: nothing on a monitor by default
+    Texture layer;
+    drawFrame(r, layer);
+    CHECK(redAt(r, 8, 300) > 150); // the frame fills the output
+    r.setSafeMargin(5);            // Options -> Display -> CRT margin, on a VGA mode
+    CHECK(r.safeMargin() == 5);
+    drawFrame(r, layer);
+    CHECK(redAt(r, 8, 300) > 40);  // 5 % of 800 is 40 px: the edge mirrored and dimmed, never black...
+    CHECK(redAt(r, 8, 300) < 150); // ...and no longer the full frame
+    CHECK(redAt(r, 400, 60) > 150); // inside the margin, the frame itself
+    r.setSafeMargin(0);
+    CHECK(redAt(r, 8, 300) > 150);
+}
+
+TEST_CASE("the rest canvas asked for on a wide output is there after a live switch to 4:3, and gone after one back") {
+    // the Pi starts wide and reaches its 4:3 mode by a mode switch in-process (release + acquire = recreate()): the
+    // classic screens' canvas, asked for once in Gui's constructor, must survive that (CONSOLE-17 round 2)
+#ifdef _WIN32
+    _putenv_s("AB_HEADLESS", "1");
+    _putenv_s("AB_WINDOW_SIZE", "1280x720");
+#else
+    setenv("AB_HEADLESS", "1", 1);
+    setenv("AB_WINDOW_SIZE", "1280x720", 1);
+#endif
+    unique_ptr<GuiBase> gui;
+    try {
+        const int w = GuiBase::ScreenWidth, h = GuiBase::ScreenHeight;
+        gui = make_unique<GuiBase>("ab_core_test_rest_canvas", w, h);
+    } catch (const exception &e) {
+        MESSAGE("test_crt_frame: skipping - no usable renderer in this environment (" << e.what() << ")");
+        return;
+    }
+    Renderer &r = gui->renderer();
+    SDL_Window *window = static_cast<SDL_Window *>(gui->platform().nativeWindow());
+    int ow = 0, oh = 0;
+    SDL_GetWindowSize(window, &ow, &oh);
+    if (ow != 1280 || oh != 720) {
+        MESSAGE("test_crt_frame: skipping - the window is " << ow << "x" << oh << ", not 1280x720");
+        return;
+    }
+    REQUIRE_FALSE(r.fourByThreeOutput());
+    CHECK_FALSE(r.setRestCanvas(640, 480)); // nothing changes on a wide output...
+    CHECK(r.restCanvasWidth() == 1280);
+    CHECK(r.width() == 1280);
+
+    SDL_SetWindowSize(window, 800, 600); // ...but it is kept: the Pi's 800x600
+    gui->acquireDisplay();
+    REQUIRE(r.fourByThreeOutput());
+    CHECK(r.restCanvasWidth() == 640);
+    CHECK(r.restCanvasHeight() == 480);
+    CHECK(r.width() == 640);
+    CHECK(r.height() == 480);
+
+    SDL_SetWindowSize(window, 1280, 720); // the way back: the program's own canvas
+    gui->acquireDisplay();
+    REQUIRE_FALSE(r.fourByThreeOutput());
+    CHECK(r.restCanvasWidth() == 1280);
+    CHECK(r.width() == 1280);
+    CHECK(r.height() == 720);
+
+    SDL_SetWindowSize(window, 720, 480); // and 4:3 again
+    gui->acquireDisplay();
+    REQUIRE(r.fourByThreeOutput());
+    CHECK(r.restCanvasWidth() == 640);
+    CHECK(r.width() == 640);
 }
 
 TEST_CASE("nothing calls SDL_SetTextureScaleMode: SDL 2.0.18 (the console's) crashes in it on GLES2") {

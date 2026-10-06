@@ -1330,3 +1330,81 @@ TEST_CASE("the scanlines overlay is named by the path it is shipped at, on every
     Launching bare;
     CHECK(LaunchService::raScanlinesOverlay() == ":/overlay/scanlines.cfg");
 }
+
+namespace {
+int occurrences(const string &text, const string &piece) {
+    int n = 0;
+    for (size_t at = text.find(piece); at != string::npos; at = text.find(piece, at + piece.size()))
+        n++;
+    return n;
+}
+} // namespace
+
+TEST_CASE("RetroArch on the CRT mode (720x480): 1.5 aspect, no 16:9 viewport, no shader, messages inside the margin") {
+    Launching lib;
+    lib.configure("Raconfig=true\nScaler=4:3\nOutputmode=720x480\nCrtmargin=10\n");
+    PsGamePtr game = lib.foreignGame(false);
+    const string before = "aspect_ratio_index = \"7\"\n"
+                          "video_shader_enable = \"true\"\n"
+                          "video_message_pos_x = \"0.050000\"\n"
+                          "menu_driver = \"xmb\"\n";
+    lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", before);
+    string inPlay;
+    lib.runner.whileRunning = [&] {
+        inPlay = lib.tmp.readFile("System/Runtime/ra-append.cfg");
+        // RetroArch saves every setting it holds, ours included
+        lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "aspect_ratio_index = \"20\"\n"
+                                                         "video_shader_enable = \"false\"\n"
+                                                         "video_message_pos_x = \"0.150000\"\n"
+                                                         "video_aspect_ratio = \"1.500000\"\n"
+                                                         "menu_driver = \"xmb\"\n");
+    };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK(contains(inPlay, "aspect_ratio_index = \"20\""));
+    CHECK(contains(inPlay, "video_aspect_ratio = \"1.500000\""));
+    CHECK(contains(inPlay, "video_shader_enable = \"false\""));
+    CHECK(contains(inPlay, "video_scale_integer = \"false\""));
+    CHECK(contains(inPlay, "video_refresh_rate = \"59.940000\""));
+    CHECK(contains(inPlay, "video_message_pos_x = \"0.150000\"")); // 0.05 + 10 %
+    CHECK(contains(inPlay, "video_message_pos_y = \"0.150000\""));
+    CHECK(contains(inPlay, "menu_pixel_aspect = \"0.888889\""));
+    CHECK(contains(inPlay, "menu_scale_factor = \"1.3\""));
+    CHECK(contains(inPlay, "menu_safe_margin = \"10\""));
+    CHECK_FALSE(contains(inPlay, "custom_viewport"));
+    CHECK_FALSE(contains(inPlay, "menu_driver")); // XMB stays
+    for (const char *key : {"aspect_ratio_index", "video_shader_enable", "video_scale_integer", "video_message_pos_x"})
+        CHECK_MESSAGE(occurrences(inPlay, string(key) + " =") == 1, key);
+    // what the launcher appended goes back to what the file had
+    CHECK(lib.tmp.readFile("RetroArch/bin/retroarch.cfg") == "aspect_ratio_index = \"7\"\n"
+                                                             "video_shader_enable = \"true\"\n"
+                                                             "video_message_pos_x = \"0.050000\"\n"
+                                                             "menu_driver = \"xmb\"\n");
+}
+
+TEST_CASE("RetroArch on the CRT mode: the full scaler is RetroArch's Full (24), not the custom viewport") {
+    Launching lib;
+    lib.configure("Raconfig=true\nScaler=full\nOutputmode=720x480\n");
+    PsGamePtr game = lib.foreignGame(false);
+    string inPlay;
+    lib.runner.whileRunning = [&] { inPlay = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK(contains(inPlay, "aspect_ratio_index = \"24\""));
+    CHECK_FALSE(contains(inPlay, "video_aspect_ratio"));
+    CHECK(contains(inPlay, "video_message_pos_x = \"0.100000\"")); // the default margin 5 %
+    CHECK(contains(inPlay, "menu_safe_margin = \"5\""));
+}
+
+TEST_CASE("RetroArch on a square-pixel 4:3 output (640x480): untouched, the CRT lines are the tube's alone") {
+    Launching lib;
+    lib.configure("Raconfig=true\nScaler=full\nOutputmode=640x480\n");
+    PsGamePtr game = lib.foreignGame(false);
+    string inPlay;
+    lib.runner.whileRunning = [&] { inPlay = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK(contains(inPlay, "aspect_ratio_index = \"23\""));
+    CHECK(contains(inPlay, "custom_viewport_width = \"1280\""));
+    CHECK_FALSE(contains(inPlay, "video_message_pos"));
+    CHECK_FALSE(contains(inPlay, "menu_pixel_aspect"));
+    CHECK_FALSE(contains(inPlay, "menu_scale_factor"));
+    CHECK_FALSE(contains(inPlay, "video_shader_enable"));
+}

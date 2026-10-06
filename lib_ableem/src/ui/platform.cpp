@@ -172,6 +172,17 @@ std::vector<DisplayMode> Platform::listableModes(const std::vector<DisplayMode> 
     return modes;
 }
 
+Size Platform::largestMode(const std::vector<DisplayMode> &modes) {
+    Size best;
+    for (const DisplayMode &m : modes) {
+        if (m.w * m.h > best.w * best.h) {
+            best.w = m.w;
+            best.h = m.h;
+        }
+    }
+    return best;
+}
+
 void Platform::setOutputMode(int w, int h) {
     outputModeW = w > 0 && h > 0 ? w : 0;
     outputModeH = w > 0 && h > 0 ? h : 0;

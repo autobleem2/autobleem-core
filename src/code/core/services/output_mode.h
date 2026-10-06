@@ -30,10 +30,15 @@ struct OutputMode {
     // not take (CRT 4:3 round 1: a window of 1280x720 while 720x480 was asked), and a confirm for a mode the
     // player is not in would keep it in config.ini.
     bool shownAt(int winW, int winH) const { return isAuto() || (w == winW && h == winH); }
-    // The CRT 4:3 mode: 720x480 (480p, 27 MHz) - shown as "CRT 4:3". While it runs the launcher offers only the
+    // The CRT 4:3 mode: 720x480 (480p, 27 MHz) - shown as "CRT 4:3": the tube - anamorphic (pixel aspect 8:9) and with
+    // the safe margin. Every 4:3 output (is43) shows the launcher's 4:3 layout; only this one is the tube. While a 4:3
+    // output runs the launcher offers only the
     // themes that have a 4:3 layout (ThemeSpec::supports4x3), and a theme without one is replaced by the default
     // theme once the keep-mode confirm has said the mode works.
     bool isCrt() const { return w == 720 && h == 480; }
+    // A 4:3 output, square pixels or not: the Renderer's rule (w*2 <= h*3) - 720x480, 640x480, 1024x768, 1280x1024.
+    // The launcher's 4:3 layout runs on all of them, and the default theme is forced on them
+    bool is43() const { return w > 0 && h > 0 && w * 2 <= h * 3; } // ableem::isFourByThreeOutput, ab_core cannot link it
     // the CRT mode's config.ini / emulator / boot.sh token
     static const char *CrtToken() { return "720x480"; }
 
@@ -44,7 +49,7 @@ struct OutputMode {
     // After the keep-mode confirm: true when the theme must be replaced by the default one - the CRT mode is
     // running and the theme has no 4:3 layout
     static bool needsDefaultTheme(const OutputMode &kept, bool themeSupports4x3) {
-        return kept.isCrt() && !themeSupports4x3;
+        return kept.is43() && !themeSupports4x3;
     }
     // The theme to switch to for the mode in use (after the keep-mode confirm, or at the start with the mode
     // config.ini already holds): `defaultTheme` when the rule above says so, the theme is not the default itself
@@ -67,6 +72,19 @@ struct OutputMode {
     static const char *MarginKey;                  // "crtmargin": the CRT mode's safe margin, percent per side
     // the margin config.ini's value means: a whole number clamped to 0..20, 5 for none or nonsense (see canvas.h)
     static int crtMargin(const std::string &value);
+    // The square-pixel 4:3 modes (640x480, 800x600, 1024x768, 1280x1024 ...) have a margin of their own, "vgamargin":
+    // the tube's 5 % default would be wrong for a monitor, so it is 0 for none or nonsense (CONSOLE-17 round 2)
+    static const char *VgaMarginKey;
+    static int vgaMargin(const std::string &value);
+    // the config.ini key the margin of the mode shown is kept in: the tube's, or the VGA one
+    static const char *marginKeyFor(const OutputMode &shown) { return shown.isCrt() ? MarginKey : VgaMarginKey; }
+    // the margin (percent per side) a 4:3 output of this mode gets: the tube's setting on 720x480, the VGA one on any
+    // other 4:3 size, 0 on a wide one
+    static int safeMarginFor(const OutputMode &shown, const std::string &crtValue, const std::string &vgaValue) {
+        if (shown.isCrt())
+            return crtMargin(crtValue);
+        return shown.is43() ? vgaMargin(vgaValue) : 0;
+    }
     static const char *ConfigKey;                  // "outputmode"
     static std::string defaultToken();             // the console: "720"; everywhere else "auto"
     static std::string pendingFile();              // <runtime>/outputmode.pending

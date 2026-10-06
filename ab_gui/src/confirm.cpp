@@ -7,6 +7,8 @@
 #include <ab_gui/panel.h>
 #include <ab_gui/text_page.h>
 
+#include <algorithm>
+
 using namespace std;
 using ableem::Event;
 using ableem::Key;
@@ -38,16 +40,15 @@ void Confirm::draw() {
     ctx.drawBackdrop();
     const Style style = ctx.style();
     const ableem::Font &font = ctx.font(FontRole::Row);
-    // the question wrapped to the panel
-    const int width = textWidth(style);
-    const vector<string> rows = wrapText(label, width, [&font](const string &s) { return font.width(s); });
-    const int textHeight = static_cast<int>(rows.size()) * font.lineHeight();
     const vector<HintItem> hints = {{{"X"}, confirmLabel.empty() ? ctx.translate("Confirm") : confirmLabel},
                                     {{"O"}, cancelLabel.empty() ? ctx.translate("Cancel") : cancelLabel}};
-    // the window makes room for its footer's one row
-    const Panel panel(panelRect(style, textHeight, ctx.renderer().width(), ctx.renderer().height(),
-                                Panel::compactWidth(ctx, hints, "")),
-                      style);
+    // the window makes room for its footer's one row (and on a 4:3 canvas it is narrower than Width)
+    const int panelWidth = Panel::compactWidth(ctx, hints, "");
+    // the question wrapped to the panel it is drawn in
+    const int width = min(textWidth(style), panelWidth - 2 * (style.rowInset + 8));
+    const vector<string> rows = wrapText(label, width, [&font](const string &s) { return font.width(s); });
+    const int textHeight = static_cast<int>(rows.size()) * font.lineHeight();
+    const Panel panel(panelRect(style, textHeight, ctx.renderer().width(), ctx.renderer().height(), panelWidth), style);
     panel.sheet(ctx);
 
     // the halo is the style's while the dialog draws, the program's after

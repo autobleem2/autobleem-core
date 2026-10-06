@@ -263,6 +263,7 @@ struct Renderer::Impl {
     int outputWidth = 0, outputHeight = 0;
     int baseWidth = 0, baseHeight = 0;
     int marginPercent = DefaultSafeMargin; // the CRT safe area (Renderer::setSafeMargin)
+    bool marginSet = false;                // the program asked for one; until then only the 720x480 tube has a margin
     // the canvas every frame has unless it asks for another (setCanvas): the base one until setRestCanvas says
     int restWidth = 0, restHeight = 0;
     int wantRestWidth = 0, wantRestHeight = 0; // what setRestCanvas asked for: kept across a recreate()
@@ -471,6 +472,8 @@ void Renderer::recreate(Platform &platform) {
     SDL_GetWindowSize(window, &outputWidth, &outputHeight);
     impl->outputWidth = outputWidth;
     impl->outputHeight = outputHeight;
+    if (!impl->marginSet)
+        impl->marginPercent = outputWidth == 720 && outputHeight == 480 ? DefaultSafeMargin : 0;
     impl->baseWidth = platform.logicalWidth();
     impl->baseHeight = platform.logicalHeight();
     impl->width = impl->baseWidth;
@@ -565,6 +568,7 @@ void Renderer::setSafeMargin(int percent) {
     const int margin = clampSafeMargin(percent);
     const bool changed = margin != impl->marginPercent;
     impl->marginPercent = margin;
+    impl->marginSet = true;
     if (impl->fourByThree) {
         impl->useCanvas(impl->width, impl->height); // the next present() places the frame inside the new margin
         // recreate() logged the mapping with the margin it had then (the default before the program's own is set)
@@ -581,10 +585,16 @@ int Renderer::safeMargin() const {
 }
 
 bool Renderer::setRestCanvas(int w, int h) {
-    if (!impl->fourByThree || w <= 0 || h <= 0)
+    if (w <= 0 || h <= 0)
         return false;
-    impl->wantRestWidth = impl->restWidth = w;
-    impl->wantRestHeight = impl->restHeight = h;
+    // always kept: a launcher that starts wide and reaches a 4:3 output by a live mode switch (recreate()) has to find
+    // it there; on a wide output it only waits
+    impl->wantRestWidth = w;
+    impl->wantRestHeight = h;
+    if (!impl->fourByThree)
+        return false;
+    impl->restWidth = w;
+    impl->restHeight = h;
     if (!impl->framing && (w != impl->width || h != impl->height))
         impl->useCanvas(w, h);
     return true;

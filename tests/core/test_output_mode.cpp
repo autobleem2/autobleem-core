@@ -72,6 +72,27 @@ TEST_CASE("OutputMode::crtMargin: config.ini's CRT margin, 5 % when missing or n
     CHECK(OutputMode::crtMargin("90") == 20);
 }
 
+TEST_CASE("OutputMode::vgaMargin: the square-pixel 4:3 modes' own margin, 0 when missing or nonsense, 0..20") {
+    CHECK(OutputMode::vgaMargin("") == 0);
+    CHECK(OutputMode::vgaMargin("abc") == 0);
+    CHECK(OutputMode::vgaMargin("-2") == 0);
+    CHECK(OutputMode::vgaMargin("5") == 5);
+    CHECK(OutputMode::vgaMargin("90") == 20);
+}
+
+TEST_CASE("OutputMode::safeMarginFor: the tube's setting on 720x480, the VGA one on any other 4:3, 0 on a wide mode") {
+    CHECK(OutputMode::safeMarginFor(OutputMode::parse("720x480"), "7", "3") == 7);
+    CHECK(OutputMode::safeMarginFor(OutputMode::parse("720x480"), "", "3") == 5); // the tube's default
+    for (const char *vga : {"640x480", "800x600", "1024x768", "1280x1024"}) {
+        CHECK(OutputMode::safeMarginFor(OutputMode::parse(vga), "7", "") == 0); // the VGA default, whatever the tube has
+        CHECK(OutputMode::safeMarginFor(OutputMode::parse(vga), "7", "5") == 5);
+    }
+    CHECK(OutputMode::safeMarginFor(OutputMode::parse("1080"), "7", "5") == 0);
+    CHECK(OutputMode::safeMarginFor(OutputMode(), "7", "5") == 0); // auto: the window decides, not the token
+    CHECK(std::string(OutputMode::marginKeyFor(OutputMode::parse("720x480"))) == "crtmargin");
+    CHECK(std::string(OutputMode::marginKeyFor(OutputMode::parse("800x600"))) == "vgamargin");
+}
+
 TEST_CASE("OutputMode: readToken takes one trimmed line") {
     TempDir tmp("outputmode");
     tmp.writeFile("outputmode", "1080\r\n");
@@ -140,4 +161,25 @@ TEST_CASE("OutputMode::themeToSwitchTo: after the confirm and at the start the s
     // another mode: never
     CHECK(OutputMode::themeToSwitchTo(OutputMode::parse("720"), "other", false, "ab2.0.0", true).empty());
     CHECK(OutputMode::themeToSwitchTo(OutputMode(), "other", false, "ab2.0.0", true).empty());
+}
+
+TEST_CASE("OutputMode::is43: every 4:3 output, the tube (isCrt) only the 720x480 one") {
+    for (const char *token : {"720x480", "640x480", "1024x768", "800x600", "1280x1024"})
+        CHECK(OutputMode::parse(token).is43());
+    for (const char *token : {"720", "1080", "1280x800", "auto"})
+        CHECK_FALSE(OutputMode::parse(token).is43());
+    CHECK_FALSE(OutputMode::parse("640x480").isCrt());
+    CHECK_FALSE(OutputMode::parse("1024x768").isCrt());
+    CHECK(OutputMode::parse("640x480").label() == "640x480"); // plain labels
+}
+
+TEST_CASE("OutputMode: the default theme is forced on any 4:3 output, not only the tube") {
+    const std::vector<string> themes{"ab2.0.0", "other"};
+    auto supports = [](const string &name) { return name == "ab2.0.0"; };
+    for (const char *token : {"640x480", "1024x768"}) {
+        const OutputMode mode = OutputMode::parse(token);
+        CHECK(OutputMode::needsDefaultTheme(mode, false));
+        CHECK(OutputMode::themesFor(mode, themes, supports) == std::vector<string>{"ab2.0.0"});
+        CHECK(OutputMode::themeToSwitchTo(mode, "other", false, "ab2.0.0", true) == "ab2.0.0");
+    }
 }
