@@ -364,7 +364,8 @@ TEST_CASE("a tick from inside a screen's drawing is a frame of its own, presente
         busy.tick();
         rig.display.calls.push_back("outer again");
     });
-    CHECK(rig.display.calls == vector<string>{"color", "clear", "outer", "color", "clear", "present", "outer again", "present"});
+    CHECK(rig.display.calls ==
+          vector<string>{"color", "clear", "outer", "color", "clear", "present", "outer again", "present"});
     busy.end();
 }
 

@@ -48,7 +48,7 @@ struct HintItem {
 
 // mirrors ab_gui/src/style.cpp's Style::hintRank() (the real one is tested in test_ab_gui_style)
 int buttonRank(const string &icon) {
-    static const char *order[] = {"X",     "O",  "T",  "S",  "Left", "Right", "Up",    "Down", "Start",
+    static const char *order[] = {"X",      "O",  "T",  "S",  "Left", "Right", "Up",  "Down", "Start",
                                   "Select", "L1", "R1", "L2", "R2",   "Enter", "Esc", "Tab"};
     for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); i++)
         if (icon == order[i])

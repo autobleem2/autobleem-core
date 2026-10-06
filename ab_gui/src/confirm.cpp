@@ -48,8 +48,7 @@ void Confirm::draw() {
     const int width = min(textWidth(style), panelWidth - 2 * (style.rowInset + 8));
     const vector<string> rows = wrapText(label, width, [&font](const string &s) { return font.width(s); });
     const int textHeight = static_cast<int>(rows.size()) * font.lineHeight();
-    const Panel panel(panelRect(style, textHeight, ctx.renderer().width(), ctx.renderer().height(), panelWidth),
-                      style);
+    const Panel panel(panelRect(style, textHeight, ctx.renderer().width(), ctx.renderer().height(), panelWidth), style);
     panel.sheet(ctx);
 
     // the halo is the style's while the dialog draws, the program's after

@@ -931,10 +931,9 @@ namespace {
 void addPeProcessor(ScanServiceFixture &fx, ProcessorsOnStick &procs) {
     fx.tmp.makeSubDir("Apps");
     const string app = fx.tmp.at("Apps/pe-demo");
-    procs.add(
-        "pe", "Kinds=mods\nMatch=*.mod\n",
-        {{"mods.txt", "#Starting - Fake PE\n#Unpacking demo.mod\n!mkdir " + app + "\n!write " + app +
-                          "/app.ini|Title=Demo\n#DONE\n"}});
+    procs.add("pe", "Kinds=mods\nMatch=*.mod\n",
+              {{"mods.txt", "#Starting - Fake PE\n#Unpacking demo.mod\n!mkdir " + app + "\n!write " + app +
+                                "/app.ini|Title=Demo\n#DONE\n"}});
     fx.runAndPoll(); // makes Mods/
     procs.clearLog();
     fx.tmp.writeFile("Mods/demo.mod", "x");
@@ -952,8 +951,8 @@ TEST_CASE("scoped scan: a PE package (Mods only) runs the mods processor and no 
 
     CHECK(procs.ran() == vector<string>{"pe --start --mods ~/Mods"});
     CHECK(update.appsChanged);
-    CHECK(update.addedGames.empty()); // the PS1 scan (and its box art) did not run
-    CHECK_FALSE(update.finished);     // no "scan complete" summary for a package
+    CHECK(update.addedGames.empty());  // the PS1 scan (and its box art) did not run
+    CHECK_FALSE(update.finished);      // no "scan complete" summary for a package
     CHECK(update.processorProgressed); // the processor's progress bubble was raised ...
     CHECK(update.scanEnded);           // ... and the end is announced, so the launcher takes it down again
     CHECK(update.finishedGameCount == 0);

@@ -143,7 +143,8 @@ int Busy::messageRoom(int canvasWidth) {
 
 vector<string> Busy::messageRows(const string &message, int canvasWidth) const {
     const ableem::Font &font = ctx_->font(FontRole::Row);
-    return wrapText(message, messageRoom(canvasWidth), [this, &font](const string &s) { return ctx_->textWidth(font, s); });
+    return wrapText(message, messageRoom(canvasWidth),
+                    [this, &font](const string &s) { return ctx_->textWidth(font, s); });
 }
 
 //*******************************

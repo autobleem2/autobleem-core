@@ -360,9 +360,7 @@ private:
     // (FREEDOOM1.WAD and FREEDOOM2.WAD, DOOM.WAD and DOOM2.WAD) is a package of its own - its own row in the Packages
     // list and its own info view - titled by the game and id'd `<folder id>/<file name>`. A data dir (Quake's id1,
     // Theme Hospital's DATA, a DOS game with its start files) is one package by nature and stays whole.
-    static bool isLooseFile(const PackageGame &g) {
-        return g.kind != "dos-game" && g.file.find('/') == string::npos;
-    }
+    static bool isLooseFile(const PackageGame &g) { return g.kind != "dos-game" && g.file.find('/') == string::npos; }
 
     static void addRecognised(PackageInfo here, vector<PackageInfo> &out) {
         const size_t loose = static_cast<size_t>(count_if(here.games.begin(), here.games.end(), isLooseFile));

@@ -751,11 +751,10 @@ vector<HintItem> Style::parseHints(const string &line, string &status) {
         // ALTERNATIVE ("L2/R2": either button pages), never the combination "L2+R2" (both held together); a marker
         // that is itself "L2+R2" never gets here as two icons and stays the combination
         // (either order: "R1/L1" keeps the order the line wrote)
-        if (pendingIcons.size() == 2 &&
-            ((pendingIcons[0] == "L1" && pendingIcons[1] == "R1") ||
-             (pendingIcons[0] == "R1" && pendingIcons[1] == "L1") ||
-             (pendingIcons[0] == "L2" && pendingIcons[1] == "R2") ||
-             (pendingIcons[0] == "R2" && pendingIcons[1] == "L2")))
+        if (pendingIcons.size() == 2 && ((pendingIcons[0] == "L1" && pendingIcons[1] == "R1") ||
+                                         (pendingIcons[0] == "R1" && pendingIcons[1] == "L1") ||
+                                         (pendingIcons[0] == "L2" && pendingIcons[1] == "R2") ||
+                                         (pendingIcons[0] == "R2" && pendingIcons[1] == "L2")))
             pendingIcons = {pendingIcons[0] + "/" + pendingIcons[1]};
         items.push_back({pendingIcons, label});
         pendingIcons.clear();
@@ -981,7 +980,7 @@ int Style::hintRank(const string &icon) {
     if (plus != string::npos && plus > 0)
         return hintRank(icon.substr(0, plus));
     // the d-pad (G5r3) comes right after the face buttons, before Start/Select and the shoulders
-    static const char *order[] = {"X",     "O",  "T",  "S",  "Left", "Right", "Up",    "Down", "Start",
+    static const char *order[] = {"X",      "O",  "T",  "S",  "Left", "Right", "Up",  "Down", "Start",
                                   "Select", "L1", "R1", "L2", "R2",   "Enter", "Esc", "Tab"};
     for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); i++)
         if (icon == order[i])
@@ -1026,7 +1025,8 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
     auto widthAt = [&](const ableem::Font &font, int gap, bool iconsOnly) {
         int w = 0;
         for (const HintItem &h : hints) {
-            w += hintIconsWidth(ctx, h, iconH); // each key's real width: its glyph when the theme has one, else the chip
+            w +=
+                hintIconsWidth(ctx, h, iconH); // each key's real width: its glyph when the theme has one, else the chip
             w += iconsOnly ? gap : 2 + ctx.textWidth(font, h.label) + gap;
         }
         return w - gap;
