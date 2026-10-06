@@ -37,8 +37,15 @@ ABLEEM_API bool isFourByThreeOutput(int outputW, int outputH);
 // canvas wider than 4:3 (the launcher's 1280x720) - a canvas of the output's own shape is drawn straight, as it always
 // was
 ABLEEM_API bool usesFrameTarget(int outputW, int outputH, int canvasW, int canvasH);
+// The CRT's safe area (overscan): on a 4:3 output the canvas is shown inside the output inset by `marginPercent` of
+// its width on the left and right and of its height on top and bottom - the same share on both axes, so the picture
+// keeps its pixel aspect - the rest black. Clamped to 0..MaxSafeMargin; the default is DefaultSafeMargin. A wide
+// output has no margin.
+constexpr int DefaultSafeMargin = 5;
+constexpr int MaxSafeMargin = 20;
+ABLEEM_API int clampSafeMargin(int percent);
 // see CanvasMapping; a zero or negative canvas size gives the default mapping (scale 1, empty display)
-ABLEEM_API CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH);
+ABLEEM_API CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH, int marginPercent = 0);
 // the wide outputs' mapping on any output: the canvas as big as fits, centred, square pixels (mapCanvas's first case)
 ABLEEM_API CanvasMapping fitCanvas(int outputW, int outputH, int canvasW, int canvasH);
 // the part of a textureW x textureH picture that fills a canvasW x canvasH canvas at its own shape: the whole picture

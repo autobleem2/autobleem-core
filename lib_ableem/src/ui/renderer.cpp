@@ -47,7 +47,11 @@ CanvasMapping fitCanvas(int outputW, int outputH, int canvasW, int canvasH) {
     return m;
 }
 
-CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH) {
+int clampSafeMargin(int percent) {
+    return std::min(MaxSafeMargin, std::max(0, percent));
+}
+
+CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH, int marginPercent) {
     CanvasMapping m;
     if (canvasW <= 0 || canvasH <= 0)
         return m;
@@ -57,13 +61,18 @@ CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH) {
     m.scale = static_cast<float>(outputH) / FourByThreeCanvasH;
     m.frameW = static_cast<int>(std::lround(canvasW * m.scale));
     m.frameH = static_cast<int>(std::lround(canvasH * m.scale));
-    // the canvas at its own shape on a 4:3 screen: as tall as the output when it is no wider than 4:3, else as wide
+    // the safe area: the output inset by the margin, the same share of both sides (the pixel aspect stays)
+    const int margin = clampSafeMargin(marginPercent);
+    const int insetX = static_cast<int>(std::lround(outputW * margin / 100.0));
+    const int insetY = static_cast<int>(std::lround(outputH * margin / 100.0));
+    const int areaW = outputW - 2 * insetX, areaH = outputH - 2 * insetY;
+    // the canvas at its own shape on a 4:3 screen: as tall as the area when it is no wider than 4:3, else as wide
     if (canvasW * 3 <= canvasH * 4) {
-        const int w = static_cast<int>(std::lround(static_cast<double>(outputW) * canvasW * 3 / (canvasH * 4.0)));
-        m.display = Rect((outputW - w) / 2, 0, w, outputH);
+        const int w = static_cast<int>(std::lround(static_cast<double>(areaW) * canvasW * 3 / (canvasH * 4.0)));
+        m.display = Rect(insetX + (areaW - w) / 2, insetY, w, areaH);
     } else {
-        const int h = static_cast<int>(std::lround(static_cast<double>(outputH) * canvasH * 4 / (canvasW * 3.0)));
-        m.display = Rect(0, (outputH - h) / 2, outputW, h);
+        const int h = static_cast<int>(std::lround(static_cast<double>(areaH) * canvasH * 4 / (canvasW * 3.0)));
+        m.display = Rect(insetX, insetY + (areaH - h) / 2, areaW, h);
     }
     m.scaleX = static_cast<float>(m.display.w) / canvasW;
     m.scaleY = static_cast<float>(m.display.h) / canvasH;
@@ -182,13 +191,14 @@ struct Renderer::Impl {
     bool fourByThree = false;
     int outputWidth = 0, outputHeight = 0;
     int baseWidth = 0, baseHeight = 0;
+    int marginPercent = DefaultSafeMargin; // the CRT safe area (Renderer::setSafeMargin)
     Rect display;
     Texture frameTarget;
     bool framing = false;
     void useCanvas(int w, int h) {
         width = w;
         height = h;
-        display = mapCanvas(outputWidth, outputHeight, w, h).display;
+        display = mapCanvas(outputWidth, outputHeight, w, h, marginPercent).display;
     }
 
     // the one-off capture (see Renderer::captureNextFrame)
@@ -369,7 +379,7 @@ void Renderer::recreate(Platform &platform) {
     // the frame target only for a wide canvas on a 4:3 output (the launcher's 1280x720 on 480p); a canvas of the
     // output's own shape (a test's 320x240 window) is drawn straight, as always
     const CanvasMapping mapping = usesFrameTarget(outputWidth, outputHeight, impl->width, impl->height)
-                                      ? mapCanvas(outputWidth, outputHeight, impl->width, impl->height)
+                                      ? mapCanvas(outputWidth, outputHeight, impl->width, impl->height, impl->marginPercent)
                                       : fitCanvas(outputWidth, outputHeight, impl->width, impl->height);
     impl->fourByThree = mapping.fourByThree;
     impl->display = mapping.display;
@@ -403,6 +413,16 @@ bool Renderer::setCanvas(int w, int h) {
     if (w != impl->width || h != impl->height)
         impl->useCanvas(w, h);
     return true;
+}
+
+void Renderer::setSafeMargin(int percent) {
+    impl->marginPercent = clampSafeMargin(percent);
+    if (impl->fourByThree)
+        impl->useCanvas(impl->width, impl->height); // the next present() places the frame inside the new margin
+}
+
+int Renderer::safeMargin() const {
+    return impl->marginPercent;
 }
 
 bool Renderer::fourByThreeOutput() const {

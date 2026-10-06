@@ -123,6 +123,10 @@ public:
     bool setCanvas(int w, int h);
     // the output is taken as a 4:3 picture: frames go through a frame target that present() stretches (canvas.h)
     bool fourByThreeOutput() const;
+    // the CRT's safe area on a 4:3 output (canvas.h, mapCanvas): the share of the width and height left black on each
+    // side, 0..20, default 5. Takes effect with the next present(); nothing on a wide output.
+    void setSafeMargin(int percent);
+    int safeMargin() const;
     // output pixels per logical pixel (1 unless the window is bigger than the canvas)
     float outputScale() const;
     // the SDL render driver in use ("opengl", "opengles2", "direct3d"; "" without a renderer)

@@ -116,3 +116,26 @@ TEST_CASE("coverCrop: the same shape is the whole picture; another is its middle
     checkRect(coverCrop(1280, 720, 640, 480), 160, 0, 960, 720);
     checkRect(coverCrop(0, 480, 640, 480), 0, 0, 0, 480);
 }
+
+TEST_CASE("mapCanvas: the CRT safe area insets the 4:3 canvas by the same share on both axes (pixel aspect kept)") {
+    // 0 % is the full screen, as above
+    checkRect(mapCanvas(720, 480, 640, 480, 0).display, 0, 0, 720, 480);
+    // 5 %: 36 px of the width and 24 of the height on each side
+    CanvasMapping m = mapCanvas(720, 480, 640, 480, 5);
+    CHECK(m.fourByThree);
+    checkRect(m.display, 36, 24, 648, 432);
+    CHECK(m.scale == 1.0f); // the frame is still drawn 1:1; only its placement shrinks
+    CHECK(m.scaleX / m.scaleY == doctest::Approx(1.125)); // 8:9 pixel aspect unchanged
+    // 10 %
+    checkRect(mapCanvas(720, 480, 640, 480, 10).display, 72, 48, 576, 384);
+    // 8 % rounds to whole pixels: 58 and 38
+    checkRect(mapCanvas(720, 480, 640, 480, 8).display, 58, 38, 604, 404);
+    // the 16:9 canvas is letterboxed inside the area
+    checkRect(mapCanvas(720, 480, 1280, 720, 5).display, 36, 78, 648, 324);
+    // a wide output has no margin
+    checkRect(mapCanvas(1280, 720, 1280, 720, 10).display, 0, 0, 1280, 720);
+    // out of range is clamped
+    CHECK(ableem::clampSafeMargin(-3) == 0);
+    CHECK(ableem::clampSafeMargin(99) == ableem::MaxSafeMargin);
+    CHECK(ableem::clampSafeMargin(8) == 8);
+}
