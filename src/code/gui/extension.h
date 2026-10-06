@@ -10,6 +10,8 @@
 //
 #pragma once
 
+#include "../core/model/scan_scope.h"
+
 #include <cstdint>
 #include <string>
 
@@ -39,7 +41,9 @@ class AppBase;
 //    PSC-Bios are rebuilt, an extension built for 7 is refused
 // 9: ableem::StoreItem gained sourceUrl (2026-10-05, PE Apps in the Store; the Store builds StoreItems itself) - an
 //    extension built for 8 is refused
-#define AB_SDK_ABI 9
+// 10: ExtensionHost::requestRescan(ScanScope) takes the scope of the scan (2026-10-05, the Store asks for what it
+//    changed) - a virtual's signature changed; the Store and PSC-Bios are rebuilt, an extension built for 9 is refused
+#define AB_SDK_ABI 10
 
 #define AB_SDK_STR2(x) #x
 #define AB_SDK_STR(x) AB_SDK_STR2(x)
@@ -86,7 +90,8 @@ public:
     virtual const std::string &stateDir() const = 0; // System/Extensions/<name>/ - its own files go here
     virtual bool networkUp() = 0;                    // a default route (always true on Windows)
 
-    virtual void requestRescan() = 0; // games were added or removed: the launcher's scan runs
+    // something was added or removed: the launcher scans `scope` (core/model/scan_scope.h) - only what changed
+    virtual void requestRescan(ScanScope scope) = 0;
     virtual void reloadApps() = 0;    // the Apps set changed
     virtual void reloadConfig() = 0;  // config.ini changed (theme, language)
     // a line in the launcher's notification bubble, with a progress bar when total > 0; shown until the

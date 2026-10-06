@@ -6,6 +6,7 @@
 #pragma once
 
 #include "../model/ps_game.h"
+#include "../model/scan_scope.h"
 #include "online_assets.h"
 #include "processor_catalog.h"
 #include "processor_runner.h"
@@ -148,7 +149,9 @@ public:
 
     // true if it took (a scan was not already running); a no-op returning false while scanning() is already
     // true - the caller shows "scan already in progress" instead of queuing another
-    bool requestScan();
+    // `scope` is what to look at (core/model/scan_scope.h): the Store asks for what it changed, the watcher for
+    // the folders that changed; the default is everything, as every other caller wants.
+    bool requestScan(ScanScope scope = ScanAll);
     bool scanning() const { return scanning_.load(); }
     void setWatching(bool watching) { watching_.store(watching); }
 
@@ -161,8 +164,9 @@ public:
     // not implicitly thread-affine: in production only threadMain()'s loop calls them, but a test may call
     // them directly instead of starting the real thread (start() must not also be called then - they share
     // worker-only state with no locking, same as the real worker loop assumes it owns that state alone).
-    bool checkForChanges();
-    void runScan();
+    // checkForChanges() returns the scope of the trees that changed and stayed still (ScanNone: nothing due)
+    ScanScope checkForChanges();
+    void runScan(ScanScope scope = ScanAll);
 
     // <working>/games.fingerprint and roms.fingerprint - where the fingerprints of the last completed scan
     // are kept. fingerprintsMatchDisk() is the "does the disk match what we last scanned" test, for
@@ -273,6 +277,7 @@ private:
 
         ableem::GamesHierarchy hierarchy; // Finished
         ableem::UsbGames gamesToAddToDB;
+        ScanScope scope = ScanAll; // Finished: what this scan covered - only those fingerprints and rows are written
         ableem::GamesFingerprint fingerprint;
         ableem::GamesFingerprint romsFingerprint;
         ableem::GamesFingerprint modsFingerprint;
@@ -352,7 +357,7 @@ private:
 
     std::thread thread_;
     std::atomic<bool> stopping_{false};
-    std::atomic<bool> scanRequested_{false};
+    std::atomic<unsigned> scanRequested_{ScanNone}; // the scopes asked for, ORed until the worker takes them
     std::atomic<bool> watching_{true};
     std::atomic<bool> scanning_{false};
 
