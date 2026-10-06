@@ -933,7 +933,8 @@ void addPeProcessor(ScanServiceFixture &fx, ProcessorsOnStick &procs) {
     const string app = fx.tmp.at("Apps/pe-demo");
     procs.add(
         "pe", "Kinds=mods\nMatch=*.mod\n",
-        {{"mods.txt", "#Starting - Fake PE\n!mkdir " + app + "\n!write " + app + "/app.ini|Title=Demo\n#DONE\n"}});
+        {{"mods.txt", "#Starting - Fake PE\n#Unpacking demo.mod\n!mkdir " + app + "\n!write " + app +
+                          "/app.ini|Title=Demo\n#DONE\n"}});
     fx.runAndPoll(); // makes Mods/
     procs.clearLog();
     fx.tmp.writeFile("Mods/demo.mod", "x");

@@ -189,6 +189,17 @@ TEST_CASE("the toast frame surrounds the ring, the message and the bar") {
     CHECK(bar.y + bar.h == 394 + 26 + 12 + 6 + 24);
 }
 
+TEST_CASE("a message wider than the canvas is wrapped: the room is the canvas less two toast pads each side") {
+    CHECK(Busy::messageRoom(1280) == 1280 - 96);
+    CHECK(Busy::messageRoom(640) == 544); // a 4:3 output's canvas
+    // the frame follows the text's height: three rows of 26 reach as far below the message's top as three
+    const Rect three = Busy::toastRect(640, 480, 544, 3 * 26, false);
+    const Rect one = Busy::toastRect(640, 480, 544, 26, false);
+    CHECK(three.h == one.h + 2 * 26);
+    CHECK(three.w == one.w);
+    CHECK(Busy::barRect(640, 480, 3 * 26).y == Busy::barRect(640, 480, 26).y + 2 * 26);
+}
+
 TEST_CASE("the bar shows done clamped to 0..total") {
     CHECK(Busy::barDone(0, 10) == 0);
     CHECK(Busy::barDone(4, 10) == 4);
