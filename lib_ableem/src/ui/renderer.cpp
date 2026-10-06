@@ -96,6 +96,20 @@ Rect coverCrop(int textureW, int textureH, int canvasW, int canvasH) {
 }
 
 namespace {
+// A render target drawn from with linear filtering (the 4:3 frame, stretched to the output and blurred down for the CRT
+// margin). The filter comes from the scale-quality hint at the texture's creation, never from SDL_SetTextureScaleMode:
+// SDL 2.0.18 (the console's) calls the driver's SetTextureScaleMode on the texture it was given even when that is only
+// SDL's stand-in for a native texture of another format - every RGBA8888 target on GLES2 - and GLES2_SetTextureScaleMode
+// then reads the stand-in's missing driver data: a SIGSEGV (CRT 4:3 round 2, the launcher died on its first 4:3 frame)
+Texture createLinearTarget(Renderer &renderer, int w, int h) {
+    const char *quality = SDL_GetHint(SDL_HINT_RENDER_SCALE_QUALITY);
+    const std::string previous = quality ? quality : "0"; // no hint is nearest - SDL_SetHint cannot unset one
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+    Texture target = Texture::createTarget(renderer, w, h);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, previous.c_str());
+    return target;
+}
+
 // The CRT's safe area: the margin around the frame is the frame's own edge mirrored outward (a strip of the frame
 // flipped across the edge it touches, the corners flipped both ways), softened and a little dimmed - the colours go on
 // smoothly past the safe rectangle instead of a black frame (`frame` is the softened copy: Renderer::mirrorMargin). Only on a side where the frame really sits on the safe
@@ -400,6 +414,8 @@ Renderer::Renderer(Platform &platform) : impl(new Impl()) {
 void Renderer::release() {
     impl->overlay.release(); // its texture goes with the renderer
     impl->frameTarget = Texture();
+    impl->marginSoft1 = Texture(); // the CRT margin's too: SDL_DestroyRenderer frees them, a handle kept would dangle
+    impl->marginSoft2 = Texture();
     impl->framing = false;
     if (impl->renderer) {
         SDL_DestroyRenderer(impl->renderer);
@@ -489,7 +505,7 @@ void Renderer::mirrorMargin(void *frameTexture, const Rect &displayRect) {
     auto ensure = [&](Texture &t, int w, int h) {
         const Size size = t.size();
         if (!t.valid() || size.w != w || size.h != h || impl->marginSoftAt != lost)
-            t = Texture::createTarget(*this, w, h);
+            t = createLinearTarget(*this, w, h); // linear: the passes between them blur (no SDL_SetTextureScaleMode)
     };
     ensure(impl->marginSoft1, w1, h1);
     ensure(impl->marginSoft2, w2, h2);
@@ -498,10 +514,8 @@ void Renderer::mirrorMargin(void *frameTexture, const Rect &displayRect) {
         return;
     SDL_Texture *t1 = static_cast<SDL_Texture *>(impl->marginSoft1.native());
     SDL_Texture *t2 = static_cast<SDL_Texture *>(impl->marginSoft2.native());
-#if SDL_VERSION_ATLEAST(2, 0, 12)
-    for (SDL_Texture *t : {frame, t1, t2})
-        SDL_SetTextureScaleMode(t, SDL_ScaleModeLinear);
-#endif
+    // the two filter linearly from their creation, the frame target too (clear()); a captured frame follows the
+    // program's scale quality (the launcher's "best" is linear)
     SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE);
     SDL_SetTextureBlendMode(t1, SDL_BLENDMODE_NONE);
     SDL_SetTextureBlendMode(t2, SDL_BLENDMODE_NONE);
@@ -526,9 +540,18 @@ bool Renderer::setCanvas(int w, int h) {
 }
 
 void Renderer::setSafeMargin(int percent) {
-    impl->marginPercent = clampSafeMargin(percent);
-    if (impl->fourByThree)
+    const int margin = clampSafeMargin(percent);
+    const bool changed = margin != impl->marginPercent;
+    impl->marginPercent = margin;
+    if (impl->fourByThree) {
         impl->useCanvas(impl->width, impl->height); // the next present() places the frame inside the new margin
+        // recreate() logged the mapping with the margin it had then (the default before the program's own is set)
+        if (changed) {
+            PLOG_INFO << "CRT margin " << margin << "%: a " << impl->width << "x" << impl->height << " canvas shown "
+                      << impl->display.w << "x" << impl->display.h << " at " << impl->display.x << ","
+                      << impl->display.y;
+        }
+    }
 }
 
 int Renderer::safeMargin() const {
@@ -601,7 +624,8 @@ void Renderer::clear() {
         const Size size = impl->frameTarget.size();
         if (!impl->frameTarget.valid() || size.w != impl->width || size.h != impl->height) {
             impl->frameTarget = Texture();
-            impl->frameTarget = Texture::createTarget(*this, impl->width, impl->height);
+            // linear: stretched to the output, and the CRT margin's blur reads it (createLinearTarget)
+            impl->frameTarget = createLinearTarget(*this, impl->width, impl->height);
         }
         if (impl->frameTarget.valid() &&
             SDL_SetRenderTarget(impl->renderer, static_cast<SDL_Texture *>(impl->frameTarget.native())) == 0)

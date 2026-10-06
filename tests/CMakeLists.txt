@@ -164,6 +164,10 @@ if (AB_CORE_UI)
     ab_add_test(test_input_flush classic/test_input_flush.cpp LIBS ableem)
     # CONSOLE-13: the busy rule - nothing held and no hold-repeat carried over a busy job - the same way
     ab_add_test(test_busy_input classic/test_busy_input.cpp LIBS ableem ab_gui)
+    # the 4:3 output's frames with the CRT margin through a real GuiBase (skips itself without a renderer), and the
+    # guard that keeps SDL_SetTextureScaleMode (a crash on the console's SDL 2.0.18) out of the sources it scans
+    ab_add_test(test_crt_frame classic/test_crt_frame.cpp LIBS ableem)
+    target_compile_definitions(test_crt_frame PRIVATE AB_CORE_SOURCE_ROOT="${AB_CORE_ROOT}")
     # ab_add_test() links its target with the plain (non-keyword) signature, so this must match it.
     # lib_ableem/CMakeLists.txt's own SDL2 imported target is directory-scoped there, not visible here -
     # this repeats its discovery for these two test targets.
