@@ -1,12 +1,21 @@
 #include "output_mode.h"
+#include <ableem/ui/canvas.h>
 #include "environment.h"
 #include "../main.h"
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 
 using namespace std;
 
 const char *OutputMode::ConfigKey = "outputmode";
+const char *OutputMode::MarginKey = "crtmargin";
+
+int OutputMode::crtMargin(const string &value) {
+    if (value.empty() || value.find_first_not_of("0123456789") != string::npos)
+        return ableem::DefaultSafeMargin;
+    return std::min(ableem::MaxSafeMargin, atoi(value.c_str())); // digits only: never negative
+}
 
 //*******************************
 // OutputMode::parse / token / label
@@ -45,9 +54,46 @@ string OutputMode::token() const {
 string OutputMode::label() const {
     if (isAuto())
         return "";
+    if (isCrt())
+        return _("CRT 4:3");
     if (w * 9 == h * 16)
         return to_string(h) + "p";
     return to_string(w) + "x" + to_string(h);
+}
+
+//*******************************
+// OutputMode::placeCrt / themesFor
+//*******************************
+vector<string> OutputMode::placeCrt(vector<string> tokens) {
+    auto crt = find(tokens.begin(), tokens.end(), CrtToken());
+    if (crt == tokens.end())
+        return tokens;
+    long after = -1; // the index of the last "720" / "1080"
+    for (size_t i = 0; i < tokens.size(); i++)
+        if (tokens[i] == "720" || tokens[i] == "1080")
+            after = static_cast<long>(i);
+    if (after < 0)
+        return tokens;
+    const string token = *crt;
+    const long from = crt - tokens.begin();
+    if (from == after + 1)
+        return tokens;
+    tokens.erase(crt);
+    if (from < after)
+        after--; // the erase moved the anchor up by one
+    tokens.insert(tokens.begin() + after + 1, token);
+    return tokens;
+}
+
+vector<string> OutputMode::themesFor(const OutputMode &running, const vector<string> &themes,
+                                     const function<bool(const string &)> &supports) {
+    if (!running.isCrt())
+        return themes;
+    vector<string> only;
+    for (const string &name : themes)
+        if (supports(name))
+            only.push_back(name);
+    return only.empty() ? themes : only;
 }
 
 //*******************************

@@ -536,7 +536,8 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     const string dir = string(AB_TEST_DATA_DIR) + "/frame-test-theme";
     const std::vector<ableem::ThemeFrame> frames = ableem::loadThemeFrames(dir);
     // panel (G4a), selection (G4c), heading (G4d), key/keyFunction/keyLit/keySelected/field (G4e), badge (G5b), chip
-    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h), toast (G5f), progressTrack/progressFill (G5g), tile/tileSelected/band (G5i), coverGlow (G5k), play (G5j), plate (G5l)
+    // (G5d), footer (G5r8), hintBar (G5e), tab (G5h), toast (G5f), progressTrack/progressFill (G5g),
+    // tile/tileSelected/band (G5i), coverGlow (G5k), play (G5j), plate (G5l)
     REQUIRE(frames.size() == 22);
     const ableem::ThemeFrame *panel = nullptr;
     const ableem::ThemeFrame *selection = nullptr;
@@ -658,8 +659,8 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
     CHECK(plate->bleed.left == 2);
     CHECK(plate->bleed.bottom == 2);
     CHECK(plate->tint.empty());
-    // G5k: the cover glow - a 160 x 160 image cut at 64 with a 48 px bleed, no centre, the code tints it (the test theme
-    // sets no tint, so its own aqua / magenta shows)
+    // G5k: the cover glow - a 160 x 160 image cut at 64 with a 48 px bleed, no centre, the code tints it (the test
+    // theme sets no tint, so its own aqua / magenta shows)
     const ableem::ThemeFrame *glow = nullptr;
     for (const ableem::ThemeFrame &f : frames)
         if (f.name == "coverGlow")
@@ -690,7 +691,8 @@ TEST_CASE("the test theme's frames (tests/data/frame-test-theme) load as the G4a
         CHECK(bar->bleed.bottom == 0);
         CHECK(bar->tint.empty());
     }
-    // G5i: the game menu's tiles (72 x 72, slice 24, bleed 4) and the resume-slot picker's band (64 x 64, slice 24, no bleed)
+    // G5i: the game menu's tiles (72 x 72, slice 24, bleed 4) and the resume-slot picker's band (64 x 64, slice 24, no
+    // bleed)
     struct Expect {
         const char *name;
         const char *file;
@@ -1256,6 +1258,68 @@ TEST_CASE("readThemeHidden: only a top-level boolean true hides a theme") {
         CHECK_FALSE_MESSAGE(ableem::readThemeHidden(tmp.at(file)), file);
 }
 
+TEST_CASE("ThemeSpec::supports4x3: only a top-level layout4x3 object counts") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("yes.json", "{ \"format\": 1, \"layout4x3\": { \"play\": { \"x\": 1 } } }");
+    tmp.writeFile("empty.json", "{ \"layout4x3\": {} }");
+    tmp.writeFile("none.json", "{ \"format\": 1 }");
+    tmp.writeFile("text.json", "{ \"layout4x3\": \"yes\" }");
+    tmp.writeFile("nested.json", "{ \"launcher\": { \"layout4x3\": {} } }");
+    tmp.writeFile("bad.json", "{ nope");
+    CHECK(ableem::ThemeSpec::supports4x3(tmp.at("yes.json")));
+    CHECK(ableem::ThemeSpec::supports4x3(tmp.at("empty.json")));
+    for (const char *file : {"none.json", "text.json", "nested.json", "bad.json", "missing.json"})
+        CHECK_FALSE_MESSAGE(ableem::ThemeSpec::supports4x3(tmp.at(file)), file);
+}
+
+TEST_CASE("readThemeLayout4x3: the images by name, every other number flattened to block.key") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("theme.json",
+                  "{ \"launcher\": { \"logo\": { \"x\": 9 } }, \"layout4x3\": {"
+                  " \"images\": { \"background\": \"images/bg_4x3.png\", \"footer\": \"\", \"bad\": 3 },"
+                  " \"carousel\": { \"centreX\": 196, \"sideScale\": 0.6, \"name\": \"x\", \"list\": [1, 2] },"
+                  " \"settingsPanel\": { \"title\": { \"x\": 30 } }, \"top\": 12, \"flag\": true } }");
+    const ableem::ThemeLayout4x3 layout = ableem::readThemeLayout4x3(tmp.at("theme.json"));
+    CHECK(layout.set);
+    CHECK(layout.images.size() == 1); // an empty name and a number are skipped
+    CHECK(layout.image("background") == "images/bg_4x3.png");
+    CHECK(layout.image("footer").empty());
+    CHECK(layout.value("carousel.centreX", 0) == 196);
+    CHECK(layout.value("carousel.sideScale", 0) == doctest::Approx(0.6));
+    CHECK(layout.value("settingsPanel.title.x", 0) == 30);
+    CHECK(layout.value("top", 0) == 12);
+    CHECK(layout.values.size() == 4);              // the string, the array and the boolean are skipped
+    CHECK_FALSE(layout.has("logo.x"));             // the launcher's 16:9 blocks are not the layout's
+    CHECK(layout.value("meta.x", 318.5) == 318.5); // not given: the caller's fallback
+
+    tmp.writeFile("empty.json", "{ \"layout4x3\": {} }");
+    const ableem::ThemeLayout4x3 empty = ableem::readThemeLayout4x3(tmp.at("empty.json"));
+    CHECK(empty.set);
+    CHECK(empty.values.empty());
+    tmp.writeFile("none.json", "{ \"format\": 1 }");
+    tmp.writeFile("text.json", "{ \"layout4x3\": \"yes\" }");
+    tmp.writeFile("bad.json", "{ nope");
+    for (const char *file : {"none.json", "text.json", "bad.json", "missing.json"})
+        CHECK_FALSE_MESSAGE(ableem::readThemeLayout4x3(tmp.at(file)).set, file);
+    // the same rule as supports4x3: what reads as a layout is what the theme picker offers in 4:3
+    for (const char *file : {"theme.json", "empty.json", "none.json", "text.json", "bad.json", "missing.json"})
+        CHECK_MESSAGE(ableem::readThemeLayout4x3(tmp.at(file)).set == ableem::ThemeSpec::supports4x3(tmp.at(file)),
+                      file);
+}
+
+TEST_CASE("loadThemeLayout4x3: the pictures resolved in the theme's own folder; a missing one is dropped") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("t/theme.json", "{ \"layout4x3\": { \"images\": { \"background\": \"images/bg.png\","
+                                  " \"footer\": \"images/gone.png\" }, \"meta\": { \"x\": 318 } } }");
+    tmp.writeFile("t/images/bg.png", "x");
+    const ableem::ThemeLayout4x3 layout = ableem::loadThemeLayout4x3(tmp.at("t"));
+    CHECK(layout.set);
+    CHECK(layout.image("background") == tmp.at("t") + "/images/bg.png");
+    CHECK(layout.image("footer").empty());
+    CHECK(layout.value("meta.x", 0) == 318);
+    CHECK_FALSE(ableem::loadThemeLayout4x3(tmp.at("nothing")).set);
+}
+
 TEST_CASE("loadThemeHidden: reads the theme.json in the folder") {
     TempDir tmp("theme_spec");
     tmp.writeFile("a/theme.json", "{ \"hidden\": true }");
@@ -1372,8 +1436,9 @@ TEST_CASE("mergeThemeJson: objects merge key by key, the rest is replaced, the o
 
 TEST_CASE("readThemeJsonInt / readThemeJsonString / digestThemeJson: the stamp and the sum of the converter's blocks") {
     TempDir tmp("theme_digest");
-    tmp.writeFile("a.json",
-                  "{ \"converter\": { \"stamp\": 3, \"sum\": \"abc\" }, \"x\": { \"b\": 1, \"a\": [1, 2] }, \"y\": 5 }");
+    tmp.writeFile(
+        "a.json",
+        "{ \"converter\": { \"stamp\": 3, \"sum\": \"abc\" }, \"x\": { \"b\": 1, \"a\": [1, 2] }, \"y\": 5 }");
     const string a = tmp.at("a.json");
 
     CHECK(ableem::readThemeJsonInt(a, "/converter/stamp", 0) == 3);

@@ -206,6 +206,8 @@ void List::draw() {
     yoffset = panel.header(ctx, titleText());
 
     if (firstRender) {
+        if (ctx.renderer().fourByThreeOutput())
+            layout(); // the rows that fit the canvas of THIS frame: init() may have run on the launcher's smaller one
         ListModel::computePagePosition(view());
         firstRender = false;
     }

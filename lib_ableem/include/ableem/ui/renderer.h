@@ -1,5 +1,6 @@
 #pragma once
 
+#include "canvas.h"
 #include "types.h"
 
 #include <string>
@@ -115,6 +116,24 @@ public:
     // the logical canvas, in the app's coordinates
     int width() const;
     int height() const;
+    // A 4:3 output (CanvasMapping, canvas.h - a 720x480 CRT mode): the canvas of the frame about to be drawn, until
+    // the next present() - a screen laid out for 4:3 asks for FourByThreeCanvasW x FourByThreeCanvasH before its
+    // frame's clear() (GuiScreen::prepareFrame), and present() goes back to the program's own (the Platform's logical
+    // size, 1280x720), letterboxed at its shape. False, and nothing changes, on a wide output or for a size <= 0.
+    bool setCanvas(int w, int h);
+    // On a 4:3 output: the canvas every frame gets after a present() unless it asks for another (setCanvas) - the
+    // Platform's own 1280x720 until this says otherwise. The classic screens' CRT size (Gui::CrtCanvasW x H, a 4:3
+    // canvas): laid out by renderer.width()/height() like on any canvas, shown scaled to the output. False, and nothing
+    // changes, on a wide output or for a size <= 0.
+    bool setRestCanvas(int w, int h);
+    int restCanvasWidth() const;
+    int restCanvasHeight() const;
+    // the output is taken as a 4:3 picture: frames go through a frame target that present() stretches (canvas.h)
+    bool fourByThreeOutput() const;
+    // the CRT's safe area on a 4:3 output (canvas.h, mapCanvas): the share of the width and height left black on each
+    // side, 0..20, default 5. Takes effect with the next present(); nothing on a wide output.
+    void setSafeMargin(int percent);
+    int safeMargin() const;
     // output pixels per logical pixel (1 unless the window is bigger than the canvas)
     float outputScale() const;
     // the SDL render driver in use ("opengl", "opengles2", "direct3d"; "" without a renderer)
@@ -142,6 +161,7 @@ private:
     friend class Texture;
     friend class Font;
     explicit Renderer(Platform &platform);
+    void mirrorMargin(void *frameTexture, const Rect &displayRect); // the CRT margin around a 4:3 frame
     // the display hand-off (GuiBase::releaseDisplay()/acquireDisplay()): destroy the SDL renderer while
     // keeping this object - everything holds a reference to it - and make a new one on the new window.
     // Every Texture and Font made with the old renderer must be gone before release(): SDL frees them with

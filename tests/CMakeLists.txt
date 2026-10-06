@@ -45,6 +45,8 @@ if (AB_CORE_UI)
     ab_add_test(test_surprise_layout classic/test_surprise_layout.cpp LIBS ab_classic)
     # GuiTextPage's line layout (splitItem is pure; the class is ab_classic's)
     ab_add_test(test_text_page classic/test_text_page.cpp LIBS ab_classic)
+    # the theme's classic rects on the 4:3 (CRT) canvas (TextRenderer::onCanvas, pure)
+    ab_add_test(test_theme_rect_on_canvas classic/test_theme_rect_on_canvas.cpp LIBS ab_classic)
     # UIREV-2: doHome()/doEnd()'s skip-past-a-heading fix, driven through a local model of GuiMenuBase's
     # selection math - the real class needs a live AppBase/Gui over a theme/resources tree this repo does not
     # ship (see the file's opening comment), the same reason no other classic-menu test builds one
@@ -153,6 +155,8 @@ if (AB_CORE_UI)
     ab_add_test(test_headless classic/test_headless.cpp LIBS ableem)
     # the Display row's list from a display's modes - pure, no display needed
     ab_add_test(test_display_modes classic/test_display_modes.cpp LIBS ableem)
+    # the Renderer's canvas math (the 4:3 output's frame target and stretch) - pure, no display needed
+    ab_add_test(test_canvas_mapping classic/test_canvas_mapping.cpp LIBS ableem)
     # CONSOLE-11: Input::flushInputEvents() driven with real SDL events through a real GuiBase - needs a
     # working renderer (see the file's opening comment; it skips itself when this environment has none), so
     # it links SDL directly, the one exception to "nothing SDL-shaped in a consumer" (see lib_ableem's own
@@ -160,6 +164,10 @@ if (AB_CORE_UI)
     ab_add_test(test_input_flush classic/test_input_flush.cpp LIBS ableem)
     # CONSOLE-13: the busy rule - nothing held and no hold-repeat carried over a busy job - the same way
     ab_add_test(test_busy_input classic/test_busy_input.cpp LIBS ableem ab_gui)
+    # the 4:3 output's frames with the CRT margin through a real GuiBase (skips itself without a renderer), and the
+    # guard that keeps SDL_SetTextureScaleMode (a crash on the console's SDL 2.0.18) out of the sources it scans
+    ab_add_test(test_crt_frame classic/test_crt_frame.cpp LIBS ableem)
+    target_compile_definitions(test_crt_frame PRIVATE AB_CORE_SOURCE_ROOT="${AB_CORE_ROOT}")
     # ab_add_test() links its target with the plain (non-keyword) signature, so this must match it.
     # lib_ableem/CMakeLists.txt's own SDL2 imported target is directory-scoped there, not visible here -
     # this repeats its discovery for these two test targets.

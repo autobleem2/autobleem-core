@@ -288,19 +288,19 @@ Texture buildPlate(Renderer &renderer, int w, int h) {
 //*******************************
 // SurpriseFonts::load
 //*******************************
-void SurpriseFonts::load(Renderer &renderer, const std::string &fontsDir, const std::string &cjkFont) {
+void SurpriseFonts::load(Renderer &renderer, const std::string &fontsDir, const std::string &cjkFont, bool big) {
     auto open = [&](const char *file, int size) {
         std::string path = cjkFont.empty() ? fontsDir + "/" + file : cjkFont;
         return Font::load(renderer, path, size);
     };
-    label = open("Oxanium-ExtraBold.ttf", 18);
-    number = open("Oxanium-ExtraBold.ttf", 30);
-    semi20 = open("Oxanium-SemiBold.ttf", 20);
-    bold20 = open("Oxanium-Bold.ttf", 20);
+    label = open("Oxanium-ExtraBold.ttf", big ? 25 : 18);
+    number = open("Oxanium-ExtraBold.ttf", big ? 34 : 30);
+    semi20 = open("Oxanium-SemiBold.ttf", big ? 28 : 20);
+    bold20 = open("Oxanium-Bold.ttf", big ? 28 : 20);
     title = open("Oxanium-ExtraBold.ttf", 112);
     subtitle = open("Oxanium-ExtraBold.ttf", 56);
-    push = open("Oxanium-Bold.ttf", 30);
-    credit = open("Oxanium-SemiBold.ttf", 14);
+    push = open("Oxanium-Bold.ttf", big ? 36 : 30);
+    credit = open("Oxanium-SemiBold.ttf", big ? 24 : 14);
 }
 
 //*******************************

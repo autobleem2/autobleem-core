@@ -93,7 +93,27 @@ Rect TextRenderer::getOpscreenRectOfTheme() {
     rect.w = panel.w;
     rect.h = panel.h;
 
-    return rect;
+    return onCanvas(rect);
+}
+
+//*******************************
+// TextRenderer::onCanvas
+//*******************************
+Rect TextRenderer::onCanvas(const Rect &themeRect) const {
+    if (!renderer_.fourByThreeOutput())
+        return themeRect;
+    return onCanvas(themeRect, renderer_.width(), renderer_.height());
+}
+
+Rect TextRenderer::onCanvas(const Rect &themeRect, int canvasW, int canvasH) {
+    if (canvasW == 1280 && canvasH == 720)
+        return themeRect;
+    const double sx = canvasW / 1280.0, sy = canvasH / 720.0;
+    const int x0 = static_cast<int>(themeRect.x * sx + 0.5),
+              x1 = static_cast<int>((themeRect.x + themeRect.w) * sx + 0.5);
+    const int y0 = static_cast<int>(themeRect.y * sy + 0.5),
+              y1 = static_cast<int>((themeRect.y + themeRect.h) * sy + 0.5);
+    return Rect(x0, y0, x1 - x0, y1 - y0);
 }
 
 //*******************************
@@ -107,7 +127,7 @@ Rect TextRenderer::getTextRectOfTheme() {
     rect.w = bar.w;
     rect.h = bar.h;
 
-    return rect;
+    return onCanvas(rect);
 }
 
 //*******************************
@@ -136,6 +156,16 @@ int TextRenderer::align_xPosition(XAlignment xAlign, int x, int width) {
         x = SCREEN_WIDTH - x - width;
     }
 
+    return x;
+}
+
+int TextRenderer::alignOnCanvas(XAlignment xAlign, int x, int width) const {
+    const int canvas = renderer_.width();
+    if (xAlign == XALIGN_CENTER) {
+        x = (canvas / 2) - width / 2;
+    } else if (xAlign == XALIGN_RIGHT) {
+        x = canvas - x - width;
+    }
     return x;
 }
 
@@ -230,7 +260,7 @@ void TextRenderer::AllTextOrEmojiTokenInfo::render(int x, int y, XAlignment xAli
 
     // adjust the upper left corner postion if needed
     if (xAlign != XALIGN_LEFT)
-        x = align_xPosition(xAlign, x, totalSize.w);
+        x = text.alignOnCanvas(xAlign, x, totalSize.w);
 
     if (drawBackgroundRect) {
         // render a grey box behind the text
@@ -458,9 +488,9 @@ int TextRenderer::renderTextLineOptions(const string &_text, int line, int yoffs
         return h; // there is no check/uncheck emoji on this line
     }
 
-    // the theme's switch image at the row's right edge when it ships both `switchOn` and `switchOff` (G5m, UIREV-10), else the
-    // value as text, like any other option's value (the old check/uncheck images went on 2026-09-29 - the owner: a
-    // plain OFF/ON choice)
+    // the theme's switch image at the row's right edge when it ships both `switchOn` and `switchOff` (G5m, UIREV-10),
+    // else the value as text, like any other option's value (the old check/uncheck images went on 2026-09-29 - the
+    // owner: a plain OFF/ON choice)
     if (switchContext_ != nullptr) {
         Rect opscreen = getOpscreenRectOfTheme();
         const int right = abgui::List::valueRight(opscreen, rowMetrics(), rightEdge);
@@ -482,8 +512,7 @@ void TextRenderer::renderRowValue(const string &value, int line, int yoffset, in
     const int right = abgui::List::valueRight(opscreen, rowMetrics(), rightEdge);
     int y = abgui::List::rowTop(line, yoffset, font.lineHeight());
     Color color;
-    renderText(font, value, ableem::GuiBase::ScreenWidth - right, y, XALIGN_RIGHT,
-               rowRoleColor(true, color) ? &color : nullptr);
+    renderText(font, value, renderer_.width() - right, y, XALIGN_RIGHT, rowRoleColor(true, color) ? &color : nullptr);
 }
 
 //*******************************

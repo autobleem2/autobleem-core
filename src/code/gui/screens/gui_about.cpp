@@ -50,6 +50,8 @@ void GuiAbout::init() {
     AboutStage whole("init total");
     std::shared_ptr<Gui> gui(Gui::getInstance());
     fx.renderer = &renderer;
+    if (ctx.hasStack())
+        ctx.stack().declareFrameCanvas(*this, [this] { useFrameCanvas(); });
     // the credits' small font: the launcher's medium face (about.ttf, an SST copy, went with the Sony fonts)
     {
         AboutStage stage("init credits font");
@@ -110,7 +112,8 @@ void GuiAbout::loadGameAssets() {
     // the credits' face stands in for a file that did not open
     {
         AboutStage stage("init Oxanium fonts");
-        hud.fonts.load(renderer, Env::getPathToFontsDir(), Fonts::cjkFontFor(app.config().inifile.values["language"]));
+        hud.fonts.load(renderer, Env::getPathToFontsDir(), Fonts::cjkFontFor(app.config().inifile.values["language"]),
+                       renderer.fourByThreeOutput());
         hud.fallback = font;
     }
 
@@ -169,12 +172,29 @@ vector<string> GuiAbout::autobleemFoot() {
 }
 
 //*******************************
+// GuiAbout::prepareFrame
+//*******************************
+// On a 4:3 output the credits are laid out for the Gui's 800x600 canvas (pages of one column, text a size up) and the
+// game takes a 960x720 one: the middle of its 1280x720 field (renderSurprise).
+bool GuiAbout::prepareFrame() {
+    useFrameCanvas();
+    return true;
+}
+
+void GuiAbout::useFrameCanvas() {
+    if (surpriseMode)
+        renderer.setCanvas(FieldShownW, SCREEN_HEIGHT); // does nothing on a wide output
+}
+
+//*******************************
 // GuiAbout::draw
 //*******************************
 // what the stack's frame holds (docs/ab-gui-plan.md, G3c): the credits, or the game
 void GuiAbout::draw() {
     if (surpriseMode)
         renderSurprise();
+    else if (renderer.fourByThreeOutput())
+        drawCreditsNarrow();
     else
         drawCredits();
 }
@@ -304,9 +324,204 @@ void GuiAbout::drawCredits() {
 }
 
 //*******************************
+// GuiAbout::buildPages
+//*******************************
+// the credits' sections and the foot as lines of one column `width` wide, cut into pages: the first has `firstRoom` px
+// (under the logo), the others `room`. A section's heading never ends a page, and a line is never split.
+void GuiAbout::buildPages(int width, int firstRoom, int room) {
+    std::shared_ptr<Gui> gui(Gui::getInstance());
+    Fonts &fonts = gui->assets().themeFonts;
+    const ableem::Font &textFont = fonts.atSize(FONT_MED, TextSize);
+    const ableem::Font &headingFont = fonts.boldAtSize(HeadingSize);
+    const int lineH = textFont.lineHeight() + 2, headingH = headingFont.lineHeight() + 2;
+    // a block is a heading with its lines: it stays on one page
+    struct Block {
+        std::vector<PageLine> lines;
+        int height = 0;
+    };
+    std::vector<Block> blocks;
+    auto addBody = [&](Block &b, const string &text) {
+        const vector<string> wrapped = gui->text().wrapLines(textFont, text, width);
+        for (size_t i = 0; i < wrapped.size(); i++) {
+            PageLine line;
+            line.text = wrapped[i];
+            if (i + 1 == wrapped.size())
+                line.gapAfter = 10;
+            b.lines.push_back(line);
+            b.height += lineH + line.gapAfter;
+        }
+    };
+    for (const string &c : credits) {
+        if (c.compare(0, HeadingMark.size(), HeadingMark) == 0) {
+            Block b;
+            PageLine h;
+            h.text = c.substr(HeadingMark.size());
+            h.heading = true;
+            b.lines.push_back(h);
+            b.height = headingH;
+            blocks.push_back(b);
+        } else {
+            if (blocks.empty())
+                blocks.push_back(Block());
+            addBody(blocks.back(), c);
+        }
+    }
+    Block footBlock;
+    for (const string &f : foot)
+        addBody(footBlock, f);
+    blocks.push_back(footBlock);
+
+    pages.clear();
+    pages.emplace_back();
+    int used = 0, cap = firstRoom;
+    for (const Block &b : blocks) {
+        if (used > 0 && used + b.height > cap) {
+            pages.emplace_back();
+            used = 0;
+            cap = room;
+        }
+        for (const PageLine &l : b.lines)
+            pages.back().push_back(l);
+        used += b.height;
+    }
+    pageWidth = width;
+    pageFirstRoom = firstRoom;
+    pageRoom = room;
+}
+
+//*******************************
+// GuiAbout::drawCreditsNarrow
+//*******************************
+// the credits on a 4:3 canvas (800x600, shown 0.8x): the logo and the line under it on the first page, then the
+// sections in one column of text 22 px (17.6 on the screen) - a page at a time, turning by itself every PageMs or with
+// the d-pad, "1/3" in the footer. The 1280x720 two-column design would be 12 px here.
+void GuiAbout::drawCreditsNarrow() {
+    std::shared_ptr<Gui> gui(Gui::getInstance());
+    const int W = renderer.width();
+
+    gui->renderBackground();
+    gui->panelStyle().box(renderer, ableem::Rect(0, 0, renderer.width(), renderer.height()), abgui::Tone::Black, 235,
+                          abgui::Tone::None);
+    fx.render(gui->platform().ticks());
+
+    PanelStyle style = gui->panelStyle();
+    Fonts &fonts = gui->assets().themeFonts;
+    const ableem::Font &textFont = fonts.atSize(FONT_MED, TextSize);
+    const ableem::Font &headingFont = fonts.boldAtSize(HeadingSize);
+    const int lineH = textFont.lineHeight() + 2, headingH = headingFont.lineHeight() + 2;
+    const ableem::Rect footer = gui->classicFooter();
+    auto centred = [&](const ableem::Font &f, const string &text, int y, const ableem::Color &color) {
+        gui->text().renderText_WithColor(f, text, W / 2 - gui->text().textWidth(f, text) / 2, y, color, XALIGN_LEFT);
+    };
+
+    // the header of the first page
+    ableem::Rect logoRect;
+    const bool haveLogo = gui->launcherLogo().valid() && gui->launcherLogoRect().w > 0;
+    if (haveLogo) {
+        const ableem::Rect &place = gui->launcherLogoRect();
+        logoRect.w = 260;
+        logoRect.h = max(1, logoRect.w * place.h / place.w);
+        logoRect.x = (W - logoRect.w) / 2;
+        logoRect.y = 10;
+    } else {
+        logoRect = ableem::Rect(W / 2 - 50, 4, 100, 70);
+    }
+    const int headerBottom = logoRect.y + logoRect.h;
+    const string credit = _("This version is brought to you by screemer. The AutoBleem team is back, baby!");
+    const vector<string> creditLines = gui->text().wrapLines(textFont, credit, W - 80);
+    const int headerH = headerBottom + 6 + lineH + static_cast<int>(creditLines.size()) * lineH + 8;
+
+    const int panelX = 20, panelWidth = W - 2 * panelX, inset = 22, pad = 14;
+    const int bodyWidth = panelWidth - 2 * inset;
+    const int panelBottom = footer.y - 6;
+    const int firstRoom = panelBottom - headerH - 2 * pad;
+    const int room = panelBottom - 8 - 2 * pad;
+    if (pages.empty() || pageWidth != bodyWidth || pageFirstRoom != firstRoom || pageRoom != room)
+        buildPages(bodyWidth, firstRoom, room);
+    const unsigned int now = gui->platform().ticks();
+    if (page >= static_cast<int>(pages.size()))
+        page = 0;
+    if (pageSince == 0)
+        pageSince = now;
+    if (pages.size() > 1 && now - pageSince >= PageMs) {
+        page = (page + 1) % static_cast<int>(pages.size());
+        pageSince = now;
+    }
+
+    int top = 8;
+    if (page == 0) {
+        renderer.copy(haveLogo ? gui->launcherLogo() : logo, nullptr, &logoRect);
+        centred(textFont, Env::productVersion(), headerBottom + 6, style.secondary);
+        int y = headerBottom + 6 + lineH;
+        for (const string &line : creditLines) {
+            centred(textFont, line, y, style.text);
+            y += lineH;
+        }
+        top = headerH;
+    }
+    // the panel hugs the page's lines
+    int bodyH = 0;
+    for (const PageLine &l : pages[static_cast<size_t>(page)])
+        bodyH += (l.heading ? headingH : lineH) + l.gapAfter;
+    const int panelHeight = min(panelBottom - top, bodyH + 2 * pad);
+    style.drawFrame(gui->uiContext(), "panel", ableem::Rect(panelX, top, panelWidth, panelHeight));
+    int y = top + pad;
+    for (const PageLine &l : pages[static_cast<size_t>(page)]) {
+        if (l.heading)
+            gui->text().renderText_WithColor(headingFont, l.text, panelX + inset, y, style.heading, XALIGN_LEFT);
+        else
+            gui->text().renderText_WithColor(textFont, l.text, panelX + inset, y, style.hint, XALIGN_LEFT);
+        y += (l.heading ? headingH : lineH) + l.gapAfter;
+    }
+
+    string hints = "|@O| " + _("Back") + " |@Start| " + _("Surprise");
+    if (pages.size() > 1)
+        hints += " |@Left+Right| " + _("Page") + " " + to_string(page + 1) + "/" + to_string(pages.size());
+    style.footer(*gui, footer, hints, false);
+}
+
+//*******************************
 // GuiAbout::renderSurprise
 //*******************************
 void GuiAbout::renderSurprise() {
+    std::shared_ptr<Gui> gui(Gui::getInstance());
+    const bool shown4x3 = renderer.fourByThreeOutput();
+    if (!shown4x3) {
+        game.setHudInset(0);
+        renderSurpriseField();
+    } else {
+        // 4:3: the field is the 1280x720 design drawn into a layer of its own size, and the middle 960 of it goes on
+        // the canvas (the corridor and the walls are there; the HUD's side plates move inward, setHudInset)
+        const int w = SCREEN_WIDTH, h = SCREEN_HEIGHT;
+        if (!fieldLayer.valid() || fieldLayerAt != renderer.targetsLost()) {
+            fieldLayer = ableem::Texture::createTarget(renderer, w, h);
+            fieldLayerAt = renderer.targetsLost();
+        }
+        if (!fieldLayer.valid())
+            return;
+        game.setHudInset((w - FieldShownW) / 2);
+        const ableem::Color keep = renderer.drawColor();
+        renderer.pushTarget(&fieldLayer);
+        renderer.setBlendMode(ableem::BlendMode::None);
+        renderer.setDrawColor(ableem::Color(0, 0, 0, 255));
+        renderer.fillRect();
+        renderer.setBlendMode(ableem::BlendMode::Blend);
+        renderer.setDrawColor(keep);
+        renderer.setCanvas(w, h);
+        renderSurpriseField();
+        renderer.setCanvas(FieldShownW, h);
+        renderer.popTarget();
+        const ableem::Rect from((w - FieldShownW) / 2, 0, FieldShownW, h), to(0, 0, FieldShownW, h);
+        renderer.copy(fieldLayer, &from, &to);
+    }
+    drawSurpriseFooter();
+}
+
+//*******************************
+// GuiAbout::renderSurpriseField
+//*******************************
+// the star sky, the field and the game's HUD on the 1280x720 canvas
+void GuiAbout::renderSurpriseField() {
     std::shared_ptr<Gui> gui(Gui::getInstance());
 
     gui->renderBackground();
@@ -322,9 +537,16 @@ void GuiAbout::renderSurprise() {
     fx.setStyle(flyingStyle(game.speed()));
     fx.render(gui->platform().ticks());
 
-    game.setBarTop(gui->classicFooter().y); // the lives and timer plates stay above the hint bar
+    // the lives and timer plates stay above the hint bar (on 4:3 the bar is the 800x600 canvas's, shown at 1.2)
+    game.setBarTop(renderer.fourByThreeOutput() ? SCREEN_HEIGHT - FooterScaled : gui->classicFooter().y);
     game.render(renderer, gui->text(), font, sprites, hud);
+}
 
+//*******************************
+// GuiAbout::drawSurpriseFooter
+//*******************************
+void GuiAbout::drawSurpriseFooter() {
+    std::shared_ptr<Gui> gui(Gui::getInstance());
     // the title: Circle leaves. In a game: Start restarts, Circle leaves the game (the footer without its rule: no
     // panel on the play field). The initials: the letter, the next, back, done.
     string hints;
@@ -336,7 +558,33 @@ void GuiAbout::renderSurprise() {
         hints = "|@Start| " + _("Play") + "  |@X| " + _("Continue") + "  |@O| " + _("Back");
     else
         hints = "|@Start| " + _("Restart") + "  |@O| " + (game.gameOver() ? _("Back") : _("Exit game"));
+    if (!renderer.fourByThreeOutput()) {
+        gui->panelStyle().footer(*gui, gui->classicFooter(), hints, false);
+        return;
+    }
+    // 4:3: the footer is drawn on the Gui's 800x600 canvas, in a layer, and its strip goes at the foot of the 960x720
+    // one scaled 1.2 - its text is as large as on every other 4:3 screen (17.6 px on the screen)
+    const int w = 800, h = 600, fh = PanelStyle::FooterHeight;
+    if (!footerLayer.valid() || footerLayerAt != renderer.targetsLost()) {
+        footerLayer = ableem::Texture::createTarget(renderer, w, h);
+        footerLayer.setBlendMode(ableem::BlendMode::Premultiplied);
+        footerLayerAt = renderer.targetsLost();
+    }
+    if (!footerLayer.valid())
+        return;
+    const ableem::Color keep = renderer.drawColor();
+    renderer.pushTarget(&footerLayer);
+    renderer.setBlendMode(ableem::BlendMode::None);
+    renderer.setDrawColor(ableem::Color(0, 0, 0, 0));
+    renderer.fillRect();
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    renderer.setDrawColor(keep);
+    renderer.setCanvas(w, h);
     gui->panelStyle().footer(*gui, gui->classicFooter(), hints, false);
+    renderer.setCanvas(FieldShownW, SCREEN_HEIGHT);
+    renderer.popTarget();
+    const ableem::Rect from(0, h - fh, w, fh), to(0, SCREEN_HEIGHT - FooterScaled, FieldShownW, FooterScaled);
+    renderer.copy(footerLayer, &from, &to);
 }
 
 //*******************************
@@ -397,6 +645,18 @@ void GuiAbout::loop() {
             }
             const bool press = e.type == Event::Type::ButtonDown || e.type == Event::Type::DpadDown;
             // the initials after a new table score: every press is the entry's (Circle steps back, it does not leave)
+            // 4:3 credits: the pages turn with the d-pad
+            if (!surpriseMode && renderer.fourByThreeOutput() && press && pages.size() > 1) {
+                const bool next = e.button == Button::DpadRight || e.button == Button::DpadDown;
+                const bool prev = e.button == Button::DpadLeft || e.button == Button::DpadUp;
+                if (next || prev) {
+                    const int count = static_cast<int>(pages.size());
+                    page = (page + (next ? 1 : count - 1)) % count;
+                    pageSince = ticks;
+                    app.audio().cursor.play();
+                    continue;
+                }
+            }
             if (surpriseMode && game.enteringInitials()) {
                 if (press)
                     game.initialsPress(e.button, ticks);
@@ -408,7 +668,8 @@ void GuiAbout::loop() {
                 continue;
             }
             // the table after an entry: Cross goes on to the title (Start plays again and Circle leaves, as below)
-            if (surpriseMode && game.showingScores() && press && (!game.scoresInputReady() || e.button == Button::Cross)) {
+            if (surpriseMode && game.showingScores() && press &&
+                (!game.scoresInputReady() || e.button == Button::Cross)) {
                 if (game.scoresInputReady())
                     game.showTitle();
                 continue;

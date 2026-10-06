@@ -1,5 +1,6 @@
 #include "ableem/ui/renderer.h"
 #include <SDL2/SDL_image.h>
+#include "ableem/ui/canvas.h"
 #include <mutex>
 #include "ableem/ui/platform.h"
 #include "ableem/ui/texture.h"
@@ -17,6 +18,153 @@
 #include <vector>
 
 namespace ableem {
+
+//*******************************
+// the canvas math (canvas.h)
+//*******************************
+bool isFourByThreeOutput(int outputW, int outputH) {
+    // up to 1.5: 480p's 720x480 is 1.5 exactly, and no TV shows it at square pixels - it is 4:3 (or anamorphic 16:9,
+    // which the launcher does not offer); 576p is 1.25, a 4:3 monitor 1.33. Wide: 16:10 (1.6), 16:9 (1.78)
+    return outputW > 0 && outputH > 0 && outputW * 2 <= outputH * 3;
+}
+
+bool usesFrameTarget(int outputW, int outputH, int canvasW, int canvasH) {
+    return isFourByThreeOutput(outputW, outputH) && canvasW > 0 && canvasH > 0 && canvasW * 3 > canvasH * 4;
+}
+
+CanvasMapping fitCanvas(int outputW, int outputH, int canvasW, int canvasH) {
+    CanvasMapping m;
+    if (canvasW <= 0 || canvasH <= 0)
+        return m;
+    // the canvas as big as fits the window, centred (what Renderer::recreate always did)
+    const float sx = static_cast<float>(outputW) / canvasW;
+    const float sy = static_cast<float>(outputH) / canvasH;
+    m.scale = std::min(sx, sy);
+    const int drawnW = static_cast<int>(std::lround(canvasW * m.scale));
+    const int drawnH = static_cast<int>(std::lround(canvasH * m.scale));
+    m.display = Rect((outputW - drawnW) / 2, (outputH - drawnH) / 2, drawnW, drawnH);
+    m.scaleX = m.scaleY = m.scale;
+    return m;
+}
+
+int clampSafeMargin(int percent) {
+    return std::min(MaxSafeMargin, std::max(0, percent));
+}
+
+CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH, int marginPercent) {
+    CanvasMapping m;
+    if (canvasW <= 0 || canvasH <= 0)
+        return m;
+    if (!isFourByThreeOutput(outputW, outputH))
+        return fitCanvas(outputW, outputH, canvasW, canvasH);
+    m.fourByThree = true;
+    m.scale = static_cast<float>(outputH) / FourByThreeCanvasH;
+    m.frameW = static_cast<int>(std::lround(canvasW * m.scale));
+    m.frameH = static_cast<int>(std::lround(canvasH * m.scale));
+    // the safe area: the output inset by the margin, the same share of both sides (the pixel aspect stays)
+    const int margin = clampSafeMargin(marginPercent);
+    const int insetX = static_cast<int>(std::lround(outputW * margin / 100.0));
+    const int insetY = static_cast<int>(std::lround(outputH * margin / 100.0));
+    const int areaW = outputW - 2 * insetX, areaH = outputH - 2 * insetY;
+    // the canvas at its own shape on a 4:3 screen: as tall as the area when it is no wider than 4:3, else as wide
+    if (canvasW * 3 <= canvasH * 4) {
+        const int w = static_cast<int>(std::lround(static_cast<double>(areaW) * canvasW * 3 / (canvasH * 4.0)));
+        m.display = Rect(insetX + (areaW - w) / 2, insetY, w, areaH);
+    } else {
+        const int h = static_cast<int>(std::lround(static_cast<double>(areaH) * canvasH * 4 / (canvasW * 3.0)));
+        m.display = Rect(insetX, insetY + (areaH - h) / 2, areaW, h);
+    }
+    m.scaleX = static_cast<float>(m.display.w) / canvasW;
+    m.scaleY = static_cast<float>(m.display.h) / canvasH;
+    return m;
+}
+
+Rect coverCrop(int textureW, int textureH, int canvasW, int canvasH) {
+    const Rect whole(0, 0, textureW, textureH);
+    if (textureW <= 0 || textureH <= 0 || canvasW <= 0 || canvasH <= 0)
+        return whole;
+    // the same shape within a pixel or so: the whole picture
+    const long long a = static_cast<long long>(textureW) * canvasH, b = static_cast<long long>(textureH) * canvasW;
+    if (std::llabs(a - b) * 100 <= std::max(a, b))
+        return whole;
+    if (a > b) { // wider than the canvas: the middle of it, full height
+        const int w = static_cast<int>(std::lround(static_cast<double>(textureH) * canvasW / canvasH));
+        return Rect((textureW - w) / 2, 0, w, textureH);
+    }
+    const int h = static_cast<int>(std::lround(static_cast<double>(textureW) * canvasH / canvasW));
+    return Rect(0, (textureH - h) / 2, textureW, h);
+}
+
+namespace {
+// A render target drawn from with linear filtering (the 4:3 frame, stretched to the output and blurred down for the CRT
+// margin). The filter comes from the scale-quality hint at the texture's creation, never from SDL_SetTextureScaleMode:
+// SDL 2.0.18 (the console's) calls the driver's SetTextureScaleMode on the texture it was given even when that is only
+// SDL's stand-in for a native texture of another format - every RGBA8888 target on GLES2 - and
+// GLES2_SetTextureScaleMode then reads the stand-in's missing driver data: a SIGSEGV (CRT 4:3 round 2, the launcher
+// died on its first 4:3 frame)
+Texture createLinearTarget(Renderer &renderer, int w, int h) {
+    const char *quality = SDL_GetHint(SDL_HINT_RENDER_SCALE_QUALITY);
+    const std::string previous = quality ? quality : "0"; // no hint is nearest - SDL_SetHint cannot unset one
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+    Texture target = Texture::createTarget(renderer, w, h);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, previous.c_str());
+    return target;
+}
+
+// The CRT's safe area: the margin around the frame is the frame's own edge mirrored outward (a strip of the frame
+// flipped across the edge it touches, the corners flipped both ways), softened and a little dimmed - the colours go on
+// smoothly past the safe rectangle instead of a black frame (`frame` is the softened copy: Renderer::mirrorMargin). Only on a side where the frame really sits on the safe
+// rectangle (a letterboxed canvas keeps its black bars), and only with a margin. `display` is where the frame goes.
+void copyMirroredMargin(SDL_Renderer *renderer, SDL_Texture *frame, const SDL_Rect &display, int outW, int outH,
+                        int marginPercent) {
+    if (marginPercent <= 0 || display.w <= 0 || display.h <= 0)
+        return;
+    int fw = 0, fh = 0;
+    if (SDL_QueryTexture(frame, nullptr, nullptr, &fw, &fh) != 0 || fw <= 0 || fh <= 0)
+        return;
+    const int insetX = static_cast<int>(std::lround(outW * marginPercent / 100.0));
+    const int insetY = static_cast<int>(std::lround(outH * marginPercent / 100.0));
+    const bool left = std::abs(display.x - insetX) <= 1 && display.x > 0;
+    const bool right = std::abs(display.x + display.w - (outW - insetX)) <= 1 && outW - (display.x + display.w) > 0;
+    const bool top = std::abs(display.y - insetY) <= 1 && display.y > 0;
+    const bool bottom = std::abs(display.y + display.h - (outH - insetY)) <= 1 && outH - (display.y + display.h) > 0;
+    const double kx = static_cast<double>(fw) / display.w, ky = static_cast<double>(fh) / display.h;
+    // a margin as frame pixels (at most the frame), and as the output pixels that many cover
+    auto strip = [](int margin, double k, int full, int &src, int &dst) {
+        src = std::min(full, static_cast<int>(std::ceil(margin * k)));
+        dst = std::min(margin, static_cast<int>(std::lround(src / k)));
+    };
+    int sl = 0, dl = 0, sr = 0, dr = 0, st = 0, dt = 0, sb = 0, db = 0;
+    if (left)
+        strip(display.x, kx, fw, sl, dl);
+    if (right)
+        strip(outW - (display.x + display.w), kx, fw, sr, dr);
+    if (top)
+        strip(display.y, ky, fh, st, dt);
+    if (bottom)
+        strip(outH - (display.y + display.h), ky, fh, sb, db);
+    const int x1 = display.x + display.w, y1 = display.y + display.h;
+    SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE);
+    SDL_SetTextureColorMod(frame, 150, 150, 150); // a light dim: the margin reads as outside the picture
+    auto put = [&](int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, int flip) {
+        if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
+            return;
+        const SDL_Rect src{sx, sy, sw, sh}, dst{dx, dy, dw, dh};
+        SDL_RenderCopyEx(renderer, frame, &src, &dst, 0.0, nullptr, static_cast<SDL_RendererFlip>(flip));
+    };
+    const int H = SDL_FLIP_HORIZONTAL, V = SDL_FLIP_VERTICAL, HV = SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL;
+    put(0, 0, sl, fh, display.x - dl, display.y, dl, display.h, H);
+    put(fw - sr, 0, sr, fh, x1, display.y, dr, display.h, H);
+    put(0, 0, fw, st, display.x, display.y - dt, display.w, dt, V);
+    put(0, fh - sb, fw, sb, display.x, y1, display.w, db, V);
+    put(0, 0, sl, st, display.x - dl, display.y - dt, dl, dt, HV);
+    put(fw - sr, 0, sr, st, x1, display.y - dt, dr, dt, HV);
+    put(0, fh - sb, sl, sb, display.x - dl, y1, dl, db, HV);
+    put(fw - sr, fh - sb, sr, sb, x1, y1, dr, db, HV);
+    SDL_SetTextureColorMod(frame, 255, 255, 255);
+    SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND); // as the caller had it
+}
+} // namespace
 
 namespace {
 // A growable in-memory SDL_RWops, write-only: what IMG_SavePNG_RW encodes into for
@@ -105,8 +253,29 @@ const char *traceOutside() {
 struct Renderer::Impl {
     SDL_Renderer *renderer = nullptr;
     SDL_Window *window = nullptr; // the window the renderer was created for (the AB_TRACE_EXT trap reads its size)
-    int width = 0, height = 0; // the logical canvas
-    float scale = 1.0f;        // output pixels per logical pixel
+    int width = 0, height = 0;    // the logical canvas
+    float scale = 1.0f; // output pixels per logical pixel (on a 4:3 output: frame-target pixels, CanvasMapping)
+
+    // the 4:3 output (canvas.h): every frame is drawn into frameTarget (`framing` from clear() to present()), which
+    // present() stretches into `display`. The program's own canvas is baseWidth x baseHeight (Platform's logical
+    // size); setCanvas() gives a frame another one, until present()
+    bool fourByThree = false;
+    int outputWidth = 0, outputHeight = 0;
+    int baseWidth = 0, baseHeight = 0;
+    int marginPercent = DefaultSafeMargin; // the CRT safe area (Renderer::setSafeMargin)
+    // the canvas every frame has unless it asks for another (setCanvas): the base one until setRestCanvas says
+    int restWidth = 0, restHeight = 0;
+    int wantRestWidth = 0, wantRestHeight = 0; // what setRestCanvas asked for: kept across a recreate()
+    Rect display;
+    Texture frameTarget;
+    Texture marginSoft1, marginSoft2; // the frame blurred down for the CRT margin (Renderer::mirrorMargin)
+    unsigned long marginSoftAt = ~0ul; // the targetsLost() they were made at
+    bool framing = false;
+    void useCanvas(int w, int h) {
+        width = w;
+        height = h;
+        display = mapCanvas(outputWidth, outputHeight, w, h, marginPercent).display;
+    }
 
     // the one-off capture (see Renderer::captureNextFrame)
     bool captureRequested = false;
@@ -119,7 +288,11 @@ struct Renderer::Impl {
     // GLES took ~350 ms (SDL converts and flips the pixels on the CPU)
     Texture captureTarget;
     bool capturing = false;
-    SDL_Texture *screenTarget() { return capturing ? static_cast<SDL_Texture *>(captureTarget.native()) : nullptr; }
+    SDL_Texture *screenTarget() {
+        if (capturing)
+            return static_cast<SDL_Texture *>(captureTarget.native());
+        return framing ? static_cast<SDL_Texture *>(frameTarget.native()) : nullptr;
+    }
 
     // the frame cache (see Renderer::setFrameCache)
     struct FrameCache {
@@ -241,6 +414,10 @@ Renderer::Renderer(Platform &platform) : impl(new Impl()) {
 
 void Renderer::release() {
     impl->overlay.release(); // its texture goes with the renderer
+    impl->frameTarget = Texture();
+    impl->marginSoft1 = Texture(); // the CRT margin's too: SDL_DestroyRenderer frees them, a handle kept would dangle
+    impl->marginSoft2 = Texture();
+    impl->framing = false;
     if (impl->renderer) {
         SDL_DestroyRenderer(impl->renderer);
         impl->renderer = nullptr;
@@ -271,22 +448,137 @@ void Renderer::recreate(Platform &platform) {
     }
     int outputWidth = 0, outputHeight = 0;
     SDL_GetWindowSize(window, &outputWidth, &outputHeight);
-    impl->width = platform.logicalWidth();
-    impl->height = platform.logicalHeight();
+    impl->outputWidth = outputWidth;
+    impl->outputHeight = outputHeight;
+    impl->baseWidth = platform.logicalWidth();
+    impl->baseHeight = platform.logicalHeight();
+    impl->width = impl->baseWidth;
+    impl->height = impl->baseHeight;
+    impl->restWidth = impl->baseWidth;
+    impl->restHeight = impl->baseHeight;
+    // the frame target only for a wide canvas on a 4:3 output (the launcher's 1280x720 on 480p); a canvas of the
+    // output's own shape (a test's 320x240 window) is drawn straight, as always
+    const CanvasMapping mapping = usesFrameTarget(outputWidth, outputHeight, impl->width, impl->height)
+                                      ? mapCanvas(outputWidth, outputHeight, impl->width, impl->height, impl->marginPercent)
+                                      : fitCanvas(outputWidth, outputHeight, impl->width, impl->height);
+    impl->fourByThree = mapping.fourByThree;
+    impl->display = mapping.display;
+    if (mapping.fourByThree && impl->wantRestWidth > 0 && impl->wantRestHeight > 0) {
+        impl->restWidth = impl->wantRestWidth;
+        impl->restHeight = impl->wantRestHeight;
+        impl->useCanvas(impl->restWidth, impl->restHeight);
+    }
+    if (impl->width <= 0 || impl->height <= 0) {
+        impl->scale = 1.0f; // no canvas (never in the program): as before, no scale
+        return;
+    }
+    impl->scale = mapping.scale;
+    if (mapping.fourByThree) {
+        // no viewport: the frames go into the frame target, and present() places it (CanvasMapping)
+        PLOG_INFO << "4:3 output " << outputWidth << "x" << outputHeight << ": frames at " << impl->scale << "x, a "
+                  << impl->width << "x" << impl->height << " canvas shown " << mapping.display.w << "x"
+                  << mapping.display.h << " at " << mapping.display.x << "," << mapping.display.y;
+        return;
+    }
     // the canvas as big as fits the window, centred: a window made outputScale times the canvas fits
     // exactly; a full-screen one on a desktop of another shape gets black bars (the viewport is the window
     // target's alone - SDL keeps a render target's viewport apart, so targets stay addressed from 0,0)
-    float sx = impl->width > 0 ? static_cast<float>(outputWidth) / impl->width : 1.0f;
-    float sy = impl->height > 0 ? static_cast<float>(outputHeight) / impl->height : 1.0f;
-    impl->scale = std::min(sx, sy);
-    int drawnWidth = static_cast<int>(std::lround(impl->width * impl->scale));
-    int drawnHeight = static_cast<int>(std::lround(impl->height * impl->scale));
+    const int drawnWidth = mapping.display.w, drawnHeight = mapping.display.h;
     if (drawnWidth != outputWidth || drawnHeight != outputHeight) {
-        SDL_Rect viewport{(outputWidth - drawnWidth) / 2, (outputHeight - drawnHeight) / 2, drawnWidth, drawnHeight};
+        SDL_Rect viewport = toSDL(mapping.display);
         SDL_RenderSetViewport(impl->renderer, &viewport);
         PLOG_INFO << "Canvas " << drawnWidth << "x" << drawnHeight << " at " << viewport.x << "," << viewport.y
                   << " in a " << outputWidth << "x" << outputHeight << " window";
     }
+}
+
+// the margin of a 4:3 frame (see copyMirroredMargin): the frame is blurred down twice (a quarter of its size, then a
+// quarter of that, linear filtering) and back up to a quarter, so the UI at the edges reads as soft colour, not as shapes in the margin
+void Renderer::mirrorMargin(void *frameTexture, const Rect &displayRect) {
+    if (impl->marginPercent <= 0)
+        return;
+    SDL_Texture *frame = static_cast<SDL_Texture *>(frameTexture);
+    int fw = 0, fh = 0;
+    if (SDL_QueryTexture(frame, nullptr, nullptr, &fw, &fh) != 0 || fw < 8 || fh < 8)
+        return;
+    const int w1 = fw / 4, h1 = fh / 4, w2 = std::max(1, w1 / 4), h2 = std::max(1, h1 / 4);
+    const unsigned long lost = impl->targetsLost.load();
+    auto ensure = [&](Texture &t, int w, int h) {
+        const Size size = t.size();
+        if (!t.valid() || size.w != w || size.h != h || impl->marginSoftAt != lost)
+            t = createLinearTarget(*this, w, h); // linear: the passes between them blur (no SDL_SetTextureScaleMode)
+    };
+    ensure(impl->marginSoft1, w1, h1);
+    ensure(impl->marginSoft2, w2, h2);
+    impl->marginSoftAt = lost;
+    if (!impl->marginSoft1.valid() || !impl->marginSoft2.valid())
+        return;
+    SDL_Texture *t1 = static_cast<SDL_Texture *>(impl->marginSoft1.native());
+    SDL_Texture *t2 = static_cast<SDL_Texture *>(impl->marginSoft2.native());
+    // the two filter linearly from their creation, the frame target too (clear()); a captured frame follows the
+    // program's scale quality (the launcher's "best" is linear)
+    SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE);
+    SDL_SetTextureBlendMode(t1, SDL_BLENDMODE_NONE);
+    SDL_SetTextureBlendMode(t2, SDL_BLENDMODE_NONE);
+    SDL_SetRenderTarget(impl->renderer, t1);
+    SDL_RenderCopy(impl->renderer, frame, nullptr, nullptr);
+    SDL_SetRenderTarget(impl->renderer, t2);
+    SDL_RenderCopy(impl->renderer, t1, nullptr, nullptr);
+    SDL_SetRenderTarget(impl->renderer, t1); // and back up to a quarter, softened: the strips are cut from this one
+    SDL_RenderCopy(impl->renderer, t2, nullptr, nullptr);
+    SDL_SetRenderTarget(impl->renderer, nullptr);
+    SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND); // as the caller had it
+    SDL_Rect display = toSDL(displayRect);
+    copyMirroredMargin(impl->renderer, t1, display, impl->outputWidth, impl->outputHeight, impl->marginPercent);
+}
+
+bool Renderer::setCanvas(int w, int h) {
+    if (!impl->fourByThree || w <= 0 || h <= 0)
+        return false;
+    if (w != impl->width || h != impl->height)
+        impl->useCanvas(w, h);
+    return true;
+}
+
+void Renderer::setSafeMargin(int percent) {
+    const int margin = clampSafeMargin(percent);
+    const bool changed = margin != impl->marginPercent;
+    impl->marginPercent = margin;
+    if (impl->fourByThree) {
+        impl->useCanvas(impl->width, impl->height); // the next present() places the frame inside the new margin
+        // recreate() logged the mapping with the margin it had then (the default before the program's own is set)
+        if (changed) {
+            PLOG_INFO << "CRT margin " << margin << "%: a " << impl->width << "x" << impl->height << " canvas shown "
+                      << impl->display.w << "x" << impl->display.h << " at " << impl->display.x << ","
+                      << impl->display.y;
+        }
+    }
+}
+
+int Renderer::safeMargin() const {
+    return impl->marginPercent;
+}
+
+bool Renderer::setRestCanvas(int w, int h) {
+    if (!impl->fourByThree || w <= 0 || h <= 0)
+        return false;
+    impl->wantRestWidth = impl->restWidth = w;
+    impl->wantRestHeight = impl->restHeight = h;
+    if (!impl->framing && (w != impl->width || h != impl->height))
+        impl->useCanvas(w, h);
+    return true;
+}
+
+int Renderer::restCanvasWidth() const {
+    return impl->restWidth;
+}
+
+int Renderer::restCanvasHeight() const {
+    return impl->restHeight;
+}
+
+bool Renderer::fourByThreeOutput() const {
+    return impl->fourByThree;
 }
 
 float Renderer::outputScale() const {
@@ -327,6 +619,18 @@ void Renderer::clear() {
             impl->captureTarget = t;
             impl->capturing = true;
         }
+    }
+    // a 4:3 output: a frame starting on the screen goes into the frame target of this frame's canvas (CanvasMapping)
+    if (impl->fourByThree && !impl->capturing && !impl->framing && SDL_GetRenderTarget(impl->renderer) == nullptr) {
+        const Size size = impl->frameTarget.size();
+        if (!impl->frameTarget.valid() || size.w != impl->width || size.h != impl->height) {
+            impl->frameTarget = Texture();
+            // linear: stretched to the output, and the CRT margin's blur reads it (createLinearTarget)
+            impl->frameTarget = createLinearTarget(*this, impl->width, impl->height);
+        }
+        if (impl->frameTarget.valid() &&
+            SDL_SetRenderTarget(impl->renderer, static_cast<SDL_Texture *>(impl->frameTarget.native())) == 0)
+            impl->framing = true;
     }
     if (ext_trace::active()) {
         Uint8 r = 0, g = 0, b = 0, a = 0;
@@ -475,19 +779,33 @@ void Renderer::present() {
         if (impl->window)
             SDL_GetWindowSize(impl->window, &ww, &wh);
         ext_trace::note("present canvas=" + std::to_string(impl->width) + "x" + std::to_string(impl->height) +
-                        " output=" + std::to_string(ow) + "x" + std::to_string(oh) +
-                        " window=" + std::to_string(ww) + "x" + std::to_string(wh) +
-                        (impl->capturing ? " capturing" : "") + (impl->captureRequested ? " capture-asked" : "") +
-                        traceTarget(impl->renderer) + traceOutside());
+                        " output=" + std::to_string(ow) + "x" + std::to_string(oh) + " window=" + std::to_string(ww) +
+                        "x" + std::to_string(wh) + (impl->capturing ? " capturing" : "") +
+                        (impl->captureRequested ? " capture-asked" : "") + traceTarget(impl->renderer) +
+                        traceOutside());
     }
-    // never present while a render target (other than the capture's own, handled below) is current: the screen would
-    // show an unfilled frame
-    if (!impl->capturing && SDL_GetRenderTarget(impl->renderer) != nullptr) {
+    // never present while a render target (other than the capture's own or the 4:3 frame's, handled below) is current:
+    // the screen would show an unfilled frame
+    if (!impl->capturing && SDL_GetRenderTarget(impl->renderer) != impl->screenTarget()) {
         PLOG_WARNING << "Renderer::present with a render target set - back to the screen first";
-        SDL_SetRenderTarget(impl->renderer, nullptr);
+        SDL_SetRenderTarget(impl->renderer, impl->screenTarget());
         impl->targetStack.clear();
     }
-    debugShot(impl->renderer);
+    // a 4:3 output: the frame is not on the window until it is copied there below
+    if (!impl->fourByThree)
+        debugShot(impl->renderer);
+    // the canvas a frame was given (setCanvas) lasts until this present, however it ends
+    struct CanvasReset {
+        Impl &impl;
+        ~CanvasReset() {
+            impl.framing = false;
+            if (impl.width != impl.restWidth || impl.height != impl.restHeight)
+                impl.useCanvas(impl.restWidth, impl.restHeight);
+        }
+    } canvasReset{*impl};
+    // where the frame goes on the window: the whole viewport, or on a 4:3 output the frame's canvas at its shape
+    SDL_Rect displayRect = toSDL(impl->display);
+    const SDL_Rect *windowRect = impl->fourByThree ? &displayRect : nullptr;
     if (impl->capturing) {
         // the frame is in the target: it is the capture, and what the screen shows
         impl->capturing = false;
@@ -519,13 +837,29 @@ void Renderer::present() {
         // cleared to transparent black) reaches the window as opaque black - an alpha-0 pixel on a Wayland ARGB
         // surface shows what is behind the window (BUG-31)
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND);
-        SDL_RenderCopy(impl->renderer, frame, nullptr, nullptr);
+        if (windowRect)
+            mirrorMargin(frame, impl->display);
+        SDL_RenderCopy(impl->renderer, frame, nullptr, windowRect);
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE); // the capture stays opaque, as a read-back frame was
         impl->capture = impl->captureTarget;
         impl->captureTarget = Texture();
         if (ext_trace::active())
             ext_trace::note("capture taken " + std::to_string(impl->capture.size().w) + "x" +
                             std::to_string(impl->capture.size().h) + " (black clear + copy to the window)");
+    } else if (impl->framing) {
+        // a 4:3 output's frame: onto the window at the canvas's shape (stretched to the output's pixel aspect), over
+        // opaque black for the reason the capture's copy above gives (BUG-31), the bars black
+        SDL_SetRenderTarget(impl->renderer, nullptr);
+        Uint8 r = 0, g = 0, b = 0, a = 0;
+        SDL_GetRenderDrawColor(impl->renderer, &r, &g, &b, &a);
+        SDL_SetRenderDrawColor(impl->renderer, 0, 0, 0, 255);
+        SDL_RenderClear(impl->renderer);
+        SDL_SetRenderDrawColor(impl->renderer, r, g, b, a);
+        SDL_Texture *frame = static_cast<SDL_Texture *>(impl->frameTarget.native());
+        SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND);
+        if (windowRect)
+            mirrorMargin(frame, impl->display);
+        SDL_RenderCopy(impl->renderer, frame, nullptr, windowRect);
     } else if (impl->captureRequested) {
         // a frame that never called clear(): read it back
         impl->captureRequested = false;
@@ -543,6 +877,8 @@ void Renderer::present() {
             }
         }
     }
+    if (impl->fourByThree)
+        debugShot(impl->renderer); // the window as it will show, the frame copied in
     // after the capture (a backdrop without it), before the frame cache (the DebugDriver's shots show it)
     impl->overlay.beforePresent(impl->renderer, impl->stats.copies, impl->scale);
     {
@@ -653,6 +989,15 @@ void Renderer::copy(const Texture &tex, const Rect *src, const Rect *dst) {
         // a render target is addressed in logical pixels like the screen; a loaded image in its own
         ssrc = toSDL(tex.pixelScale() == 1.0f ? *src : scaleRect(*src, tex.pixelScale()));
         psrc = &ssrc;
+    } else if (!dst && impl->fourByThree && SDL_GetRenderTarget(impl->renderer) == impl->screenTarget()) {
+        // a 4:3 output: a whole picture over the whole canvas at its own shape - a frame of the other canvas (the 4:3
+        // launcher's snapshot under a 16:9 menu) shows its middle, not squeezed (coverCrop); the same shape, all of it
+        const Size size = tex.size();
+        const Rect crop = coverCrop(size.w, size.h, impl->width, impl->height);
+        if (crop.w != size.w || crop.h != size.h) {
+            ssrc = toSDL(tex.pixelScale() == 1.0f ? crop : scaleRect(crop, tex.pixelScale()));
+            psrc = &ssrc;
+        }
     }
     if (dst) {
         sdst = toSDL(toOutput(*dst));

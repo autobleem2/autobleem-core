@@ -85,6 +85,8 @@ Config::Config() {
     if (inifile.values[OutputMode::ConfigKey] == "") {
         inifile.values[OutputMode::ConfigKey] = OutputMode::defaultToken();
     }
+    // the CRT 4:3 mode's safe margin (Options -> Display -> CRT margin), percent of the screen per side
+    inifile.values[OutputMode::MarginKey] = std::to_string(OutputMode::crtMargin(inifile.values[OutputMode::MarginKey]));
 
     if (inifile.values["raconfig"] == "") {
         inifile.values["raconfig"] = "true";

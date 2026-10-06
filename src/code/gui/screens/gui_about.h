@@ -22,6 +22,9 @@ public:
     void init() override;
     // the credits, or the game - between the stack's clear and present
     void draw() override;
+    // on a 4:3 output the game gets a 960x720 canvas (the middle of its field), the credits the Gui's rest canvas
+    bool prepareFrame() override;
+    void useFrameCanvas();
     void loop() override;
     ableem::Texture logo;
     ableem::Font font;
@@ -56,5 +59,27 @@ private:
     void loadGameAssets(); // on the first Start, not at open
     void drawCredits();
     void renderSurprise();
+    void renderSurpriseField();
+    void drawSurpriseFooter();
+    // 4:3 output: the credits as pages of one column, text a size up (the 1280 two-column design is too small there)
+    void drawCreditsNarrow();
+    void buildPages(int width, int firstRoom, int room);
+    struct PageLine {
+        std::string text;
+        bool heading = false;
+        int gapAfter = 0;
+    };
+    std::vector<std::vector<PageLine>> pages;           // the credits' body, one entry a page
+    int pageWidth = 0, pageFirstRoom = 0, pageRoom = 0; // what `pages` was built for
+    int page = 0;
+    unsigned int pageSince = 0;
+    static constexpr int TextSize = 22, HeadingSize = 24; // the 4:3 credits: 17.6 / 19 px on the screen
+    static constexpr unsigned int PageMs = 9000;          // a page turns by itself this often
+    static constexpr int FieldShownW = 960;               // the part of the game's 1280-wide field a 4:3 canvas shows
+    static constexpr int FooterScaled = PanelStyle::FooterHeight * 6 / 5; // the footer strip, on the 960x720 canvas
+    ableem::Texture footerLayer; // the footer at 800x600, before it goes on the canvas
+    unsigned long footerLayerAt = 0;
+    ableem::Texture fieldLayer; // the field at 1280x720, before the middle of it goes on the canvas
+    unsigned long fieldLayerAt = 0;
     static StarFx::Style flyingStyle(float speed); // the game's star field at the game's speed
 };

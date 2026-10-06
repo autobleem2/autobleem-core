@@ -39,6 +39,10 @@ private:
     static std::string windowTitle_;
 
 public:
+    // The canvas the classic and ab_gui screens have on a 4:3 (CRT) output: 800x600, shown 0.8x on the 640x480 the
+    // output fits - the 1280x720 look in a 4:3 shape, its text 0.8 of the 720p size (0.56 when letterboxed 16:9 gave
+    // it). The launcher asks for its own 640x480.
+    static constexpr int CrtCanvasW = 800, CrtCanvasH = 600;
     // whether the window is the whole screen (every real target) - where a display mode can be chosen
     static bool fullscreen();
     // the window's title: the program's name. Set by AppBase before the first getInstance() - it cannot

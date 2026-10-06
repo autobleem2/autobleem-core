@@ -96,6 +96,7 @@ Gui::Gui()
       text_(renderer(), AppBase::get().theme(), assets_.themeFont, assets_.buttonTextureMap),
       uiContext_(renderer(), input(), platform()), stack_(renderer()) {
     wireUiContext();
+    renderer().setRestCanvas(CrtCanvasW, CrtCanvasH); // a 4:3 output only (it does nothing on a wide one)
     // the pad mappings the launcher and the pscbios wizard share; probePads() reads the first that exists
     input().loadMappings(Env::padMappingFiles());
     input().probePads();
@@ -221,10 +222,12 @@ void Gui::wireUiContext() {
     // the full classic panel: the theme's menu panel, its bottom at least at the foot of the theme's status line
     // (where the footer band ends: the hints sat footerTop (14) below its top, at the status line's text y). A
     // compact panel is Gui's own state (setCompactPanel), never this rect.
-    uiContext_.panelProvider = []() {
+    uiContext_.panelProvider = [this]() {
         const auto &classic = AppBase::get().theme().classic();
-        Rect panel(classic.menuPanel.x, classic.menuPanel.y, classic.menuPanel.w, classic.menuPanel.h);
-        const int statusFoot = classic.statusBar.textY + PanelStyle::FooterHeight - 14;
+        Rect panel =
+            text_.onCanvas(Rect(classic.menuPanel.x, classic.menuPanel.y, classic.menuPanel.w, classic.menuPanel.h));
+        const int textY = text_.onCanvas(Rect(0, classic.statusBar.textY, 0, 0)).y; // on a 4:3 canvas it moves up
+        const int statusFoot = textY + PanelStyle::FooterHeight - 14;
         if (statusFoot > panel.y + panel.h)
             panel.h = statusFoot - panel.y;
         return panel;
@@ -284,7 +287,8 @@ static abgui::SpinnerSpec themeSpinner(const string &dir) {
 // theme without launcher.frames draws exactly as before
 static map<string, abgui::FrameSpec> themeFrames(const string &dir, const ableem::LauncherTheme &launcher) {
     map<string, abgui::FrameSpec> specs;
-    // a "bridge:" image is one of the shared set a converted 1.0 theme points at (G6c): the launcher's bridge/ resources
+    // a "bridge:" image is one of the shared set a converted 1.0 theme points at (G6c): the launcher's bridge/
+    // resources
     const string bridgeDir = Env::getWorkingPath() + sep + "bridge";
     for (const ableem::ThemeFrame &f : ableem::loadThemeFrames(dir, bridgeDir)) {
         abgui::FrameSpec spec;
@@ -499,7 +503,7 @@ void Gui::releaseDisplay() {
     icons_.release();          // and the icons' textures and halos
     launcherLogo_ = Texture(); // and the logo and the resume mask
     resumeMask_ = Texture();
-    spinner_.release(); // and the spinner strip's
+    spinner_.release();      // and the spinner strip's
     stack_.releaseTargets(); // and the screen transitions' two pictures
     GuiBase::releaseDisplay();
 }
@@ -582,10 +586,16 @@ bool Gui::hasLauncherBackdrop() const {
 // on black when the file is missing, so the frame is never the carousel an emulator is about to cover.
 void Gui::showSplashPicture(const string &name) {
     stack_.frame(Color(0, 0, 0, 255), [this, &name]() {
-        const string path = Env::getWorkingPath() + sep + "splash" + sep + name;
+        string path = Env::getWorkingPath() + sep + "splash" + sep + name;
+        if (renderer().fourByThreeOutput()) { // a CRT 4:3 output shows the picture's 4:3 twin ("autobleem-4x3.jpg")
+            const size_t dot = path.rfind('.');
+            const string twin = dot == string::npos ? path : path.substr(0, dot) + "-4x3" + path.substr(dot);
+            if (DirEntry::exists(twin))
+                path = twin;
+        }
         if (DirEntry::exists(path)) {
             Texture picture = Texture::loadFile(renderer(), path);
-            Rect full(0, 0, ScreenWidth, ScreenHeight);
+            Rect full(0, 0, renderer().width(), renderer().height());
             renderer().copy(picture, nullptr, &full);
         }
     });

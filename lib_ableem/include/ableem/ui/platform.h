@@ -115,6 +115,9 @@ public:
     // the size of the display the window will go on, before any window exists (initialises SDL's video
     // subsystem to ask); {0, 0} if it cannot be told. What GuiBase's outputScale can be decided from.
     static Size desktopDisplaySize();
+    // the size of the window the display really gave (SDL_GetWindowSize), {0, 0} without a window - a full-screen
+    // window is the display's mode, whatever was asked for
+    Size windowSize() const;
     // the MSAA the window actually got (0 when it was not asked for or the driver refused it)
     int multisampleSamples() const;
 

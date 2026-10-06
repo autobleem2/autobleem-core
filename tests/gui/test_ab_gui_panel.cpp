@@ -163,8 +163,10 @@ TEST_CASE("a compact panel widens for a long footer - one row, never two: max(80
     CHECK(Panel::compactWidth(style, 1200, 1280) == 1200);
     CHECK(Panel::compactWidth(style, 5000, 1280) == 1280 - 2 * style.margin);
     CHECK(Panel::compactWidth(style, 5000, 1920) == 1920 - 2 * style.margin);
-    // a canvas narrower than the compact width never shrinks it
-    CHECK(Panel::compactWidth(style, 5000, 600) == 800);
+    // a canvas narrower than the compact width shrinks it: the canvas less the margins (a 4:3 output's 800x600, 640x480)
+    CHECK(Panel::compactWidth(style, 0, 800) == 800 - 2 * style.margin);
+    CHECK(Panel::compactWidth(style, 5000, 640) == 640 - 2 * style.margin);
+    CHECK(Panel::compactWidth(style, 5000, 600) == 600 - 2 * style.margin);
     // the rect keeps the rows' height and is centred at the wider width
     const Rect wide = Panel::compactRect(style, 3, 33, 1280, 720, 1000);
     CHECK(wide.w == 1000);
