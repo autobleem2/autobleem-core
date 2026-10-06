@@ -99,8 +99,9 @@ namespace {
 // A render target drawn from with linear filtering (the 4:3 frame, stretched to the output and blurred down for the CRT
 // margin). The filter comes from the scale-quality hint at the texture's creation, never from SDL_SetTextureScaleMode:
 // SDL 2.0.18 (the console's) calls the driver's SetTextureScaleMode on the texture it was given even when that is only
-// SDL's stand-in for a native texture of another format - every RGBA8888 target on GLES2 - and GLES2_SetTextureScaleMode
-// then reads the stand-in's missing driver data: a SIGSEGV (CRT 4:3 round 2, the launcher died on its first 4:3 frame)
+// SDL's stand-in for a native texture of another format - every RGBA8888 target on GLES2 - and
+// GLES2_SetTextureScaleMode then reads the stand-in's missing driver data: a SIGSEGV (CRT 4:3 round 2, the launcher
+// died on its first 4:3 frame)
 Texture createLinearTarget(Renderer &renderer, int w, int h) {
     const char *quality = SDL_GetHint(SDL_HINT_RENDER_SCALE_QUALITY);
     const std::string previous = quality ? quality : "0"; // no hint is nearest - SDL_SetHint cannot unset one
