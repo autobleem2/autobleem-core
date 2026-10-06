@@ -3,9 +3,12 @@
 //
 #pragma once
 
+#include <memory>
 #include <string>
 #include "game_set.h"
 #include "ps_game.h"
+
+struct PackageEntry; // core/services/package_service.h
 
 //******************
 // menu / launcher selection constants
@@ -49,6 +52,8 @@ struct Session {
     PsGamePtr runningGame;
     EmuMode emuMode = EmuMode::Pcsx;
     int resumePoint = -1;
+    // APPS-12: the game data an engine App (Uses=) was picked to run with; null when there is none to pick
+    std::shared_ptr<const PackageEntry> package;
     bool resumingGui = false; // true right after a game exits: skip the classic menu and reopen the carousel
 
     // C11: Options -> "Swap Player 1 / Player 2" was on for a PS1 launch whose emulator's abfeatures had no

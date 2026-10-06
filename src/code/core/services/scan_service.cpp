@@ -1,5 +1,6 @@
 #include "scan_service.h"
 #include "environment.h"
+#include "package_service.h"
 #include "retroarch.h"
 #include "system.h"
 #include "../main.h"
@@ -204,10 +205,10 @@ void ScanService::stop() {
 //*******************************
 // ScanService::requestScan
 //*******************************
-bool ScanService::requestScan() {
-    if (scanning_.load())
+bool ScanService::requestScan(ScanScope scope) {
+    if (scanning_.load() || scope == ScanNone)
         return false;
-    scanRequested_.store(true);
+    scanRequested_.fetch_or(scope & ScanAll);
     return true;
 }
 
@@ -234,23 +235,25 @@ void ScanService::threadMain() {
     lastCheckRomsFingerprint_ = lastScannedRomsFingerprint_;
     lastScannedModsFingerprint_.load(modsFingerprintFilePath());
     lastCheckModsFingerprint_ = lastScannedModsFingerprint_;
+    if (packages_ != nullptr)
+        scanRequested_.fetch_or(ScanPackages); // the index is RAM only: every start builds it
     if (corePicksScanDue())
-        scanRequested_.store(true);
+        scanRequested_.fetch_or(ScanAll);
 
     auto lastWatchCheck = chrono::steady_clock::now() - chrono::milliseconds(ScanWatchInterval);
     while (!stopping_.load()) {
-        bool shouldScan = scanRequested_.exchange(false);
+        ScanScope due = scanRequested_.exchange(ScanNone);
 
-        if (!shouldScan && watching_.load()) {
+        if (due == ScanNone && watching_.load()) {
             auto now = chrono::steady_clock::now();
             if (now - lastWatchCheck >= chrono::milliseconds(ScanWatchInterval)) {
                 lastWatchCheck = now;
-                shouldScan = checkForChanges();
+                due = checkForChanges();
             }
         }
 
-        if (shouldScan) {
-            runScan();
+        if (due != ScanNone) {
+            runScan(due);
             lastWatchCheck = chrono::steady_clock::now(); // don't immediately re-check right after scanning
         } else {
             this_thread::sleep_for(chrono::milliseconds(250));
@@ -261,26 +264,35 @@ void ScanService::threadMain() {
 //*******************************
 // ScanService::checkForChanges
 //*******************************
-bool ScanService::checkForChanges() {
+ScanScope ScanService::checkForChanges() {
+    // each tree on its own: a change in Games/ is a PS1 scan, in Mods/ the mods processors, in roms/ the ROM
+    // scan - and a tree is due once it has been the same twice in a row (the debounce)
+    ScanScope due = ScanNone;
+
     GamesFingerprint fresh = takeGamesFingerprint();
-    bool changed = !(fresh == lastScannedFingerprint_);
-    bool stable = (fresh == lastCheckFingerprint_);
+    if (!(fresh == lastScannedFingerprint_) && fresh == lastCheckFingerprint_)
+        due |= ScanPs1;
     lastCheckFingerprint_ = fresh;
 
-    // Mods/ and the ROM folders, the same way; a change in any tree runs the whole cycle, once all are still
     if (modsWatched()) {
         GamesFingerprint freshMods = GamesFingerprint::takeAllFiles(Env::getPathToModsDir());
-        changed = changed || !(freshMods == lastScannedModsFingerprint_);
-        stable = stable && (freshMods == lastCheckModsFingerprint_);
+        if (!(freshMods == lastScannedModsFingerprint_) && freshMods == lastCheckModsFingerprint_)
+            due |= ScanMods;
         lastCheckModsFingerprint_ = freshMods;
+    }
+    if (packages_ != nullptr) {
+        const string freshPackages = PackageService::signatureOf(Env::getPathToPackagesDir());
+        if (freshPackages != lastScannedPackagesSignature_ && freshPackages == lastCheckPackagesSignature_)
+            due |= ScanPackages;
+        lastCheckPackagesSignature_ = freshPackages;
     }
     if (romScanEnabled()) {
         GamesFingerprint freshRoms = GamesFingerprint::takeAllFiles(Env::getPathToRetroarchRomsDir());
-        changed = changed || !(freshRoms == lastScannedRomsFingerprint_);
-        stable = stable && (freshRoms == lastCheckRomsFingerprint_);
+        if (!(freshRoms == lastScannedRomsFingerprint_) && freshRoms == lastCheckRomsFingerprint_)
+            due |= ScanRoms;
         lastCheckRomsFingerprint_ = freshRoms;
     }
-    return changed && stable;
+    return due;
 }
 
 //*******************************
@@ -377,28 +389,35 @@ int ScanService::scanRetroArchRoms(Listener &listener, vector<string> &playlists
 //*******************************
 // ScanService::runScan
 //*******************************
-void ScanService::runScan() {
+void ScanService::runScan(ScanScope scope) {
     scanning_.store(true);
 
+    const bool ps1 = (scope & ScanPs1) != 0;
+    const bool roms = (scope & ScanRoms) != 0 && romScanEnabled();
+    const bool mods = (scope & ScanMods) != 0;
+    const bool packages = (scope & ScanPackages) != 0 && packages_ != nullptr;
     string gamesDir = Env::getPathToGamesDir();
     Listener listener(this);
 
     // the scanner processors' preprocessing is the first thing, whoever asked for the scan: the folder
-    // processors of both sequences, before anything of the scan itself reads or moves a file
+    // processors of the sequences in scope, before anything of the scan itself reads or moves a file
     ProcessorSession processors;
-    openProcessors(processors);
+    if (ps1 || roms || mods)
+        openProcessors(processors);
     if (processors.any) {
-        runFolderProcessors(processors, ProcessorSequence::Ps1, gamesDir);
-        if (romScanEnabled())
+        if (ps1)
+            runFolderProcessors(processors, ProcessorSequence::Ps1, gamesDir);
+        if (roms)
             runFolderProcessors(processors, ProcessorSequence::Roms, Env::getPathToRetroarchRomsDir());
-        runModsProcessors(processors);
+        if (mods)
+            runModsProcessors(processors);
     }
 
-    if (GameScanner::hasLooseGameFiles(gamesDir)) {
-        GameScanner mover(&listener);
-        mover.moveLooseGameFilesIntoSubDirs(gamesDir);
-    }
-    {
+    if (ps1) {
+        if (GameScanner::hasLooseGameFiles(gamesDir)) {
+            GameScanner mover(&listener);
+            mover.moveLooseGameFilesIntoSubDirs(gamesDir);
+        }
         // "(Disc n)" sibling folders become one folder before the tree is read, so the scan below only
         // ever sees the merged game - and the fingerprint taken after the scan is of the merged tree, so
         // the watcher does not fire on the merge's own moves
@@ -409,9 +428,11 @@ void ScanService::runScan() {
     // then every game folder and every ROM file through its sequence's item chain, before the tree is read -
     // round again (a few times at most) for what a step produced: unzip's .rvz is the next step's input
     if (processors.any) {
-        for (int round = 0; round < 3 && runItemChains(processors, ProcessorSequence::Ps1, gamesDir); ++round) {
+        if (ps1) {
+            for (int round = 0; round < 3 && runItemChains(processors, ProcessorSequence::Ps1, gamesDir); ++round) {
+            }
         }
-        if (romScanEnabled()) {
+        if (roms) {
             string romsDir = Env::getPathToRetroarchRomsDir();
             for (int round = 0; round < 3 && runItemChains(processors, ProcessorSequence::Roms, romsDir); ++round) {
             }
@@ -420,28 +441,37 @@ void ScanService::runScan() {
     }
 
     GamesHierarchy hierarchy;
-    hierarchy.getHierarchy(gamesDir);
+    GamesFingerprint fp;
+    UsbGames gamesToAddToDB;
+    ableem::FailedGames failedGames;
+    int failedCount = 0;
+    if (ps1) {
+        hierarchy.getHierarchy(gamesDir);
 
-    WorkerEvent started;
-    started.kind = WorkerEvent::Kind::ScanStarted;
-    for (const UsbGamePtr &game : hierarchy.getAllGames())
-        started.currentPaths.push_back(game->fullPath);
-    pushEvent(std::move(started));
+        WorkerEvent started;
+        started.kind = WorkerEvent::Kind::ScanStarted;
+        for (const UsbGamePtr &game : hierarchy.getAllGames())
+            started.currentPaths.push_back(game->fullPath);
+        pushEvent(std::move(started));
 
-    // this thread's own sqlite connection and rdb - never regional.db
-    MetadataLookup metadata(Env::getPathToCoversDBDir(), Env::getPathToPlayStationRdbFile());
-    GameScanner scanner(&listener);
-    scanner.scanGamesDirectory(hierarchy, metadata);
-    fetchMissingPs1BoxArt(listener, scanner.gamesToAddToDB);
+        // this thread's own sqlite connection and rdb - never regional.db
+        MetadataLookup metadata(Env::getPathToCoversDBDir(), Env::getPathToPlayStationRdbFile());
+        GameScanner scanner(&listener);
+        scanner.scanGamesDirectory(hierarchy, metadata);
+        fetchMissingPs1BoxArt(listener, scanner.gamesToAddToDB);
 
-    GamesFingerprint fp = takeGamesFingerprint();
-    lastScannedFingerprint_ = fp;
-    lastCheckFingerprint_ = fp;
+        fp = takeGamesFingerprint();
+        lastScannedFingerprint_ = fp;
+        lastCheckFingerprint_ = fp;
+        gamesToAddToDB = scanner.gamesToAddToDB;
+        failedGames = scanner.failedGames;
+        failedCount = listener.failedCount;
+    }
 
     // the other systems' ROMs, when RetroArch is there to play them
     int romCount = 0;
     GamesFingerprint romsFp;
-    if (romScanEnabled()) {
+    if (roms) {
         vector<string> playlistsWritten;
         romCount = scanRetroArchRoms(listener, playlistsWritten);
         if (!playlistsWritten.empty()) {
@@ -451,24 +481,44 @@ void ScanService::runScan() {
             pushEvent(std::move(written));
         }
         romsFp = GamesFingerprint::takeAllFiles(Env::getPathToRetroarchRomsDir());
+        lastScannedRomsFingerprint_ = romsFp;
+        lastCheckRomsFingerprint_ = romsFp;
     }
-    lastScannedRomsFingerprint_ = romsFp;
-    lastCheckRomsFingerprint_ = romsFp;
     GamesFingerprint modsFp;
-    if (modsWatched())
+    if (mods && modsWatched()) {
         modsFp = GamesFingerprint::takeAllFiles(Env::getPathToModsDir());
-    lastScannedModsFingerprint_ = modsFp;
-    lastCheckModsFingerprint_ = modsFp;
+        lastScannedModsFingerprint_ = modsFp;
+        lastCheckModsFingerprint_ = modsFp;
+    }
+
+    // the game data under Packages/: the RAM index is rebuilt, nothing is written
+    if (packages) {
+        packages_->rescan();
+        lastScannedPackagesSignature_ = PackageService::signatureOf(Env::getPathToPackagesDir());
+        lastCheckPackagesSignature_ = lastScannedPackagesSignature_;
+        WorkerEvent changed;
+        changed.kind = WorkerEvent::Kind::PackagesChanged;
+        pushEvent(std::move(changed));
+    }
+
+    // Apps alone (an App was installed or removed): nothing to scan, the launcher reloads the Apps set
+    if (scope == ScanApps) {
+        WorkerEvent apps;
+        apps.kind = WorkerEvent::Kind::AppsChanged;
+        pushEvent(std::move(apps));
+    }
 
     WorkerEvent finished;
     finished.kind = WorkerEvent::Kind::Finished;
+    finished.scope = (ps1 ? ScanPs1 : ScanNone) | (roms ? ScanRoms : ScanNone) | (mods ? ScanMods : ScanNone) |
+                     (packages ? ScanPackages : ScanNone);
     finished.hierarchy = std::move(hierarchy);
-    finished.gamesToAddToDB = scanner.gamesToAddToDB;
+    finished.gamesToAddToDB = gamesToAddToDB;
     finished.fingerprint = fp;
     finished.romsFingerprint = romsFp;
     finished.modsFingerprint = modsFp;
-    finished.failedCount = listener.failedCount;
-    finished.failedGames = scanner.failedGames;
+    finished.failedCount = failedCount;
+    finished.failedGames = failedGames;
     finished.romCount = romCount;
     pushEvent(std::move(finished));
 
@@ -641,28 +691,36 @@ ScanUpdate ScanService::poll() {
             update.appsChanged = true;
             break;
 
+        case WorkerEvent::Kind::PackagesChanged:
+            update.packagesChanged = true;
+            break;
+
         case WorkerEvent::Kind::Finished: {
-            // the vanished rows no moved game claimed are really gone - before the sub-dir rows are
-            // rebuilt from what is left
-            deleteUnclaimedVanished(update);
+            if (event.scope & ScanPs1) {
+                // the vanished rows no moved game claimed are really gone - before the sub-dir rows are
+                // rebuilt from what is left
+                deleteUnclaimedVanished(update);
 
-            // writeSubDirRows looks games up by UsbGame::fullPath (no trailing separator) - strip the
-            // one loadGamePaths() rows always carry so the keys match
-            map<string, int> idByPath;
-            for (const GamePath &row : library_.usbGames().loadGamePaths())
-                idByPath[DirEntry::removeSeparatorFromEndOfPath(row.path)] = row.gameId;
+                // writeSubDirRows looks games up by UsbGame::fullPath (no trailing separator) - strip the
+                // one loadGamePaths() rows always carry so the keys match
+                map<string, int> idByPath;
+                for (const GamePath &row : library_.usbGames().loadGamePaths())
+                    idByPath[DirEntry::removeSeparatorFromEndOfPath(row.path)] = row.gameId;
 
-            GameScanner::writeSubDirRows(event.hierarchy, library_.usbGames(), idByPath);
-            library_.usbGames().replaceFailedGames(event.failedGames);
-            library_.writeEmulationStationGamelist();
-            library_.exportToRetroArchPlaylist();
-            event.fingerprint.save(fingerprintFilePath());
-            event.romsFingerprint.save(romsFingerprintFilePath());
-            if (modsWatched())
+                GameScanner::writeSubDirRows(event.hierarchy, library_.usbGames(), idByPath);
+                library_.usbGames().replaceFailedGames(event.failedGames);
+                library_.writeEmulationStationGamelist();
+                library_.exportToRetroArchPlaylist();
+                event.fingerprint.save(fingerprintFilePath());
+            }
+            if (event.scope & ScanRoms)
+                event.romsFingerprint.save(romsFingerprintFilePath());
+            if ((event.scope & ScanMods) && modsWatched())
                 event.modsFingerprint.save(modsFingerprintFilePath());
 
             update.active = false;
-            update.finished = true;
+            // a Mods-only scan has no summary to show and no game roster to reload (its Apps arrive as appsChanged)
+            update.finished = (event.scope & (ScanPs1 | ScanRoms)) != 0;
             update.finishedGameCount = static_cast<int>(event.gamesToAddToDB.size());
             update.finishedFailedCount = event.failedCount;
             update.finishedRomCount = event.romCount;

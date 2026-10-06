@@ -10,6 +10,7 @@
 #include "core/services/config.h"
 #include "core/services/environment.h"
 #include "core/services/game_query.h"
+#include "core/services/package_service.h"
 
 #include <algorithm>
 #include <memory>
@@ -498,11 +499,79 @@ TEST_CASE("a PE app has nothing runnable on a machine that is not the console") 
     ConfigIn cfg(lib.tmp, "Origames=false\n");
     GameQueryService query(lib.library, *cfg);
     lib.tmp.makeSubDir("Apps/pe-openlara");
-    lib.tmp.writeFile("Apps/pe-openlara/app.ini",
-                      "Title=OpenLara\nExec.psc=run.sh\nStartup=run.sh\nCategory=PE\n");
+    lib.tmp.writeFile("Apps/pe-openlara/app.ini", "Title=OpenLara\nExec.psc=run.sh\nStartup=run.sh\nCategory=PE\n");
     lib.tmp.writeFile("Apps/pe-openlara/run.sh", "#!/bin/sh\n");
 
     const vector<string> keys = Env::appPlatformKeys();
     const bool console = std::find(keys.begin(), keys.end(), "psc") != keys.end();
     CHECK(query.apps(AppCategory::PE).size() == (console ? 1u : 0u));
+}
+
+// Packages (APPS-12, docs/packages.md 7): game data, not Apps - a row of its own only when the index holds a package,
+// last in the list, outside the "All apps" total
+TEST_CASE("the Packages row: only with a package, last, outside the apps total; its entries are flagged") {
+    FourApps lib;
+    ConfigIn cfg(lib.tmp, "Origames=false\n");
+    GameQueryService query(lib.library, *cfg);
+    PackageService packages;
+    query.setPackages(&packages);
+
+    // an empty index: no row, nothing to show
+    packages.rescan(lib.tmp.at("Packages"), lib.tmp.at("rc/packages.ini"));
+    for (const auto &c : query.appCategories())
+        CHECK(c.category != AppCategory::Packages);
+    CHECK(query.apps(AppCategory::Packages).empty());
+    const size_t appsBefore = query.setCounts({}).apps;
+
+    lib.tmp.writeFile("rc/packages.ini", "[doom2]\nkind=doom-iwad\ntitle=Doom II\nmatch=DOOM2.WAD\n");
+    lib.tmp.writeFile("Packages/Doom/DOOM2.WAD", "x");
+    lib.tmp.writeFile(
+        "Packages/freedoom/package.ini",
+        "Title=Freedoom\nKind=doom-iwad\nImage=cover.png\nReadme=README.txt\nAuthor=The Freedoom project\n"
+        "Game1.Title=Phase 1\nGame1.File=f1.wad\n");
+    lib.tmp.writeFile("Packages/freedoom/f1.wad", "x");
+    lib.tmp.writeFile("Packages/freedoom/cover.png", "x");
+    lib.tmp.writeFile("Packages/freedoom/README.txt", "x");
+    lib.tmp.makeSubDir("Packages/Unknown");
+    packages.rescan(lib.tmp.at("Packages"), lib.tmp.at("rc/packages.ini"));
+
+    // the row is last (after PE/Other), and its count is the number of packages - unknown data included
+    auto counts = query.appCategories();
+    REQUIRE_FALSE(counts.empty());
+    CHECK(counts.back().category == AppCategory::Packages);
+    CHECK(counts.back().count == 3);
+    CHECK(counts[counts.size() - 2].category != AppCategory::Packages);
+
+    // not Apps: the "All apps" list and the total do not change
+    CHECK(query.apps(AppCategory::All).size() == 6);
+    CHECK(query.setCounts({}).apps == appsBefore);
+
+    PsGames games = query.apps(AppCategory::Packages);
+    REQUIRE(games.size() == 3);
+    for (const PsGamePtr &g : games) {
+        CHECK(g->package);
+        CHECK(g->app);
+        CHECK(g->foreign);
+        CHECK_FALSE(g->package_id.empty());
+        CHECK(g->startup.empty()); // there is nothing to run
+    }
+    GameSetSelection selection;
+    selection.set = GameSet::Apps;
+    selection.appCategory = AppCategory::Packages;
+    PsGames sorted = query.gamesFor(selection);
+    CHECK(titlesOf(sorted) == vector<string>{"Doom", "Freedoom", "Unknown"}); // by title
+    CHECK(sorted[1]->package_id == "freedoom");
+    CHECK(sorted[1]->base == lib.tmp.at("Packages/freedoom"));
+    CHECK(sorted[1]->image_path == lib.tmp.at("Packages/freedoom/cover.png"));
+    CHECK(sorted[1]->readme_path == lib.tmp.at("Packages/freedoom/README.txt"));
+    CHECK(sorted[0]->base == lib.tmp.at("Packages/Doom")); // a recognised root of the player's folder
+}
+
+TEST_CASE("with no PackageService wired up there is no Packages row") {
+    FourApps lib;
+    ConfigIn cfg(lib.tmp, "Origames=false\n");
+    GameQueryService query(lib.library, *cfg);
+    for (const auto &c : query.appCategories())
+        CHECK(c.category != AppCategory::Packages);
+    CHECK(query.apps(AppCategory::Packages).empty());
 }

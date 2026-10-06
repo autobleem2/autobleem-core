@@ -10,6 +10,7 @@
 
 #include "core/services/app_settings.h"
 #include "core/services/launch.h"
+#include "core/services/package_service.h"
 
 #include <algorithm>
 #include <memory>
@@ -1407,4 +1408,170 @@ TEST_CASE("RetroArch on a square-pixel 4:3 output (640x480): untouched, the CRT 
     CHECK_FALSE(contains(inPlay, "menu_pixel_aspect"));
     CHECK_FALSE(contains(inPlay, "menu_scale_factor"));
     CHECK_FALSE(contains(inPlay, "video_shader_enable"));
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Packages (APPS-12, autobleem-main docs/packages.md 5): what an engine with Uses= is started with
+// ---------------------------------------------------------------------------------------------------------
+namespace {
+PackageEntry doomEntry(const string &root = "/media/Packages/Doom") {
+    PackageEntry e;
+    e.packageId = "u/doom";
+    e.packageTitle = "Doom";
+    e.source = "user";
+    e.root = root;
+    e.game.id = "doom2";
+    e.game.title = "Doom II: Hell on Earth";
+    e.game.kind = "doom-iwad";
+    e.game.file = "DOOM2.WAD";
+    return e;
+}
+
+// an App with Uses= whose Args= and Env= use the placeholders
+PsGamePtr enginesApp(Launching &lib, const string &args, const string &env = "") {
+    const string key = Env::appPlatformKeys().front();
+    lib.tmp.makeSubDir("Apps/crispy/bin/" + key);
+    lib.tmp.writeFile("Apps/crispy/app.ini", "Title=Crispy Doom\nExec=bin/{key}/crispy-doom\nUses=doom-iwad\nArgs=" +
+                                                 args + "\n" + (env.empty() ? "" : "Env=" + env + "\n"));
+    lib.tmp.writeFile("Apps/crispy/bin/" + key + "/crispy-doom", "x");
+    PsGamePtr game = lib.foreignGame(true);
+    game->base = lib.tmp.at("Apps/crispy");
+    game->startup = "bin/" + key + "/crispy-doom";
+    return game;
+}
+} // namespace
+
+TEST_CASE("an engine started with a choice gets AB_PKG_*; started without one it gets none") {
+    Launching lib;
+    PsGamePtr game = enginesApp(lib, "-iwad \"{package}\"");
+    PackageEntry entry = doomEntry();
+
+    LaunchPlan with = LaunchService::planApp(*game, &entry);
+    CHECK(envValue(with, "AB_PKG_DIR") == "/media/Packages/Doom"); // no trailing slash
+    CHECK(envValue(with, "AB_PKG_FILE") == "/media/Packages/Doom/DOOM2.WAD");
+    CHECK(envValue(with, "AB_PKG_KIND") == "doom-iwad");
+    CHECK(envValue(with, "AB_PKG_TITLE") == "Doom II: Hell on Earth");
+    CHECK(envValue(with, "AB_PKG_ID") == "u/doom/doom2");
+    CHECK(envValue(with, "AB_PKG_GAME") == "doom2");
+    CHECK(envValue(with, "AB_PKG_STARTS") == "<unset>"); // only when the game has Start programs
+    CHECK(envValue(with, "AB_PKG_MAPPER") == "<unset>");
+    CHECK(envValue(with, "AB_APP_DIR") == lib.tmp.at("Apps/crispy")); // the AB_APP_* are still there
+
+    LaunchPlan without = LaunchService::planApp(*game);
+    for (const char *name : {"AB_PKG_DIR", "AB_PKG_FILE", "AB_PKG_KIND", "AB_PKG_TITLE", "AB_PKG_ID", "AB_PKG_GAME",
+                             "AB_PKG_STARTS", "AB_PKG_MAPPER", "AB_PKG_SET_CYCLES"}) {
+        INFO(name);
+        CHECK(envValue(without, name) == "<unset>");
+    }
+    // and nothing is replaced: the placeholder is left as written (an App with no choice is not touched)
+    CHECK(envValue(without, "AB_APP_ARGS") == "-iwad \"{package}\"");
+}
+
+TEST_CASE("a dos-game choice: Start programs, per-game settings and the mapper reach the environment") {
+    Launching lib;
+    PsGamePtr game = enginesApp(lib, "");
+    PackageEntry entry = doomEntry("/media/Packages/DOS/Prince");
+    entry.packageId = "u/dos/prince";
+    entry.game.id = "prince";
+    entry.game.kind = "dos-game";
+    entry.game.file = "PRINCE.EXE";
+    entry.game.starts = {{"PRINCE.EXE", "Play"}, {"SETUP.EXE", "Setup"}};
+    entry.game.settings = {{"cycles", "3000"}, {"memsize", "16"}};
+    entry.game.mapper = "keys/prince.map";
+
+    LaunchPlan plan = LaunchService::planApp(*game, &entry);
+    CHECK(envValue(plan, "AB_PKG_STARTS") == "PRINCE.EXE|Play;SETUP.EXE|Setup");
+    CHECK(envValue(plan, "AB_PKG_SET_CYCLES") == "3000");
+    CHECK(envValue(plan, "AB_PKG_SET_MEMSIZE") == "16");
+    CHECK(envValue(plan, "AB_PKG_SET_SOUND") == "<unset>");
+    CHECK(envValue(plan, "AB_PKG_MAPPER") == "/media/Packages/DOS/Prince/keys/prince.map");
+    CHECK(envValue(plan, "AB_PKG_KIND") == "dos-game");
+}
+
+TEST_CASE("every placeholder is replaced; an unknown {name} and the text around stay as written") {
+    PackageEntry e = doomEntry();
+    CHECK(LaunchService::expandPackage("{package}", e) == "/media/Packages/Doom/DOOM2.WAD");
+    CHECK(LaunchService::expandPackage("{package_dir}", e) == "/media/Packages/Doom");
+    CHECK(LaunchService::expandPackage("{package_kind}", e) == "doom-iwad");
+    CHECK(LaunchService::expandPackage("{package_title}", e) == "Doom II: Hell on Earth");
+    CHECK(LaunchService::expandPackage("{package_id}", e) == "u/doom/doom2");
+    CHECK(LaunchService::expandPackage("{package_game}", e) == "doom2");
+    CHECK(LaunchService::expandPackage("-savedir savegames/{package_game}/x", e) == "-savedir savegames/doom2/x");
+    CHECK(LaunchService::expandPackage("{unknown} {package_x} {package", e) == "{unknown} {package_x} {package");
+    CHECK(LaunchService::expandPackage("{key}", e) == "{key}");
+    // a value that itself looks like a placeholder is not expanded again
+    e.game.title = "{package_game}";
+    CHECK(LaunchService::expandPackage("{package_title}", e) == "{package_game}");
+}
+
+TEST_CASE("a path with a blank is one argument on the direct route and quoted on the script route") {
+    const string path = "/media/Packages/Theme Hospital";
+    PackageEntry entry = doomEntry(path);
+    entry.game.file = "DATA/VBLK-0.DAT";
+
+    // the script route: AB_APP_ARGS, which rc/app_run.sh evals - the argument stays one word
+    {
+        Launching lib;
+        PsGamePtr game = enginesApp(lib, "-iwad \"{package}\" -config default.cfg -savedir savegames/{package_game}");
+        LaunchPlan plan = LaunchService::planApp(*game, &entry);
+        CHECK(envValue(plan, "AB_APP_ARGS") ==
+              "-iwad \"/media/Packages/Theme Hospital/DATA/VBLK-0.DAT\" -config default.cfg -savedir savegames/doom2");
+        // the line the launcher's own splitter reads back gives the same arguments
+        CHECK(AppManifest::splitArgs(envValue(plan, "AB_APP_ARGS")) ==
+              vector<string>{"-iwad", "/media/Packages/Theme Hospital/DATA/VBLK-0.DAT", "-config", "default.cfg",
+                             "-savedir", "savegames/doom2"});
+        // a plain path stays as it is, quotes and all
+        PackageEntry plain = doomEntry();
+        CHECK(envValue(LaunchService::planApp(*game, &plain), "AB_APP_ARGS") ==
+              "-iwad \"/media/Packages/Doom/DOOM2.WAD\" -config default.cfg -savedir savegames/doom2");
+        // an unquoted placeholder that gets a blank is quoted for it (this rewrites the App's app.ini)
+        PsGamePtr bare = enginesApp(lib, "-iwad {package} -x");
+        CHECK(envValue(LaunchService::planApp(*bare, &entry), "AB_APP_ARGS") ==
+              "-iwad \"/media/Packages/Theme Hospital/DATA/VBLK-0.DAT\" -x");
+        // $ and ` in a path are not for the shell to expand
+        PackageEntry odd = doomEntry("/media/Packages/a$b");
+        CHECK(envValue(LaunchService::planApp(*bare, &odd), "AB_APP_ARGS") ==
+              "-iwad \"/media/Packages/a\\$b/DOOM2.WAD\" -x");
+    }
+    // the direct route (Windows): the arguments are split first, then each one is replaced - still one argument
+    {
+        DirectLaunching lib;
+        PsGamePtr game = enginesApp(lib, "-iwad \"{package}\" -dir {package_dir}");
+        LaunchPlan plan = LaunchService::planApp(*game, &entry);
+        CHECK(plan.args == vector<string>{"-iwad", "/media/Packages/Theme Hospital/DATA/VBLK-0.DAT", "-dir",
+                                          "/media/Packages/Theme Hospital"});
+    }
+}
+
+TEST_CASE("Env= values take the placeholders too; Exec and Lib do not") {
+    Launching lib;
+    PsGamePtr game = enginesApp(lib, "", "DOOMWADDIR={package_dir};GAME={package_game};PLAIN=1");
+    PackageEntry entry = doomEntry();
+    LaunchPlan plan = LaunchService::planApp(*game, &entry);
+    CHECK(envValue(plan, "DOOMWADDIR") == "/media/Packages/Doom");
+    CHECK(envValue(plan, "GAME") == "doom2");
+    CHECK(envValue(plan, "PLAIN") == "1");
+    // without a choice the Env= is as written
+    CHECK(envValue(LaunchService::planApp(*game), "DOOMWADDIR") == "{package_dir}");
+}
+
+TEST_CASE("the launch passes the picked entry to the App; a Packages-row entry refuses to launch") {
+    Launching lib;
+    PsGamePtr app = enginesApp(lib, "-iwad \"{package}\"");
+    PackageEntry entry = doomEntry();
+    lib.service->launch(app, EmuMode::Launcher, -1, &entry);
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    CHECK(envValue(call, "AB_PKG_FILE") == "/media/Packages/Doom/DOOM2.WAD");
+    CHECK(envValue(call, "AB_APP_ARGS") == "-iwad \"/media/Packages/Doom/DOOM2.WAD\"");
+
+    // a package of the Packages row is game data: it is never run, with a choice or without
+    PsGamePtr row = lib.foreignGame(true);
+    row->package = true;
+    row->package_id = "u/doom";
+    row->base = lib.tmp.at("Packages/Doom");
+    lib.runner.calls.clear();
+    lib.service->launch(row, EmuMode::Launcher, -1);
+    lib.service->launch(row, EmuMode::Launcher, -1, &entry);
+    lib.service->launch(row, EmuMode::Pcsx, -1);
+    CHECK(lib.runner.calls.empty());
 }

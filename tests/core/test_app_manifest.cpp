@@ -37,8 +37,7 @@ TEST_CASE("Env::appPlatformKeysFor: the table") {
     CHECK(Env::appPlatformKeysFor("rpi64", "linux", "arm64") == vector<string>{"rpi64", "linux-arm64"});
     CHECK(Env::appPlatformKeysFor("pcusb", "linux", "i386") == vector<string>{"pcusb", "linux-i386"});
     CHECK(Env::appPlatformKeysFor("win", "windows", "x86_64") == vector<string>{"win", "windows-x86_64"});
-    CHECK(Env::appPlatformKeysFor("dev", "windows", "x86_64") ==
-          vector<string>{"dev", "win", "windows-x86_64"});
+    CHECK(Env::appPlatformKeysFor("dev", "windows", "x86_64") == vector<string>{"dev", "win", "windows-x86_64"});
     CHECK(Env::appPlatformKeysFor("dev", "linux", "x86_64") == vector<string>{"dev", "linux-x86_64"});
     // a future target needs no change to an App built for its generic key
     CHECK(Env::appPlatformKeysFor("vcs", "linux", "x86_64") == vector<string>{"vcs", "linux-x86_64"});
@@ -215,4 +214,33 @@ TEST_CASE("AppManifest::parseEnv") {
     CHECK(env[1] == make_pair(string("B"), string("two")));
     CHECK(env[2] == make_pair(string("C"), string("")));
     CHECK(env[3] == make_pair(string("D"), string("x=y")));
+}
+
+TEST_CASE("AppManifest: Uses= and PackageDir= parse - blanks, case, empty items, on every platform key") {
+    TempDir tmp("manifest");
+    makeApp(tmp,
+            "[app]\nExec=bin/{key}/game\nUses= Doom-IWAD ; heretic-iwad;; DOOM-iwad \nPackageDir = WAD ; Data/Wads\n",
+            {"bin/psc/game", "bin/rpi/game"});
+    for (const char *key : {"psc", "rpi"}) {
+        AppManifest m = AppManifest::load(tmp.path(), "app.ini", {key}, appOptions());
+        REQUIRE(m.runnable());
+        CHECK(m.uses == vector<string>{"doom-iwad", "heretic-iwad"}); // lower-cased, the repeat dropped
+        CHECK(m.packageDirs == vector<string>{"WAD", "Data/Wads"});   // a folder keeps its case
+    }
+    // no key at all: nothing, and the App starts as it always did
+    makeApp(tmp, "[app]\nExec=bin/{key}/game\n", {"bin/psc/game"});
+    AppManifest plain = AppManifest::load(tmp.path(), "app.ini", {"psc"}, appOptions());
+    CHECK(plain.uses.empty());
+    CHECK(plain.packageDirs.empty());
+    // an App that is not runnable here still says what it uses
+    makeApp(tmp, "[app]\nExec=bin/{key}/missing\nUses=quake-id1\n", {});
+    AppManifest none = AppManifest::load(tmp.path(), "app.ini", {"psc"}, appOptions());
+    CHECK_FALSE(none.runnable());
+    CHECK(none.uses == vector<string>{"quake-id1"});
+}
+
+TEST_CASE("AppManifest::parseList") {
+    CHECK(AppManifest::parseList("A; b ;;C;a", false) == vector<string>{"A", "b", "C", "a"});
+    CHECK(AppManifest::parseList("A; b ;;C;a", true) == vector<string>{"a", "b", "c"});
+    CHECK(AppManifest::parseList("", true).empty());
 }

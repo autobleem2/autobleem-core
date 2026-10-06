@@ -30,7 +30,7 @@ struct FakeHost : ExtensionHost {
     const string &folder() const override { return folder_; }
     const string &stateDir() const override { return state_; }
     bool networkUp() override { return true; }
-    void requestRescan() override { calls.push_back(name_ + ":rescan"); }
+    void requestRescan(ScanScope) override { calls.push_back(name_ + ":rescan"); }
     void reloadApps() override {}
     void reloadConfig() override {}
     void notify(const string &, const string &, uint64_t, uint64_t) override {}
@@ -47,7 +47,7 @@ struct FakeExtension : Extension {
         // the crash guard's marker is there while the extension runs
         calls.push_back(host.name() + ":run" +
                         (DirEntry::exists(currentCatalog->activeFile()) ? "(guarded)" : "(unguarded)"));
-        host.requestRescan();
+        host.requestRescan(ScanAll);
     }
     void poll() override { calls.push_back(host.name() + ":poll"); }
     void suspend() override { calls.push_back(host.name() + ":suspend"); }
@@ -316,7 +316,7 @@ TEST_CASE("ExtensionRuntime::runProvider runs whichever runnable extension provi
 
 TEST_CASE("the SDK stamp names the ABI, the compiler and the target") {
     string stamp = AB_SDK_STAMP;
-    CHECK(AB_SDK_ABI == 9); // StoreItem gained sourceUrl (PE Apps in the Store)
+    CHECK(AB_SDK_ABI == 10); // requestRescan takes the ScanScope of the scan
     CHECK(stamp.find("sdk=" + to_string(AB_SDK_ABI) + ";") == 0);
     CHECK(stamp.find(";cxx=") != string::npos);
     CHECK(stamp.find(";target=") != string::npos);

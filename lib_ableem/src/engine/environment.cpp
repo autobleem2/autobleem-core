@@ -109,6 +109,12 @@ string Environment::getPathToAppsDir() {
 string Environment::getPathToModsDir() {
     return usbRoot + sep + "Mods";
 }
+string Environment::getPathToPackagesDir() {
+    return usbRoot + sep + "Packages";
+}
+string Environment::getPathToPackagesTable() {
+    return getPathToRCDir() + sep + "packages.ini";
+}
 string Environment::getPathToExtensionsDir() {
     return usbRoot + sep + "Extensions";
 }
