@@ -121,6 +121,9 @@ public:
     bool onTitle() const { return onTitle_; }
     // the real top of the hint bar under the play field (the screen's footer rect): the bottom HUD plates stay above it
     void setBarTop(int top) { barTop_ = top; }
+    // the HUD's side plates move in (left) and out (right) by `px` where only the middle of the 1280 field is shown
+    // (a 4:3 output: 160); 0 = the full field
+    void setHudInset(int px) { hudInset_ = px; }
     // the title's clock: the sky, the belt and the alien beat, and the attract loop (title -> table -> demo)
     void updateTitle(unsigned int nowTicks);
     // a press on the title (or its table): the attract loop starts over from the title
@@ -215,6 +218,7 @@ private:
 
     bool onTitle_ = false;
     int barTop_ = 720; // see setBarTop()
+    int hudInset_ = 0; // see setHudInset()
     float shipX = 0;
     int dropsSinceExtraLife = 0; // power-ups dropped since the last extra life (see maybeDropPowerUp)
     int lives = 3;
