@@ -919,36 +919,44 @@ void SurpriseGame::renderHud(ableem::Renderer &renderer, const SurpriseSprites &
     // (on a 4:3 output the field is shown 960 wide, the middle of the 1280: the left plates move in by hudInset_, the
     // right ones out by it, the centred ones stay)
     const int li = hudInset_, ri = -hudInset_;
-    hud.plate(renderer, 24 + li, 12, 250, 70, fx);
-    hud.plate(renderer, 505, 12, 270, 70, fx);
-    hud.plate(renderer, 1066 + ri, 12, 190, 70, fx);
-    hud.shadowText(renderer, f.label, "1UP", 44 + li, 22, Align::Left, faded(LabelRed), shadow);
-    hud.chrome(renderer, Slot::Score, f.number, surprise::zeroPad(score, 7), Gradient::Gold, 3, 44 + li, 42,
+    // (and there the lettering is a size up - SurpriseFonts::load(big) - so the plates are taller and the numbers
+    // lower)
+    const bool big = hudInset_ > 0;
+    const int topH = big ? 86 : 70, labelY = big ? 17 : 22, numberY = big ? 45 : 42;
+    hud.plate(renderer, 24 + li, 12, 250, topH, fx);
+    hud.plate(renderer, 505, 12, 270, topH, fx);
+    hud.plate(renderer, 1066 + ri, 12, 190, topH, fx);
+    hud.shadowText(renderer, f.label, "1UP", 44 + li, labelY, Align::Left, faded(LabelRed), shadow);
+    hud.chrome(renderer, Slot::Score, f.number, surprise::zeroPad(score, 7), Gradient::Gold, 3, 44 + li, numberY,
                Align::Left, none, 0.0f, white, fx);
-    hud.shadowText(renderer, f.label, "HI-SCORE", 640, 22, Align::Center, faded(LabelRed), shadow);
-    hud.chrome(renderer, Slot::HiScore, f.number, surprise::zeroPad(highScore, 7), Gradient::Ice, 3, 640, 42,
+    hud.shadowText(renderer, f.label, "HI-SCORE", 640, labelY, Align::Center, faded(LabelRed), shadow);
+    hud.chrome(renderer, Slot::HiScore, f.number, surprise::zeroPad(highScore, 7), Gradient::Ice, 3, 640, numberY,
                Align::Center, none, 0.0f, cheating || demo_ ? ableem::Color(128, 128, 128, 255) : white, fx);
-    hud.shadowText(renderer, f.label, _("WAVE"), 1236 + ri, 22, Align::Right, faded(LabelRed), shadow);
-    hud.chrome(renderer, Slot::Wave, f.number, surprise::zeroPad(wave, 2), Gradient::Ice, 3, 1236 + ri, 42,
+    hud.shadowText(renderer, f.label, _("WAVE"), 1236 + ri, labelY, Align::Right, faded(LabelRed), shadow);
+    hud.chrome(renderer, Slot::Wave, f.number, surprise::zeroPad(wave, 2), Gradient::Ice, 3, 1236 + ri, numberY,
                Align::Right, none, 0.0f, white, fx);
 
     // bottom left: the lives are collected, so one ship and "x N" (an infinity sign under GOD MODE)
     // the plates sit above the hint bar, whatever its height (dy moves everything on them with the plate)
-    const int plateY = surprise::bottomPlateY(barTop_);
-    const int dy = plateY - surprise::BottomPlateY;
-    hud.plate(renderer, 24 + li, plateY, 150, 58, fx);
-    ableem::Rect shipIcon(44 + li, 665 + dy, 36, 27);
+    const int plateH = big ? 66 : surprise::BottomPlateH;
+    const int plateY = big ? std::min(surprise::BottomPlateY, barTop_ - plateH - surprise::BottomPlateGap)
+                           : surprise::bottomPlateY(barTop_);
+    // the offsets inside the plate: the 1280 design's, or the bigger lettering's
+    auto in = [&](int wide, int bigger) { return plateY + (big ? bigger : wide); };
+    hud.plate(renderer, 24 + li, plateY, big ? 176 : 150, plateH, fx);
+    ableem::Rect shipIcon(44 + li, in(15, 20), 36, 27);
     ableem::Texture shipTex = sprites.ship; // a shared handle: the alpha is put back for the ship itself
     shipTex.setAlphaMod(alpha);
     renderer.copy(shipTex, nullptr, &shipIcon);
     shipTex.setAlphaMod(255);
-    hud.shadowText(renderer, f.semi20, "x", 90 + li, 668 + dy, Align::Left, faded(ableem::Color(200, 205, 225, 255)),
-                   shadow);
+    hud.shadowText(renderer, f.semi20, "x", (big ? 92 : 90) + li, in(18, 14), Align::Left,
+                   faded(ableem::Color(200, 205, 225, 255)), shadow);
     // during the freeze the counter (already showing the new count) blinks red every other 125 ms
     const bool frozen = !gameOver() && lastTicks < freezeUntilTicks;
     const bool blinkRed = frozen && surprise::livesBlinkRed(sinceHit());
     hud.chrome(renderer, Slot::Lives, f.number, cheating ? string(InfinitySign) : to_string(max(0, lives)),
-               blinkRed ? Gradient::Red : Gradient::Ice, 3, 110 + li, 660 + dy, Align::Left, none, 0.0f, white, fx);
+               blinkRed ? Gradient::Red : Gradient::Ice, 3, (big ? 124 : 110) + li, in(10, 8), Align::Left, none, 0.0f,
+               white, fx);
 
     // bottom right: the power-up in force - its icon, its name in its colour and the time left as ten segments
     if (activePowerUp != PowerUpType::None && !gameOver()) {
@@ -962,12 +970,13 @@ void SurpriseGame::renderHud(ableem::Renderer &renderer, const SurpriseSprites &
                                              : ableem::Color(255, 110, 215, 255);
         string name = rapid ? _("RAPID FIRE") : spread ? _("SPREAD SHOT") : _("POWER SHOT");
         unsigned int remainingMs = (powerUpUntilTicks > lastTicks) ? (powerUpUntilTicks - lastTicks) : 0;
-        hud.plate(renderer, 996 + ri, plateY, 260, 58);
-        ableem::Rect iconRect(1012 + ri, 664 + dy, PowerUpSize, PowerUpSize);
+        const int powerW = big ? 290 : 260, powerX = 1256 - powerW;
+        hud.plate(renderer, powerX + ri, plateY, powerW, plateH);
+        ableem::Rect iconRect(powerX + 16 + ri, in(14, 18), PowerUpSize, PowerUpSize);
         renderer.copy(icon, nullptr, &iconRect);
-        hud.shadowText(renderer, f.label, name, 1052 + ri, 660 + dy, Align::Left, color);
-        hud.segments(renderer, 1054 + ri, 686 + dy, 10, surprise::timerSegments(remainingMs, PowerUpDurationMs, 10),
-                     color, TimerOff);
+        hud.shadowText(renderer, f.label, name, powerX + 56 + ri, in(10, 6), Align::Left, color);
+        hud.segments(renderer, powerX + 58 + ri, in(36, 42), 10,
+                     surprise::timerSegments(remainingMs, PowerUpDurationMs, 10), color, TimerOff);
     }
 }
 

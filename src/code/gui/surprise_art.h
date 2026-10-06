@@ -30,7 +30,9 @@ struct SurpriseFonts {
     ableem::Font push;     // 30, Bold
     ableem::Font credit;   // 14, SemiBold
 
-    void load(ableem::Renderer &renderer, const std::string &fontsDir, const std::string &cjkFont);
+    // `big`: the lettering a size up for a 4:3 (CRT) output, where the field is shown at two thirds (about 16 px on
+    // the screen for the HUD labels); the title and subtitle are big already
+    void load(ableem::Renderer &renderer, const std::string &fontsDir, const std::string &cjkFont, bool big = false);
 };
 
 //******************

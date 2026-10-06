@@ -110,7 +110,8 @@ void GuiAbout::loadGameAssets() {
     // the credits' face stands in for a file that did not open
     {
         AboutStage stage("init Oxanium fonts");
-        hud.fonts.load(renderer, Env::getPathToFontsDir(), Fonts::cjkFontFor(app.config().inifile.values["language"]));
+        hud.fonts.load(renderer, Env::getPathToFontsDir(), Fonts::cjkFontFor(app.config().inifile.values["language"]),
+                       renderer.fourByThreeOutput());
         hud.fallback = font;
     }
 
@@ -530,7 +531,8 @@ void GuiAbout::renderSurpriseField() {
     fx.setStyle(flyingStyle(game.speed()));
     fx.render(gui->platform().ticks());
 
-    game.setBarTop(gui->classicFooter().y); // the lives and timer plates stay above the hint bar
+    // the lives and timer plates stay above the hint bar (on 4:3 the bar is the 800x600 canvas's, shown at 1.2)
+    game.setBarTop(renderer.fourByThreeOutput() ? SCREEN_HEIGHT - FooterScaled : gui->classicFooter().y);
     game.render(renderer, gui->text(), font, sprites, hud);
 }
 
@@ -550,7 +552,33 @@ void GuiAbout::drawSurpriseFooter() {
         hints = "|@Start| " + _("Play") + "  |@X| " + _("Continue") + "  |@O| " + _("Back");
     else
         hints = "|@Start| " + _("Restart") + "  |@O| " + (game.gameOver() ? _("Back") : _("Exit game"));
+    if (!renderer.fourByThreeOutput()) {
+        gui->panelStyle().footer(*gui, gui->classicFooter(), hints, false);
+        return;
+    }
+    // 4:3: the footer is drawn on the Gui's 800x600 canvas, in a layer, and its strip goes at the foot of the 960x720
+    // one scaled 1.2 - its text is as large as on every other 4:3 screen (17.6 px on the screen)
+    const int w = 800, h = 600, fh = PanelStyle::FooterHeight;
+    if (!footerLayer.valid() || footerLayerAt != renderer.targetsLost()) {
+        footerLayer = ableem::Texture::createTarget(renderer, w, h);
+        footerLayer.setBlendMode(ableem::BlendMode::Premultiplied);
+        footerLayerAt = renderer.targetsLost();
+    }
+    if (!footerLayer.valid())
+        return;
+    const ableem::Color keep = renderer.drawColor();
+    renderer.pushTarget(&footerLayer);
+    renderer.setBlendMode(ableem::BlendMode::None);
+    renderer.setDrawColor(ableem::Color(0, 0, 0, 0));
+    renderer.fillRect();
+    renderer.setBlendMode(ableem::BlendMode::Blend);
+    renderer.setDrawColor(keep);
+    renderer.setCanvas(w, h);
     gui->panelStyle().footer(*gui, gui->classicFooter(), hints, false);
+    renderer.setCanvas(FieldShownW, SCREEN_HEIGHT);
+    renderer.popTarget();
+    const ableem::Rect from(0, h - fh, w, fh), to(0, SCREEN_HEIGHT - FooterScaled, FieldShownW, FooterScaled);
+    renderer.copy(footerLayer, &from, &to);
 }
 
 //*******************************
