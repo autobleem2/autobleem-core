@@ -964,7 +964,7 @@ void Renderer::copy(const Texture &tex, const Rect *src, const Rect *dst) {
         // a render target is addressed in logical pixels like the screen; a loaded image in its own
         ssrc = toSDL(tex.pixelScale() == 1.0f ? *src : scaleRect(*src, tex.pixelScale()));
         psrc = &ssrc;
-    } else if (!dst && impl->fourByThree) {
+    } else if (!dst && impl->fourByThree && SDL_GetRenderTarget(impl->renderer) == impl->screenTarget()) {
         // a 4:3 output: a whole picture over the whole canvas at its own shape - a frame of the other canvas (the 4:3
         // launcher's snapshot under a 16:9 menu) shows its middle, not squeezed (coverCrop); the same shape, all of it
         const Size size = tex.size();
