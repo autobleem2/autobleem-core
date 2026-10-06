@@ -108,12 +108,16 @@ struct ScreenStack::Transitions : public ableem::GuiScreenObserver {
     };
     std::vector<Open> open;
     std::map<const ableem::GuiScreen *, ScreenTransitions> declarations;
+    std::map<const ableem::GuiScreen *, std::function<void()>> frameCanvases; // declareFrameCanvas()
     bool startSet = false;
     Transition start;
     const ableem::GuiScreen *keeper = nullptr; // keepPictureOnClose(): its last picture stays as the old one
 
     // the two pictures: the old one (the screen under one that opens, or one that closed) and the new one's frames
     ableem::Texture oldPicture, newPicture;
+    // the canvas each picture's target was made for (a 4:3 output has more than one: the launcher's 640x480, the
+    // rest's)
+    int oldW = 0, oldH = 0, newW = 0, newH = 0;
     bool hasOld = false;
     unsigned long shown = 0;   // the frames shown on the window (presented() less the silent snapshots)
     unsigned long oldAt = 0;   // `shown` when the old picture was drawn
@@ -141,16 +145,33 @@ struct ScreenStack::Transitions : public ableem::GuiScreenObserver {
 bool ScreenStack::Transitions::target(ableem::Texture &t) {
     if (!renderer)
         return false;
-    if (!t.valid()) {
+    int &w = &t == &oldPicture ? oldW : newW, &h = &t == &oldPicture ? oldH : newH;
+    // a target made for another canvas (a 4:3 output's launcher is 640x480, the other screens' 800x600) is made again
+    if (!t.valid() || w != renderer->width() || h != renderer->height()) {
         t = ableem::Texture::createTarget(*renderer, renderer->width(), renderer->height());
         if (!t.valid())
             return false;
+        w = renderer->width();
+        h = renderer->height();
     }
     return true;
 }
 
 // one picture of `drawer` into `t`: cleared to its colour, its drawing - what its frame would show
 bool ScreenStack::Transitions::drawInto(ableem::Texture &t, Screen &drawer) {
+    if (!renderer)
+        return false;
+    // the picture is the screen's frame as it would be drawn: on ITS canvas (a 4:3 output's launcher has its own,
+    // 640x480; this runs between frames, where the canvas is the output's rest one), put back after
+    struct CanvasScope {
+        ableem::Renderer &r;
+        int w, h;
+        explicit CanvasScope(ableem::Renderer &renderer) : r(renderer), w(renderer.width()), h(renderer.height()) {}
+        ~CanvasScope() { r.setCanvas(w, h); }
+    } canvasScope(*renderer);
+    auto canvas = frameCanvases.find(&drawer);
+    if (canvas != frameCanvases.end() && canvas->second)
+        canvas->second();
     if (!target(t))
         return false;
     DepthScope depth(stack.depth_); // a frame started inside (a busy tick) is a nested one, presented on its own
@@ -185,10 +206,9 @@ void ScreenStack::Transitions::drawLayer(ableem::Texture &picture, const Transit
     if (layer.dim > 0) {
         renderer->setDrawColor(ableem::Color(0, 0, 0, static_cast<unsigned char>(layer.dim)));
         renderer->setBlendMode(ableem::BlendMode::Blend);
-        renderer->fillRect(ableem::Rect(static_cast<int>(std::lround(layer.rect.x)),
-                                        static_cast<int>(std::lround(layer.rect.y)),
-                                        static_cast<int>(std::lround(layer.rect.w)),
-                                        static_cast<int>(std::lround(layer.rect.h))));
+        renderer->fillRect(
+            ableem::Rect(static_cast<int>(std::lround(layer.rect.x)), static_cast<int>(std::lround(layer.rect.y)),
+                         static_cast<int>(std::lround(layer.rect.w)), static_cast<int>(std::lround(layer.rect.h))));
     }
 }
 
@@ -196,9 +216,9 @@ void ScreenStack::Transitions::drawLayer(ableem::Texture &picture, const Transit
 void ScreenStack::Transitions::composeOnScreen(bool withOld, bool withNew) {
     stack.display_->setClearColor(OpaqueBlack);
     stack.display_->clear();
-    const TransitionFrame f =
-        composeTransition(player.transition(), player.backwards(), player.progress(),
-                          static_cast<float>(renderer->width()), static_cast<float>(renderer->height()), withOld, withNew);
+    const TransitionFrame f = composeTransition(player.transition(), player.backwards(), player.progress(),
+                                                static_cast<float>(renderer->width()),
+                                                static_cast<float>(renderer->height()), withOld, withNew);
     if (f.oldOnTop) {
         drawLayer(newPicture, f.newPicture);
         drawLayer(oldPicture, f.oldPicture);
@@ -352,9 +372,9 @@ void ScreenStack::run(const ableem::Color *clearColor, const Draw &draw, Screen 
     }
     TraceFrame traceFrame; // the hand-off trap (BUG-31): a clear or present outside the stack is marked
     if (ableem::ext_trace::active())
-        ableem::ext_trace::note("stack frame depth=" + std::to_string(depth_) + " tweens=" +
-                                std::to_string(tweens_->count()) + " clear=" + (clearColor ? "own" : "opaque black") +
-                                (composed ? " transition" : ""));
+        ableem::ext_trace::note("stack frame depth=" + std::to_string(depth_) +
+                                " tweens=" + std::to_string(tweens_->count()) +
+                                " clear=" + (clearColor ? "own" : "opaque black") + (composed ? " transition" : ""));
     {
         // a frame nested in a picture being drawn into a target (a busy tick from a load in it) goes to the screen
         std::unique_ptr<TargetScope> toScreen;
@@ -372,8 +392,8 @@ void ScreenStack::run(const ableem::Color *clearColor, const Draw &draw, Screen 
             }
             tr.composeOnScreen(tr.oldUsable(), true);
         } else {
-            // never the colour a last drawing left set (BUG-31: a hint's white or a bar's fill cleared a frame white, and
-            // that frame was presented before anything opaque covered it): a screen that wants another says so
+            // never the colour a last drawing left set (BUG-31: a hint's white or a bar's fill cleared a frame white,
+            // and that frame was presented before anything opaque covered it): a screen that wants another says so
             display_->setClearColor(clearColor ? *clearColor : OpaqueBlack);
             display_->clear();
             if (draw)
@@ -395,9 +415,14 @@ void ScreenStack::declare(const ableem::GuiScreen &screen, const ScreenTransitio
     transitions_->declarations[&screen] = transitions;
 }
 
+void ScreenStack::declareFrameCanvas(const ableem::GuiScreen &screen, std::function<void()> use) {
+    transitions_->frameCanvases[&screen] = std::move(use);
+}
+
 void ScreenStack::forget(const ableem::GuiScreen &screen) {
     Transitions &tr = *transitions_;
     tr.declarations.erase(&screen);
+    tr.frameCanvases.erase(&screen);
     if (tr.keeper == &screen)
         tr.keeper = nullptr;
     for (auto it = tr.open.begin(); it != tr.open.end();) {

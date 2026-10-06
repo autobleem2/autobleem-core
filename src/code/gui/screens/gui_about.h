@@ -24,6 +24,7 @@ public:
     void draw() override;
     // on a 4:3 output the game gets a 960x720 canvas (the middle of its field), the credits the Gui's rest canvas
     bool prepareFrame() override;
+    void useFrameCanvas();
     void loop() override;
     ableem::Texture logo;
     ableem::Font font;

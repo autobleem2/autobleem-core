@@ -50,6 +50,8 @@ void GuiAbout::init() {
     AboutStage whole("init total");
     std::shared_ptr<Gui> gui(Gui::getInstance());
     fx.renderer = &renderer;
+    if (ctx.hasStack())
+        ctx.stack().declareFrameCanvas(*this, [this] { useFrameCanvas(); });
     // the credits' small font: the launcher's medium face (about.ttf, an SST copy, went with the Sony fonts)
     {
         AboutStage stage("init credits font");
@@ -175,9 +177,13 @@ vector<string> GuiAbout::autobleemFoot() {
 // On a 4:3 output the credits are laid out for the Gui's 800x600 canvas (pages of one column, text a size up) and the
 // game takes a 960x720 one: the middle of its 1280x720 field (renderSurprise).
 bool GuiAbout::prepareFrame() {
+    useFrameCanvas();
+    return true;
+}
+
+void GuiAbout::useFrameCanvas() {
     if (surpriseMode)
         renderer.setCanvas(FieldShownW, SCREEN_HEIGHT); // does nothing on a wide output
-    return true;
 }
 
 //*******************************

@@ -99,21 +99,26 @@ private:
     std::unique_ptr<Tweens> tweens_;
 
     // Appended (UIREV-48, the plan's 7a): the screen transitions - screen_transition.h. Every screen declares an in and
-    // an out transition (Screen::declareTransitions; none declared = a cross-fade). When a screen opens (GuiScreen::show
-    // tells the stack through its observer, attach()) the picture of the screen under it is drawn into a render target
-    // (the old picture), and the new screen's frames go into a second target while the transition runs: the stack
-    // composes the two on the screen (alpha, offset, scale - no read-back from the GPU). When a screen closes, its last
-    // picture is the old one and the screen under it is drawn live; a screen with nothing under it plays only a Fade
-    // (to black), on its own frames, before show() returns; with any other out its last picture stays as the old one,
-    // which the next start transition comes in over (the launcher over the splash). The transition starts with the new screen's
-    // first frame (while it loads, the old picture stays), runs as one non-ambient tween (the DebugDriver is busy - its
-    // wait_ready waits it out), and a press finishes it at once (attach()'s press observer). Any other frame (a busy
-    // job's, Gui's own) finishes it first. Off (setAnimations(false), the Options row): every change is instant and
-    // nothing is drawn twice. Held through one pointer, so the stack's layout grows by that only.
+    // an out transition (Screen::declareTransitions; none declared = a cross-fade). When a screen opens
+    // (GuiScreen::show tells the stack through its observer, attach()) the picture of the screen under it is drawn into
+    // a render target (the old picture), and the new screen's frames go into a second target while the transition runs:
+    // the stack composes the two on the screen (alpha, offset, scale - no read-back from the GPU). When a screen
+    // closes, its last picture is the old one and the screen under it is drawn live; a screen with nothing under it
+    // plays only a Fade (to black), on its own frames, before show() returns; with any other out its last picture stays
+    // as the old one, which the next start transition comes in over (the launcher over the splash). The transition
+    // starts with the new screen's first frame (while it loads, the old picture stays), runs as one non-ambient tween
+    // (the DebugDriver is busy - its wait_ready waits it out), and a press finishes it at once (attach()'s press
+    // observer). Any other frame (a busy job's, Gui's own) finishes it first. Off (setAnimations(false), the Options
+    // row): every change is instant and nothing is drawn twice. Held through one pointer, so the stack's layout grows
+    // by that only.
 public:
     // what `screen` plays when it opens and closes; kept until it closes (or is destroyed)
     void declare(const ableem::GuiScreen &screen, const ScreenTransitions &transitions);
     void forget(const ableem::GuiScreen &screen);
+    // A screen that draws its frame on a canvas of its own (a 4:3 output's launcher: 640x480, the others' the output's
+    // rest canvas) says how to ask for it, so a picture of it drawn between frames - a transition's old picture - is
+    // drawn on that canvas too. `use` is what its prepareFrame asks of the renderer; forgotten with the screen.
+    void declareFrameCanvas(const ableem::GuiScreen &screen, std::function<void()> use);
     // what `screen` declared, else defaultScreenTransitions()
     ScreenTransitions declared(const ableem::GuiScreen &screen) const;
     // a screen's frame (Screen::render): frame() with its drawing and its clear colour - composed with the old picture
