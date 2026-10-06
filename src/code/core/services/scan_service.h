@@ -99,6 +99,10 @@ struct ScanUpdate {
     // the Packages/ index was rebuilt (PackageService): the launcher reloads the Apps tab's Packages row
     bool packagesChanged = false;
 
+    // a scan cycle ended during this poll, of any scope - including the ones with no summary (Mods, Apps,
+    // Packages): the launcher takes the scan's progress bubble down. `finished` below is the summary's own.
+    bool scanEnded = false;
+
     bool finished = false; // a whole scan cycle completed during this poll
     int finishedGameCount = 0;
     int finishedFailedCount = 0;

@@ -953,6 +953,8 @@ TEST_CASE("scoped scan: a PE package (Mods only) runs the mods processor and no 
     CHECK(update.appsChanged);
     CHECK(update.addedGames.empty()); // the PS1 scan (and its box art) did not run
     CHECK_FALSE(update.finished);     // no "scan complete" summary for a package
+    CHECK(update.processorProgressed); // the processor's progress bubble was raised ...
+    CHECK(update.scanEnded);           // ... and the end is announced, so the launcher takes it down again
     CHECK(update.finishedGameCount == 0);
     CHECK_FALSE(ScanService::fingerprintsMatchDisk()); // the new game is still due for its own scan
 }

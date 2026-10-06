@@ -65,24 +65,59 @@ TEST_CASE("PackageService: the limits are the spec's") {
     CHECK(PackageService::Limits().maxFolders == 2000);
 }
 
-TEST_CASE("PackageService: DOOM.WAD and DOOM2.WAD in one folder are one package with two games") {
+TEST_CASE("PackageService: DOOM.WAD and DOOM2.WAD in one folder are two packages, one game each") {
     Stick s;
     s.write("Doom/DOOM.WAD", "IWAD-doom");
     s.write("Doom/DOOM2.WAD", "IWAD-doom2");
     s.scan();
 
     vector<PackageInfo> packages = s.service.packages();
-    REQUIRE(packages.size() == 1);
-    CHECK(packages[0].id == "u/doom");
+    REQUIRE(packages.size() == 2);
+    CHECK(s.service.packageCount() == 2);
+    CHECK(packages[0].id == "u/doom/doom.wad");
     CHECK(packages[0].title == "Doom");
     CHECK(packages[0].source == "user");
     CHECK_FALSE(packages[0].descriptor);
-    CHECK(packages[0].root == s.tmp.at("Packages/Doom"));
-    REQUIRE(packages[0].games.size() == 2);
+    CHECK(packages[0].root == s.tmp.at("Packages/Doom")); // both live in the folder the files are in
+    REQUIRE(packages[0].games.size() == 1);
     CHECK(packages[0].games[0].id == "doom");
     CHECK(packages[0].games[0].file == "DOOM.WAD");
     CHECK(packages[0].games[0].kind == "doom-iwad");
-    CHECK(packages[0].games[1].id == "doom2");
+    CHECK(packages[1].id == "u/doom/doom2.wad");
+    CHECK(packages[1].title == "Doom II");
+    REQUIRE(packages[1].games.size() == 1);
+    CHECK(packages[1].games[0].id == "doom2");
+
+    // the picker still lists both games, each under its own package
+    AppManifest app;
+    app.folder = s.tmp.at("Apps/crispy");
+    app.uses = {"doom-iwad"};
+    vector<PackageEntry> entries = s.service.entriesFor(app);
+    REQUIRE(entries.size() == 2);
+    CHECK(entries[0].id() == "u/doom/doom.wad/doom");
+    CHECK(entries[1].id() == "u/doom/doom2.wad/doom2");
+}
+
+TEST_CASE("PackageService: a data dir stays one package, and loose files beside it are packages of their own") {
+    Stick s;
+    s.write("Mixed/DOOM.WAD", "IWAD");
+    s.write("Mixed/DOOM2.WAD", "IWAD");
+    s.write("Mixed/id1/pak0.pak", "x");
+    s.write("Mixed/id1/pak1.pak", "x");
+    s.write("OneFile/DOOM2.WAD", "IWAD");
+    s.scan();
+
+    std::shared_ptr<PackageInfo> quake = s.find("u/mixed");
+    REQUIRE(quake != nullptr); // the data dir's package keeps the folder's id and name
+    CHECK(quake->title == "Mixed");
+    REQUIRE(quake->games.size() == 1);
+    CHECK(quake->games[0].id == "quake");
+    CHECK(s.find("u/mixed/doom.wad") != nullptr);
+    CHECK(s.find("u/mixed/doom2.wad") != nullptr);
+    // a folder with a single file is as it always was
+    REQUIRE(s.find("u/onefile") != nullptr);
+    CHECK(s.find("u/onefile")->title == "OneFile");
+    CHECK(s.service.packageCount() == 4);
 }
 
 TEST_CASE("PackageService: names in any letter case match, and the real spelling is what the engine gets") {
