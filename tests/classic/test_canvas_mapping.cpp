@@ -152,8 +152,14 @@ TEST_CASE("mapCanvas: the picture height adjust makes the display taller or shor
     checkRect(mapCanvas(720, 480, 640, 480, 5, 20).display, 36, 14, 648, 452);
     checkRect(mapCanvas(720, 480, 640, 480, 5, -20).display, 36, 34, 648, 412);
     checkRect(mapCanvas(720, 480, 640, 480, 5, 0).display, 36, 24, 648, 432);
-    // an odd value: the extra pixel goes below
-    checkRect(mapCanvas(720, 480, 640, 480, 0, 5).display, 0, -2, 720, 485);
+    // an odd value is made even (toward 0): 5 is 4
+    checkRect(mapCanvas(720, 480, 640, 480, 0, 5).display, 0, -2, 720, 484);
+    // the most: +-40, the display 40 px taller or shorter
+    checkRect(mapCanvas(720, 480, 640, 480, 0, 40).display, 0, -20, 720, 520);
+    checkRect(mapCanvas(720, 480, 640, 480, 0, -40).display, 0, 20, 720, 440);
+    checkRect(mapCanvas(720, 480, 640, 480, 5, 40).display, 36, 4, 648, 472);
+    checkRect(mapCanvas(720, 480, 640, 480, 5, -40).display, 36, 44, 648, 392);
+    checkRect(mapCanvas(800, 600, 800, 600, 0, 40).display, 0, -20, 800, 640);
     // the VGA modes
     checkRect(mapCanvas(800, 600, 800, 600, 0, 20).display, 0, -10, 800, 620);
     checkRect(mapCanvas(800, 600, 800, 600, 0, -20).display, 0, 10, 800, 580);
@@ -162,11 +168,14 @@ TEST_CASE("mapCanvas: the picture height adjust makes the display taller or shor
     // the 16:9 canvas, letterboxed at its own shape, is adjusted the same way
     checkRect(mapCanvas(720, 480, 1280, 720, 0, 0).display, 0, 60, 720, 360);
     checkRect(mapCanvas(720, 480, 1280, 720, 0, 20).display, 0, 50, 720, 380);
-    // beyond +-20 is clamped, a wide output has none
-    checkRect(mapCanvas(720, 480, 640, 480, 0, 50).display, 0, -10, 720, 500);
-    checkRect(mapCanvas(720, 480, 640, 480, 0, -50).display, 0, 10, 720, 460);
-    CHECK(ableem::clampVerticalAdjust(21) == 20);
+    // beyond +-40 is clamped, a wide output has none
+    checkRect(mapCanvas(720, 480, 640, 480, 0, 50).display, 0, -20, 720, 520);
+    checkRect(mapCanvas(720, 480, 640, 480, 0, -50).display, 0, 20, 720, 440);
+    CHECK(ableem::clampVerticalAdjust(41) == 40);
+    CHECK(ableem::clampVerticalAdjust(-41) == -40);
+    CHECK(ableem::clampVerticalAdjust(21) == 20); // odd: toward 0
     CHECK(ableem::clampVerticalAdjust(-21) == -20);
+    CHECK(ableem::clampVerticalAdjust(1) == 0);
     m = mapCanvas(1280, 720, 1280, 720, 0, 20);
     CHECK_FALSE(m.fourByThree);
     checkRect(m.display, 0, 0, 1280, 720);

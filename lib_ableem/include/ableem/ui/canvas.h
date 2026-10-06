@@ -47,9 +47,15 @@ ABLEEM_API int clampSafeMargin(int percent);
 // see CanvasMapping; a zero or negative canvas size gives the default mapping (scale 1, empty display)
 // The picture height adjust (Options -> Display -> Picture height): on a 4:3 output `display` is `verticalAdjust` output
 // pixels taller (shorter if negative), centred - the canvas is scaled vertically into it (scaleY), and a taller one may
-// run past the output: the top and bottom are cropped. Clamped to +-MaxVerticalAdjust. Nothing on a wide output.
-constexpr int MaxVerticalAdjust = 20;
-ABLEEM_API int clampVerticalAdjust(int pixels);
+// run past the output: the top and bottom are cropped. Clamped to +-MaxVerticalAdjust and made even (toward 0). Nothing on a wide output.
+constexpr int MaxVerticalAdjust = 40;
+constexpr int VerticalAdjustStep = 2; // always an even number of pixels: the display grows by half of it on each side
+// header-only: ab_core (no SDL, no ableem ui library) clamps the config value with it too
+inline int clampVerticalAdjust(int pixels) {
+    const int clamped =
+        pixels > MaxVerticalAdjust ? MaxVerticalAdjust : (pixels < -MaxVerticalAdjust ? -MaxVerticalAdjust : pixels);
+    return clamped - clamped % VerticalAdjustStep; // toward 0: an even number
+}
 ABLEEM_API CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH, int marginPercent = 0,
                                    int verticalAdjust = 0);
 // the wide outputs' mapping on any output: the canvas as big as fits, centred, square pixels (mapCanvas's first case)

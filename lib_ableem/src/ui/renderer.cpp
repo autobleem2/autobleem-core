@@ -47,10 +47,6 @@ CanvasMapping fitCanvas(int outputW, int outputH, int canvasW, int canvasH) {
     return m;
 }
 
-int clampVerticalAdjust(int pixels) {
-    return std::min(MaxVerticalAdjust, std::max(-MaxVerticalAdjust, pixels));
-}
-
 int clampSafeMargin(int percent) {
     return std::min(MaxSafeMargin, std::max(0, percent));
 }
@@ -125,7 +121,7 @@ Texture createLinearTarget(Renderer &renderer, int w, int h) {
 // smoothly past the safe rectangle instead of a black frame (`frame` is the softened copy: Renderer::mirrorMargin). Only on a side where the frame really sits on the safe
 // rectangle (a letterboxed canvas keeps its black bars), and only with a margin. `display` is where the frame goes.
 void copyMirroredMargin(SDL_Renderer *renderer, SDL_Texture *frame, const SDL_Rect &display, int outW, int outH,
-                        int marginPercent) {
+                        int marginPercent, int verticalAdjust) {
     if (marginPercent <= 0 || display.w <= 0 || display.h <= 0)
         return;
     int fw = 0, fh = 0;
@@ -135,8 +131,11 @@ void copyMirroredMargin(SDL_Renderer *renderer, SDL_Texture *frame, const SDL_Re
     const int insetY = static_cast<int>(std::lround(outH * marginPercent / 100.0));
     const bool left = std::abs(display.x - insetX) <= 1 && display.x > 0;
     const bool right = std::abs(display.x + display.w - (outW - insetX)) <= 1 && outW - (display.x + display.w) > 0;
-    const bool top = std::abs(display.y - insetY) <= 1 && display.y > 0;
-    const bool bottom = std::abs(display.y + display.h - (outH - insetY)) <= 1 && outH - (display.y + display.h) > 0;
+    // the picture height adjust moved the safe rectangle's top and bottom edges the way mapCanvas did (y -= v / 2, h += v)
+    const int expectedTop = insetY - verticalAdjust / 2;
+    const int expectedBottom = outH - insetY + (verticalAdjust - verticalAdjust / 2);
+    const bool top = std::abs(display.y - expectedTop) <= 1 && display.y > 0;
+    const bool bottom = std::abs(display.y + display.h - expectedBottom) <= 1 && outH - (display.y + display.h) > 0;
     const double kx = static_cast<double>(fw) / display.w, ky = static_cast<double>(fh) / display.h;
     // a margin as frame pixels (at most the frame), and as the output pixels that many cover
     auto strip = [](int margin, double k, int full, int &src, int &dst) {
@@ -543,7 +542,8 @@ void Renderer::mirrorMargin(void *frameTexture, const Rect &displayRect) {
     SDL_SetRenderTarget(impl->renderer, nullptr);
     SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND); // as the caller had it
     SDL_Rect display = toSDL(displayRect);
-    copyMirroredMargin(impl->renderer, t1, display, impl->outputWidth, impl->outputHeight, impl->marginPercent);
+    copyMirroredMargin(impl->renderer, t1, display, impl->outputWidth, impl->outputHeight, impl->marginPercent,
+                       impl->verticalAdjust);
 }
 
 bool Renderer::setCanvas(int w, int h) {

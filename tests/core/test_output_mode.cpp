@@ -184,19 +184,24 @@ TEST_CASE("OutputMode: the default theme is forced on any 4:3 output, not only t
     }
 }
 
-TEST_CASE("OutputMode::vsize: the picture height adjust, signed, -20..20, 0 when missing or nonsense") {
+TEST_CASE("OutputMode::vsize: the picture height adjust, signed, -40..40 and even, 0 when missing or nonsense") {
     CHECK(OutputMode::vsize("") == 0);
     CHECK(OutputMode::vsize("abc") == 0);
     CHECK(OutputMode::vsize("-") == 0);
     CHECK(OutputMode::vsize("--3") == 0);
     CHECK(OutputMode::vsize("0") == 0);
-    CHECK(OutputMode::vsize("7") == 7);
-    CHECK(OutputMode::vsize("+7") == 7);
-    CHECK(OutputMode::vsize("-7") == -7);
+    CHECK(OutputMode::vsize("8") == 8);
+    CHECK(OutputMode::vsize("7") == 6); // always even, toward 0
+    CHECK(OutputMode::vsize("+8") == 8);
+    CHECK(OutputMode::vsize("-7") == -6);
     CHECK(OutputMode::vsize("20") == 20);
+    CHECK(OutputMode::vsize("40") == 40);
+    CHECK(OutputMode::vsize("-40") == -40);
+    CHECK(OutputMode::vsize("41") == 40);
     CHECK(OutputMode::vsize("-20") == -20);
-    CHECK(OutputMode::vsize("90") == 20);
-    CHECK(OutputMode::vsize("-90") == -20);
-    CHECK(OutputMode::vsize("99999999999") == 20);
+    CHECK(OutputMode::vsize("-41") == -40);
+    CHECK(OutputMode::vsize("90") == 40);
+    CHECK(OutputMode::vsize("-90") == -40);
+    CHECK(OutputMode::vsize("99999999999") == 40);
     CHECK(std::string(OutputMode::VsizeKey) == "vsize43");
 }

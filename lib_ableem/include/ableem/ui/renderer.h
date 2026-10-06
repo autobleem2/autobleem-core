@@ -137,7 +137,7 @@ public:
     void setSafeMargin(int percent);
     int safeMargin() const;
     // The picture height adjust on a 4:3 output (canvas.h, mapCanvas): the frame shown that many output pixels taller
-    // (shorter if negative), -20..20, centred; a taller one is cropped top and bottom. Takes effect with the next
+    // (shorter if negative), -40..40 in steps of 2, centred; a taller one is cropped top and bottom. Takes effect with the next
     // present(); recorded on a wide output too, for a later switch to 4:3 (recreate()); nothing is drawn differently there.
     void setVerticalAdjust(int pixels);
     int verticalAdjust() const;
