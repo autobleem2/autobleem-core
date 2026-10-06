@@ -75,6 +75,9 @@ private:
     static constexpr int TextSize = 22, HeadingSize = 24; // the 4:3 credits: 17.6 / 19 px on the screen
     static constexpr unsigned int PageMs = 9000;          // a page turns by itself this often
     static constexpr int FieldShownW = 960;               // the part of the game's 1280-wide field a 4:3 canvas shows
+    static constexpr int FooterScaled = PanelStyle::FooterHeight * 6 / 5; // the footer strip, on the 960x720 canvas
+    ableem::Texture footerLayer; // the footer at 800x600, before it goes on the canvas
+    unsigned long footerLayerAt = 0;
     ableem::Texture fieldLayer; // the field at 1280x720, before the middle of it goes on the canvas
     unsigned long fieldLayerAt = 0;
     static StarFx::Style flyingStyle(float speed); // the game's star field at the game's speed
