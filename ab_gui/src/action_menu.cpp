@@ -4,6 +4,7 @@
 //
 #include <ab_gui/action_menu.h>
 
+#include <ab_gui/facts_page.h>
 #include <ab_gui/panel.h>
 
 #include <algorithm>
@@ -146,6 +147,11 @@ void ActionMenu::draw() {
                      style.description);
     }
     const int textX = rect.x + style.rowInset + 8;
+    // a name or a description wider than the panel (a 4:3 output's narrower one, a long translation) ends in "..."
+    const int textRoom = rect.x + rect.w - style.rowInset - textX;
+    auto fitted = [&](const ableem::Font &font, const string &text) {
+        return elideText(text, textRoom, [&](const string &s) { return ctx.textWidth(font, s); });
+    };
     for (int i = firstVisible_; i < last; i++) {
         const Item &item = items[i];
         const int h = rowHeight(style, item);
@@ -158,8 +164,8 @@ void ActionMenu::draw() {
                 style.selection(ctx, band);
             const ableem::Color &titleColor =
                 item.disabled ? style.disabledColor(ctx, style.rowColor(i == selected)) : style.rowColor(i == selected);
-            ctx.drawText(rowFont, item.title, textX, rowY + 7, titleColor);
-            ctx.drawText(smallFont, item.description, textX, rowY + 35, style.description);
+            ctx.drawText(rowFont, fitted(rowFont, item.title), textX, rowY + 7, titleColor);
+            ctx.drawText(smallFont, fitted(smallFont, item.description), textX, rowY + 35, style.description);
             if (item.disabled)
                 style.disabled(ctx, band);
         }

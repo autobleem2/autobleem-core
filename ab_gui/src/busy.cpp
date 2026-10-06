@@ -5,6 +5,7 @@
 #include <ab_gui/busy.h>
 #include <ab_gui/context.h>
 #include <ab_gui/screen_stack.h>
+#include <ab_gui/text_page.h>
 
 #include <ableem/ui/debug_driver.h>
 
@@ -98,14 +99,18 @@ void Busy::drawFrame() {
         const ableem::Point centre = spinnerCentre(renderer.width(), renderer.height());
         // the ring and message sit on the theme's toast frame, so they never lie bare over the screen's rows
         const ableem::Font &font = ctx_->font(FontRole::Row);
-        style.toast(*ctx_, toastRect(renderer.width(), renderer.height(), ctx_->textWidth(font, message_),
-                                     font.lineHeight(), total_ > 0));
+        // a message wider than the canvas (a 4:3 output's 640) is wrapped, and the frame and the bar follow its height
+        const vector<string> rows = messageRows(message_, renderer.width());
+        int widest = 0;
+        for (const string &row : rows)
+            widest = max(widest, ctx_->textWidth(font, row));
+        const int textHeight = static_cast<int>(rows.size()) * font.lineHeight();
+        style.toast(*ctx_, toastRect(renderer.width(), renderer.height(), widest, textHeight, total_ > 0));
         drawSpinner(centre.x, centre.y, message_, ctx_->ticks() - started_);
         if (total_ > 0) {
             // the bar under the message, as the notification bubble draws its own; through the Context (G5g), so a
             // theme's progressTrack/progressFill frames reach it
-            const ableem::Rect track =
-                barRect(renderer.width(), renderer.height(), ctx_->font(FontRole::Row).lineHeight());
+            const ableem::Rect track = barRect(renderer.width(), renderer.height(), textHeight);
             style.progress(*ctx_, track, static_cast<unsigned long long>(barDone(done_, total_)),
                            static_cast<unsigned long long>(total_));
         }
@@ -118,10 +123,28 @@ void Busy::drawSpinner(int cx, int cy, const string &message, unsigned int elaps
     if (!style.spinnerStrip(*ctx_, cx, cy, elapsed))
         style.spinner(ctx_->renderer(), cx, cy, SpinnerRadius, SpinnerDot, spinnerLead(ctx_->ticks()));
     if (!message.empty()) {
-        // centred on cx as the text renderer centres a line: half the canvas less half the width
+        // centred on cx as the text renderer centres a line: half the canvas less half the width; a message wider
+        // than the canvas goes on several lines
         const ableem::Font &font = ctx_->font(FontRole::Row);
-        ctx_->drawText(font, message, cx - ctx_->textWidth(font, message) / 2, messageTop(cy), style.text);
+        int y = messageTop(cy);
+        for (const string &row : messageRows(message, ctx_->renderer().width())) {
+            ctx_->drawText(font, row, cx - ctx_->textWidth(font, row) / 2, y, style.text);
+            y += font.lineHeight();
+        }
     }
+}
+
+//*******************************
+// Busy::messageRoom / messageRows
+//*******************************
+int Busy::messageRoom(int canvasWidth) {
+    return canvasWidth - 4 * ToastPad;
+}
+
+vector<string> Busy::messageRows(const string &message, int canvasWidth) const {
+    const ableem::Font &font = ctx_->font(FontRole::Row);
+    return wrapText(message, messageRoom(canvasWidth),
+                    [this, &font](const string &s) { return ctx_->textWidth(font, s); });
 }
 
 //*******************************

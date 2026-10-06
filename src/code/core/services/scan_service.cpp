@@ -719,6 +719,7 @@ ScanUpdate ScanService::poll() {
                 event.modsFingerprint.save(modsFingerprintFilePath());
 
             update.active = false;
+            update.scanEnded = true;
             // a Mods-only scan has no summary to show and no game roster to reload (its Apps arrive as appsChanged)
             update.finished = (event.scope & (ScanPs1 | ScanRoms)) != 0;
             update.finishedGameCount = static_cast<int>(event.gamesToAddToDB.size());

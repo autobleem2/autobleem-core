@@ -29,6 +29,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace abgui {
 
@@ -102,11 +103,16 @@ public:
     static ableem::Point spinnerCentre(int canvasWidth, int canvasHeight);
     // the message's top, `cy` being the ring's centre
     static int messageTop(int cy);
-    // the progress bar's track: BarWidth x BarHeight, centred, BarGap under the message's line of lineHeight
+    // the progress bar's track: BarWidth x BarHeight, centred, BarGap under the message's text (`lineHeight` tall:
+    // one line's height, or all the lines' of a wrapped message)
     static ableem::Rect barRect(int canvasWidth, int canvasHeight, int lineHeight);
-    // the toast frame the busy frame draws behind the ring, the message (`messageWidth` x `lineHeight`) and the bar
-    // when there is one: centred on the canvas' middle column, ToastPad round the widest and the lowest of them
+    // the toast frame the busy frame draws behind the ring, the message (`messageWidth` x `lineHeight`, the height of
+    // all its lines) and the bar when there is one: centred on the canvas' middle column, ToastPad round the widest
+    // and the lowest of them
     static ableem::Rect toastRect(int canvasWidth, int canvasHeight, int messageWidth, int lineHeight, bool hasBar);
+    // the width a message gets before it is wrapped: the canvas less a ToastPad of frame and one of air each side
+    // (1280 canvas: a line of 1184 px; a 4:3 output's 640: 544 px)
+    static int messageRoom(int canvasWidth);
     // the share the bar shows: done clamped to 0..total
     static int barDone(int done, int total);
     // waitScreen's ring centre y: WaitSpinnerGap below the logo (or two thirds down, whichever is lower), but
@@ -118,6 +124,8 @@ private:
     // the ring about (cx, cy) - or the theme's spinner strip (G5p), `elapsed` ms into its animation - with `message`
     // centred under it
     void drawSpinner(int cx, int cy, const std::string &message, unsigned int elapsed);
+    // `message` in rows no wider than messageRoom (one row when it fits - everything on a 16:9 canvas)
+    std::vector<std::string> messageRows(const std::string &message, int canvasWidth) const;
 
     ScreenStack &stack_;
     Context *ctx_ = nullptr;
