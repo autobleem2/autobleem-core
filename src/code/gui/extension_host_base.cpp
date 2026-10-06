@@ -49,8 +49,8 @@ plog::Severity ExtensionHostBase::logSeverity() {
 //*******************************
 // ExtensionHostBase: the launcher's requests, which a plain host only logs
 //*******************************
-void ExtensionHostBase::requestRescan() {
-    PLOG_INFO << "[" << name_ << "] asked for a rescan (no scan in this host)";
+void ExtensionHostBase::requestRescan(ScanScope scope) {
+    PLOG_INFO << "[" << name_ << "] asked for a rescan, scope " << scope << " (no scan in this host)";
 }
 
 void ExtensionHostBase::reloadApps() {

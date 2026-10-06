@@ -37,7 +37,7 @@ public:
     const std::string &stateDir() const override { return stateDir_; }
     bool networkUp() override;
 
-    void requestRescan() override;
+    void requestRescan(ScanScope scope) override;
     void reloadApps() override;
     void reloadConfig() override;
     void notify(const std::string &title, const std::string &detail, uint64_t done, uint64_t total) override;

@@ -121,6 +121,7 @@ bool StoreCatalog::loadJson(const string &text, const string &sourceName, string
         item.licence = str(j, "licence");
         item.description = str(j, "description");
         item.serial = str(j, "serial");
+        item.category = lower(str(j, "category"));
         item.sourceUrl = str(j, "source_url");
         if (!isUrl(item.sourceUrl))
             item.sourceUrl.clear(); // shown as a link: only an http(s) address is one
@@ -278,6 +279,8 @@ StoreSourceTsv StoreSourceTsv::parse(const string &text, const string &fallbackN
         fill(item.description, "description");
         fill(item.author, "author");
         fill(item.licence, "licence");
+        fill(item.category, "category");
+        item.category = lower(item.category);
         fill(item.sourceUrl, "source_url");
         if (!isUrl(item.sourceUrl))
             item.sourceUrl.clear();
