@@ -1038,7 +1038,21 @@ void Style::footer(Context &ctx, const Rect &footer, const vector<HintItem> &giv
         gap = 22;
         if (widthAt(font, gap, false) > room) {
             font = ctx.font(FontRole::RowSmall);
-            if (widthAt(font, gap, false) > room) {
+            // a 4:3 canvas (800x600, 640x480): no smaller font - the last hints are left out instead (below), the
+            // labels that stay keep a size that can be read on a small screen. 16:9 is as before
+            const bool narrow = ctx.renderer().width() * 3 <= ctx.renderer().height() * 4;
+            size_t keep = 0;
+            if (narrow && widthAt(font, gap, false) > room)
+                keep = footerHintsThatFit(hints.size(), room, [&](size_t n) {
+                    vector<HintItem> head(hints.begin(), hints.begin() + static_cast<ptrdiff_t>(n));
+                    hints.swap(head);
+                    const int w = widthAt(font, gap, false);
+                    hints.swap(head);
+                    return w;
+                });
+            if (keep > 0)
+                hints.resize(keep);
+            else if (widthAt(font, gap, false) > room) {
                 font = ctx.font(FontRole::Small);
                 if (widthAt(font, gap, false) > room) {
                     // even the smallest font does not fit on the one row the window could give it: cut the labels
