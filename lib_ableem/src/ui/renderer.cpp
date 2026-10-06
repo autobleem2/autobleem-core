@@ -813,7 +813,7 @@ void Renderer::present() {
         // surface shows what is behind the window (BUG-31)
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND);
         if (windowRect)
-            mirrorMargin(frame, displayRect);
+            mirrorMargin(frame, impl->display);
         SDL_RenderCopy(impl->renderer, frame, nullptr, windowRect);
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE); // the capture stays opaque, as a read-back frame was
         impl->capture = impl->captureTarget;
@@ -833,7 +833,7 @@ void Renderer::present() {
         SDL_Texture *frame = static_cast<SDL_Texture *>(impl->frameTarget.native());
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND);
         if (windowRect)
-            mirrorMargin(frame, displayRect);
+            mirrorMargin(frame, impl->display);
         SDL_RenderCopy(impl->renderer, frame, nullptr, windowRect);
     } else if (impl->captureRequested) {
         // a frame that never called clear(): read it back
