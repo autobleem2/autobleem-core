@@ -62,6 +62,16 @@ TEST_CASE("OutputMode::shownAt: a mode is in use only when the window has its si
     CHECK(OutputMode().shownAt(3840, 2160));
 }
 
+TEST_CASE("OutputMode::crtMargin: config.ini's CRT margin, 5 % when missing or nonsense, 0..20") {
+    CHECK(OutputMode::crtMargin("") == 5);
+    CHECK(OutputMode::crtMargin("abc") == 5);
+    CHECK(OutputMode::crtMargin("-2") == 5);
+    CHECK(OutputMode::crtMargin("0") == 0);
+    CHECK(OutputMode::crtMargin("8") == 8);
+    CHECK(OutputMode::crtMargin("10") == 10);
+    CHECK(OutputMode::crtMargin("90") == 20);
+}
+
 TEST_CASE("OutputMode: readToken takes one trimmed line") {
     TempDir tmp("outputmode");
     tmp.writeFile("outputmode", "1080\r\n");

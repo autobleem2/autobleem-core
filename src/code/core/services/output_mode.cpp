@@ -1,4 +1,5 @@
 #include "output_mode.h"
+#include <ableem/ui/canvas.h>
 #include "environment.h"
 #include "../main.h"
 #include <algorithm>
@@ -8,6 +9,13 @@
 using namespace std;
 
 const char *OutputMode::ConfigKey = "outputmode";
+const char *OutputMode::MarginKey = "crtmargin";
+
+int OutputMode::crtMargin(const string &value) {
+    if (value.empty() || value.find_first_not_of("0123456789") != string::npos)
+        return ableem::DefaultSafeMargin;
+    return ableem::clampSafeMargin(atoi(value.c_str()));
+}
 
 //*******************************
 // OutputMode::parse / token / label

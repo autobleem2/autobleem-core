@@ -64,6 +64,9 @@ struct OutputMode {
     std::string token() const;                         // "auto", "720", "1080" or "<w>x<h>"
     std::string label() const; // "1080p", "2160p", "1280x1024", "CRT 4:3" (translated); "" for auto
 
+    static const char *MarginKey;                  // "crtmargin": the CRT mode's safe margin, percent per side
+    // the margin config.ini's value means: a whole number clamped to 0..20, 5 for none or nonsense (see canvas.h)
+    static int crtMargin(const std::string &value);
     static const char *ConfigKey;                  // "outputmode"
     static std::string defaultToken();             // the console: "720"; everywhere else "auto"
     static std::string pendingFile();              // <runtime>/outputmode.pending
