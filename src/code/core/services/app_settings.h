@@ -49,6 +49,12 @@ public:
     static bool setFlagOverride(const std::string &appFolder, const std::string &key, const std::string &value);
     static std::string effectiveFlag(const std::string &overrideValue, const std::string &appIniValue);
 
+    // LastPackage=<AB_PKG_ID>: the game data the player last started this App with (docs/packages.md 6.2), "" = none.
+    // Written only when it differs from what is stored (nothing is written for an unchanged pick); "" removes the
+    // line, and the file when nothing else is in it.
+    static std::string lastPackage(const std::string &appFolder);
+    static bool setLastPackage(const std::string &appFolder, const std::string &id);
+
 private:
     // `key`'s value in ab_settings.ini ("" when there is none); the last line wins
     static std::string storedValue(const std::string &appFolder, const std::string &key);

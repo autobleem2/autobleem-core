@@ -54,7 +54,8 @@ TEST_CASE("StoreCatalog: our catalog.json, files by disc, requires, bad items sk
     CHECK(game.serial == "SLUS-99999");
 }
 
-TEST_CASE("StoreCatalog: a PE item carries its licence and the source link; a link that is no http(s) address is dropped") {
+TEST_CASE(
+    "StoreCatalog: a PE item carries its licence and the source link; a link that is no http(s) address is dropped") {
     const char *json = R"J({"schema": 1, "platform": "psc", "items": [
         {"id": "pe/openlara", "kind": "pe", "title": "OpenLara", "version": "0.9.0-1", "licence": "BSD-2-Clause",
          "source_url": "https://site/source/openlara/openlara-0.9.0-1-source.tar.gz",
@@ -99,8 +100,9 @@ TEST_CASE("StoreSourceTsv: a category column") {
 }
 
 TEST_CASE("StoreSourceTsv: licence and source_url columns") {
-    const string tsv = "kind\ttitle\turl\tlicence\tsource_url\n"
-                       "pe\tOpenLara\thttps://acme.example/openlara.mod\tBSD-2-Clause\thttps://acme.example/src.tar.gz\n";
+    const string tsv =
+        "kind\ttitle\turl\tlicence\tsource_url\n"
+        "pe\tOpenLara\thttps://acme.example/openlara.mod\tBSD-2-Clause\thttps://acme.example/src.tar.gz\n";
     StoreSourceTsv s = StoreSourceTsv::parse(tsv, "acme.tsv");
     REQUIRE(s.items.size() == 1);
     CHECK(s.items[0].kind == "pe");
@@ -155,10 +157,9 @@ TEST_CASE("StoreSourceTsv: without a header, title url [size]; columns in any or
     CHECK(bare.items[0].files[0].size == 100);
     CHECK(bare.items[1].files[0].url == "http://x/b.pbp");
 
-    StoreSourceTsv reordered =
-        StoreSourceTsv::parse("URL\tTitle\tExtra\thttps://x/c.chd\n"
-                              "https://x/c.chd\tReordered\twhatever\n",
-                              "r");
+    StoreSourceTsv reordered = StoreSourceTsv::parse("URL\tTitle\tExtra\thttps://x/c.chd\n"
+                                                     "https://x/c.chd\tReordered\twhatever\n",
+                                                     "r");
     // the header is the first line with a url field: "URL" counts, and the rest of its fields are names
     REQUIRE(reordered.items.size() == 1);
     CHECK(reordered.items[0].title == "Reordered");
@@ -171,7 +172,7 @@ TEST_CASE("StoreSourceTsv: a bad line is skipped and reported, the rest loads") 
                        "Bad Size\thttps://x/z.chd\tlots\n"
                        "Fine\thttps://x/fine.chd\t5\n";
     StoreSourceTsv s = StoreSourceTsv::parse("\xEF\xBB\xBF" + tsv, "s"); // with a BOM too
-    REQUIRE(s.items.size() == 2); // Bad Size is kept, without a size
+    REQUIRE(s.items.size() == 2);                                        // Bad Size is kept, without a size
     CHECK(s.items[0].title == "Bad Size");
     CHECK(s.items[0].files[0].size == 0);
     CHECK(s.items[1].title == "Fine");
@@ -223,4 +224,52 @@ TEST_CASE("StoreSourceTsv: empty, comments only, a missing file") {
     StoreSourceTsv out;
     string error;
     CHECK_FALSE(StoreSourceTsv::load("/no/such.tsv", "x", out, error));
+}
+
+TEST_CASE("StoreCatalog: provides, uses, requires and category - a package item and the engine that runs it") {
+    const char *json = R"J({"schema": 1, "platform": "psc", "items": [
+        {"id": "pkg/quake-shareware", "kind": "package", "title": "Quake (Shareware)", "version": "1.06",
+         "category": "packages", "provides": ["Quake-ID1", " doom-iwad ", ""], "licence": "Shareware (id Software)",
+         "files": [{"url": "https://site/quake-shareware-1.06.zip", "size": 9461876, "sha256": "ABCD"}]},
+        {"id": "pe/tyrquake", "kind": "pe", "title": "TyrQuake", "category": "games", "uses": ["quake-id1"],
+         "requires": ["pkg/quake-shareware"], "files": [{"url": "https://site/tyrquake.mod"}]},
+        {"id": "app/plain", "kind": "app", "title": "Plain", "files": [{"url": "https://site/plain.zip"}]}]})J";
+    StoreCatalog c;
+    string error;
+    REQUIRE(c.loadJson(json, "AutoBleem", error));
+    REQUIRE(c.items.size() == 3);
+
+    CHECK(c.items[0].kind == "package"); // an unknown-to-older-builds kind is kept
+    CHECK(c.items[0].category == "packages");
+    CHECK(c.items[0].provides == vector<string>{"quake-id1", "doom-iwad"}); // lower-cased, trimmed, empties dropped
+    CHECK(c.items[0].uses.empty());
+    CHECK(c.items[0].dependsOn.empty());
+
+    CHECK(c.items[1].uses == vector<string>{"quake-id1"});
+    CHECK(c.items[1].dependsOn == vector<string>{"pkg/quake-shareware"}); // requires
+    CHECK(c.items[1].provides.empty());
+
+    // an item without any of them is as it was
+    CHECK(c.items[2].provides.empty());
+    CHECK(c.items[2].uses.empty());
+    CHECK(c.items[2].dependsOn.empty());
+    CHECK(c.items[2].category.empty());
+}
+
+TEST_CASE("StoreSourceTsv: provides, uses, requires and category columns") {
+    const string tsv =
+        "kind\ttitle\turl\tcategory\tprovides\tuses\trequires\n"
+        "package\tFreedoom\thttps://acme.example/freedoom.zip\tPackages\tdoom-iwad; Heretic-IWAD\t\t\n"
+        "pe\tLZDoom\thttps://acme.example/lzdoom.mod\tGames\t\tdoom-iwad;heretic-iwad\tpackage/Freedoom;x/y\n"
+        "app\tNo columns\thttps://acme.example/n.zip\t\t\t\t\n";
+    StoreSourceTsv s = StoreSourceTsv::parse(tsv, "acme.tsv");
+    REQUIRE(s.items.size() == 3);
+    CHECK(s.items[0].kind == "package");
+    CHECK(s.items[0].category == "packages");
+    CHECK(s.items[0].provides == vector<string>{"doom-iwad", "heretic-iwad"});
+    CHECK(s.items[1].uses == vector<string>{"doom-iwad", "heretic-iwad"});
+    CHECK(s.items[1].dependsOn == vector<string>{"package/Freedoom", "x/y"});
+    CHECK(s.items[2].provides.empty());
+    CHECK(s.items[2].uses.empty());
+    CHECK(s.items[2].dependsOn.empty());
 }

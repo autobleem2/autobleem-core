@@ -9,8 +9,9 @@
 typedef unsigned ScanScope;
 
 constexpr ScanScope ScanNone = 0;
-constexpr ScanScope ScanApps = 1;  // the Apps set is reloaded, nothing is scanned
-constexpr ScanScope ScanMods = 2;  // Mods/ through the mods processors (a PE package), then the Apps set
-constexpr ScanScope ScanPs1 = 4;   // Games/: the PS1 processors, the game scan, the box art
-constexpr ScanScope ScanRoms = 8;  // roms/: the ROMs processors, the RetroArch ROM scan and its playlists
-constexpr ScanScope ScanAll = ScanApps | ScanMods | ScanPs1 | ScanRoms;
+constexpr ScanScope ScanApps = 1;      // the Apps set is reloaded, nothing is scanned
+constexpr ScanScope ScanMods = 2;      // Mods/ through the mods processors (a PE package), then the Apps set
+constexpr ScanScope ScanPs1 = 4;       // Games/: the PS1 processors, the game scan, the box art
+constexpr ScanScope ScanRoms = 8;      // roms/: the ROMs processors, the RetroArch ROM scan and its playlists
+constexpr ScanScope ScanPackages = 16; // Packages/ (and the engines' own data folders): the RAM index is rebuilt
+constexpr ScanScope ScanAll = ScanApps | ScanMods | ScanPs1 | ScanRoms | ScanPackages;

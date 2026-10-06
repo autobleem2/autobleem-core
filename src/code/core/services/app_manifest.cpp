@@ -7,6 +7,8 @@
 
 #include <ableem/engine/log.h>
 
+#include <algorithm>
+
 using namespace std;
 
 namespace {
@@ -107,6 +109,21 @@ vector<pair<string, string>> AppManifest::parseEnv(const string &value) {
 }
 
 //*******************************
+// AppManifest::parseList
+//*******************************
+vector<string> AppManifest::parseList(const string &value, bool lower) {
+    vector<string> out;
+    for (const string &item : Strings::getTokens(value, ';')) {
+        string entry = Strings::trim(item);
+        if (lower)
+            entry = ableem::toLowerCopy(entry);
+        if (!entry.empty() && find(out.begin(), out.end(), entry) == out.end())
+            out.push_back(entry);
+    }
+    return out;
+}
+
+//*******************************
 // AppManifest::splitArgs
 //*******************************
 vector<string> AppManifest::splitArgs(const string &value) {
@@ -150,6 +167,8 @@ AppManifest AppManifest::resolve(const string &folder, const map<string, string>
     AppManifest m;
     m.folder = folder;
     m.values = values;
+    m.uses = parseList(m.value("uses"), true);
+    m.packageDirs = parseList(m.value("packagedir"), false);
 
     if (!namesAProgram(values, options.programKey)) {
         string startup = m.value("startup");

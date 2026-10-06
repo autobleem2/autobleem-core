@@ -37,7 +37,12 @@ struct AppManifest {
     std::string args;           // Args(.<key>), {key} replaced; "" = none
     std::string libDir;         // Lib(.<key>), under the folder; "" = none
     std::vector<std::pair<std::string, std::string>> env; // Env(.<key>)= "A=1;B=2", the key's own last
-    std::string problem;        // why there is no program, for the log and the UI
+    std::string problem;                                  // why there is no program, for the log and the UI
+    // Uses=: the content kinds of the game data the App runs (lower-cased, trimmed, ';' list; empty = the App takes
+    // no package). PackageDir=: folders under the App's own folder that hold game data too (autobleem-main
+    // docs/packages.md). Both are read on every platform key.
+    std::vector<std::string> uses;
+    std::vector<std::string> packageDirs;
 
     bool runnable() const { return !program.empty(); }
     // VirtualPad= (true/false, yes/no, 1/0): whether the App runs with our virtual pad mapper (abpadd +
@@ -48,8 +53,8 @@ struct AppManifest {
     std::string value(const std::string &key) const;
 
     // reads <folder>/<iniName> and resolves it for `keys`; a missing ini is a manifest with a problem
-    static AppManifest load(const std::string &folder, const std::string &iniName,
-                            const std::vector<std::string> &keys, const Options &options);
+    static AppManifest load(const std::string &folder, const std::string &iniName, const std::vector<std::string> &keys,
+                            const Options &options);
     static AppManifest load(const std::string &folder, const std::string &iniName,
                             const std::vector<std::string> &keys);
     // the resolution alone, over values already read (keys lower-cased)
@@ -62,6 +67,8 @@ struct AppManifest {
     static std::string pluginExtension();
     // "A=1;B=x=y" -> {A,1}, {B,x=y}; entries without a name are dropped
     static std::vector<std::pair<std::string, std::string>> parseEnv(const std::string &value);
+    // "A; b ;;C" -> {"A","b","C"}; `lower` lower-cases each item; empty items are dropped
+    static std::vector<std::string> parseList(const std::string &value, bool lower);
     // an Args= line as an argv: split at blanks, "double quotes" keep a blank inside one argument
     static std::vector<std::string> splitArgs(const std::string &value);
     // the program as the folder names it ("bin/psc/tyrian"), or the whole path when it is not under it

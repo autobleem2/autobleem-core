@@ -26,8 +26,10 @@ enum class Ps1SelectState : int { AllGames = 0, InternalOnly, Favorites, History
 // Keep the order Games/Emulators/Tools/Media/Other/PE: it is the order the set picker and appCategories() list
 // them in (and the number the carousel session file keeps - new ones only at the end). PE is the apps made from
 // PE mod packages (Category=PE, written by the mods processor); it is a row of its own only when there is one.
-enum class AppCategory : int { All = 0, Games, Emulators, Tools, Media, Other, PE };
-constexpr AppCategory AppCategoryLast = AppCategory::PE;
+// Packages (APPS-12, docs/packages.md) is the game data under Packages/ - not Apps, never named by an app.ini
+// Category= - and a row of its own only when the package index holds one (7).
+enum class AppCategory : int { All = 0, Games, Emulators, Tools, Media, Other, PE, Packages };
+constexpr AppCategory AppCategoryLast = AppCategory::Packages;
 
 // the untranslated English name - translate at the call site with _(); GameQueryService::apps()'s parser is
 // the read side of this table.
@@ -47,6 +49,8 @@ inline std::string appCategoryName(AppCategory category) {
         return "Other";
     case AppCategory::PE:
         return "PE apps";
+    case AppCategory::Packages:
+        return "Packages";
     }
     return "Other";
 }

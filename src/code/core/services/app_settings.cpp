@@ -137,6 +137,20 @@ string AppSettings::effectiveFlag(const string &overrideValue, const string &app
 }
 
 //*******************************
+// AppSettings::lastPackage / setLastPackage
+//*******************************
+string AppSettings::lastPackage(const string &appFolder) {
+    return storedValue(appFolder, "lastpackage");
+}
+
+bool AppSettings::setLastPackage(const string &appFolder, const string &id) {
+    const string value = Strings::trim(id);
+    if (lastPackage(appFolder) == value)
+        return true; // nothing to write
+    return storeValue(appFolder, "LastPackage", value);
+}
+
+//*******************************
 // AppSettings::effectivePadMode
 //*******************************
 string AppSettings::effectivePadMode(const string &overrideMode, const string &appIniMode) {

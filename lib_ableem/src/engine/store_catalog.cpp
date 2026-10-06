@@ -40,6 +40,42 @@ string lower(string s) {
     return s;
 }
 
+// a list of content kinds ("doom-iwad; heretic-iwad"): lower-cased, trimmed, empty items dropped, unknown kept
+vector<string> kindList(const string &value) {
+    vector<string> out;
+    size_t start = 0;
+    for (;;) {
+        size_t semi = value.find(';', start);
+        string item = lower(Strings::trim(value.substr(start, semi == string::npos ? string::npos : semi - start)));
+        if (!item.empty())
+            out.push_back(item);
+        if (semi == string::npos)
+            break;
+        start = semi + 1;
+    }
+    return out;
+}
+
+// the JSON key as a list of kinds: an array of strings (or one ';' separated string)
+vector<string> kindsIn(const json &item, const char *key) {
+    vector<string> out;
+    auto it = item.find(key);
+    if (it == item.end())
+        return out;
+    if (it->is_string())
+        return kindList(it->get<string>());
+    if (it->is_array()) {
+        for (const json &entry : *it) {
+            if (!entry.is_string())
+                continue;
+            string one = lower(Strings::trim(entry.get<string>()));
+            if (!one.empty())
+                out.push_back(one);
+        }
+    }
+    return out;
+}
+
 // a header's fields as the column names the parser knows: ours, and the other well-known list layout's
 // (NoPayStation's: Title ID, Region, Name, PKG direct link, ..., File Size, SHA256) under their own names -
 // there "Name" is the title, which it only is when the header has no "title" (in ours it is the file name)
@@ -122,6 +158,8 @@ bool StoreCatalog::loadJson(const string &text, const string &sourceName, string
         item.description = str(j, "description");
         item.serial = str(j, "serial");
         item.category = lower(str(j, "category"));
+        item.provides = kindsIn(j, "provides");
+        item.uses = kindsIn(j, "uses");
         item.sourceUrl = str(j, "source_url");
         if (!isUrl(item.sourceUrl))
             item.sourceUrl.clear(); // shown as a link: only an http(s) address is one
@@ -171,7 +209,7 @@ bool StoreCatalog::load(const string &path, const string &sourceName, string &er
 StoreSourceTsv StoreSourceTsv::parse(const string &text, const string &fallbackName) {
     StoreSourceTsv out;
     out.name = fallbackName;
-    vector<string> columns; // empty = no header: title, url, size
+    vector<string> columns;            // empty = no header: title, url, size
     map<string, vector<size_t>> byKey; // kind + "\t" + title -> the items of that title
     istringstream in(text);
     string line;
@@ -284,6 +322,16 @@ StoreSourceTsv StoreSourceTsv::parse(const string &text, const string &fallbackN
         fill(item.sourceUrl, "source_url");
         if (!isUrl(item.sourceUrl))
             item.sourceUrl.clear();
+        if (item.provides.empty())
+            item.provides = kindList(field("provides"));
+        if (item.uses.empty())
+            item.uses = kindList(field("uses"));
+        if (item.dependsOn.empty()) {
+            for (const string &id : Strings::getTokens(field("requires"), ';')) {
+                if (!Strings::trim(id).empty())
+                    item.dependsOn.push_back(Strings::trim(id));
+            }
+        }
     }
     // ids: <kind>/<title>, with /<serial> where two items share a title, and #n past that
     map<string, int> uses;

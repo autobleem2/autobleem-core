@@ -31,6 +31,11 @@ public:
 
     std::string db_name;
 
+    // a Packages row entry (docs/packages.md 7): game data, not a program - it opens the info view and is never
+    // launched. `base` is the package's folder.
+    bool package = false;
+    std::string package_id;
+
     // what the database hands out is plain records; wrap them for the UI
     static std::vector<std::shared_ptr<PsGame>> fromRecords(const ableem::GameRecords &records);
 };
