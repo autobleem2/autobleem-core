@@ -96,6 +96,62 @@ Rect coverCrop(int textureW, int textureH, int canvasW, int canvasH) {
 }
 
 namespace {
+// The CRT's safe area: the margin around the frame is the frame's own edge mirrored outward (a strip of the frame
+// flipped across the edge it touches, the corners flipped both ways), a little dimmed - the background goes on
+// smoothly past the safe rectangle instead of a black frame. Only on a side where the frame really sits on the safe
+// rectangle (a letterboxed canvas keeps its black bars), and only with a margin. `display` is where the frame goes.
+void copyMirroredMargin(SDL_Renderer *renderer, SDL_Texture *frame, const SDL_Rect &display, int outW, int outH,
+                        int marginPercent) {
+    if (marginPercent <= 0 || display.w <= 0 || display.h <= 0)
+        return;
+    int fw = 0, fh = 0;
+    if (SDL_QueryTexture(frame, nullptr, nullptr, &fw, &fh) != 0 || fw <= 0 || fh <= 0)
+        return;
+    const int insetX = static_cast<int>(std::lround(outW * marginPercent / 100.0));
+    const int insetY = static_cast<int>(std::lround(outH * marginPercent / 100.0));
+    const bool left = std::abs(display.x - insetX) <= 1 && display.x > 0;
+    const bool right = std::abs(display.x + display.w - (outW - insetX)) <= 1 && outW - (display.x + display.w) > 0;
+    const bool top = std::abs(display.y - insetY) <= 1 && display.y > 0;
+    const bool bottom = std::abs(display.y + display.h - (outH - insetY)) <= 1 && outH - (display.y + display.h) > 0;
+    const double kx = static_cast<double>(fw) / display.w, ky = static_cast<double>(fh) / display.h;
+    // a margin as frame pixels (at most the frame), and as the output pixels that many cover
+    auto strip = [](int margin, double k, int full, int &src, int &dst) {
+        src = std::min(full, static_cast<int>(std::ceil(margin * k)));
+        dst = std::min(margin, static_cast<int>(std::lround(src / k)));
+    };
+    int sl = 0, dl = 0, sr = 0, dr = 0, st = 0, dt = 0, sb = 0, db = 0;
+    if (left)
+        strip(display.x, kx, fw, sl, dl);
+    if (right)
+        strip(outW - (display.x + display.w), kx, fw, sr, dr);
+    if (top)
+        strip(display.y, ky, fh, st, dt);
+    if (bottom)
+        strip(outH - (display.y + display.h), ky, fh, sb, db);
+    const int x1 = display.x + display.w, y1 = display.y + display.h;
+    SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE);
+    SDL_SetTextureColorMod(frame, 150, 150, 150); // a light dim: the margin reads as outside the picture
+    auto put = [&](int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, int flip) {
+        if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
+            return;
+        const SDL_Rect src{sx, sy, sw, sh}, dst{dx, dy, dw, dh};
+        SDL_RenderCopyEx(renderer, frame, &src, &dst, 0.0, nullptr, static_cast<SDL_RendererFlip>(flip));
+    };
+    const int H = SDL_FLIP_HORIZONTAL, V = SDL_FLIP_VERTICAL, HV = SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL;
+    put(0, 0, sl, fh, display.x - dl, display.y, dl, display.h, H);
+    put(fw - sr, 0, sr, fh, x1, display.y, dr, display.h, H);
+    put(0, 0, fw, st, display.x, display.y - dt, display.w, dt, V);
+    put(0, fh - sb, fw, sb, display.x, y1, display.w, db, V);
+    put(0, 0, sl, st, display.x - dl, display.y - dt, dl, dt, HV);
+    put(fw - sr, 0, sr, st, x1, display.y - dt, dr, dt, HV);
+    put(0, fh - sb, sl, sb, display.x - dl, y1, dl, db, HV);
+    put(fw - sr, fh - sb, sr, sb, x1, y1, dr, db, HV);
+    SDL_SetTextureColorMod(frame, 255, 255, 255);
+    SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND); // as the caller had it
+}
+} // namespace
+
+namespace {
 // A growable in-memory SDL_RWops, write-only: what IMG_SavePNG_RW encodes into for
 // Renderer::encodeLastFramePng - no temp file needed just to hand a screenshot back over a socket.
 struct MemWriter {
@@ -684,6 +740,9 @@ void Renderer::present() {
         // cleared to transparent black) reaches the window as opaque black - an alpha-0 pixel on a Wayland ARGB
         // surface shows what is behind the window (BUG-31)
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND);
+        if (windowRect)
+            copyMirroredMargin(impl->renderer, frame, displayRect, impl->outputWidth, impl->outputHeight,
+                               impl->marginPercent);
         SDL_RenderCopy(impl->renderer, frame, nullptr, windowRect);
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE); // the capture stays opaque, as a read-back frame was
         impl->capture = impl->captureTarget;
@@ -702,6 +761,9 @@ void Renderer::present() {
         SDL_SetRenderDrawColor(impl->renderer, r, g, b, a);
         SDL_Texture *frame = static_cast<SDL_Texture *>(impl->frameTarget.native());
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND);
+        if (windowRect)
+            copyMirroredMargin(impl->renderer, frame, displayRect, impl->outputWidth, impl->outputHeight,
+                               impl->marginPercent);
         SDL_RenderCopy(impl->renderer, frame, nullptr, windowRect);
     } else if (impl->captureRequested) {
         // a frame that never called clear(): read it back
