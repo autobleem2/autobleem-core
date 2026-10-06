@@ -30,6 +30,7 @@
 #include "doctest/doctest.h"
 
 #include <ab_gui/footer_shorten.h>
+#include <ab_gui/splash_picture.h>
 
 #include <algorithm>
 #include <cctype>
@@ -347,4 +348,20 @@ TEST_CASE("footerHintsThatFit: too wide -> the leading hints that fit, the last 
 
 TEST_CASE("footerHintsThatFit: not even the first fits -> 0 (the caller cuts its label)") {
     CHECK(abgui::footerHintsThatFit(4, 5, [](size_t n) { return static_cast<int>(n) * 10; }) == 0);
+}
+
+//*******************************
+// splashPicturePath(): the transition pictures' 4:3 twins (CONSOLE-17 round 2)
+//*******************************
+
+TEST_CASE("splashPicturePath: a 4:3 output takes <name>-4x3.<ext> when it exists, else the 16:9 picture") {
+    const auto has = [](const std::string &p) { return p == "res/splash/autobleem-4x3.jpg"; };
+    CHECK(abgui::splashPicturePath("res/splash/autobleem.jpg", true, has) == "res/splash/autobleem-4x3.jpg");
+    CHECK(abgui::splashPicturePath("res/splash/retroarch.jpg", true, has) == "res/splash/retroarch.jpg");
+    CHECK(abgui::splashPicturePath("res/splash/autobleem.jpg", false, has) == "res/splash/autobleem.jpg");
+}
+
+TEST_CASE("splashFourByThreeTwin: the extension is the last dot of the file name, not of a directory") {
+    CHECK(abgui::splashFourByThreeTwin("a.b/poweroff.jpg") == "a.b/poweroff-4x3.jpg");
+    CHECK(abgui::splashFourByThreeTwin("a.b/poweroff") == "a.b/poweroff-4x3");
 }

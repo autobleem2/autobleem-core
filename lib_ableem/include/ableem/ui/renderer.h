@@ -123,8 +123,10 @@ public:
     bool setCanvas(int w, int h);
     // On a 4:3 output: the canvas every frame gets after a present() unless it asks for another (setCanvas) - the
     // Platform's own 1280x720 until this says otherwise. The classic screens' CRT size (Gui::CrtCanvasW x H, a 4:3
-    // canvas): laid out by renderer.width()/height() like on any canvas, shown scaled to the output. False, and nothing
-    // changes, on a wide output or for a size <= 0.
+    // canvas): laid out by renderer.width()/height() like on any canvas, shown scaled to the output. The size is kept
+    // for a later 4:3 output too (a live mode switch recreates the renderer): on a wide output it is only recorded -
+    // False, and the canvas unchanged - and back on the program's own size after a switch to a wide one. False for a
+    // size <= 0 (nothing recorded).
     bool setRestCanvas(int w, int h);
     int restCanvasWidth() const;
     int restCanvasHeight() const;

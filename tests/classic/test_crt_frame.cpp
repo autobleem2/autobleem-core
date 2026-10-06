@@ -28,6 +28,8 @@
 
 #include <dirent.h>
 
+#include <SDL2/SDL.h>
+
 using namespace std;
 using ableem::Color;
 using ableem::GuiBase;
@@ -134,6 +136,59 @@ TEST_CASE("a 4:3 output presents its frames with the CRT margin 0, 5 and 10 % on
             REQUIRE(r.setRestCanvas(800, 600));
         }
     }
+}
+
+TEST_CASE("the rest canvas asked for on a wide output is there after a live switch to 4:3, and gone after one back") {
+    // the Pi starts wide and reaches its 4:3 mode by a mode switch in-process (release + acquire = recreate()): the
+    // classic screens' canvas, asked for once in Gui's constructor, must survive that (CONSOLE-17 round 2)
+#ifdef _WIN32
+    _putenv_s("AB_HEADLESS", "1");
+    _putenv_s("AB_WINDOW_SIZE", "1280x720");
+#else
+    setenv("AB_HEADLESS", "1", 1);
+    setenv("AB_WINDOW_SIZE", "1280x720", 1);
+#endif
+    unique_ptr<GuiBase> gui;
+    try {
+        const int w = GuiBase::ScreenWidth, h = GuiBase::ScreenHeight;
+        gui = make_unique<GuiBase>("ab_core_test_rest_canvas", w, h);
+    } catch (const exception &e) {
+        MESSAGE("test_crt_frame: skipping - no usable renderer in this environment (" << e.what() << ")");
+        return;
+    }
+    Renderer &r = gui->renderer();
+    SDL_Window *window = static_cast<SDL_Window *>(gui->platform().nativeWindow());
+    int ow = 0, oh = 0;
+    SDL_GetWindowSize(window, &ow, &oh);
+    if (ow != 1280 || oh != 720) {
+        MESSAGE("test_crt_frame: skipping - the window is " << ow << "x" << oh << ", not 1280x720");
+        return;
+    }
+    REQUIRE_FALSE(r.fourByThreeOutput());
+    CHECK_FALSE(r.setRestCanvas(640, 480)); // nothing changes on a wide output...
+    CHECK(r.restCanvasWidth() == 1280);
+    CHECK(r.width() == 1280);
+
+    SDL_SetWindowSize(window, 800, 600); // ...but it is kept: the Pi's 800x600
+    gui->acquireDisplay();
+    REQUIRE(r.fourByThreeOutput());
+    CHECK(r.restCanvasWidth() == 640);
+    CHECK(r.restCanvasHeight() == 480);
+    CHECK(r.width() == 640);
+    CHECK(r.height() == 480);
+
+    SDL_SetWindowSize(window, 1280, 720); // the way back: the program's own canvas
+    gui->acquireDisplay();
+    REQUIRE_FALSE(r.fourByThreeOutput());
+    CHECK(r.restCanvasWidth() == 1280);
+    CHECK(r.width() == 1280);
+    CHECK(r.height() == 720);
+
+    SDL_SetWindowSize(window, 720, 480); // and 4:3 again
+    gui->acquireDisplay();
+    REQUIRE(r.fourByThreeOutput());
+    CHECK(r.restCanvasWidth() == 640);
+    CHECK(r.width() == 640);
 }
 
 TEST_CASE("nothing calls SDL_SetTextureScaleMode: SDL 2.0.18 (the console's) crashes in it on GLES2") {

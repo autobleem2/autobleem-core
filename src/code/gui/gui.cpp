@@ -17,6 +17,7 @@
 #include <ableem/engine/log.h>
 #include <ableem/ui/debug_driver.h>
 #include <ab_gui/panel.h>
+#include <ab_gui/splash_picture.h>
 #include "../core/model/picture_mask.h"
 
 using namespace std;
@@ -96,7 +97,7 @@ Gui::Gui()
       text_(renderer(), AppBase::get().theme(), assets_.themeFont, assets_.buttonTextureMap),
       uiContext_(renderer(), input(), platform()), stack_(renderer()) {
     wireUiContext();
-    renderer().setRestCanvas(CrtCanvasW, CrtCanvasH); // a 4:3 output only (it does nothing on a wide one)
+    renderer().setRestCanvas(CrtCanvasW, CrtCanvasH); // kept for a 4:3 output (applied at once on one, else after a live switch to one)
     // the pad mappings the launcher and the pscbios wizard share; probePads() reads the first that exists
     input().loadMappings(Env::padMappingFiles());
     input().probePads();
@@ -600,13 +601,11 @@ bool Gui::hasLauncherBackdrop() const {
 // on black when the file is missing, so the frame is never the carousel an emulator is about to cover.
 void Gui::showSplashPicture(const string &name) {
     stack_.frame(Color(0, 0, 0, 255), [this, &name]() {
-        string path = Env::getWorkingPath() + sep + "splash" + sep + name;
-        if (renderer().fourByThreeOutput()) { // a CRT 4:3 output shows the picture's 4:3 twin ("autobleem-4x3.jpg")
-            const size_t dot = path.rfind('.');
-            const string twin = dot == string::npos ? path : path.substr(0, dot) + "-4x3" + path.substr(dot);
-            if (DirEntry::exists(twin))
-                path = twin;
-        }
+        // any 4:3 output (720x480 CRT, 640x480, 800x600, 1024x768 ...) shows the picture's 4:3 twin
+        // ("autobleem-4x3.jpg") when there is one, across the whole 4:3 canvas
+        const string path = abgui::splashPicturePath(Env::getWorkingPath() + sep + "splash" + sep + name,
+                                                     renderer().fourByThreeOutput(),
+                                                     [](const string &p) { return DirEntry::exists(p); });
         if (DirEntry::exists(path)) {
             Texture picture = Texture::loadFile(renderer(), path);
             Rect full(0, 0, renderer().width(), renderer().height());

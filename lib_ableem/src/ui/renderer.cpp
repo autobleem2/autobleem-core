@@ -564,10 +564,16 @@ int Renderer::safeMargin() const {
 }
 
 bool Renderer::setRestCanvas(int w, int h) {
-    if (!impl->fourByThree || w <= 0 || h <= 0)
+    if (w <= 0 || h <= 0)
         return false;
-    impl->wantRestWidth = impl->restWidth = w;
-    impl->wantRestHeight = impl->restHeight = h;
+    // always kept: a launcher that starts wide and reaches a 4:3 output by a live mode switch (recreate()) has to find
+    // it there; on a wide output it only waits
+    impl->wantRestWidth = w;
+    impl->wantRestHeight = h;
+    if (!impl->fourByThree)
+        return false;
+    impl->restWidth = w;
+    impl->restHeight = h;
     if (!impl->framing && (w != impl->width || h != impl->height))
         impl->useCanvas(w, h);
     return true;

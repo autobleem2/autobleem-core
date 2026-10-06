@@ -50,3 +50,15 @@ TEST_CASE("Platform::listableModes: of two rates as near 60 Hz, the higher") {
     CHECK(modes[0].refreshRate == 65);
     CHECK(Platform::listableModes({}).empty());
 }
+
+TEST_CASE("Platform::largestMode: the biggest listed size - what Auto picks - not the one running") {
+    const std::vector<DisplayMode> modes = Platform::listableModes(
+        {mode(800, 600, 60), mode(1920, 1080, 60), mode(1280, 720, 60), mode(1024, 768, 60), mode(640, 480, 60)});
+    const ableem::Size best = Platform::largestMode(modes);
+    CHECK(best.w == 1920);
+    CHECK(best.h == 1080);
+    // by area, not by the list's order (the VESA modes come after the TV ones)
+    const ableem::Size vesa = Platform::largestMode(Platform::listableModes({mode(1280, 720, 60), mode(1600, 1200, 60)}));
+    CHECK(vesa.w == 1600);
+    CHECK(Platform::largestMode({}).w == 0);
+}
