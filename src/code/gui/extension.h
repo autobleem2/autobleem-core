@@ -43,6 +43,7 @@ class AppBase;
 //    extension built for 8 is refused
 // 10: ExtensionHost::requestRescan(ScanScope) takes the scope of the scan (2026-10-05, the Store asks for what it
 //    changed) - a virtual's signature changed; the Store and PSC-Bios are rebuilt, an extension built for 9 is refused
+//    (and, joining the same unreleased ABI, ableem::StoreItem gained category - the package type, 2026-10-06)
 #define AB_SDK_ABI 10
 
 #define AB_SDK_STR2(x) #x

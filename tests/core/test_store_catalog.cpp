@@ -74,6 +74,30 @@ TEST_CASE("StoreCatalog: a PE item carries its licence and the source link; a li
     CHECK(c.items[2].sourceUrl.empty());
 }
 
+TEST_CASE("StoreCatalog: an item's category is its package type, lower case; none = empty") {
+    const char *json = R"J({"schema": 1, "platform": "psc", "items": [
+        {"id": "app/doom", "kind": "app", "title": "Doom", "category": "Games",
+         "files": [{"url": "https://site/a.zip"}]},
+        {"id": "pe/mod", "kind": "pe", "title": "A mod", "category": "pe",
+         "files": [{"url": "https://site/b.mod"}]},
+        {"id": "app/old", "kind": "app", "title": "Untyped", "files": [{"url": "https://site/c.zip"}]}]})J";
+    StoreCatalog c;
+    string error;
+    REQUIRE(c.loadJson(json, "AutoBleem", error));
+    REQUIRE(c.items.size() == 3);
+    CHECK(c.items[0].category == "games");
+    CHECK(c.items[1].category == "pe");
+    CHECK(c.items[2].category.empty());
+}
+
+TEST_CASE("StoreSourceTsv: a category column") {
+    const string tsv = "kind\ttitle\turl\tcategory\n"
+                       "app\tSome tool\thttps://acme.example/tool.zip\tTools\n";
+    StoreSourceTsv s = StoreSourceTsv::parse(tsv, "acme.tsv");
+    REQUIRE(s.items.size() == 1);
+    CHECK(s.items[0].category == "tools");
+}
+
 TEST_CASE("StoreSourceTsv: licence and source_url columns") {
     const string tsv = "kind\ttitle\turl\tlicence\tsource_url\n"
                        "pe\tOpenLara\thttps://acme.example/openlara.mod\tBSD-2-Clause\thttps://acme.example/src.tar.gz\n";
