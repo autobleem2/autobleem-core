@@ -183,3 +183,20 @@ TEST_CASE("OutputMode: the default theme is forced on any 4:3 output, not only t
         CHECK(OutputMode::themeToSwitchTo(mode, "other", false, "ab2.0.0", true) == "ab2.0.0");
     }
 }
+
+TEST_CASE("OutputMode::vsize: the picture height adjust, signed, -20..20, 0 when missing or nonsense") {
+    CHECK(OutputMode::vsize("") == 0);
+    CHECK(OutputMode::vsize("abc") == 0);
+    CHECK(OutputMode::vsize("-") == 0);
+    CHECK(OutputMode::vsize("--3") == 0);
+    CHECK(OutputMode::vsize("0") == 0);
+    CHECK(OutputMode::vsize("7") == 7);
+    CHECK(OutputMode::vsize("+7") == 7);
+    CHECK(OutputMode::vsize("-7") == -7);
+    CHECK(OutputMode::vsize("20") == 20);
+    CHECK(OutputMode::vsize("-20") == -20);
+    CHECK(OutputMode::vsize("90") == 20);
+    CHECK(OutputMode::vsize("-90") == -20);
+    CHECK(OutputMode::vsize("99999999999") == 20);
+    CHECK(std::string(OutputMode::VsizeKey) == "vsize43");
+}

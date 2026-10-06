@@ -45,7 +45,13 @@ constexpr int DefaultSafeMargin = 5;
 constexpr int MaxSafeMargin = 20;
 ABLEEM_API int clampSafeMargin(int percent);
 // see CanvasMapping; a zero or negative canvas size gives the default mapping (scale 1, empty display)
-ABLEEM_API CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH, int marginPercent = 0);
+// The picture height adjust (Options -> Display -> Picture height): on a 4:3 output `display` is `verticalAdjust` output
+// pixels taller (shorter if negative), centred - the canvas is scaled vertically into it (scaleY), and a taller one may
+// run past the output: the top and bottom are cropped. Clamped to +-MaxVerticalAdjust. Nothing on a wide output.
+constexpr int MaxVerticalAdjust = 20;
+ABLEEM_API int clampVerticalAdjust(int pixels);
+ABLEEM_API CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH, int marginPercent = 0,
+                                   int verticalAdjust = 0);
 // the wide outputs' mapping on any output: the canvas as big as fits, centred, square pixels (mapCanvas's first case)
 ABLEEM_API CanvasMapping fitCanvas(int outputW, int outputH, int canvasW, int canvasH);
 // the part of a textureW x textureH picture that fills a canvasW x canvasH canvas at its own shape: the whole picture

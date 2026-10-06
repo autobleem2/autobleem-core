@@ -186,6 +186,8 @@ TEST_CASE("the rest canvas asked for on a wide output is there after a live swit
     }
     REQUIRE_FALSE(r.fourByThreeOutput());
     CHECK_FALSE(r.setRestCanvas(640, 480)); // nothing changes on a wide output...
+    r.setVerticalAdjust(12); // the picture height asked for on a wide output is kept too (and is nothing there)
+    CHECK(r.verticalAdjust() == 12);
     CHECK(r.restCanvasWidth() == 1280);
     CHECK(r.width() == 1280);
 
@@ -195,6 +197,19 @@ TEST_CASE("the rest canvas asked for on a wide output is there after a live swit
     CHECK(r.restCanvasWidth() == 640);
     CHECK(r.restCanvasHeight() == 480);
     CHECK(r.width() == 640);
+    CHECK(r.verticalAdjust() == 12);
+    {
+        Texture layer;
+        r.setFrameCache(true);
+        r.setVerticalAdjust(20); // taller than the output: the top row is still the frame (cropped, not a bar)
+        drawFrame(r, layer);
+        CHECK(redAt(r, 400, 1) > 150);
+        r.setVerticalAdjust(-20); // shorter: a black bar of 10 px on top
+        drawFrame(r, layer);
+        CHECK(redAt(r, 400, 3) < 40);
+        CHECK(redAt(r, 400, 30) > 150);
+        r.setVerticalAdjust(12);
+    }
     CHECK(r.height() == 480);
 
     SDL_SetWindowSize(window, 1280, 720); // the way back: the program's own canvas
