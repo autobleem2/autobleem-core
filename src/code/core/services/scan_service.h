@@ -1,7 +1,7 @@
 //
 // ScanService: scans the Games directory on a background thread, applying every regional.db write on the
-// main thread as it polls the worker's results. The launcher's docs/developer-guide.md ("Straight into EvolutionUI, with the scan in the
-// background") is the design note.
+// main thread as it polls the worker's results. The launcher's docs/developer-guide.md ("Straight into EvolutionUI,
+// with the scan in the background") is the design note.
 //
 #pragma once
 
@@ -29,6 +29,7 @@
 #include <thread>
 #include <vector>
 
+class PackageService;
 class RetroArchService;
 
 //******************
@@ -95,6 +96,8 @@ struct ScanUpdate {
     // a scanner processor changed what is in Apps/ (the mods processor turning a PE package into an App): the
     // launcher reads the Apps set again
     bool appsChanged = false;
+    // the Packages/ index was rebuilt (PackageService): the launcher reloads the Apps tab's Packages row
+    bool packagesChanged = false;
 
     bool finished = false; // a whole scan cycle completed during this poll
     int finishedGameCount = 0;
@@ -154,6 +157,9 @@ public:
     bool requestScan(ScanScope scope = ScanAll);
     bool scanning() const { return scanning_.load(); }
     void setWatching(bool watching) { watching_.store(watching); }
+    // the index a ScanPackages scan rebuilds (RAM only - nothing is written); nullptr = no package scan.
+    // Set before start().
+    void setPackages(PackageService *packages) { packages_ = packages; }
 
     // drains every event the worker has queued since the last call, applying each regional.db write on the
     // way (findGameIdByPath/insertGame/updateGame/replaceDiscs, deleting a game whose folder is gone, the
@@ -255,6 +261,7 @@ private:
             ProcessorProgress,
             ProcessorNotice,
             AppsChanged,
+            PackagesChanged,
             Finished
         };
         Kind kind = Kind::Progress;
@@ -348,6 +355,7 @@ private:
 
     ableem::GameLibrary &library_;
     RetroArchService *retroArch_ = nullptr;
+    PackageService *packages_ = nullptr;
 
     // what setOnline() gave, read by the worker at the start of each cycle
     std::mutex onlineMutex_;
@@ -385,4 +393,7 @@ private:
     ableem::GamesFingerprint lastCheckRomsFingerprint_;
     ableem::GamesFingerprint lastScannedModsFingerprint_;
     ableem::GamesFingerprint lastCheckModsFingerprint_;
+    // Packages/ is watched by a signature of its top-level listing, held in RAM (never a file on the stick)
+    std::string lastScannedPackagesSignature_;
+    std::string lastCheckPackagesSignature_;
 };

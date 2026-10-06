@@ -33,6 +33,7 @@ struct RetroArchGames {
 };
 
 class LightgunService;
+class PackageService;
 
 //******************
 // GameQueryService
@@ -51,6 +52,8 @@ public:
     void setRetroArchGames(RetroArchGames *source) { retroArch_ = source; }
     // same arrangement for the light-gun flags; null means the Lightgun set is empty
     void setLightguns(LightgunService *lightguns) { lightguns_ = lightguns; }
+    // same arrangement for the game data under Packages/ (docs/packages.md 7); null means no Packages row
+    void setPackages(const PackageService *packages) { packages_ = packages; }
 
     // the Lightgun set: every flagged PS1 game (internal ones when shown) and RetroArch game, by title
     PsGames lightgunGames();
@@ -73,8 +76,11 @@ public:
     // AppCategory::All is every App; otherwise only the ones whose app.ini Category= matches (unset or
     // unrecognised = Other)
     PsGames apps(AppCategory category = AppCategory::All);
+    // AppCategory::Packages: one entry per package of the index (a folder of game data, unknown data included) -
+    // `app` and `package` set, never launched (Cross opens the info view); not part of AppCategory::All
     // the categories with at least one App, in appCategoryName()'s order, each with its count - what the
-    // set picker's Apps tab lists after "All apps"
+    // set picker's Apps tab lists after "All apps". The Packages row comes last and only when the index holds
+    // a package; its count is the number of packages
     struct AppCategoryCount {
         AppCategory category;
         int count;
@@ -108,4 +114,5 @@ private:
     Config &config_;
     RetroArchGames *retroArch_ = nullptr;
     LightgunService *lightguns_ = nullptr;
+    const PackageService *packages_ = nullptr;
 };

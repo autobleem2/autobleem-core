@@ -13,8 +13,12 @@
 #include "../support/temp_dir.h"
 #include "../support/tree_snapshot.h"
 
+#include "core/services/app_manifest.h"
+#include "core/services/app_settings.h"
 #include "core/services/config.h"
 #include "core/services/environment.h"
+#include "core/services/launch.h"
+#include "core/services/package_service.h"
 #include "core/services/scan_service.h"
 
 #include <ableem/engine/config_file_editor.h>
@@ -184,4 +188,65 @@ TEST_CASE("Save logs copies this run's logs from RAM to System/Logs/saved-<n>, t
 
     Env::setKeepLogs(true); // on the stick already: nothing to copy
     CHECK(Env::copyLogsToStick() == "");
+}
+
+TEST_CASE(
+    "a populated Packages/: two scans and the start of a picked entry write nothing - only a changed choice does") {
+    TempDir tmp("quiet_packages");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    env.setWorkingPath(tmp.makeSubDir("Autobleem/bin/autobleem"));
+    ableem::Environment::setRuntimeDir(tmp.at("run"));
+
+    // a stick with everything the index looks at: the shipped table, the player's own folders and table, one of our
+    // packages (a descriptor), unknown data, loose files, hidden folders - and an engine App that uses them
+    tmp.writeFile("Autobleem/rc/packages.ini",
+                  "[doom2]\nkind=doom-iwad\ntitle=Doom II\nmatch=DOOM2.WAD\nmagic=IWAD\n"
+                  "[quake]\nkind=quake-id1\ntitle=Quake\nmatch=id1/pak0.pak;id1/pak1.pak\n");
+    tmp.writeFile("Packages/Doom/DOOM2.WAD", "IWAD");
+    tmp.writeFile("Packages/Quake/id1/PAK0.PAK", "x");
+    tmp.writeFile("Packages/Quake/id1/PAK1.PAK", "x");
+    tmp.writeFile("Packages/freedoom/package.ini",
+                  "Title=Freedoom\nKind=doom-iwad\nSource=store\nStoreId=pkg/freedoom\nGame1.Title=Phase 2\n"
+                  "Game1.File=freedoom2.wad\n");
+    tmp.writeFile("Packages/freedoom/freedoom2.wad", "IWAD");
+    tmp.writeFile("Packages/packages.ini", "[mine]\nkind=my-kind\ntitle=Mine\nmatch=MINE.DAT\n");
+    tmp.writeFile("Packages/Mine/MINE.DAT", "x");
+    tmp.writeFile("Packages/Unknown/readme.txt", "x");
+    tmp.writeFile("Packages/.hidden/DOOM2.WAD", "IWAD");
+    tmp.writeFile("Packages/loose.txt", "x");
+    const string key = Env::appPlatformKeys().front();
+    tmp.writeFile("Apps/crispy/app.ini",
+                  "Title=Crispy Doom\nExec=bin/{key}/crispy\nUses=doom-iwad\nArgs=-iwad \"{package}\"\n");
+    tmp.writeFile("Apps/crispy/bin/" + key + "/crispy", "x");
+
+    TreeSnapshot before(tmp.path());
+    PackageService packages;
+    packages.rescan();
+    packages.rescan();
+    CHECK(packages.packageCount() == 5); // Doom, Quake, freedoom, Mine, Unknown
+    CHECK(before.changesTo(TreeSnapshot(tmp.path())) == vector<string>{});
+
+    // the start of an entry: the plan, and the pick of the same game again - nothing is written for an unchanged pick
+    AppManifest app = AppManifest::load(tmp.at("Apps/crispy"), "app.ini", Env::appPlatformKeys());
+    vector<PackageEntry> entries = packages.entriesFor(app);
+    REQUIRE(entries.size() == 2); // Doom II, Freedoom Phase 2
+    PsGame game;
+    game.app = true;
+    game.base = tmp.at("Apps/crispy");
+    game.startup = app.programInFolder();
+    LaunchPlan plan = LaunchService::planApp(game, &entries[0]);
+    CHECK_FALSE(plan.env.empty());
+    CHECK(AppSettings::setLastPackage(game.base, entries[0].id())); // a changed choice: the one allowed write
+    CHECK(before.changesTo(TreeSnapshot(tmp.path())) == vector<string>{"+ Apps/crispy/ab_settings.ini"});
+
+    TreeSnapshot picked(tmp.path());
+    packages.rescan();
+    plan = LaunchService::planApp(game, &entries[0]);
+    CHECK(AppSettings::setLastPackage(game.base, entries[0].id())); // the same pick again
+    CHECK(picked.changesTo(TreeSnapshot(tmp.path())) == vector<string>{});
+
+    // another pick rewrites that one file and nothing else
+    CHECK(AppSettings::setLastPackage(game.base, entries[1].id()));
+    CHECK(picked.changesTo(TreeSnapshot(tmp.path())) == vector<string>{"~ Apps/crispy/ab_settings.ini"});
 }

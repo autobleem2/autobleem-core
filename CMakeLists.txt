@@ -97,6 +97,8 @@ add_library(ab_core STATIC
         src/code/core/services/disc_reader.cpp
         src/code/core/services/downloader.cpp
         src/code/core/services/extension_catalog.cpp
+        src/code/core/services/package_service.cpp
+        src/code/core/services/package_table.cpp
         src/code/core/services/processor_catalog.cpp
         src/code/core/services/processor_runner.cpp
         src/code/core/services/processor_sequences.cpp

@@ -5,6 +5,7 @@
 #include "game_query.h"
 #include "app_manifest.h"
 #include "lightgun.h"
+#include "package_service.h"
 #include "config.h"
 #include "../main.h"
 #include "environment.h"
@@ -158,6 +159,29 @@ PsGames GameQueryService::retroArchGames(const string &playlistName) {
 PsGames GameQueryService::apps(AppCategory category) {
     PsGames games;
 
+    if (category == AppCategory::Packages) {
+        if (packages_ == nullptr)
+            return games;
+        for (const PackageInfo &p : packages_->packages()) {
+            PsGamePtr game = std::make_shared<PsGame>();
+            game->gameId = 0;
+            game->year = 0;
+            game->players = 0;
+            game->cds = 0;
+            game->title = p.title;
+            game->publisher = p.author;
+            game->readme_path = p.readme;
+            game->image_path = p.image;
+            game->base = p.root;
+            game->app = true;
+            game->foreign = true;
+            game->package = true;
+            game->package_id = p.id;
+            games.push_back(game);
+        }
+        return games;
+    }
+
     string appPath = Env::getPathToAppsDir();
     if (!DirEntry::exists(appPath))
         return games;
@@ -221,10 +245,13 @@ vector<GameQueryService::AppCategoryCount> GameQueryService::appCategories() {
     }
 
     vector<AppCategoryCount> result;
-    for (int i = static_cast<int>(AppCategory::Games); i <= static_cast<int>(AppCategoryLast); i++) {
+    for (int i = static_cast<int>(AppCategory::Games); i < static_cast<int>(AppCategory::Packages); i++) {
         if (counts[i] > 0)
             result.push_back({static_cast<AppCategory>(i), counts[i]});
     }
+    // game data, not Apps: its row is last and there only when there is a package
+    if (packages_ != nullptr && packages_->packageCount() > 0)
+        result.push_back({AppCategory::Packages, static_cast<int>(packages_->packageCount())});
     return result;
 }
 
@@ -278,8 +305,10 @@ GameQueryService::SetCounts GameQueryService::setCounts(const vector<string> &pl
 
     // every runnable App is in exactly one category (unset or unrecognised = Other), so the total is the sum
     c.appCategories = appCategories();
-    for (const auto &cat : c.appCategories)
-        c.apps += static_cast<size_t>(cat.count);
+    for (const auto &cat : c.appCategories) {
+        if (cat.category != AppCategory::Packages) // packages are not Apps: outside the "All apps" total
+            c.apps += static_cast<size_t>(cat.count);
+    }
     return c;
 }
 

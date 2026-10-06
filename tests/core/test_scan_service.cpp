@@ -11,6 +11,7 @@
 #include "../support/string_maker.h"
 #include "../support/tree_snapshot.h"
 
+#include "core/services/package_service.h"
 #include "core/services/scan_service.h"
 
 #include <ableem/engine/ini_file.h>
@@ -836,9 +837,9 @@ TEST_CASE("processors: Kinds=mods makes Mods/ where one is installed, and runs i
     fx.tmp.makeSubDir("Apps"); // the helper's !mkdir makes one level
     const string app = fx.tmp.at("Apps/pe-demo");
     procs.add("pe", "Kinds=mods\nMatch=*.mod\n",
-              {{"mods.txt", "#Starting - Fake PE\n!env AB_MODS_DIR|" + fx.tmp.at("env_mods.txt") + "\n!env AB_APPS_DIR|" +
-                                fx.tmp.at("env_apps.txt") + "\n!mkdir " + app + "\n!write " + app +
-                                "/app.ini|Title=Demo\n#DONE\n"}});
+              {{"mods.txt", "#Starting - Fake PE\n!env AB_MODS_DIR|" + fx.tmp.at("env_mods.txt") +
+                                "\n!env AB_APPS_DIR|" + fx.tmp.at("env_apps.txt") + "\n!mkdir " + app + "\n!write " +
+                                app + "/app.ini|Title=Demo\n#DONE\n"}});
     ScanUpdate update = fx.runAndPoll();
     CHECK(ableem::DirEntry::isDirectory(fx.tmp.at("Mods"))); // made, even though there is nothing in it yet
     CHECK(procs.ran().empty());                              // and no .mod: the processor is not started
@@ -930,8 +931,9 @@ namespace {
 void addPeProcessor(ScanServiceFixture &fx, ProcessorsOnStick &procs) {
     fx.tmp.makeSubDir("Apps");
     const string app = fx.tmp.at("Apps/pe-demo");
-    procs.add("pe", "Kinds=mods\nMatch=*.mod\n",
-              {{"mods.txt", "#Starting - Fake PE\n!mkdir " + app + "\n!write " + app + "/app.ini|Title=Demo\n#DONE\n"}});
+    procs.add(
+        "pe", "Kinds=mods\nMatch=*.mod\n",
+        {{"mods.txt", "#Starting - Fake PE\n!mkdir " + app + "\n!write " + app + "/app.ini|Title=Demo\n#DONE\n"}});
     fx.runAndPoll(); // makes Mods/
     procs.clearLog();
     fx.tmp.writeFile("Mods/demo.mod", "x");
@@ -950,7 +952,7 @@ TEST_CASE("scoped scan: a PE package (Mods only) runs the mods processor and no 
     CHECK(procs.ran() == vector<string>{"pe --start --mods ~/Mods"});
     CHECK(update.appsChanged);
     CHECK(update.addedGames.empty()); // the PS1 scan (and its box art) did not run
-    CHECK_FALSE(update.finished); // no "scan complete" summary for a package
+    CHECK_FALSE(update.finished);     // no "scan complete" summary for a package
     CHECK(update.finishedGameCount == 0);
     CHECK_FALSE(ScanService::fingerprintsMatchDisk()); // the new game is still due for its own scan
 }
@@ -966,7 +968,7 @@ TEST_CASE("scoped scan: a PS1 game (Games only) leaves Mods/ alone") {
 
     CHECK(update.addedGames.size() == 1);
     CHECK_FALSE(update.appsChanged);
-    CHECK(procs.ran().empty()); // the mods processor was not started
+    CHECK(procs.ran().empty());                                  // the mods processor was not started
     CHECK(ableem::DirEntry::exists(fx.tmp.at("Mods/demo.mod"))); // and the package stayed where it was
 }
 
@@ -1024,4 +1026,74 @@ TEST_CASE("scoped scan: requestScan ORs the scopes, none is refused, the default
     CHECK(fx.svc.requestScan(ScanApps));
     CHECK(fx.svc.requestScan(ScanMods));
     CHECK(fx.svc.requestScan());
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// ScanPackages (APPS-12, docs/packages.md 4.5): the index is RAM only, rebuilt by a scan, watched by a signature
+// ---------------------------------------------------------------------------------------------------------
+TEST_CASE("ScanPackages is a scope of its own, part of ScanAll, and a Packages-only scan scans nothing else") {
+    CHECK(ScanPackages == 16u);
+    CHECK((ScanAll & ScanPackages) == ScanPackages);
+    CHECK(ScanAll == (ScanApps | ScanMods | ScanPs1 | ScanRoms | ScanPackages));
+
+    ScanServiceFixture fx;
+    PackageService packages;
+    fx.svc.setPackages(&packages);
+    fx.tmp.writeFile("Packages/Doom/DOOM2.WAD", "IWAD");
+    fx.tmp.writeFile("Autobleem/rc/packages.ini", "[doom2]\nkind=doom-iwad\ntitle=Doom II\nmatch=DOOM2.WAD\n");
+    test_support::makeFakeGame(fx.gamesDir(), "Crash Bandicoot", "SLUS_012.34");
+
+    REQUIRE(fx.svc.requestScan(ScanPackages));
+    fx.svc.runScan(ScanPackages);
+    ScanUpdate update = fx.svc.poll();
+    CHECK(update.packagesChanged);
+    CHECK(update.addedGames.empty()); // the PS1 games were not scanned
+    CHECK_FALSE(update.finished);
+    CHECK(packages.packageCount() == 1);
+
+    // a full scan rebuilds it too
+    fx.tmp.writeFile("Packages/Other/DOOM2.WAD", "IWAD");
+    fx.svc.runScan();
+    update = fx.svc.poll();
+    CHECK(update.packagesChanged);
+    CHECK(packages.packageCount() == 2);
+    // and a scan that does not name it leaves the index alone
+    fx.tmp.writeFile("Packages/Third/DOOM2.WAD", "IWAD");
+    fx.svc.runScan(ScanPs1);
+    update = fx.svc.poll();
+    CHECK_FALSE(update.packagesChanged);
+    CHECK(packages.packageCount() == 2);
+}
+
+TEST_CASE(
+    "the watcher asks for ScanPackages when the listing of Packages/ changed and stayed still - and for nothing else") {
+    ScanServiceFixture fx;
+    PackageService packages;
+    fx.svc.setPackages(&packages);
+    fx.tmp.writeFile("Packages/Doom/DOOM2.WAD", "IWAD");
+    fx.svc.runScan();
+    fx.svc.poll();
+    CHECK(fx.svc.checkForChanges() == ScanNone);
+    CHECK(fx.svc.checkForChanges() == ScanNone); // nothing changed: nothing, however often it looks
+
+    fx.tmp.writeFile("Packages/Doom/DOOM.WAD", "IWAD"); // dropped into an existing folder
+    CHECK(fx.svc.checkForChanges() == ScanNone);        // debounce: seen once
+    CHECK(fx.svc.checkForChanges() == ScanPackages);    // not Games, not Mods
+
+    fx.svc.runScan(ScanPackages);
+    fx.svc.poll();
+    CHECK(fx.svc.checkForChanges() == ScanNone); // what was just scanned is not a change
+
+    fx.tmp.makeSubDir("Packages/New");
+    CHECK(fx.svc.checkForChanges() == ScanNone);
+    CHECK(fx.svc.checkForChanges() == ScanPackages);
+}
+
+TEST_CASE("without a PackageService the watcher never asks for ScanPackages and nothing in Packages/ is made") {
+    ScanServiceFixture fx;
+    fx.svc.runScan();
+    fx.svc.poll();
+    fx.tmp.writeFile("Packages/Doom/DOOM2.WAD", "IWAD");
+    CHECK(fx.svc.checkForChanges() == ScanNone);
+    CHECK(fx.svc.checkForChanges() == ScanNone);
 }
