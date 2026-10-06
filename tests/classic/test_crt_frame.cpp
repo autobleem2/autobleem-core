@@ -136,6 +136,26 @@ TEST_CASE("a 4:3 output presents its frames with the CRT margin 0, 5 and 10 % on
     }
 }
 
+TEST_CASE("a 4:3 output's frames never present with a render target left set") {
+    // SDL may report another texture than the one set for a target it keeps a stand-in for: the frame target was then
+    // never "the screen" to present() and every frame logged a warning and went through a repair (CRT 4:3 round 4)
+    CrtGui cg;
+    if (!cg.available())
+        return;
+    Renderer &r = cg.renderer();
+    REQUIRE(r.setRestCanvas(800, 600));
+    const unsigned long before = r.strayPresents();
+    Texture layer;
+    for (int frame = 0; frame < 4; frame++) {
+        drawFrame(r, layer); // the rest canvas: a target drawn into inside the frame
+        CHECK(r.setCanvas(640, 480));
+        drawFrame(r, layer);
+        r.captureNextFrame();
+        drawFrame(r, layer); // a captured frame
+    }
+    CHECK(r.strayPresents() == before);
+}
+
 TEST_CASE("nothing calls SDL_SetTextureScaleMode: SDL 2.0.18 (the console's) crashes in it on GLES2") {
     // a linear target is made under the scale-quality hint instead (renderer.cpp, createLinearTarget)
     const string root = AB_CORE_SOURCE_ROOT;

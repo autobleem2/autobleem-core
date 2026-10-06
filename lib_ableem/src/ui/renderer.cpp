@@ -293,6 +293,25 @@ struct Renderer::Impl {
             return static_cast<SDL_Texture *>(captureTarget.native());
         return framing ? static_cast<SDL_Texture *>(frameTarget.native()) : nullptr;
     }
+    // The render target as the Renderer last set it. SDL may hand a different texture back from SDL_GetRenderTarget for
+    // a target it keeps a stand-in for (a format the driver has no native target of: every RGBA8888 one on the
+    // software and GLES2 renderers), so a target is compared by what was asked for (`target()`), never by the
+    // pointer SDL reports - the 4:3 frame target never matched, and every present logged "with a render target set"
+    SDL_Texture *askedTarget = nullptr; // what bindTarget last set
+    SDL_Texture *gotTarget = nullptr;   // what SDL_GetRenderTarget answered then
+    bool bindTarget(SDL_Texture *texture) {
+        if (SDL_SetRenderTarget(renderer, texture) != 0)
+            return false;
+        askedTarget = texture;
+        gotTarget = SDL_GetRenderTarget(renderer);
+        return true;
+    }
+    // the current target; one SDL changed behind the Renderer's back (a destroyed target falls back to the screen) is
+    // what SDL says
+    SDL_Texture *target() const {
+        SDL_Texture *now = SDL_GetRenderTarget(renderer);
+        return now == gotTarget ? askedTarget : now;
+    }
 
     // the frame cache (see Renderer::setFrameCache)
     struct FrameCache {
@@ -317,6 +336,7 @@ struct Renderer::Impl {
 
     // the render-target stack (see Renderer::pushTarget) and the count of target losses (targetsLost)
     std::vector<SDL_Texture *> targetStack;
+    unsigned long strayPresents = 0; // Renderer::strayPresents
     std::atomic<unsigned long> targetsLost{0};
 
     // the frame cap (see Renderer::present): when the next frame is due, in performance-counter ticks
@@ -428,6 +448,7 @@ void Renderer::release() {
 void Renderer::recreate(Platform &platform) {
     release();
     impl->targetStack.clear();
+    impl->askedTarget = impl->gotTarget = nullptr; // the old renderer's textures are gone
     impl->targetsLost++; // a new renderer: nothing drawn into the old one's targets survives
     SDL_Window *window = static_cast<SDL_Window *>(platform.nativeWindow());
     impl->window = window;
@@ -520,13 +541,13 @@ void Renderer::mirrorMargin(void *frameTexture, const Rect &displayRect) {
     SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE);
     SDL_SetTextureBlendMode(t1, SDL_BLENDMODE_NONE);
     SDL_SetTextureBlendMode(t2, SDL_BLENDMODE_NONE);
-    SDL_SetRenderTarget(impl->renderer, t1);
+    impl->bindTarget(t1);
     SDL_RenderCopy(impl->renderer, frame, nullptr, nullptr);
-    SDL_SetRenderTarget(impl->renderer, t2);
+    impl->bindTarget(t2);
     SDL_RenderCopy(impl->renderer, t1, nullptr, nullptr);
-    SDL_SetRenderTarget(impl->renderer, t1); // and back up to a quarter, softened: the strips are cut from this one
+    impl->bindTarget(t1); // and back up to a quarter, softened: the strips are cut from this one
     SDL_RenderCopy(impl->renderer, t2, nullptr, nullptr);
-    SDL_SetRenderTarget(impl->renderer, nullptr);
+    impl->bindTarget(nullptr);
     SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND); // as the caller had it
     SDL_Rect display = toSDL(displayRect);
     copyMirroredMargin(impl->renderer, t1, display, impl->outputWidth, impl->outputHeight, impl->marginPercent);
@@ -613,15 +634,15 @@ Renderer::~Renderer() {
 
 void Renderer::clear() {
     // a capture asked for: this frame (it starts here, on the screen) goes into a target of the canvas's size
-    if (impl->captureRequested && !impl->capturing && SDL_GetRenderTarget(impl->renderer) == nullptr) {
+    if (impl->captureRequested && !impl->capturing && impl->target() == nullptr) {
         Texture t = Texture::createTarget(*this, impl->width, impl->height);
-        if (t.valid() && SDL_SetRenderTarget(impl->renderer, static_cast<SDL_Texture *>(t.native())) == 0) {
+        if (t.valid() && impl->bindTarget(static_cast<SDL_Texture *>(t.native()))) {
             impl->captureTarget = t;
             impl->capturing = true;
         }
     }
     // a 4:3 output: a frame starting on the screen goes into the frame target of this frame's canvas (CanvasMapping)
-    if (impl->fourByThree && !impl->capturing && !impl->framing && SDL_GetRenderTarget(impl->renderer) == nullptr) {
+    if (impl->fourByThree && !impl->capturing && !impl->framing && impl->target() == nullptr) {
         const Size size = impl->frameTarget.size();
         if (!impl->frameTarget.valid() || size.w != impl->width || size.h != impl->height) {
             impl->frameTarget = Texture();
@@ -629,7 +650,7 @@ void Renderer::clear() {
             impl->frameTarget = createLinearTarget(*this, impl->width, impl->height);
         }
         if (impl->frameTarget.valid() &&
-            SDL_SetRenderTarget(impl->renderer, static_cast<SDL_Texture *>(impl->frameTarget.native())) == 0)
+            impl->bindTarget(static_cast<SDL_Texture *>(impl->frameTarget.native())))
             impl->framing = true;
     }
     if (ext_trace::active()) {
@@ -786,9 +807,10 @@ void Renderer::present() {
     }
     // never present while a render target (other than the capture's own or the 4:3 frame's, handled below) is current:
     // the screen would show an unfilled frame
-    if (!impl->capturing && SDL_GetRenderTarget(impl->renderer) != impl->screenTarget()) {
+    if (!impl->capturing && impl->target() != impl->screenTarget()) {
         PLOG_WARNING << "Renderer::present with a render target set - back to the screen first";
-        SDL_SetRenderTarget(impl->renderer, impl->screenTarget());
+        impl->strayPresents++;
+        impl->bindTarget(impl->screenTarget());
         impl->targetStack.clear();
     }
     // a 4:3 output: the frame is not on the window until it is copied there below
@@ -812,7 +834,7 @@ void Renderer::present() {
         impl->captureRequested = false;
         const bool silent = impl->captureSilent;
         impl->captureSilent = false;
-        SDL_SetRenderTarget(impl->renderer, nullptr);
+        impl->bindTarget(nullptr);
         SDL_Texture *frame = static_cast<SDL_Texture *>(impl->captureTarget.native());
         if (silent) {
             // a snapshot for a backdrop, not a frame to show: the window keeps what it shows (the screen the snapshot
@@ -849,7 +871,7 @@ void Renderer::present() {
     } else if (impl->framing) {
         // a 4:3 output's frame: onto the window at the canvas's shape (stretched to the output's pixel aspect), over
         // opaque black for the reason the capture's copy above gives (BUG-31), the bars black
-        SDL_SetRenderTarget(impl->renderer, nullptr);
+        impl->bindTarget(nullptr);
         Uint8 r = 0, g = 0, b = 0, a = 0;
         SDL_GetRenderDrawColor(impl->renderer, &r, &g, &b, &a);
         SDL_SetRenderDrawColor(impl->renderer, 0, 0, 0, 255);
@@ -989,7 +1011,7 @@ void Renderer::copy(const Texture &tex, const Rect *src, const Rect *dst) {
         // a render target is addressed in logical pixels like the screen; a loaded image in its own
         ssrc = toSDL(tex.pixelScale() == 1.0f ? *src : scaleRect(*src, tex.pixelScale()));
         psrc = &ssrc;
-    } else if (!dst && impl->fourByThree && SDL_GetRenderTarget(impl->renderer) == impl->screenTarget()) {
+    } else if (!dst && impl->fourByThree && impl->target() == impl->screenTarget()) {
         // a 4:3 output: a whole picture over the whole canvas at its own shape - a frame of the other canvas (the 4:3
         // launcher's snapshot under a 16:9 menu) shows its middle, not squeezed (coverCrop); the same shape, all of it
         const Size size = tex.size();
@@ -1186,11 +1208,11 @@ void Renderer::setTarget(Texture *target) {
     // "the screen" is the capture's target while a frame is being captured
     if (ext_trace::active())
         ext_trace::note(target ? "setTarget texture" : "setTarget screen");
-    SDL_SetRenderTarget(impl->renderer, target ? static_cast<SDL_Texture *>(target->native()) : impl->screenTarget());
+    impl->bindTarget(target ? static_cast<SDL_Texture *>(target->native()) : impl->screenTarget());
 }
 
 void Renderer::pushTarget(Texture *target) {
-    impl->targetStack.push_back(SDL_GetRenderTarget(impl->renderer));
+    impl->targetStack.push_back(impl->target());
     setTarget(target);
 }
 
@@ -1204,11 +1226,15 @@ void Renderer::popTarget() {
     }
     if (ext_trace::active())
         ext_trace::note(previous ? "popTarget texture" : "popTarget screen");
-    SDL_SetRenderTarget(impl->renderer, previous ? previous : impl->screenTarget());
+    impl->bindTarget(previous ? previous : impl->screenTarget());
 }
 
 unsigned long Renderer::targetsLost() const {
     return impl->targetsLost.load();
+}
+
+unsigned long Renderer::strayPresents() const {
+    return impl->strayPresents;
 }
 
 int Renderer::width() const {

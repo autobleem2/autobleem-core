@@ -112,6 +112,9 @@ public:
     // how many times the render targets' contents were lost (SDL_RENDER_TARGETS_RESET/DEVICE_RESET, a new
     // renderer): a cache drawn into a target keeps the value it was drawn at and draws again when it changed
     unsigned long targetsLost() const;
+    // how many presents found a render target still set that should not have been (the one a frame was not drawn
+    // into) and had to go back to the screen first: a drawing path that leaves a target bound. A test's check - 0
+    unsigned long strayPresents() const;
 
     // the logical canvas, in the app's coordinates
     int width() const;
