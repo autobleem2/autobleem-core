@@ -467,6 +467,10 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
                                    : OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey]);
             env.emplace_back("AB_CRT_MARGIN", to_string(margin));
         }
+        // the picture height adjust (output pixels, -40..40 even, one value for every 4:3 output) the emulator shows its
+        // picture with, when it knows it
+        if (has("crtvsize"))
+            env.emplace_back("AB_CRT_VSIZE", to_string(OutputMode::vsize(config_.inifile.values[OutputMode::VsizeKey])));
         // Options -> Diagnostics -> "Show performance": the emulator's HUD shows its FPS and CPU as well, for
         // this run only (it keeps them out of the game's saved config)
         if (has("perfoverlay") && config_.inifile.values["perfoverlay"] == "true")

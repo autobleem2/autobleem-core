@@ -18,6 +18,15 @@ int OutputMode::crtMargin(const string &value) {
 }
 
 const char *OutputMode::VgaMarginKey = "vgamargin";
+const char *OutputMode::VsizeKey = "vsize43";
+
+int OutputMode::vsize(const string &value) {
+    const size_t digits = !value.empty() && (value[0] == '-' || value[0] == '+') ? 1 : 0;
+    if (value.size() <= digits || value.find_first_not_of("0123456789", digits) != string::npos)
+        return 0;
+    const int n = value.size() - digits > 4 ? ableem::MaxVerticalAdjust : atoi(value.c_str() + digits); // no overflow
+    return ableem::clampVerticalAdjust(value[0] == '-' ? -n : n); // -40..40, even
+}
 
 int OutputMode::vgaMargin(const string &value) {
     if (value.empty() || value.find_first_not_of("0123456789") != string::npos)

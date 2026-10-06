@@ -90,6 +90,8 @@ Config::Config() {
     // and the same for the square-pixel 4:3 modes (a VGA monitor), 0 unless the player set one
     inifile.values[OutputMode::VgaMarginKey] =
         std::to_string(OutputMode::vgaMargin(inifile.values[OutputMode::VgaMarginKey]));
+    // the picture height of every 4:3 output (Options -> Display -> Picture height), output pixels -40..40, even
+    inifile.values[OutputMode::VsizeKey] = std::to_string(OutputMode::vsize(inifile.values[OutputMode::VsizeKey]));
 
     if (inifile.values["raconfig"] == "") {
         inifile.values["raconfig"] = "true";

@@ -75,6 +75,10 @@ struct OutputMode {
     // The square-pixel 4:3 modes (640x480, 800x600, 1024x768, 1280x1024 ...) have a margin of their own, "vgamargin":
     // the tube's 5 % default would be wrong for a monitor, so it is 0 for none or nonsense (CONSOLE-17 round 2)
     static const char *VgaMarginKey;
+    // The picture height adjust (Options -> Display -> Picture height), one value for every 4:3 output: -40..40 (even) output
+    // pixels, 0 for none or nonsense (config.ini "vsize43"); the sign is part of the value
+    static const char *VsizeKey;
+    static int vsize(const std::string &value);
     static int vgaMargin(const std::string &value);
     // the config.ini key the margin of the mode shown is kept in: the tube's, or the VGA one
     static const char *marginKeyFor(const OutputMode &shown) { return shown.isCrt() ? MarginKey : VgaMarginKey; }

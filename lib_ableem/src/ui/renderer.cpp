@@ -51,7 +51,7 @@ int clampSafeMargin(int percent) {
     return std::min(MaxSafeMargin, std::max(0, percent));
 }
 
-CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH, int marginPercent) {
+CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH, int marginPercent, int verticalAdjust) {
     CanvasMapping m;
     if (canvasW <= 0 || canvasH <= 0)
         return m;
@@ -74,6 +74,11 @@ CanvasMapping mapCanvas(int outputW, int outputH, int canvasW, int canvasH, int 
         const int h = static_cast<int>(std::lround(static_cast<double>(areaH) * canvasH * 4 / (canvasW * 3.0)));
         m.display = Rect(insetX, insetY + (areaH - h) / 2, areaW, h);
     }
+    // the picture height adjust: the display taller (or shorter) by the pixels, centred - it may run past the output,
+    // the top and bottom are then cropped (a CRT's overscan); the canvas scales vertically into it
+    const int adjust = clampVerticalAdjust(verticalAdjust);
+    m.display.y -= adjust / 2;
+    m.display.h += adjust;
     m.scaleX = static_cast<float>(m.display.w) / canvasW;
     m.scaleY = static_cast<float>(m.display.h) / canvasH;
     return m;
@@ -116,7 +121,7 @@ Texture createLinearTarget(Renderer &renderer, int w, int h) {
 // smoothly past the safe rectangle instead of a black frame (`frame` is the softened copy: Renderer::mirrorMargin). Only on a side where the frame really sits on the safe
 // rectangle (a letterboxed canvas keeps its black bars), and only with a margin. `display` is where the frame goes.
 void copyMirroredMargin(SDL_Renderer *renderer, SDL_Texture *frame, const SDL_Rect &display, int outW, int outH,
-                        int marginPercent) {
+                        int marginPercent, int verticalAdjust) {
     if (marginPercent <= 0 || display.w <= 0 || display.h <= 0)
         return;
     int fw = 0, fh = 0;
@@ -126,8 +131,11 @@ void copyMirroredMargin(SDL_Renderer *renderer, SDL_Texture *frame, const SDL_Re
     const int insetY = static_cast<int>(std::lround(outH * marginPercent / 100.0));
     const bool left = std::abs(display.x - insetX) <= 1 && display.x > 0;
     const bool right = std::abs(display.x + display.w - (outW - insetX)) <= 1 && outW - (display.x + display.w) > 0;
-    const bool top = std::abs(display.y - insetY) <= 1 && display.y > 0;
-    const bool bottom = std::abs(display.y + display.h - (outH - insetY)) <= 1 && outH - (display.y + display.h) > 0;
+    // the picture height adjust moved the safe rectangle's top and bottom edges the way mapCanvas did (y -= v / 2, h += v)
+    const int expectedTop = insetY - verticalAdjust / 2;
+    const int expectedBottom = outH - insetY + (verticalAdjust - verticalAdjust / 2);
+    const bool top = std::abs(display.y - expectedTop) <= 1 && display.y > 0;
+    const bool bottom = std::abs(display.y + display.h - expectedBottom) <= 1 && outH - (display.y + display.h) > 0;
     const double kx = static_cast<double>(fw) / display.w, ky = static_cast<double>(fh) / display.h;
     // a margin as frame pixels (at most the frame), and as the output pixels that many cover
     auto strip = [](int margin, double k, int full, int &src, int &dst) {
@@ -263,6 +271,7 @@ struct Renderer::Impl {
     int outputWidth = 0, outputHeight = 0;
     int baseWidth = 0, baseHeight = 0;
     int marginPercent = DefaultSafeMargin; // the CRT safe area (Renderer::setSafeMargin)
+    int verticalAdjust = 0; // the picture height adjust (Renderer::setVerticalAdjust), kept across recreate()
     bool marginSet = false;                // the program asked for one; until then only the 720x480 tube has a margin
     // the canvas every frame has unless it asks for another (setCanvas): the base one until setRestCanvas says
     int restWidth = 0, restHeight = 0;
@@ -275,7 +284,7 @@ struct Renderer::Impl {
     void useCanvas(int w, int h) {
         width = w;
         height = h;
-        display = mapCanvas(outputWidth, outputHeight, w, h, marginPercent).display;
+        display = mapCanvas(outputWidth, outputHeight, w, h, marginPercent, verticalAdjust).display;
     }
 
     // the one-off capture (see Renderer::captureNextFrame)
@@ -483,7 +492,8 @@ void Renderer::recreate(Platform &platform) {
     // the frame target only for a wide canvas on a 4:3 output (the launcher's 1280x720 on 480p); a canvas of the
     // output's own shape (a test's 320x240 window) is drawn straight, as always
     const CanvasMapping mapping = usesFrameTarget(outputWidth, outputHeight, impl->width, impl->height)
-                                      ? mapCanvas(outputWidth, outputHeight, impl->width, impl->height, impl->marginPercent)
+                                      ? mapCanvas(outputWidth, outputHeight, impl->width, impl->height, impl->marginPercent,
+                                                impl->verticalAdjust)
                                       : fitCanvas(outputWidth, outputHeight, impl->width, impl->height);
     impl->fourByThree = mapping.fourByThree;
     impl->display = mapping.display;
@@ -553,7 +563,8 @@ void Renderer::mirrorMargin(void *frameTexture, const Rect &displayRect) {
     impl->bindTarget(nullptr);
     SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND); // as the caller had it
     SDL_Rect display = toSDL(displayRect);
-    copyMirroredMargin(impl->renderer, t1, display, impl->outputWidth, impl->outputHeight, impl->marginPercent);
+    copyMirroredMargin(impl->renderer, t1, display, impl->outputWidth, impl->outputHeight, impl->marginPercent,
+                       impl->verticalAdjust);
 }
 
 bool Renderer::setCanvas(int w, int h) {
@@ -578,6 +589,24 @@ void Renderer::setSafeMargin(int percent) {
                       << impl->display.y;
         }
     }
+}
+
+void Renderer::setVerticalAdjust(int pixels) {
+    const int adjust = clampVerticalAdjust(pixels);
+    const bool changed = adjust != impl->verticalAdjust;
+    impl->verticalAdjust = adjust; // kept for a later 4:3 output too: recreate() maps with it
+    if (impl->fourByThree) {
+        impl->useCanvas(impl->width, impl->height); // the next present() places the frame in the new height
+        if (changed) {
+            PLOG_INFO << "Picture height " << adjust << " px: a " << impl->width << "x" << impl->height << " canvas shown "
+                      << impl->display.w << "x" << impl->display.h << " at " << impl->display.x << ","
+                      << impl->display.y;
+        }
+    }
+}
+
+int Renderer::verticalAdjust() const {
+    return impl->verticalAdjust;
 }
 
 int Renderer::safeMargin() const {

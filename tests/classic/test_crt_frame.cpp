@@ -158,6 +158,39 @@ TEST_CASE("a 4:3 output's frames never present with a render target left set") {
     CHECK(r.strayPresents() == before);
 }
 
+TEST_CASE("the CRT margin's mirrored strips follow the picture height adjust, and are none where the picture runs past") {
+    CrtGui cg;
+    if (!cg.available())
+        return;
+    Renderer &r = cg.renderer();
+    REQUIRE(r.setRestCanvas(800, 600));
+    Texture layer;
+    r.setSafeMargin(5); // 24 px top and bottom on 720x480
+    for (int v : {-40, -20, -4, 0, 4, 20, 40}) {
+        r.setVerticalAdjust(v);
+        drawFrame(r, layer);
+        // the top and bottom strips are the frame's edge mirrored and dimmed - never black, never the full frame
+        const int top = redAt(r, 360, 2), bottom = redAt(r, 360, 477);
+        CHECK(top > 40);
+        CHECK(top < 150);
+        CHECK(bottom > 40);
+        CHECK(bottom < 150);
+        CHECK(redAt(r, 360, 60) > 150); // the picture itself
+    }
+    // a 1 % margin is 5 px: +20 moves the picture's edges 10 px past the output - no strip, the picture to the edge
+    r.setSafeMargin(1);
+    r.setVerticalAdjust(20);
+    drawFrame(r, layer);
+    CHECK(redAt(r, 360, 2) > 150);
+    CHECK(redAt(r, 360, 477) > 150);
+    r.setVerticalAdjust(-20); // the other way the strips grow to 15 px: dimmed, not the full frame
+    drawFrame(r, layer);
+    CHECK(redAt(r, 360, 12) < 150);
+    CHECK(redAt(r, 360, 12) > 40);
+    r.setVerticalAdjust(0);
+    r.setSafeMargin(5);
+}
+
 TEST_CASE("a VGA 4:3 output (800x600) has no margin until one is set, and takes one live like the tube") {
     CrtGui cg("800x600");
     if (!cg.available())
@@ -206,6 +239,8 @@ TEST_CASE("the rest canvas asked for on a wide output is there after a live swit
     }
     REQUIRE_FALSE(r.fourByThreeOutput());
     CHECK_FALSE(r.setRestCanvas(640, 480)); // nothing changes on a wide output...
+    r.setVerticalAdjust(12); // the picture height asked for on a wide output is kept too (and is nothing there)
+    CHECK(r.verticalAdjust() == 12);
     CHECK(r.restCanvasWidth() == 1280);
     CHECK(r.width() == 1280);
 
@@ -215,6 +250,19 @@ TEST_CASE("the rest canvas asked for on a wide output is there after a live swit
     CHECK(r.restCanvasWidth() == 640);
     CHECK(r.restCanvasHeight() == 480);
     CHECK(r.width() == 640);
+    CHECK(r.verticalAdjust() == 12);
+    {
+        Texture layer;
+        r.setFrameCache(true);
+        r.setVerticalAdjust(20); // taller than the output: the top row is still the frame (cropped, not a bar)
+        drawFrame(r, layer);
+        CHECK(redAt(r, 400, 1) > 150);
+        r.setVerticalAdjust(-20); // shorter: a black bar of 10 px on top
+        drawFrame(r, layer);
+        CHECK(redAt(r, 400, 3) < 40);
+        CHECK(redAt(r, 400, 30) > 150);
+        r.setVerticalAdjust(12);
+    }
     CHECK(r.height() == 480);
 
     SDL_SetWindowSize(window, 1280, 720); // the way back: the program's own canvas
