@@ -10,6 +10,7 @@
 #include "app_manifest.h"
 #include "config.h"
 #include "memcard.h"
+#include "package_service.h"
 #include "process_runner.h"
 #include "ra_options.h"
 #include "resume_point.h"
@@ -60,7 +61,9 @@ public:
     // memory cards go in and its resume point is prepared, the launcher script runs and is waited for, the
     // cards come back out. `game` is the record the launcher handed over; PCSX's path normalises its
     // ssFolder in place, as it always has.
-    void launch(PsGamePtr &game, EmuMode mode, int resumePoint);
+    // `package`: the game data the player picked for an App with Uses= (docs/packages.md 5): its AB_PKG_* variables and
+    // {package} placeholders. A Packages-row entry (PsGame::package) is never launched - it is refused here.
+    void launch(PsGamePtr &game, EmuMode mode, int resumePoint, const PackageEntry *package = nullptr);
 
     // where the launcher scripts are
     static std::string pcsxLauncherScript();      // rc/launch.sh
@@ -96,7 +99,7 @@ public:
     LaunchPlan planPcsx(const PsGame &game, const std::string &discImage, const std::string &lang, int resumePoint,
                         const std::string &aspect, const std::string &filter) const;
     static LaunchPlan planRetroArch(const std::string &file, const std::string &core);
-    static LaunchPlan planApp(const PsGame &game);
+    static LaunchPlan planApp(const PsGame &game, const PackageEntry *package = nullptr);
     // the generic script a multi-platform App without a run.sh of its own is started through (rc/app_run.sh)
     static std::string appRunScript();
     // what a multi-platform App is started with: AB_ROOT, AB_APP_DIR/EXEC/ARGS/LIB/KEY, AB_PLATFORM,
@@ -104,7 +107,19 @@ public:
     // player's choice from AppSettings, else the ini's PadMode=, else empty), AB_APP_DPAD2ANALOG and
     // AB_APP_ANALOG2DPAD ("1"/"0": the choice, else the ini's Dpad2Analog=/Analog2Dpad=, else empty), then the ini's
     // Env=
-    static std::vector<std::pair<std::string, std::string>> appEnvironment(const AppManifest &manifest);
+    // With a `package` (the pick of an App with Uses=, docs/packages.md 5.2, 5.3): AB_PKG_DIR/FILE/KIND/TITLE/ID/GAME,
+    // AB_PKG_STARTS (a game with Start programs), AB_PKG_SET_<NAME> and AB_PKG_MAPPER (a dos-game's), and the
+    // {package} placeholders replaced in AB_APP_ARGS and in the ini's Env= values. Without one none of it is set and
+    // nothing is replaced.
+    static std::vector<std::pair<std::string, std::string>> appEnvironment(const AppManifest &manifest,
+                                                                           const PackageEntry *package = nullptr);
+    // `text` with {package} (the main file), {package_dir}, {package_kind}, {package_title}, {package_id} and
+    // {package_game} replaced; any other {name} stays as it is
+    static std::string expandPackage(const std::string &text, const PackageEntry &package);
+    // an Args= line with the placeholders replaced per argument, the quoting of the line kept: an argument that had
+    // a placeholder and now holds a blank (or a shell character) is wrapped in double quotes - what rc/app_run.sh's
+    // eval and AppManifest::splitArgs both honour. The arguments with no placeholder are copied as they were.
+    static std::string expandPackageArgs(const std::string &args, const PackageEntry &package);
     // RetroArch with nothing loaded - its own menu, full screen (what the system menu's RetroArch item
     // means in direct mode; the console and the Pi leave the launcher and their rc/retroarch.sh does it)
     static LaunchPlan planRetroArchMenu();
@@ -191,7 +206,7 @@ public:
 
 private:
     // --- Apps ---
-    void launchApp(PsGame &game);
+    void launchApp(PsGame &game, const PackageEntry *package);
 
     Config &config_;
     Session &session_;

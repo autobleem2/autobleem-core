@@ -49,7 +49,7 @@ TEST_CASE("a default GameSetSelection opens on all PS1 games") {
     CHECK(selection.appCategory == AppCategory::All);
 }
 
-TEST_CASE("appCategoryName covers every AppCategory, Games/Emulators/Tools/Media/Other/PE in that order") {
+TEST_CASE("appCategoryName covers every AppCategory, Games/Emulators/Tools/Media/Other/PE/Packages in that order") {
     CHECK(appCategoryName(AppCategory::All) == "All apps");
     CHECK(appCategoryName(AppCategory::Games) == "Games");
     CHECK(appCategoryName(AppCategory::Emulators) == "Emulators");
@@ -57,7 +57,11 @@ TEST_CASE("appCategoryName covers every AppCategory, Games/Emulators/Tools/Media
     CHECK(appCategoryName(AppCategory::Media) == "Media");
     CHECK(appCategoryName(AppCategory::Other) == "Other");
     CHECK(appCategoryName(AppCategory::PE) == "PE apps");
-    CHECK(AppCategoryLast == AppCategory::PE);
+    CHECK(appCategoryName(AppCategory::Packages) == "Packages");
+    CHECK(AppCategoryLast == AppCategory::Packages);
+    // the number is stored in the carousel session file: nothing is renumbered, Packages comes at the end
+    CHECK(static_cast<int>(AppCategory::PE) == 6);
+    CHECK(static_cast<int>(AppCategory::Packages) == 7);
 }
 
 TEST_CASE("GameSetSelection copies whole, which is what the save/restore relies on") {

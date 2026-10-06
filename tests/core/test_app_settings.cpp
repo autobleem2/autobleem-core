@@ -4,6 +4,7 @@
 #include "doctest/doctest.h"
 
 #include "../support/temp_dir.h"
+#include "../support/tree_snapshot.h"
 #include "core/services/app_settings.h"
 #include "core/main.h"
 
@@ -74,4 +75,31 @@ TEST_CASE("AppSettings: the d-pad / stick flags - the player's choice, else the 
     REQUIRE(AppSettings::setFlagOverride(app, AppSettings::Analog2DpadKey, ""));
     REQUIRE(AppSettings::setPadModeOverride(app, ""));
     CHECK_FALSE(DirEntry::exists(tmp.at("Apps/t/ab_settings.ini"))); // all Automatic: no file
+}
+
+TEST_CASE("AppSettings: LastPackage round-trips, an identical second write leaves the file alone, and the file goes") {
+    TempDir tmp("appsettings");
+    const string app = tmp.makeSubDir("Apps/crispy");
+    CHECK(AppSettings::lastPackage(app) == "");
+
+    REQUIRE(AppSettings::setLastPackage(app, "u/doom/doom2"));
+    CHECK(AppSettings::lastPackage(app) == "u/doom/doom2");
+    CHECK(tmp.readFile("Apps/crispy/ab_settings.ini") == "LastPackage=u/doom/doom2\n");
+
+    // the same pick again: not a byte, not a modification time
+    test_support::TreeSnapshot before(tmp.path());
+    REQUIRE(AppSettings::setLastPackage(app, "u/doom/doom2"));
+    CHECK(before.changesTo(test_support::TreeSnapshot(tmp.path())).empty());
+
+    // another pick replaces it; the pad settings in the same file stay
+    REQUIRE(AppSettings::setPadModeOverride(app, "psc"));
+    REQUIRE(AppSettings::setLastPackage(app, "freedoom/freedoom1"));
+    CHECK(tmp.readFile("Apps/crispy/ab_settings.ini") == "PadMode=psc\nLastPackage=freedoom/freedoom1\n");
+    CHECK(AppSettings::padModeOverride(app) == "psc");
+
+    // nothing left in the file: no file
+    REQUIRE(AppSettings::setPadModeOverride(app, ""));
+    REQUIRE(AppSettings::setLastPackage(app, ""));
+    CHECK_FALSE(DirEntry::exists(tmp.at("Apps/crispy/ab_settings.ini")));
+    CHECK_FALSE(AppSettings::setLastPackage("", "x")); // no folder, nothing written
 }

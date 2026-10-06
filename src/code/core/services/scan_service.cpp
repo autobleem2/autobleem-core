@@ -1,5 +1,6 @@
 #include "scan_service.h"
 #include "environment.h"
+#include "package_service.h"
 #include "retroarch.h"
 #include "system.h"
 #include "../main.h"
@@ -234,6 +235,8 @@ void ScanService::threadMain() {
     lastCheckRomsFingerprint_ = lastScannedRomsFingerprint_;
     lastScannedModsFingerprint_.load(modsFingerprintFilePath());
     lastCheckModsFingerprint_ = lastScannedModsFingerprint_;
+    if (packages_ != nullptr)
+        scanRequested_.fetch_or(ScanPackages); // the index is RAM only: every start builds it
     if (corePicksScanDue())
         scanRequested_.fetch_or(ScanAll);
 
@@ -276,6 +279,12 @@ ScanScope ScanService::checkForChanges() {
         if (!(freshMods == lastScannedModsFingerprint_) && freshMods == lastCheckModsFingerprint_)
             due |= ScanMods;
         lastCheckModsFingerprint_ = freshMods;
+    }
+    if (packages_ != nullptr) {
+        const string freshPackages = PackageService::signatureOf(Env::getPathToPackagesDir());
+        if (freshPackages != lastScannedPackagesSignature_ && freshPackages == lastCheckPackagesSignature_)
+            due |= ScanPackages;
+        lastCheckPackagesSignature_ = freshPackages;
     }
     if (romScanEnabled()) {
         GamesFingerprint freshRoms = GamesFingerprint::takeAllFiles(Env::getPathToRetroarchRomsDir());
@@ -386,6 +395,7 @@ void ScanService::runScan(ScanScope scope) {
     const bool ps1 = (scope & ScanPs1) != 0;
     const bool roms = (scope & ScanRoms) != 0 && romScanEnabled();
     const bool mods = (scope & ScanMods) != 0;
+    const bool packages = (scope & ScanPackages) != 0 && packages_ != nullptr;
     string gamesDir = Env::getPathToGamesDir();
     Listener listener(this);
 
@@ -481,6 +491,16 @@ void ScanService::runScan(ScanScope scope) {
         lastCheckModsFingerprint_ = modsFp;
     }
 
+    // the game data under Packages/: the RAM index is rebuilt, nothing is written
+    if (packages) {
+        packages_->rescan();
+        lastScannedPackagesSignature_ = PackageService::signatureOf(Env::getPathToPackagesDir());
+        lastCheckPackagesSignature_ = lastScannedPackagesSignature_;
+        WorkerEvent changed;
+        changed.kind = WorkerEvent::Kind::PackagesChanged;
+        pushEvent(std::move(changed));
+    }
+
     // Apps alone (an App was installed or removed): nothing to scan, the launcher reloads the Apps set
     if (scope == ScanApps) {
         WorkerEvent apps;
@@ -490,7 +510,8 @@ void ScanService::runScan(ScanScope scope) {
 
     WorkerEvent finished;
     finished.kind = WorkerEvent::Kind::Finished;
-    finished.scope = (ps1 ? ScanPs1 : ScanNone) | (roms ? ScanRoms : ScanNone) | (mods ? ScanMods : ScanNone);
+    finished.scope = (ps1 ? ScanPs1 : ScanNone) | (roms ? ScanRoms : ScanNone) | (mods ? ScanMods : ScanNone) |
+                     (packages ? ScanPackages : ScanNone);
     finished.hierarchy = std::move(hierarchy);
     finished.gamesToAddToDB = gamesToAddToDB;
     finished.fingerprint = fp;
@@ -668,6 +689,10 @@ ScanUpdate ScanService::poll() {
 
         case WorkerEvent::Kind::AppsChanged:
             update.appsChanged = true;
+            break;
+
+        case WorkerEvent::Kind::PackagesChanged:
+            update.packagesChanged = true;
             break;
 
         case WorkerEvent::Kind::Finished: {

@@ -85,7 +85,23 @@ TEST_CASE("CarouselSession: a bad file is refused whole and leaves the selection
     CHECK_FALSE(CarouselSession::parse("version=1\nset=9\n", s)); // past the last set
     CHECK_FALSE(CarouselSession::parse("version=1\nps1=9\n", s));
     CHECK_FALSE(CarouselSession::parse("version=1\nappcategory=9\n", s));
+    CHECK_FALSE(CarouselSession::parse("version=1\nappcategory=8\n", s)); // past Packages
     checkSame(s, keep);
+}
+
+TEST_CASE("CarouselSession: the Packages row (category 7) round-trips and a session from before it still loads") {
+    GameSetSelection s;
+    s.set = GameSet::Apps;
+    s.appCategory = AppCategory::Packages;
+    GameSetSelection back;
+    REQUIRE(CarouselSession::parse(CarouselSession::serialize(s), back));
+    CHECK(back.appCategory == AppCategory::Packages);
+
+    // an old file: the highest category it can name is PE (6)
+    GameSetSelection old;
+    REQUIRE(CarouselSession::parse("version=1\nset=3\nappcategory=6\n", old));
+    CHECK(old.set == GameSet::Apps);
+    CHECK(old.appCategory == AppCategory::PE);
 }
 
 TEST_CASE("CarouselSession: take reads the file once, then it is gone") {

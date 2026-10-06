@@ -289,7 +289,7 @@ void LaunchService::launchRetroArchMenu() {
 // for this platform. Direct (Windows, no sh): the resolved program itself, with its Args=. Both get the
 // AB_APP_* variables and the ini's Env=. An App of the old kind (Startup= only) is run as it always was where
 // there is a shell; direct, it has nothing to run (AppManifest says so, and the Apps set does not list it).
-LaunchPlan LaunchService::planApp(const PsGame &game) {
+LaunchPlan LaunchService::planApp(const PsGame &game, const PackageEntry *package) {
     LaunchPlan plan;
     AppManifest m = AppManifest::load(game.base, "app.ini", Env::appPlatformKeys());
     if (Env::directLaunch() && !m.runnable()) {
@@ -301,11 +301,16 @@ LaunchPlan LaunchService::planApp(const PsGame &game) {
         return plan;
     }
 
-    plan.env = appEnvironment(m);
+    plan.env = appEnvironment(m, package);
     plan.cwd = game.base;
     if (Env::directLaunch()) {
         plan.exe = m.program;
         plan.args = AppManifest::splitArgs(m.args);
+        if (package != nullptr) {
+            // per argument, after the split: a path with blanks stays one argument
+            for (string &arg : plan.args)
+                arg = expandPackage(arg, *package);
+        }
         // the App's own libraries first, then the launcher's folder: its SDL2.dll is the one every App shares
         // (autobleem-main docs/decisions.md, "Third-party App ports"), as the launcher's SDL2 is on the console
         string path = m.libDir;
@@ -328,7 +333,88 @@ string LaunchService::appRunScript() {
     return Env::getPathToRCDir() + sep + "app_run.sh";
 }
 
-vector<pair<string, string>> LaunchService::appEnvironment(const AppManifest &m) {
+namespace {
+
+// the value of a placeholder name ("package", "package_dir" ...); false for any other name
+bool packageValue(const PackageEntry &p, const string &name, string &value) {
+    if (name == "package")
+        value = p.file();
+    else if (name == "package_dir")
+        value = p.root;
+    else if (name == "package_kind")
+        value = p.game.kind;
+    else if (name == "package_title")
+        value = p.game.title;
+    else if (name == "package_id")
+        value = p.id();
+    else if (name == "package_game")
+        value = p.game.id;
+    else
+        return false;
+    return true;
+}
+
+// the shell's view of one argument: bare when it is plain (and was not quoted in the line), else in double quotes with
+// \ " $ and ` escaped
+string quoteArgument(const string &value, bool wasQuoted) {
+    static const string plain = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:=+,@%-";
+    if (!wasQuoted && !value.empty() && value.find_first_not_of(plain) == string::npos)
+        return value;
+    string out = "\"";
+    for (char c : value) {
+        if (c == '\\' || c == '"' || c == '$' || c == '`')
+            out += '\\';
+        out += c;
+    }
+    return out + "\"";
+}
+
+} // namespace
+
+string LaunchService::expandPackage(const string &text, const PackageEntry &package) {
+    string out;
+    for (size_t i = 0; i < text.size();) {
+        if (text[i] == '{') {
+            const size_t close = text.find('}', i);
+            string value;
+            if (close != string::npos && packageValue(package, text.substr(i + 1, close - i - 1), value)) {
+                out += value;
+                i = close + 1;
+                continue;
+            }
+        }
+        out += text[i++];
+    }
+    return out;
+}
+
+string LaunchService::expandPackageArgs(const string &args, const PackageEntry &package) {
+    string out;
+    size_t i = 0;
+    while (i < args.size()) {
+        if (args[i] == ' ' || args[i] == '\t') {
+            out += args[i++];
+            continue;
+        }
+        // one argument: up to a blank outside double quotes
+        const size_t begin = i;
+        bool quoted = false;
+        string value;
+        while (i < args.size() && (quoted || (args[i] != ' ' && args[i] != '\t'))) {
+            if (args[i] == '"')
+                quoted = !quoted;
+            else
+                value += args[i];
+            i++;
+        }
+        const string raw = args.substr(begin, i - begin);
+        const string expanded = raw.find('{') == string::npos ? value : expandPackage(value, package);
+        out += expanded == value ? raw : quoteArgument(expanded, raw.find('"') != string::npos);
+    }
+    return out;
+}
+
+vector<pair<string, string>> LaunchService::appEnvironment(const AppManifest &m, const PackageEntry *package) {
     string keys;
     for (const string &k : Env::appPlatformKeys())
         keys += (keys.empty() ? "" : " ") + k;
@@ -337,7 +423,7 @@ vector<pair<string, string>> LaunchService::appEnvironment(const AppManifest &m)
         {"AB_RC_DIR", Env::getPathToRCDir()},
         {"AB_APP_DIR", m.folder},
         {"AB_APP_EXEC", m.program},
-        {"AB_APP_ARGS", m.args},
+        {"AB_APP_ARGS", package != nullptr ? expandPackageArgs(m.args, *package) : m.args},
         {"AB_APP_LIB", m.libDir},
         {"AB_APP_KEY", m.key},
         {"AB_PLATFORM", Env::buildTargetKey()},
@@ -352,8 +438,27 @@ vector<pair<string, string>> LaunchService::appEnvironment(const AppManifest &m)
         {"AB_APP_ANALOG2DPAD",
          AppSettings::effectiveFlag(AppSettings::flagOverride(m.folder, AppSettings::Analog2DpadKey),
                                     m.value("analog2dpad"))}};
+    if (package != nullptr) {
+        // what the engine is started with (docs/packages.md 5.2); the root has no trailing slash
+        env.emplace_back("AB_PKG_DIR", package->root);
+        env.emplace_back("AB_PKG_FILE", package->file());
+        env.emplace_back("AB_PKG_KIND", package->game.kind);
+        env.emplace_back("AB_PKG_TITLE", package->game.title);
+        env.emplace_back("AB_PKG_ID", package->id());
+        env.emplace_back("AB_PKG_GAME", package->game.id);
+        if (!package->game.starts.empty()) {
+            string starts;
+            for (const PackageStart &s : package->game.starts)
+                starts += (starts.empty() ? "" : ";") + s.file + "|" + s.title;
+            env.emplace_back("AB_PKG_STARTS", starts);
+        }
+        for (const auto &setting : package->game.settings)
+            env.emplace_back("AB_PKG_SET_" + toUpperCopy(setting.first), setting.second);
+        if (!package->game.mapper.empty())
+            env.emplace_back("AB_PKG_MAPPER", package->mapperFile());
+    }
     for (const auto &kv : m.env)
-        env.push_back(kv);
+        env.emplace_back(kv.first, package != nullptr ? expandPackage(kv.second, *package) : kv.second);
     return env;
 }
 
@@ -419,7 +524,12 @@ LaunchService::Path LaunchService::pathFor(const PsGame &game, EmuMode mode) {
 //*******************************
 // LaunchService::launch
 //*******************************
-void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
+void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint, const PackageEntry *package) {
+    if (game->package) {
+        // a Packages row entry is game data, not a program (docs/packages.md 7): the screens open its info view
+        PLOG_ERROR << "LaunchService: refusing to launch the package " << game->title;
+        return;
+    }
     switch (pathFor(*game, mode)) {
     case Path::Pcsx: {
         // what this emulator can take off the stick's hands (docs/quiet-stick-plan.md): the set played
@@ -489,7 +599,7 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
         break;
 
     case Path::App:
-        launchApp(*game);
+        launchApp(*game, package);
         break;
     }
 }
@@ -922,7 +1032,7 @@ void LaunchService::raSettingsFor(PsGame &game, ConfigFileEditor::CfgLines &raCo
 //*******************************
 // LaunchService::launchApp
 //*******************************
-void LaunchService::launchApp(PsGame &game) {
+void LaunchService::launchApp(PsGame &game, const PackageEntry *package) {
     PLOG_INFO << "calling LaunchService::launchApp()";
     PLOG_INFO << "Starting External App";
 
@@ -932,7 +1042,7 @@ void LaunchService::launchApp(PsGame &game) {
         PLOG_INFO << "FOREIGN MODE";
     }
 
-    LaunchPlan plan = planApp(game);
+    LaunchPlan plan = planApp(game, package);
     if (plan.exe.empty())
         return;
     runner_.run(plan);

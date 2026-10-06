@@ -4,6 +4,8 @@
 #include "content_installer.h"
 #include "app_manifest.h"
 #include "app_settings.h"
+#include "environment.h"
+#include "package_service.h"
 #include "system.h"
 #include "../main.h"
 
@@ -93,6 +95,129 @@ string freshStaging(const string &stagingDir, const string &name) {
     DirEntry::removeDirAndContents(dir);
     DirEntry::createDirs(dir);
     return dir;
+}
+
+// every file under `from` copied to the same place under `to`, except those that are already there (nothing is ever
+// overwritten); `from` may be one file. false when a copy could not be written
+bool copyTreeKeeping(const string &from, const string &to) {
+    if (!DirEntry::isDirectory(from)) {
+        if (DirEntry::exists(to))
+            return true;
+        DirEntry::createDirs(DirEntry::getDirNameFromPath(to));
+        return DirEntry::copy(from, to);
+    }
+    bool ok = DirEntry::createDirs(to);
+    for (const DirEntry &e : DirEntry::diru(from))
+        ok = copyTreeKeeping(from + sep + e.name, to + sep + e.name) && ok;
+    return ok;
+}
+
+// the folder `from` becomes `to`: one rename on the same filesystem, else a copy beside it ("." hides it from the
+// scans) and a rename of that - so `to` is never half there
+bool moveDir(const string &from, const string &to) {
+    const string parent = DirEntry::getDirNameFromPath(to);
+    DirEntry::createDirs(parent);
+    if (DirEntry::renameFile(from, to))
+        return true;
+    const string part = parent + sep + "." + DirEntry::getFileNameFromPath(to) + ".part";
+    DirEntry::removeDirAndContents(part);
+    vector<string> files;
+    filesUnder(from, "", files);
+    DirEntry::createDirs(part);
+    for (const string &f : files) {
+        DirEntry::createDirs(DirEntry::getDirNameFromPath(part + sep + f));
+        if (!DirEntry::copy(from + sep + f, part + sep + f)) {
+            DirEntry::removeDirAndContents(part);
+            return false;
+        }
+    }
+    if (!DirEntry::renameFile(part, to)) {
+        DirEntry::removeDirAndContents(part);
+        return false;
+    }
+    DirEntry::removeDirAndContents(from);
+    return true;
+}
+
+// where an App an install replaced goes: Apps/.replaced/<name>/ - a dot-folder, which the Apps scan skips
+const char *const ReplacedFolder = ".replaced";
+
+// one App folder moved to Apps/.replaced/<name> (" (2)" and on when that is taken). `oursOnly`: only one a PE mod
+// made (its app.ini says PeSource=) - a package's Replaces= never touches an App somebody else put there. An App
+// that is not there is not an error. Never deleted.
+bool parkApp(const string &appsDir, const string &name, bool oursOnly, string &error) {
+    if (name.empty() || name[0] == '.' || name.find_first_of("/\\:") != string::npos)
+        return true;
+    const string folder = appsDir + sep + name;
+    if (!DirEntry::isDirectory(folder))
+        return true;
+    if (oursOnly) {
+        if (!DirEntry::exists(folder + sep + "app.ini"))
+            return true;
+        IniFile ini;
+        ini.load(folder + sep + "app.ini");
+        if (Strings::trim(ini.values["pesource"]).empty())
+            return true;
+    }
+    const string parked = appsDir + sep + ReplacedFolder;
+    if (!DirEntry::createDirs(parked)) {
+        error = "cannot make " + parked;
+        return false;
+    }
+    string target = parked + sep + name;
+    for (int n = 2; DirEntry::exists(target); n++)
+        target = parked + sep + name + " (" + to_string(n) + ")";
+    if (!DirEntry::renameFile(folder, target)) {
+        error = "cannot move " + folder + " to " + target;
+        return false;
+    }
+    PLOG_INFO << "App " << name << " parked in " << target;
+    return true;
+}
+
+// package.ini's text with its Source= and StoreId= lines replaced by ours (the file's own line endings kept)
+string stampedDescriptor(const string &text, const string &storeId) {
+    const string eol = text.find("\r\n") != string::npos ? "\r\n" : "\n";
+    string out;
+    size_t start = 0;
+    while (start < text.size()) {
+        size_t end = text.find('\n', start);
+        string line = text.substr(start, end == string::npos ? string::npos : end - start);
+        start = end == string::npos ? text.size() : end + 1;
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        const string trimmed = Strings::trim(line);
+        const size_t eq = trimmed.find('=');
+        if (!trimmed.empty() && trimmed[0] != '#' && eq != string::npos) {
+            const string key = ableem::toLowerCopy(Strings::trim(trimmed.substr(0, eq)));
+            if (key == "source" || key == "storeid")
+                continue;
+        }
+        out += line + eol;
+    }
+    out += "Source=store" + eol;
+    if (!storeId.empty())
+        out += "StoreId=" + storeId + eol;
+    return out;
+}
+
+// the packages in `packagesDir` (their folders) that a mod made: package.ini says PeSource=<modName>
+vector<string> packagesMadeFrom(const string &packagesDir, const string &modName) {
+    vector<string> folders;
+    if (!DirEntry::isDirectory(packagesDir))
+        return folders;
+    for (const DirEntry &e : DirEntry::diru_DirsOnly(packagesDir)) {
+        if (isJunk(e.name))
+            continue;
+        const string ini = packagesDir + sep + e.name + sep + "package.ini";
+        if (!DirEntry::exists(ini))
+            continue;
+        IniFile file;
+        file.load(ini);
+        if (Strings::trim(file.values["pesource"]) == modName)
+            folders.push_back(packagesDir + sep + e.name);
+    }
+    return folders;
 }
 
 } // namespace
@@ -230,7 +355,8 @@ InstallResult AppInstaller::install(const string &archive, const string &appsDir
                 r.error = "cannot remove the old " + dest;
                 return done(r);
             }
-            PLOG_INFO << "App " << r.name << ": the old kind (Startup=) replaced whole by " << incoming.value("version");
+            PLOG_INFO << "App " << r.name << ": the old kind (Startup=) replaced whole by "
+                      << incoming.value("version");
         } else if (oldVersion != Strings::trim(incoming.value("version"))) {
             // a new version: every platform's binaries go, so no two versions ever mix
             DirEntry::removeDirAndContents(dest + sep + "bin");
@@ -253,6 +379,47 @@ InstallResult AppInstaller::install(const string &archive, const string &appsDir
     r.ok = true;
     r.path = dest;
     PLOG_INFO << "App " << r.name << " installed from " << archive;
+
+    // an App that merges others: the saves and settings are copied over, and only then are the old Apps parked
+    const vector<string> replaces = AppManifest::parseList(incoming.value("replaces"), false);
+    if (!replaces.empty() || !incoming.value("migrate").empty()) {
+        bool copied = true;
+        for (const string &entry : Strings::getTokens(incoming.value("migrate"), ';')) {
+            // <old App folder>:<path in it>><path in the new App>
+            const size_t colon = entry.find(':');
+            const size_t arrow = entry.find('>');
+            if (colon == string::npos || arrow == string::npos || arrow < colon) {
+                PLOG_WARNING << "App " << r.name << ": Migrate entry \"" << entry << "\" is not <old>:<path>><path>";
+                continue;
+            }
+            const string oldApp = Strings::trim(entry.substr(0, colon));
+            const string from = PackageTable::cleanRelativePath(entry.substr(colon + 1, arrow - colon - 1));
+            const string to = PackageTable::cleanRelativePath(entry.substr(arrow + 1));
+            if (oldApp.empty() || oldApp[0] == '.' || oldApp.find_first_of("/\\:") != string::npos || from.empty() ||
+                to.empty() || oldApp == r.name) {
+                PLOG_WARNING << "App " << r.name << ": Migrate entry \"" << entry << "\" is not allowed";
+                continue;
+            }
+            const string source = appsDir + sep + oldApp + sep + from;
+            if (!DirEntry::exists(source))
+                continue; // nothing to copy: skipped
+            if (!copyTreeKeeping(source, dest + sep + to)) {
+                PLOG_WARNING << "App " << r.name << ": could not copy " << source;
+                copied = false;
+            }
+        }
+        if (!copied) {
+            r.warning = "some saves could not be copied: the old Apps were left where they are";
+        } else {
+            for (const string &name : replaces) {
+                string error;
+                if (name != r.name && !parkApp(appsDir, name, false, error)) {
+                    r.warning = error;
+                    break;
+                }
+            }
+        }
+    }
     return done(r);
 }
 
@@ -263,6 +430,204 @@ bool AppInstaller::remove(const string &appFolder, string &error) {
     }
     if (!DirEntry::removeDirAndContents(appFolder)) {
         error = "cannot remove " + appFolder;
+        return false;
+    }
+    return true;
+}
+
+//*******************************
+// PackageInstaller
+//*******************************
+int PackageInstaller::compareVersions(const string &a, const string &b) {
+    auto parts = [](const string &v) {
+        vector<string> out;
+        string current;
+        for (char c : v) {
+            if (isalnum(static_cast<unsigned char>(c))) {
+                current += c;
+            } else if (!current.empty()) {
+                out.push_back(current);
+                current.clear();
+            }
+        }
+        if (!current.empty())
+            out.push_back(current);
+        return out;
+    };
+    auto numeric = [](const string &s) { return s.find_first_not_of("0123456789") == string::npos; };
+    const vector<string> x = parts(a), y = parts(b);
+    for (size_t i = 0; i < max(x.size(), y.size()); i++) {
+        const string p = i < x.size() ? x[i] : "0", q = i < y.size() ? y[i] : "0";
+        if (numeric(p) && numeric(q)) {
+            const size_t pz = p.find_first_not_of('0'), qz = q.find_first_not_of('0');
+            const string pn = pz == string::npos ? "" : p.substr(pz), qn = qz == string::npos ? "" : q.substr(qz);
+            if (pn.size() != qn.size())
+                return pn.size() < qn.size() ? -1 : 1;
+            if (pn != qn)
+                return pn < qn ? -1 : 1;
+        } else if (ableem::toLowerCopy(p) != ableem::toLowerCopy(q)) {
+            return ableem::toLowerCopy(p) < ableem::toLowerCopy(q) ? -1 : 1;
+        }
+    }
+    return 0;
+}
+
+InstallResult PackageInstaller::install(const string &archive, const string &packagesDir, const string &stagingDir,
+                                        const string &storeId, const string &appsDir) {
+    InstallResult r;
+    uint64_t size = 0;
+    if (!ArchiveUnpacker::unpackedSize(archive, size, r.error))
+        return r;
+    // the space is looked for where the folder will be: Packages/ itself, or the stick's root when it is not there yet
+    if (!enoughSpaceFor(DirEntry::isDirectory(packagesDir) ? packagesDir : DirEntry::getDirNameFromPath(packagesDir),
+                        size, r.error))
+        return r;
+    const string staged = freshStaging(stagingDir, "package");
+    auto done = [&staged](InstallResult &result) -> InstallResult & {
+        DirEntry::removeDirAndContents(staged);
+        return result;
+    };
+    if (!ArchiveUnpacker::unpack(archive, staged, r.error))
+        return done(r);
+
+    // package.ini at the root (the folder is then named by the archive: "freedoom-0.13.zip" -> "freedoom"), or in the
+    // archive's one folder
+    string stem = DirEntry::getFileNameFromPath(archive);
+    stem = stem.substr(0, stem.find_first_of("-."));
+    string root, name;
+    auto hasDescriptor = [](const string &dir) {
+        for (const DirEntry &e : DirEntry::diru_FilesOnly(dir))
+            if (ableem::toLowerCopy(e.name) == "package.ini")
+                return true;
+        return false;
+    };
+    if (hasDescriptor(staged)) {
+        root = staged;
+        name = stem;
+    } else {
+        vector<string> folders;
+        for (const DirEntry &e : DirEntry::diru_DirsOnly(staged))
+            if (!isJunk(e.name) && hasDescriptor(staged + sep + e.name))
+                folders.push_back(e.name);
+        if (folders.size() == 1) {
+            root = staged + sep + folders[0];
+            name = folders[0];
+        }
+    }
+    if (root.empty()) {
+        r.error = "the archive holds no package (no package.ini)";
+        return done(r);
+    }
+    PackageInfo incoming;
+    string problem;
+    if (!PackageService::readDescriptor(root, incoming, problem, name)) {
+        r.error = "the package is not valid: " + problem;
+        return done(r);
+    }
+
+    // which folder: the id made safe for FAT; the same package's (same StoreId) when it is there already, else the
+    // first of " (2)" and on that is free
+    const bool packagesDirWasThere = DirEntry::isDirectory(packagesDir);
+    const string base = GameInstaller::folderNameFor(incoming.id);
+    string dest = packagesDir + sep + base;
+    bool replacing = false;
+    for (int n = 2;; n++) {
+        if (!DirEntry::exists(dest))
+            break;
+        PackageInfo existing;
+        string existingProblem;
+        if (!storeId.empty() && PackageService::readDescriptor(dest, existing, existingProblem) &&
+            existing.storeId == storeId) {
+            if (compareVersions(incoming.version, existing.version) <= 0) {
+                r.ok = true;
+                r.unchanged = true;
+                r.path = dest;
+                r.name = DirEntry::getFileNameFromPath(dest);
+                PLOG_INFO << "Package " << incoming.id << " " << existing.version << " is there already";
+                return done(r);
+            }
+            replacing = true;
+            break;
+        }
+        dest = packagesDir + sep + base + " (" + to_string(n) + ")";
+    }
+
+    // our stamp into the staged descriptor, then the folder whole into place
+    string descriptorText;
+    string descriptorFile = root + sep + "package.ini";
+    for (const DirEntry &e : DirEntry::diru_FilesOnly(root))
+        if (ableem::toLowerCopy(e.name) == "package.ini")
+            descriptorFile = root + sep + e.name;
+    if (!DirEntry::readFile(descriptorFile, descriptorText) ||
+        DirEntry::writeFileIfChanged(descriptorFile, stampedDescriptor(descriptorText, storeId)) ==
+            DirEntry::WriteResult::Failed) {
+        r.error = "cannot write the package's descriptor";
+        return done(r);
+    }
+    if (!DirEntry::createDirs(packagesDir)) {
+        r.error = "cannot make " + packagesDir;
+        return done(r);
+    }
+    if (!packagesDirWasThere) {
+        // the first install makes Packages/: with the README that says how to add games
+        vector<PackageRow> rows;
+        vector<string> ignored;
+        PackageTable::load(Env::getPathToPackagesTable(), rows, ignored);
+        DirEntry::writeFileIfChanged(packagesDir + sep + "README.txt", PackageService::readmeText(rows));
+    }
+    string old;
+    if (replacing) {
+        // the old one steps aside under a hidden name (the scans skip it) and is removed only once the new one is in
+        old = packagesDir + sep + "." + DirEntry::getFileNameFromPath(dest) + ".old";
+        DirEntry::removeDirAndContents(old);
+        if (!DirEntry::renameFile(dest, old)) {
+            r.error = "cannot replace " + dest;
+            return done(r);
+        }
+    }
+    if (!moveDir(root, dest)) {
+        if (replacing)
+            DirEntry::renameFile(old, dest); // the old version stays
+        r.error = "cannot write " + dest;
+        return done(r);
+    }
+    if (replacing)
+        DirEntry::removeDirAndContents(old);
+
+    r.ok = true;
+    r.path = dest;
+    r.name = DirEntry::getFileNameFromPath(dest);
+    PLOG_INFO << "Package " << incoming.id << " installed to " << dest;
+    if (!appsDir.empty()) {
+        for (const string &app : incoming.replaces) {
+            string error;
+            if (!parkApp(appsDir, app, true, error)) {
+                r.warning = error;
+                break;
+            }
+        }
+    }
+    return done(r);
+}
+
+bool PackageInstaller::remove(const string &packageFolder, string &error) {
+    const string ini = packageFolder + sep + "package.ini";
+    if (!DirEntry::exists(ini)) {
+        error = packageFolder + " is not a package of ours (no package.ini)";
+        return false;
+    }
+    string text;
+    DirEntry::readFile(ini, text);
+    string source;
+    for (const auto &kv : PackageService::parseDescriptor(text))
+        if (kv.first == "source")
+            source = ableem::toLowerCopy(kv.second);
+    if (source != "store" && source != "mod") {
+        error = packageFolder + " is not an installed package - it is somebody's own files";
+        return false;
+    }
+    if (!DirEntry::removeDirAndContents(packageFolder)) {
+        error = "cannot remove " + packageFolder;
         return false;
     }
     return true;
@@ -305,7 +670,8 @@ bool ModInstaller::present(const string &modFile, const string &appsDir) {
     const string name = DirEntry::getFileNameFromPath(modFile);
     const string modsDir = modsDirOf(modFile);
     return DirEntry::exists(modsDir + sep + name) || DirEntry::exists(modsDir + sep + DoneFolder + sep + name) ||
-           DirEntry::exists(peMarker(appsDir, name));
+           DirEntry::exists(peMarker(appsDir, name)) ||
+           !packagesMadeFrom(DirEntry::getDirNameFromPath(modsDir) + sep + "Packages", name).empty();
 }
 
 InstallResult ModInstaller::install(const string &mod, const string &modsDir, const string &appsDir,
@@ -376,6 +742,13 @@ bool ModInstaller::remove(const string &modFile, const string &appsDir, string &
         IniFile ini;
         ini.load(folder + sep + "app.ini");
         if (Strings::trim(ini.values["pesource"]) == name && !DirEntry::removeDirAndContents(folder)) {
+            error = "cannot remove " + folder;
+            return false;
+        }
+    }
+    // a mod that held only game data made a package (Packages/ is a sibling of Mods/): its own, by PeSource=
+    for (const string &folder : packagesMadeFrom(DirEntry::getDirNameFromPath(modsDir) + sep + "Packages", name)) {
+        if (!DirEntry::removeDirAndContents(folder)) {
             error = "cannot remove " + folder;
             return false;
         }
