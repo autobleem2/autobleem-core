@@ -72,6 +72,19 @@ struct OutputMode {
     static const char *MarginKey;                  // "crtmargin": the CRT mode's safe margin, percent per side
     // the margin config.ini's value means: a whole number clamped to 0..20, 5 for none or nonsense (see canvas.h)
     static int crtMargin(const std::string &value);
+    // The square-pixel 4:3 modes (640x480, 800x600, 1024x768, 1280x1024 ...) have a margin of their own, "vgamargin":
+    // the tube's 5 % default would be wrong for a monitor, so it is 0 for none or nonsense (CONSOLE-17 round 2)
+    static const char *VgaMarginKey;
+    static int vgaMargin(const std::string &value);
+    // the config.ini key the margin of the mode shown is kept in: the tube's, or the VGA one
+    static const char *marginKeyFor(const OutputMode &shown) { return shown.isCrt() ? MarginKey : VgaMarginKey; }
+    // the margin (percent per side) a 4:3 output of this mode gets: the tube's setting on 720x480, the VGA one on any
+    // other 4:3 size, 0 on a wide one
+    static int safeMarginFor(const OutputMode &shown, const std::string &crtValue, const std::string &vgaValue) {
+        if (shown.isCrt())
+            return crtMargin(crtValue);
+        return shown.is43() ? vgaMargin(vgaValue) : 0;
+    }
     static const char *ConfigKey;                  // "outputmode"
     static std::string defaultToken();             // the console: "720"; everywhere else "auto"
     static std::string pendingFile();              // <runtime>/outputmode.pending

@@ -459,9 +459,14 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint) {
             DirEntry::removeFile(OutputMode::emulatorFile()); // nothing left over from an earlier game
         }
         // the CRT safe margin (percent per side) the emulator keeps its menu and HUD inside
-        if (has("crtmargin"))
-            env.emplace_back("AB_CRT_MARGIN",
-                             to_string(OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey])));
+        if (has("crtmargin")) {
+            // a VGA 4:3 mode has its own setting (0 unless set); the tube and anything else the CRT one, as before
+            const OutputMode shown = OutputMode::parse(config_.inifile.values[OutputMode::ConfigKey]);
+            const int margin = shown.is43() && !shown.isCrt()
+                                   ? OutputMode::vgaMargin(config_.inifile.values[OutputMode::VgaMarginKey])
+                                   : OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey]);
+            env.emplace_back("AB_CRT_MARGIN", to_string(margin));
+        }
         // Options -> Diagnostics -> "Show performance": the emulator's HUD shows its FPS and CPU as well, for
         // this run only (it keeps them out of the game's saved config)
         if (has("perfoverlay") && config_.inifile.values["perfoverlay"] == "true")

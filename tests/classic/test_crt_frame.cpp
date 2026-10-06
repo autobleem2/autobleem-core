@@ -42,13 +42,13 @@ namespace {
 struct CrtGui {
     unique_ptr<GuiBase> gui;
 
-    CrtGui() {
+    explicit CrtGui(const char *size = "720x480") {
 #ifdef _WIN32
         _putenv_s("AB_HEADLESS", "1");
-        _putenv_s("AB_WINDOW_SIZE", "720x480");
+        _putenv_s("AB_WINDOW_SIZE", size);
 #else
         setenv("AB_HEADLESS", "1", 1);
-        setenv("AB_WINDOW_SIZE", "720x480", 1);
+        setenv("AB_WINDOW_SIZE", size, 1);
 #endif
         try {
             const int w = GuiBase::ScreenWidth, h = GuiBase::ScreenHeight; // copies: make_unique takes references
@@ -136,6 +136,26 @@ TEST_CASE("a 4:3 output presents its frames with the CRT margin 0, 5 and 10 % on
             REQUIRE(r.setRestCanvas(800, 600));
         }
     }
+}
+
+TEST_CASE("a VGA 4:3 output (800x600) has no margin until one is set, and takes one live like the tube") {
+    CrtGui cg("800x600");
+    if (!cg.available())
+        return;
+    Renderer &r = cg.renderer();
+    REQUIRE(r.setRestCanvas(800, 600));
+    CHECK(r.safeMargin() == 0); // the margin is the 720x480 tube's: nothing on a monitor by default
+    Texture layer;
+    drawFrame(r, layer);
+    CHECK(redAt(r, 8, 300) > 150); // the frame fills the output
+    r.setSafeMargin(5);            // Options -> Display -> CRT margin, on a VGA mode
+    CHECK(r.safeMargin() == 5);
+    drawFrame(r, layer);
+    CHECK(redAt(r, 8, 300) > 40);  // 5 % of 800 is 40 px: the edge mirrored and dimmed, never black...
+    CHECK(redAt(r, 8, 300) < 150); // ...and no longer the full frame
+    CHECK(redAt(r, 400, 60) > 150); // inside the margin, the frame itself
+    r.setSafeMargin(0);
+    CHECK(redAt(r, 8, 300) > 150);
 }
 
 TEST_CASE("the rest canvas asked for on a wide output is there after a live switch to 4:3, and gone after one back") {

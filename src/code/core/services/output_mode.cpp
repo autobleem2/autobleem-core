@@ -17,6 +17,14 @@ int OutputMode::crtMargin(const string &value) {
     return std::min(ableem::MaxSafeMargin, atoi(value.c_str())); // digits only: never negative
 }
 
+const char *OutputMode::VgaMarginKey = "vgamargin";
+
+int OutputMode::vgaMargin(const string &value) {
+    if (value.empty() || value.find_first_not_of("0123456789") != string::npos)
+        return 0;
+    return std::min(ableem::MaxSafeMargin, atoi(value.c_str()));
+}
+
 //*******************************
 // OutputMode::parse / token / label
 //*******************************
