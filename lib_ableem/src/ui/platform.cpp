@@ -113,6 +113,13 @@ int Platform::multisampleSamples() const {
     return impl->multisampleSamples;
 }
 
+Size Platform::windowSize() const {
+    Size s;
+    if (impl->window)
+        SDL_GetWindowSize(impl->window, &s.w, &s.h);
+    return s;
+}
+
 Size Platform::desktopDisplaySize() {
     Size s;
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)

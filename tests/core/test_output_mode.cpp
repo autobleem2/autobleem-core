@@ -48,6 +48,20 @@ TEST_CASE("OutputMode: equality treats every auto as one") {
     CHECK(OutputMode::parse("720") != OutputMode::parse("1080"));
 }
 
+TEST_CASE("OutputMode::shownAt: a mode is in use only when the window has its size") {
+    const OutputMode crt = OutputMode::parse("720x480");
+    CHECK(crt.shownAt(720, 480));
+    CHECK_FALSE(crt.shownAt(1280, 720)); // CRT 4:3 round 1: Weston stayed in 720p
+    CHECK_FALSE(crt.shownAt(0, 0));
+    CHECK(OutputMode::parse("720").shownAt(1280, 720));
+    CHECK_FALSE(OutputMode::parse("720").shownAt(720, 480));
+    CHECK(OutputMode::parse("1080").shownAt(1920, 1080));
+    CHECK_FALSE(OutputMode::parse("1080").shownAt(1280, 720));
+    // auto is whatever the display gives
+    CHECK(OutputMode().shownAt(1280, 720));
+    CHECK(OutputMode().shownAt(3840, 2160));
+}
+
 TEST_CASE("OutputMode: readToken takes one trimmed line") {
     TempDir tmp("outputmode");
     tmp.writeFile("outputmode", "1080\r\n");

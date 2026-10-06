@@ -25,6 +25,11 @@ struct OutputMode {
     bool operator==(const OutputMode &o) const { return (isAuto() && o.isAuto()) || (w == o.w && h == o.h); }
     bool operator!=(const OutputMode &o) const { return !(*this == o); }
 
+    // Is the mode really on the screen - the full-screen window the launcher got is `winW` x `winH`? Auto is
+    // whatever the display gives. The console's Weston can keep running in the old mode when its restart did
+    // not take (CRT 4:3 round 1: a window of 1280x720 while 720x480 was asked), and a confirm for a mode the
+    // player is not in would keep it in config.ini.
+    bool shownAt(int winW, int winH) const { return isAuto() || (w == winW && h == winH); }
     // The CRT 4:3 mode: 720x480 (480p, 27 MHz) - shown as "CRT 4:3". While it runs the launcher offers only the
     // themes that have a 4:3 layout (ThemeSpec::supports4x3), and a theme without one is replaced by the default
     // theme once the keep-mode confirm has said the mode works.
