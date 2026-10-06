@@ -93,7 +93,27 @@ Rect TextRenderer::getOpscreenRectOfTheme() {
     rect.w = panel.w;
     rect.h = panel.h;
 
-    return rect;
+    return onCanvas(rect);
+}
+
+//*******************************
+// TextRenderer::onCanvas
+//*******************************
+Rect TextRenderer::onCanvas(const Rect &themeRect) const {
+    if (!renderer_.fourByThreeOutput())
+        return themeRect;
+    return onCanvas(themeRect, renderer_.width(), renderer_.height());
+}
+
+Rect TextRenderer::onCanvas(const Rect &themeRect, int canvasW, int canvasH) {
+    if (canvasW == 1280 && canvasH == 720)
+        return themeRect;
+    const double sx = canvasW / 1280.0, sy = canvasH / 720.0;
+    const int x0 = static_cast<int>(themeRect.x * sx + 0.5),
+              x1 = static_cast<int>((themeRect.x + themeRect.w) * sx + 0.5);
+    const int y0 = static_cast<int>(themeRect.y * sy + 0.5),
+              y1 = static_cast<int>((themeRect.y + themeRect.h) * sy + 0.5);
+    return Rect(x0, y0, x1 - x0, y1 - y0);
 }
 
 //*******************************
@@ -107,7 +127,7 @@ Rect TextRenderer::getTextRectOfTheme() {
     rect.w = bar.w;
     rect.h = bar.h;
 
-    return rect;
+    return onCanvas(rect);
 }
 
 //*******************************

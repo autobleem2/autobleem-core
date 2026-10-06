@@ -169,6 +169,14 @@ vector<string> GuiAbout::autobleemFoot() {
 }
 
 //*******************************
+// GuiAbout::prepareFrame
+//*******************************
+bool GuiAbout::prepareFrame() {
+    renderer.setCanvas(SCREEN_WIDTH, SCREEN_HEIGHT); // does nothing on a wide output
+    return true;
+}
+
+//*******************************
 // GuiAbout::draw
 //*******************************
 // what the stack's frame holds (docs/ab-gui-plan.md, G3c): the credits, or the game
@@ -408,7 +416,8 @@ void GuiAbout::loop() {
                 continue;
             }
             // the table after an entry: Cross goes on to the title (Start plays again and Circle leaves, as below)
-            if (surpriseMode && game.showingScores() && press && (!game.scoresInputReady() || e.button == Button::Cross)) {
+            if (surpriseMode && game.showingScores() && press &&
+                (!game.scoresInputReady() || e.button == Button::Cross)) {
                 if (game.scoresInputReady())
                     game.showTitle();
                 continue;

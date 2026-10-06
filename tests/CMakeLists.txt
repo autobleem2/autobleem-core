@@ -45,6 +45,8 @@ if (AB_CORE_UI)
     ab_add_test(test_surprise_layout classic/test_surprise_layout.cpp LIBS ab_classic)
     # GuiTextPage's line layout (splitItem is pure; the class is ab_classic's)
     ab_add_test(test_text_page classic/test_text_page.cpp LIBS ab_classic)
+    # the theme's classic rects on the 4:3 (CRT) canvas (TextRenderer::onCanvas, pure)
+    ab_add_test(test_theme_rect_on_canvas classic/test_theme_rect_on_canvas.cpp LIBS ab_classic)
     # UIREV-2: doHome()/doEnd()'s skip-past-a-heading fix, driven through a local model of GuiMenuBase's
     # selection math - the real class needs a live AppBase/Gui over a theme/resources tree this repo does not
     # ship (see the file's opening comment), the same reason no other classic-menu test builds one

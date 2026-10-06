@@ -22,6 +22,8 @@ public:
     void init() override;
     // the credits, or the game - between the stack's clear and present
     void draw() override;
+    // the credits (and the game) are a 1280x720 design: on a 4:3 output they keep that canvas, letterboxed
+    bool prepareFrame() override;
     void loop() override;
     ableem::Texture logo;
     ableem::Font font;

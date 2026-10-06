@@ -248,6 +248,9 @@ struct Renderer::Impl {
     int outputWidth = 0, outputHeight = 0;
     int baseWidth = 0, baseHeight = 0;
     int marginPercent = DefaultSafeMargin; // the CRT safe area (Renderer::setSafeMargin)
+    // the canvas every frame has unless it asks for another (setCanvas): the base one until setRestCanvas says
+    int restWidth = 0, restHeight = 0;
+    int wantRestWidth = 0, wantRestHeight = 0; // what setRestCanvas asked for: kept across a recreate()
     Rect display;
     Texture frameTarget;
     bool framing = false;
@@ -432,6 +435,8 @@ void Renderer::recreate(Platform &platform) {
     impl->baseHeight = platform.logicalHeight();
     impl->width = impl->baseWidth;
     impl->height = impl->baseHeight;
+    impl->restWidth = impl->baseWidth;
+    impl->restHeight = impl->baseHeight;
     // the frame target only for a wide canvas on a 4:3 output (the launcher's 1280x720 on 480p); a canvas of the
     // output's own shape (a test's 320x240 window) is drawn straight, as always
     const CanvasMapping mapping = usesFrameTarget(outputWidth, outputHeight, impl->width, impl->height)
@@ -439,6 +444,11 @@ void Renderer::recreate(Platform &platform) {
                                       : fitCanvas(outputWidth, outputHeight, impl->width, impl->height);
     impl->fourByThree = mapping.fourByThree;
     impl->display = mapping.display;
+    if (mapping.fourByThree && impl->wantRestWidth > 0 && impl->wantRestHeight > 0) {
+        impl->restWidth = impl->wantRestWidth;
+        impl->restHeight = impl->wantRestHeight;
+        impl->useCanvas(impl->restWidth, impl->restHeight);
+    }
     if (impl->width <= 0 || impl->height <= 0) {
         impl->scale = 1.0f; // no canvas (never in the program): as before, no scale
         return;
@@ -479,6 +489,24 @@ void Renderer::setSafeMargin(int percent) {
 
 int Renderer::safeMargin() const {
     return impl->marginPercent;
+}
+
+bool Renderer::setRestCanvas(int w, int h) {
+    if (!impl->fourByThree || w <= 0 || h <= 0)
+        return false;
+    impl->wantRestWidth = impl->restWidth = w;
+    impl->wantRestHeight = impl->restHeight = h;
+    if (!impl->framing && (w != impl->width || h != impl->height))
+        impl->useCanvas(w, h);
+    return true;
+}
+
+int Renderer::restCanvasWidth() const {
+    return impl->restWidth;
+}
+
+int Renderer::restCanvasHeight() const {
+    return impl->restHeight;
 }
 
 bool Renderer::fourByThreeOutput() const {
@@ -702,8 +730,8 @@ void Renderer::present() {
         Impl &impl;
         ~CanvasReset() {
             impl.framing = false;
-            if (impl.width != impl.baseWidth || impl.height != impl.baseHeight)
-                impl.useCanvas(impl.baseWidth, impl.baseHeight);
+            if (impl.width != impl.restWidth || impl.height != impl.restHeight)
+                impl.useCanvas(impl.restWidth, impl.restHeight);
         }
     } canvasReset{*impl};
     // where the frame goes on the window: the whole viewport, or on a 4:3 output the frame's canvas at its shape

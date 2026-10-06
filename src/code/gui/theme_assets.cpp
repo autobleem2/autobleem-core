@@ -57,6 +57,29 @@ void ThemeAssets::load() {
     ableem::Size backgroundSize = backgroundImg.size();
     backgroundRect = ableem::Rect(0, 0, backgroundSize.w, backgroundSize.h);
     logo = loadImage(renderer_, classic.logo.file);
+    if (renderer_.fourByThreeOutput()) {
+        // a 4:3 (CRT) output: the classic screens have the Gui's 4:3 canvas (Gui::CrtCanvasW x H), not the theme's
+        // 1280x720 one - the theme's 4:3 picture (layout4x3 classicBackground, else the launcher's background) fills
+        // it and the logo keeps its shape in the same place relative to it
+        const int cw = renderer_.restCanvasWidth(), ch = renderer_.restCanvasHeight();
+        const ableem::ThemeLayout4x3 layout4x3 = ableem::loadThemeLayout4x3(theme_.loadedPath());
+        string picture = layout4x3.image("classicBackground");
+        if (picture.empty())
+            picture = layout4x3.image("background");
+        if (layout4x3.set && !picture.empty()) {
+            Texture fourByThree = loadImage(renderer_, picture);
+            if (fourByThree.valid())
+                backgroundImg = fourByThree;
+        }
+        backgroundRect = ableem::Rect(0, 0, cw, ch);
+        const double sx = cw / 1280.0, sy = ch / 720.0, s = min(sx, sy);
+        const double centreX = (classic.logo.x + classic.logo.w / 2.0) * sx;
+        const double centreY = (classic.logo.y + classic.logo.h / 2.0) * sy;
+        logoRect.w = static_cast<int>(classic.logo.w * s + 0.5);
+        logoRect.h = static_cast<int>(classic.logo.h * s + 0.5);
+        logoRect.x = static_cast<int>(centreX - logoRect.w / 2.0 + 0.5);
+        logoRect.y = static_cast<int>(centreY - logoRect.h / 2.0 + 0.5);
+    }
     bigBoxFrame = loadImage(renderer_, Env::getWorkingPath() + sep + "evoimg/bigbox.png");
     if (config_.inifile.values["jewel"] != "none") {
         if (config_.inifile.values["jewel"] == "default") {
