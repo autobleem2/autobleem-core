@@ -332,3 +332,19 @@ TEST_CASE("shortenFooterLabels: short labels are left alone (a cut would not gai
     CHECK_FALSE(abgui::shortenFooterLabels(labels, 5, simpleMeasure));
     CHECK(labels == vector<string>{"Esc", "Back"});
 }
+
+//*******************************
+// footerHintsThatFit(): the 4:3 rule - the last hints are left out, not their labels cut (CONSOLE-17)
+//*******************************
+
+TEST_CASE("footerHintsThatFit: everything fits -> all hints stay") {
+    CHECK(abgui::footerHintsThatFit(6, 100, [](size_t n) { return static_cast<int>(n) * 10; }) == 6);
+}
+
+TEST_CASE("footerHintsThatFit: too wide -> the leading hints that fit, the last ones go") {
+    CHECK(abgui::footerHintsThatFit(6, 35, [](size_t n) { return static_cast<int>(n) * 10; }) == 3);
+}
+
+TEST_CASE("footerHintsThatFit: not even the first fits -> 0 (the caller cuts its label)") {
+    CHECK(abgui::footerHintsThatFit(4, 5, [](size_t n) { return static_cast<int>(n) * 10; }) == 0);
+}

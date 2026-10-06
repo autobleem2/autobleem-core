@@ -77,4 +77,15 @@ inline bool shortenFooterLabels(std::vector<std::string> &labels, int room,
     }
 }
 
+// The 4:3 footer rule (CONSOLE-17): the hints arrive most important first, so when the row does not fit the LAST ones
+// are left out (they keep working - only their label is not shown), the way the Store's 4:3 footer does. Returns how
+// many leading hints fit in `room` (`measure(n)` = the width of the first n hints), at least 1 when even one fits,
+// 0 when not even the first does - the caller then cuts its label instead.
+inline size_t footerHintsThatFit(size_t count, int room, const std::function<int(size_t)> &measure) {
+    for (size_t n = count; n > 0; n--)
+        if (measure(n) <= room)
+            return n;
+    return 0;
+}
+
 } // namespace abgui

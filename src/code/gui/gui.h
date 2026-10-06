@@ -85,7 +85,8 @@ public:
     // the text drawing: lines, columns, option rows with their check icons, the |@X| button markers
     TextRenderer &text() { return text_; }
 
-    void renderFreeSpace();
+    // `title` is the header drawn on the left: the line gives way to it (shorter, then smaller) when they would meet
+    void renderFreeSpace(const std::string &title = "");
 
     void renderBackground();
 
