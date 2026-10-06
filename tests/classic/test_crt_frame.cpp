@@ -49,7 +49,8 @@ struct CrtGui {
         setenv("AB_WINDOW_SIZE", "720x480", 1);
 #endif
         try {
-            gui = make_unique<GuiBase>("ab_core_test_crt_frame", GuiBase::ScreenWidth, GuiBase::ScreenHeight);
+            const int w = GuiBase::ScreenWidth, h = GuiBase::ScreenHeight; // copies: make_unique takes references
+            gui = make_unique<GuiBase>("ab_core_test_crt_frame", w, h);
         } catch (const exception &e) {
             MESSAGE("test_crt_frame: skipping - no usable renderer in this environment (" << e.what() << ")");
             return;
