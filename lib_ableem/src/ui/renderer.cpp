@@ -97,8 +97,8 @@ Rect coverCrop(int textureW, int textureH, int canvasW, int canvasH) {
 
 namespace {
 // The CRT's safe area: the margin around the frame is the frame's own edge mirrored outward (a strip of the frame
-// flipped across the edge it touches, the corners flipped both ways), a little dimmed - the background goes on
-// smoothly past the safe rectangle instead of a black frame. Only on a side where the frame really sits on the safe
+// flipped across the edge it touches, the corners flipped both ways), softened and a little dimmed - the colours go on
+// smoothly past the safe rectangle instead of a black frame (`frame` is the softened copy: Renderer::mirrorMargin). Only on a side where the frame really sits on the safe
 // rectangle (a letterboxed canvas keeps its black bars), and only with a margin. `display` is where the frame goes.
 void copyMirroredMargin(SDL_Renderer *renderer, SDL_Texture *frame, const SDL_Rect &display, int outW, int outH,
                         int marginPercent) {
@@ -253,6 +253,8 @@ struct Renderer::Impl {
     int wantRestWidth = 0, wantRestHeight = 0; // what setRestCanvas asked for: kept across a recreate()
     Rect display;
     Texture frameTarget;
+    Texture marginSoft1, marginSoft2; // the frame blurred down for the CRT margin (Renderer::mirrorMargin)
+    unsigned long marginSoftAt = ~0ul; // the targetsLost() they were made at
     bool framing = false;
     void useCanvas(int w, int h) {
         width = w;
@@ -471,6 +473,48 @@ void Renderer::recreate(Platform &platform) {
         PLOG_INFO << "Canvas " << drawnWidth << "x" << drawnHeight << " at " << viewport.x << "," << viewport.y
                   << " in a " << outputWidth << "x" << outputHeight << " window";
     }
+}
+
+// the margin of a 4:3 frame (see copyMirroredMargin): the frame is blurred down twice (a quarter of its size, then a
+// quarter of that, linear filtering) and back up to a quarter, so the UI at the edges reads as soft colour, not as shapes in the margin
+void Renderer::mirrorMargin(void *frameTexture, const Rect &displayRect) {
+    if (impl->marginPercent <= 0)
+        return;
+    SDL_Texture *frame = static_cast<SDL_Texture *>(frameTexture);
+    int fw = 0, fh = 0;
+    if (SDL_QueryTexture(frame, nullptr, nullptr, &fw, &fh) != 0 || fw < 8 || fh < 8)
+        return;
+    const int w1 = fw / 4, h1 = fh / 4, w2 = std::max(1, w1 / 4), h2 = std::max(1, h1 / 4);
+    const unsigned long lost = impl->targetsLost.load();
+    auto ensure = [&](Texture &t, int w, int h) {
+        const Size size = t.size();
+        if (!t.valid() || size.w != w || size.h != h || impl->marginSoftAt != lost)
+            t = Texture::createTarget(*this, w, h);
+    };
+    ensure(impl->marginSoft1, w1, h1);
+    ensure(impl->marginSoft2, w2, h2);
+    impl->marginSoftAt = lost;
+    if (!impl->marginSoft1.valid() || !impl->marginSoft2.valid())
+        return;
+    SDL_Texture *t1 = static_cast<SDL_Texture *>(impl->marginSoft1.native());
+    SDL_Texture *t2 = static_cast<SDL_Texture *>(impl->marginSoft2.native());
+#if SDL_VERSION_ATLEAST(2, 0, 12)
+    for (SDL_Texture *t : {frame, t1, t2})
+        SDL_SetTextureScaleMode(t, SDL_ScaleModeLinear);
+#endif
+    SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE);
+    SDL_SetTextureBlendMode(t1, SDL_BLENDMODE_NONE);
+    SDL_SetTextureBlendMode(t2, SDL_BLENDMODE_NONE);
+    SDL_SetRenderTarget(impl->renderer, t1);
+    SDL_RenderCopy(impl->renderer, frame, nullptr, nullptr);
+    SDL_SetRenderTarget(impl->renderer, t2);
+    SDL_RenderCopy(impl->renderer, t1, nullptr, nullptr);
+    SDL_SetRenderTarget(impl->renderer, t1); // and back up to a quarter, softened: the strips are cut from this one
+    SDL_RenderCopy(impl->renderer, t2, nullptr, nullptr);
+    SDL_SetRenderTarget(impl->renderer, nullptr);
+    SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND); // as the caller had it
+    SDL_Rect display = toSDL(displayRect);
+    copyMirroredMargin(impl->renderer, t1, display, impl->outputWidth, impl->outputHeight, impl->marginPercent);
 }
 
 bool Renderer::setCanvas(int w, int h) {
@@ -769,8 +813,7 @@ void Renderer::present() {
         // surface shows what is behind the window (BUG-31)
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND);
         if (windowRect)
-            copyMirroredMargin(impl->renderer, frame, displayRect, impl->outputWidth, impl->outputHeight,
-                               impl->marginPercent);
+            mirrorMargin(frame, displayRect);
         SDL_RenderCopy(impl->renderer, frame, nullptr, windowRect);
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_NONE); // the capture stays opaque, as a read-back frame was
         impl->capture = impl->captureTarget;
@@ -790,8 +833,7 @@ void Renderer::present() {
         SDL_Texture *frame = static_cast<SDL_Texture *>(impl->frameTarget.native());
         SDL_SetTextureBlendMode(frame, SDL_BLENDMODE_BLEND);
         if (windowRect)
-            copyMirroredMargin(impl->renderer, frame, displayRect, impl->outputWidth, impl->outputHeight,
-                               impl->marginPercent);
+            mirrorMargin(frame, displayRect);
         SDL_RenderCopy(impl->renderer, frame, nullptr, windowRect);
     } else if (impl->captureRequested) {
         // a frame that never called clear(): read it back

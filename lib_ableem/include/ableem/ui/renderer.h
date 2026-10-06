@@ -161,6 +161,7 @@ private:
     friend class Texture;
     friend class Font;
     explicit Renderer(Platform &platform);
+    void mirrorMargin(void *frameTexture, const Rect &displayRect); // the CRT margin around a 4:3 frame
     // the display hand-off (GuiBase::releaseDisplay()/acquireDisplay()): destroy the SDL renderer while
     // keeping this object - everything holds a reference to it - and make a new one on the new window.
     // Every Texture and Font made with the old renderer must be gone before release(): SDL frees them with
