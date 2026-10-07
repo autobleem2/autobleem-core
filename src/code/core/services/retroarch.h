@@ -74,6 +74,8 @@ public:
     void reloadFavoritesAndHistory();
     // the background scan rewrote playlists: read them all again (the cores stay as loaded)
     void reloadPlaylists();
+    // RetroArch was installed or removed (RaJobService): the cores and the playlists are read again, at the next question
+    void reload();
 
     // the installed cores that can play the game's system, the platform's default first (the one a game with no
     // pick of its own gets); empty when none does - what the game editor's Core row cycles through

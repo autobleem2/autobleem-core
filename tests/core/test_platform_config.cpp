@@ -189,6 +189,15 @@ TEST_CASE("every shipped platform ini loads, and each target's file is there" *
           "rpi/retroarch/latest.json");
     CHECK(PlatformConfig::load(PlatformConfig::pathFor(AB_RESOURCES_DIR, "pcusb")).retroarchCatalog ==
           "pc/retroarch/latest.json");
+    // the three targets that install RetroArch themselves have a runner (the System menu's RetroArch... row)
+    for (const char *name : {"psc", "rpi", "pcusb"}) {
+        INFO(name);
+        const std::string command =
+            PlatformConfig::load(PlatformConfig::pathFor(AB_RESOURCES_DIR, name)).retroarchJobCommand;
+        CHECK(command.find("%a") != std::string::npos);
+        CHECK(command.find("%p") != std::string::npos);
+    }
+    CHECK(PlatformConfig::load(PlatformConfig::pathFor(AB_RESOURCES_DIR, "pc")).retroarchJobCommand.empty());
 }
 
 TEST_CASE("store_download_command: read, %r resolved, the update's command when there is none") {
@@ -207,6 +216,21 @@ TEST_CASE("store_download_command: read, %r resolved, the update's command when 
     PlatformConfig old = PlatformConfig::load(PlatformConfig::pathFor(tmp.path(), "old"));
     old.apply();
     CHECK(Env::storeDownloadCommand() == "curl -sfL -o \"%o\" \"%u\"");
+}
+
+TEST_CASE("retroarch_job_command: read, %r resolved, empty when the platform has none") {
+    EnvFixture env;
+    TempDir tmp("platform_rajob");
+    env.setUsbRoot(tmp.path());
+    env.setWorkingPath("/stick/Autobleem/bin");
+    tmp.makeSubDir("platform");
+    tmp.writeFile("platform/psc.ini", "retroarch_job_command=\"%r/abupdate\" \"%R\" --retroarch %a%B\n");
+    PlatformConfig::load(PlatformConfig::pathFor(tmp.path(), "psc")).apply();
+    CHECK(Env::raJobCommand() == "\"/stick/Autobleem/bin/abupdate\" \"%R\" --retroarch %a%B");
+
+    tmp.writeFile("platform/none.ini", "retroarch_dir=RetroArch\n");
+    PlatformConfig::load(PlatformConfig::pathFor(tmp.path(), "none")).apply();
+    CHECK(Env::raJobCommand().empty());
 }
 
 namespace {

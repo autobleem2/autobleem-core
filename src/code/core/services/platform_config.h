@@ -34,6 +34,9 @@ struct PlatformConfig {
     // store_download_command: what an extension fetches a file with - it must continue a partly downloaded
     // file (abfetch --continue, curl -C -); "" = the update's command
     std::string storeDownloadCommand;
+    // retroarch_job_command: the runner behind System menu -> RetroArch... (install, update, remove; RaJobService
+    // documents the placeholders and the runner's contract); "" = none on this platform, the rows are hidden
+    std::string retroarchJobCommand;
     // how a game is started: "script" - through Autobleem/rc/launch.sh and launch_rb.sh (the console, the
     // appliances, a dev host); "direct" - the launcher runs the emulator itself (the Windows product)
     std::string launchMode = "script";

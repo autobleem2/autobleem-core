@@ -79,6 +79,7 @@ PlatformConfig PlatformConfig::load(const string &iniPath) {
     cfg.updateDownloadCommand = value("update_download_command");
     cfg.retroarchCatalog = value("retroarch_catalog");
     cfg.storeDownloadCommand = value("store_download_command");
+    cfg.retroarchJobCommand = value("retroarch_job_command");
     cfg.usbRoot = value("usb_root");
     if (!value("launch_mode").empty()) {
         if (value("launch_mode") == "script" || value("launch_mode") == "direct")
@@ -121,6 +122,7 @@ void PlatformConfig::apply() const {
     Env::setPcsxNxtDir(pcsxNxtDir.empty() ? "" : under(Env::getWorkingPath(), pcsxNxtDir));
     Env::setExtraAppPlatformKeys(appPlatformKeys);
     Env::setStoreDownloadCommand(storeDownloadCommand);
+    Env::setRaJobCommand(retroarchJobCommand);
 
     const char *fromParent = getenv("AB_RUNTIME_DIR");
     if (fromParent != nullptr && *fromParent != 0) {

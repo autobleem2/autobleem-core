@@ -111,6 +111,11 @@ struct Environment : ableem::Environment {
     // same command is a fresh download and a resumed one. The update's command when the platform has none.
     static void setStoreDownloadCommand(const std::string &command);
     static std::string storeDownloadCommand();
+    // PlatformConfig's retroarch_job_command, %r (the launcher's own folder) replaced: the runner that installs,
+    // updates or removes RetroArch (RaJobService fills in the other placeholders); "" = this platform has none,
+    // and the launcher shows no RetroArch install/remove rows
+    static void setRaJobCommand(const std::string &command);
+    static std::string raJobCommand();
 
     // PlatformConfig's launch_mode: "direct" - the launcher starts the emulators itself (the Windows
     // product); otherwise through the rc/launch*.sh scripts (the console, the appliances, a dev host)

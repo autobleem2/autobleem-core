@@ -118,6 +118,7 @@ add_library(ab_core STATIC
         src/code/core/services/game_settings.cpp
         src/code/core/services/pcsx_config.cpp
         src/code/core/services/lightgun.cpp
+        src/code/core/services/ra_job_service.cpp
         src/code/core/services/ra_options.cpp
         src/code/core/services/launch.cpp
         src/code/core/services/memcard.cpp

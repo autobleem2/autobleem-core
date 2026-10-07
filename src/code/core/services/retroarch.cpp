@@ -155,6 +155,14 @@ void RetroArchService::reloadPlaylists() {
 }
 
 //********************
+// RetroArchService::reload
+//********************
+void RetroArchService::reload() {
+    playlistInfos_.clear();
+    loaded_ = false;
+}
+
+//********************
 // RetroArchService::coresCfgPath
 //********************
 string RetroArchService::coresCfgPath() {

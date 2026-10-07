@@ -27,6 +27,7 @@ string pcsxDir_;
 string pcsxNxtDir_;
 vector<string> extraAppPlatformKeys_;
 string storeDownloadCommand_;
+string raJobCommand_;
 string clockSetMarkerFile_ =
 #if defined(AB_PLATFORM_PSC)
     "/run/autobleem/clock-set";
@@ -381,6 +382,19 @@ void Env::setStoreDownloadCommand(const string &command) {
 
 string Env::storeDownloadCommand() {
     string command = storeDownloadCommand_.empty() ? updateDownloadCommand() : storeDownloadCommand_;
+    Strings::replaceAll(command, "%r", getWorkingPath());
+    return command;
+}
+
+//*******************************
+// Env::setRaJobCommand / raJobCommand
+//*******************************
+void Env::setRaJobCommand(const string &command) {
+    raJobCommand_ = command;
+}
+
+string Env::raJobCommand() {
+    string command = raJobCommand_;
     Strings::replaceAll(command, "%r", getWorkingPath());
     return command;
 }
