@@ -100,10 +100,8 @@ public:
             package(error) && prepare(error) && legacy(error) && unpack(error) && updateRoms(error) && covers(error);
         if (ok && opt.retroarch)
             ok = retroarch(error);
-        if (ok && opt.bios && !opt.ps1BiosOnly && (opt.retroarch || info.hasRetroArch))
+        if (ok && opt.bios && (opt.retroarch || info.hasRetroArch))
             ok = bios(error);
-        else if (ok && opt.bios && opt.ps1BiosOnly)
-            say("BIOS: PlayStation only - the console copies its own BIOS at every boot, nothing to fetch");
         if (ok && opt.samples)
             ok = samples(error);
         if (ok)
@@ -766,7 +764,10 @@ private:
         phase("BIOS files");
         if (stopped(error))
             return false;
-        return fetchBiosPack("psc/bios/latest.json", at("RetroArch/bios"), error);
+        if (opt.ps1BiosOnly)
+            say("  PlayStation only: the PlayStation BIOS files of the pack, not the rest");
+        return fetchBiosPack("psc/bios/latest.json", at("RetroArch/bios"), error,
+                             opt.ps1BiosOnly ? BiosFilter(isPs1PackFile) : BiosFilter());
     }
 
     //******************
@@ -993,7 +994,7 @@ vector<string> InstallerJob::phasesFor(const InstallOptions &options, const Stic
     if (options.retroarch)
         for (const char *p : {"RetroArch", "RetroArch cores", "Runtime libraries", "Apps", "RetroArch assets"})
             phases.push_back(p);
-    if (options.bios && !options.ps1BiosOnly && (options.retroarch || info.hasRetroArch))
+    if (options.bios && (options.retroarch || info.hasRetroArch))
         phases.push_back("BIOS files");
     if (options.samples)
         phases.push_back("Sample games");

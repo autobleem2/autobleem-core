@@ -1,6 +1,7 @@
 // InstallerJob: a stick from a package and a fake download repository, fresh and as an update
 #include <doctest/doctest.h>
 
+#include "installer/install_job_base.h"
 #include "installer/installer_job.h"
 #include "installer/legacy_layout.h"
 #include "installer/local_bundle.h"
@@ -1269,22 +1270,44 @@ TEST_CASE("a stop request during the BIOS files stops the run and the workers") 
     CHECK_FALSE(fx.has("RetroArch/bios/.biospack-verified"));
 }
 
-TEST_CASE("PlayStation-only BIOS: nothing is fetched and the phase is left out, on the console too") {
+TEST_CASE("PlayStation-only BIOS: only the PlayStation entries are asked for, then kept, on the console") {
     Fixture fx;
     fx.options.retroarch = true;
     fx.options.bios = true;
     fx.options.ps1BiosOnly = true;
     StickInfo before = InstallerJob::inspect(fx.options);
     const vector<string> phases = InstallerJob::phasesFor(fx.options, before);
-    CHECK(find(phases.begin(), phases.end(), "BIOS files") == phases.end());
+    CHECK(find(phases.begin(), phases.end(), "BIOS files") != phases.end());
     string error;
     REQUIRE_MESSAGE(fx.run(error), error);
     CHECK(fx.out.phases == phases);
-    CHECK(fx.out.said("BIOS: PlayStation only"));
-    CHECK(fx.site.count("/psc/bios/") == 0);
-    CHECK(fx.site.count("/bios/") == 0);
-    CHECK_FALSE(fx.has("RetroArch/bios/scph5501.bin"));
+    CHECK(fx.out.said("PlayStation only"));
+    CHECK(fx.out.said("1 files - what is there already is kept"));
+    CHECK(fx.site.count("/psc/bios/") == 2); // the catalog and the list: the same source as the whole pack
+    CHECK(fx.site.count("/bios/scph5501.bin") == 1);
+    CHECK(fx.site.count("/bios/gone.bin") == 0); // not a PlayStation entry: never requested
+    CHECK(fx.tmp.readFile("stick/RetroArch/bios/scph5501.bin") == "bios!");
+    CHECK(fx.out.said("1 fetched, 0 already there, 0 failed"));
     CHECK(fx.has("RetroArch/bin/retroarch")); // RetroArch itself was installed as asked
+    // a second run keeps the file and fetches nothing
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.site.count("/bios/scph5501.bin") == 1);
+    CHECK(fx.out.said("0 fetched, 1 already there, 0 failed"));
+}
+
+namespace {
+struct Ps1Pack : InstallJobBase {
+    using InstallJobBase::isPs1PackFile;
+};
+} // namespace
+
+TEST_CASE("the PlayStation entries of the pack are the scph/ps1_rom/psxonpsp files at its top, any case") {
+    for (const char *name : {"scph5501.bin", "SCPH1001.BIN", "scph102A.bin", "scph9002(7502).bin", "ps1_rom.bin",
+                             "psxonpsp660.bin", "scph7003.bin"})
+        CHECK_MESSAGE(Ps1Pack::isPs1PackFile(name), name);
+    for (const char *name : {"acpsx.zip", "disksys.rom", "gba_bios.bin", "sub dir/scph5501.bin", "scph.bin",
+                             "neogeo.zip", "Nintendo - Famicom Disk System/disksys.rom"})
+        CHECK_MESSAGE(!Ps1Pack::isPs1PackFile(name), name);
 }
 
 //******************

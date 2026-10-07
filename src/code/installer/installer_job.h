@@ -43,8 +43,8 @@ struct InstallOptions {
     bool coversPal = true;
     bool retroarch = false;
     bool bios = false; // needs retroarch (or RetroArch already on the stick)
-    // "PlayStation only": the BIOS the console copies from its own firmware at every boot is all a PS1 game needs,
-    // so there is nothing to fetch - the BIOS phase is left out even with `bios` set
+    // "PlayStation only" (the owner, 2026-10-07): with `bios`, only the PlayStation BIOS files of the pack are
+    // fetched, from the same source and by the same code as the whole pack (InstallJobBase::isPs1PackFile)
     bool ps1BiosOnly = false;
     bool samples = false;
     // the folder of an installer download that carries its own payload (bundle.json inside, see LocalBundle): the

@@ -400,6 +400,20 @@ bool InstallJobBase::isPs1BiosFile(const string &path) {
 }
 
 //*******************************
+// InstallJobBase::isPs1PackFile
+//*******************************
+bool InstallJobBase::isPs1PackFile(const string &path) {
+    if (path.find('/') != string::npos)
+        return false; // the PlayStation files sit at the top of the pack
+    string name = path;
+    for (char &c : name)
+        c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+    if (name == "ps1_rom.bin" || name == "psxonpsp660.bin")
+        return true;
+    return name.size() > 8 && name.compare(0, 4, "scph") == 0 && name.compare(name.size() - 4, 4, ".bin") == 0;
+}
+
+//*******************************
 // InstallJobBase::installPs1Bios
 //*******************************
 void InstallJobBase::installPs1Bios(const string &systemDir, const string &biosDir) {

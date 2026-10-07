@@ -76,6 +76,10 @@ protected:
     // unless the user has put their own there (the originals stay for RetroArch's cores)
     void installPs1Bios(const std::string &systemDir, const std::string &biosDir);
     static bool isPs1BiosFile(const std::string &path);
+    // the PlayStation BIOS files of the pack (the owner's "PS1-only", 2026-10-07): the pack's own PlayStation
+    // section, which is what RetroArch's PS1 cores (pcsx_rearmed, mednafen_psx, swanstation, duckstation) list as
+    // firmware - scph<NNNN>[A-C].bin (any case), ps1_rom.bin, psxonpsp660.bin; not acpsx.zip (arcade) or any other system
+    static bool isPs1PackFile(const std::string &path);
     // <romsDir>/<system>/ - one empty folder per system in `listFile` (the shared platform/roms_systems.cfg,
     // RetroArch's database names), made only where missing, so a user has somewhere to drop each system's
     // games and Import Content -> Scan Directory sorts them into the matching playlist

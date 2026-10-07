@@ -39,6 +39,7 @@ struct WindowsInstallOptions {
     bool coversPal = true;
     bool retroarch = false;
     bool bios = false; // the PlayStation BIOS always; every core's with retroarch (or RetroArch already there)
+    bool ps1BiosOnly = false; // with bios: the PlayStation files of the pack only, with RetroArch too
     bool samples = false;
     bool update = false; // an update of the program: the fingerprints go, so the launcher rescans once
 };

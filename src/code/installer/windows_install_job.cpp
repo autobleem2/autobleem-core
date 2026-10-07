@@ -355,11 +355,16 @@ private:
         // reads it but the PlayStation emulator's two files (installPs1Bios), so the rest of the pack is
         // not fetched
         const bool withRetroArch = opt.retroarch || info.hasRetroArch;
-        if (!withRetroArch)
+        BiosFilter only;
+        if (!withRetroArch) {
             say("  PlayStation only (no RetroArch): just the two files the emulator needs");
+            only = isPs1BiosFile;
+        } else if (opt.ps1BiosOnly) {
+            say("  PlayStation only: the PlayStation BIOS files of the pack, not the rest");
+            only = isPs1PackFile;
+        }
         const string systemDir = at("RetroArch/bin/system");
-        if (!fetchBiosPack("win/bios/latest.json", systemDir, error,
-                           withRetroArch ? BiosFilter() : BiosFilter(isPs1BiosFile)))
+        if (!fetchBiosPack("win/bios/latest.json", systemDir, error, only))
             return false;
         installPs1Bios(systemDir, at("System/Bios"));
         return true;

@@ -415,6 +415,26 @@ TEST_CASE("without RetroArch the BIOS step fetches the PlayStation files alone; 
     CHECK(fx.out.said("need RetroArch"));
 }
 
+TEST_CASE("PlayStation-only BIOS with RetroArch: the PlayStation entries of the pack, not the core files") {
+    Fixture fx;
+    fx.siteRetroArch();
+    fx.options.retroarch = true;
+    fx.options.bios = true;
+    fx.options.ps1BiosOnly = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.out.said("PlayStation only: the PlayStation BIOS files of the pack"));
+    CHECK(fx.has("RetroArch/bin/system/scph5501.bin"));
+    CHECK(fx.has("RetroArch/bin/system/scph5500.bin"));
+    CHECK_FALSE(fx.has("RetroArch/bin/system/Nintendo - Famicom Disk System/disksys.rom"));
+    CHECK(fx.out.said("2 files - what is there already is kept"));
+    CHECK(fx.out.said("2 fetched, 0 already there, 0 failed"));
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romw.bin") == "bios scph5501.bin");
+    // a second run keeps both
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.out.said("0 fetched, 2 already there, 0 failed"));
+}
+
 TEST_CASE("a stop request and a missing site are reported") {
     Fixture fx;
     string error;
