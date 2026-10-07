@@ -169,10 +169,11 @@ add_library(ab_installer STATIC
         src/code/installer/install_job_base.cpp
         src/code/installer/installer_job.cpp
         src/code/installer/legacy_layout.cpp
+        src/code/installer/local_bundle.cpp
         src/code/installer/windows_install_job.cpp
         src/code/installer/flasher_job.cpp
         src/code/installer/command_downloader.cpp)
-target_link_libraries(ab_installer ab_core)
+target_link_libraries(ab_installer ab_core Threads::Threads)
 
 # ---- ab_gui: the AutoBleem User Interface Library (docs/ab-gui-plan.md) ---- (only with AB_CORE_UI)
 # The look and its primitives (abgui::Style), the classic panel (abgui::Panel), what they draw with (abgui::Context),

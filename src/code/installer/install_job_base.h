@@ -14,6 +14,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -41,11 +43,18 @@ protected:
     void phase(const std::string &title);
     void say(const std::string &line);
 
+    // the progress on the phase's bar, false (stop) once the stop flag is set
+    Downloader::Progress barProgress();
     // a download with the progress on the phase's bar and the stop flag honoured
     bool download(const std::string &url, const std::string &dest, std::string &error);
     // a file the site publishes with its sha256: kept when the target has that very file already, fetched
     // to .part and checked otherwise
     bool downloadVerified(const ableem::UpdateFile &file, const std::string &dest, std::string &error);
+    // a pack to read: the path of the downloader's own checked copy when it holds one (a bundle next to the
+    // program - read in place, never copied), else downloadVerified() into the scratch folder. discard() removes
+    // what the run downloaded and leaves a bundle's file alone.
+    bool obtain(const ableem::UpdateFile &file, std::string &path, std::string &error);
+    void discard(const std::string &path);
     // <repo>/<rel>, a small JSON
     bool fetchCatalog(const std::string &rel, std::string &text, std::string &error);
     // a tarball's contents under `dest`, the progress on the bar
@@ -54,7 +63,11 @@ protected:
     // the BIOS pack: <catalogRel> (a PackCatalog naming the list) -> the list, one line per file
     // "<sha256> <size> <url> <path>" -> each file under `dir`, kept when size and sha256 match, a lost one
     // reported and gone past; false only on a stop or a lost list. `only`, when given, picks the files by
-    // their path in the list (a PS1-only install wants the two PlayStation files, not the ~300 MB pack)
+    // their path in the list (a PS1-only install wants the two PlayStation files, not the ~300 MB pack).
+    // Up to BiosConnections files go at once when the downloader allows it (Downloader::connections), a part
+    // file left by an interrupted run is continued (Range) rather than fetched again, and a file an earlier
+    // run verified (<dir>/.biospack-verified: sha256, size, path) is kept on its size alone - a pack of 700
+    // files is not read through again to be told it is the same
     using BiosFilter = std::function<bool(const std::string &path)>;
     bool fetchBiosPack(const std::string &catalogRel, const std::string &dir, std::string &error,
                        const BiosFilter &only = BiosFilter());
@@ -68,10 +81,15 @@ protected:
     // games and Import Content -> Scan Directory sorts them into the matching playlist
     void createRomFolders(const std::string &listFile, const std::string &romsDir);
 
+    static const int BiosConnections = 4;
+    static const char *const BiosRecord; // the file name of the record above
+
     Downloader &dl;
     InstallListener &out;
     InstallerJob::ShouldStop stop;
     std::string repoUrl, scratch;
+    std::set<std::string> borrowed; // files of the downloader's own (obtain) the run must not remove
+    std::mutex sayMutex;            // say() and the progress are called from the BIOS workers too
     // every line say() prints is appended here too when set - the install's own record, kept on the target
     std::string logPath;
     std::vector<std::string> phases;

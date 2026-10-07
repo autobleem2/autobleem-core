@@ -6,8 +6,12 @@
 #include <ableem/engine/sha256.h>
 #include <ableem/engine/strings.h>
 
+#include <algorithm>
+#include <atomic>
 #include <fstream>
+#include <map>
 #include <sstream>
+#include <thread>
 
 using namespace std;
 using ableem::DirEntry;
@@ -87,6 +91,7 @@ void InstallJobBase::phase(const string &title) {
 }
 
 void InstallJobBase::say(const string &line) {
+    lock_guard<mutex> lock(sayMutex);
     out.onLine(line);
     PLOG_INFO << line;
     if (!logPath.empty()) {
@@ -98,15 +103,16 @@ void InstallJobBase::say(const string &line) {
 //*******************************
 // InstallJobBase::download
 //*******************************
+Downloader::Progress InstallJobBase::barProgress() {
+    return [this](uint64_t done, uint64_t total) {
+        out.onProgress(done, total);
+        return !(stop && stop());
+    };
+}
+
 bool InstallJobBase::download(const string &url, const string &dest, string &error) {
     DirEntry::createDirs(dest.substr(0, dest.find_last_of('/')));
-    bool ok = dl.fetch(
-        url, dest,
-        [this](uint64_t done, uint64_t total) {
-            out.onProgress(done, total);
-            return !(stop && stop());
-        },
-        error);
+    bool ok = dl.fetch(url, dest, barProgress(), error);
     if (!ok && stop && stop())
         error = "Stopped";
     return ok;
@@ -122,6 +128,26 @@ bool InstallJobBase::downloadVerified(const UpdateFile &file, const string &dest
     }
     say("  " + file.name + (file.size ? " (" + humanSize(file.size) + ")" : ""));
     const string part = dest + ".part";
+    // a file the downloader holds and has checked (a bundle): copied as it is, not hashed a second time
+    string held, why;
+    if (dl.localFile(file.url, held, barProgress(), why)) {
+        DirEntry::createDirs(dest.substr(0, dest.find_last_of('/')));
+        DirEntry::removeFile(part);
+        if (!DirEntry::copyFile(held, part)) {
+            error = "cannot write " + dest;
+            return false;
+        }
+        DirEntry::removeFile(dest);
+        if (!DirEntry::renameFile(part, dest)) {
+            error = "cannot write " + dest;
+            return false;
+        }
+        return true;
+    }
+    if (!why.empty()) {
+        error = why;
+        return false;
+    }
     if (!download(file.url, part, error))
         return false;
     if (!file.sha256.empty() && Sha256::ofFile(part) != file.sha256) {
@@ -135,6 +161,29 @@ bool InstallJobBase::downloadVerified(const UpdateFile &file, const string &dest
         return false;
     }
     return true;
+}
+
+//*******************************
+// InstallJobBase::obtain / discard
+//*******************************
+bool InstallJobBase::obtain(const UpdateFile &file, string &path, string &error) {
+    string why;
+    if (dl.localFile(file.url, path, barProgress(), why)) {
+        borrowed.insert(path);
+        say("  " + file.name + ": in this download, checked against its manifest");
+        return true;
+    }
+    if (!why.empty()) {
+        error = why;
+        return false;
+    }
+    path = scratch + "/" + file.name;
+    return downloadVerified(file, path, error);
+}
+
+void InstallJobBase::discard(const string &path) {
+    if (!borrowed.count(path))
+        DirEntry::removeFile(path);
 }
 
 //*******************************
@@ -153,6 +202,39 @@ bool InstallJobBase::untar(const string &tarball, const string &dest, string &er
 //*******************************
 // InstallJobBase::fetchBiosPack
 //*******************************
+const char *const InstallJobBase::BiosRecord = ".biospack-verified";
+
+namespace {
+
+struct BiosItem {
+    string sha, url, path;
+    uint64_t size;
+};
+
+// what an earlier run verified: "<sha256> <size> <path>" per line, the path may hold spaces
+map<string, BiosItem> loadBiosRecord(const string &file) {
+    map<string, BiosItem> record;
+    istringstream in(readText(file));
+    string line;
+    while (getline(in, line)) {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        size_t a = line.find(' '), b = a == string::npos ? string::npos : line.find(' ', a + 1);
+        if (b == string::npos)
+            continue;
+        BiosItem it;
+        it.sha = line.substr(0, a);
+        it.size = strtoull(line.substr(a + 1, b - a - 1).c_str(), nullptr, 10);
+        it.path = line.substr(b + 1);
+        record[it.path] = it;
+    }
+    return record;
+}
+
+enum class BiosResult { Kept, Fetched, Failed, Stopped };
+
+} // namespace
+
 bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, string &error, const BiosFilter &only) {
     string text;
     PackCatalog cat;
@@ -164,11 +246,7 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
     string list;
     if (!dl.fetchText(cat.file.url, scratch + "/biospack.txt", list, error))
         return false;
-    struct Item {
-        string sha, url, path;
-        uint64_t size;
-    };
-    vector<Item> items;
+    vector<BiosItem> items;
     istringstream in(list);
     string line;
     while (getline(in, line)) {
@@ -180,7 +258,7 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
         size_t a = line.find(' '), b = line.find(' ', a + 1), c = line.find(' ', b + 1);
         if (a == string::npos || b == string::npos || c == string::npos)
             continue;
-        Item it;
+        BiosItem it;
         it.sha = line.substr(0, a);
         it.size = strtoull(line.substr(a + 1, b - a - 1).c_str(), nullptr, 10);
         it.url = line.substr(b + 1, c - b - 1);
@@ -193,45 +271,120 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
     else
         say("  " + to_string(items.size()) + " files, " + humanSize(cat.totalBytes) +
             " - what is there already is kept");
-    int fetched = 0, kept = 0, failed = 0;
-    for (size_t i = 0; i < items.size(); i++) {
-        if (stopped(error))
-            return false;
-        const Item &it = items[i];
-        out.onProgress(i, items.size());
+
+    DirEntry::createDirs(dir);
+    const string recordFile = dir + "/" + BiosRecord;
+    map<string, BiosItem> record = loadBiosRecord(recordFile);
+    mutex recordMutex;
+    atomic<size_t> next(0);
+    atomic<int> fetched(0), kept(0), failed(0), finished(0);
+    atomic<bool> halted(false);
+
+    // one file: kept when it is there (the record, or its sha256), else fetched to .part - continued when an
+    // earlier run left one - checked and renamed over the target
+    auto one = [&](const BiosItem &it, string &why) {
         const string dest = dir + "/" + it.path;
-        if (DirEntry::exists(dest) && static_cast<uint64_t>(DirEntry::fileSize(dest)) == it.size &&
-            Sha256::ofFile(dest) == it.sha) {
-            kept++;
-            continue;
+        const long long have = DirEntry::fileSize(dest);
+        if (have >= 0 && static_cast<uint64_t>(have) == it.size) {
+            bool trusted = false;
+            {
+                lock_guard<mutex> lock(recordMutex);
+                auto r = record.find(it.path);
+                trusted = r != record.end() && r->second.sha == it.sha && r->second.size == it.size;
+            }
+            if (trusted || Sha256::ofFile(dest) == it.sha)
+                return BiosResult::Kept;
         }
         DirEntry::createDirs(dest.substr(0, dest.find_last_of('/')));
         const string part = dest + ".part";
-        string why;
-        bool ok = dl.fetch(it.url, part, [this](uint64_t, uint64_t) { return !(stop && stop()); }, why);
-        if (ok && Sha256::ofFile(part) != it.sha) {
-            ok = false;
-            why = "checksum mismatch";
-        }
-        if (ok) {
-            DirEntry::removeFile(dest);
-            ok = DirEntry::renameFile(part, dest);
-        }
-        if (ok) {
-            fetched++;
-        } else {
-            DirEntry::removeFile(part);
-            failed++;
-            if (failed <= 20)
-                say("  could not fetch " + it.path + ": " + why);
-            if (stop && stop()) {
-                error = "Stopped";
-                return false;
+        const Downloader::Progress alive = [this](uint64_t, uint64_t) { return !(stop && stop()); };
+        for (int attempt = 0; attempt < 2; attempt++) {
+            const long long partial = DirEntry::fileSize(part);
+            const bool resumed = attempt == 0 && partial > 0 && static_cast<uint64_t>(partial) < it.size;
+            if (!resumed)
+                DirEntry::removeFile(part);
+            if (!dl.fetchResumable(it.url, part, alive, why)) {
+                if (stop && stop())
+                    return BiosResult::Stopped;
+                return BiosResult::Failed; // what was written stays: the next run continues there
             }
+            if (Sha256::ofFile(part) == it.sha) {
+                DirEntry::removeFile(dest);
+                if (DirEntry::renameFile(part, dest))
+                    return BiosResult::Fetched;
+                why = "cannot write " + dest;
+                return BiosResult::Failed;
+            }
+            DirEntry::removeFile(part);
+            why = "checksum mismatch";
+            if (!resumed)
+                break;
         }
-        if ((fetched + failed) % 50 == 0 && fetched + failed > 0)
-            say("  " + to_string(fetched) + " fetched, " + to_string(kept) + " kept, " + to_string(failed) +
-                " failed so far");
+        return BiosResult::Failed;
+    };
+    auto worker = [&]() {
+        while (!halted) {
+            const size_t i = next++;
+            if (i >= items.size())
+                return;
+            if (stop && stop()) {
+                halted = true;
+                return;
+            }
+            const BiosItem &it = items[i];
+            string why;
+            const BiosResult result = one(it, why);
+            if (result == BiosResult::Stopped) {
+                halted = true;
+                return;
+            }
+            if (result == BiosResult::Failed) {
+                const int n = ++failed;
+                {
+                    lock_guard<mutex> lock(recordMutex);
+                    record.erase(it.path);
+                }
+                if (n <= 20)
+                    say("  could not fetch " + it.path + ": " + why);
+            } else {
+                if (result == BiosResult::Fetched)
+                    ++fetched;
+                else
+                    ++kept;
+                lock_guard<mutex> lock(recordMutex);
+                record[it.path] = it;
+            }
+            const int done = ++finished;
+            {
+                lock_guard<mutex> lock(sayMutex);
+                out.onProgress(static_cast<uint64_t>(done), items.size());
+            }
+            if (result != BiosResult::Kept && (fetched + failed) % 50 == 0)
+                say("  " + to_string(fetched) + " fetched, " + to_string(kept) + " kept, " + to_string(failed) +
+                    " failed so far");
+        }
+    };
+    const int connections = BiosConnections;
+    const int count = max(1, min(min(connections, dl.connections()), static_cast<int>(items.size())));
+    if (count == 1) {
+        worker();
+    } else {
+        vector<thread> pool;
+        for (int i = 0; i < count; i++)
+            pool.emplace_back(worker);
+        for (thread &t : pool)
+            t.join();
+    }
+    if (halted) {
+        error = "Stopped";
+        return false;
+    }
+    {
+        // the files of this pass that checked out, with those of earlier passes the pass did not look at
+        string recordText;
+        for (const auto &r : record)
+            recordText += r.second.sha + " " + to_string(r.second.size) + " " + r.second.path + "\n";
+        writeText(recordFile, recordText);
     }
     out.onProgress(items.size(), items.size());
     say("  " + to_string(fetched) + " fetched, " + to_string(kept) + " already there, " + to_string(failed) +

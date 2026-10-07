@@ -124,6 +124,30 @@ struct PscRetroArchCatalog {
 };
 
 //******************
+// BundleCatalog
+//******************
+// bundle.json of an installer download that carries its own payload (AutoBleemInstaller-<v>-full.zip): the
+// release version, the stick package's path, and every file of the folder by the path the site serves it under
+// ("psc/cores/cores-psc-20261003.tar.gz", "assets/frontend/assets.zip"; the file lies at that path under the
+// bundle folder) with its size and sha256. The installer checks each file against this once, then reads it in place.
+struct BundleFile {
+    std::string path;
+    uint64_t size = 0;
+    std::string sha256;
+};
+
+struct BundleCatalog {
+    int format = 0;
+    std::string version;
+    std::string package; // path of the stick package (autobleem-psc-<v>.tar.gz) among `files`
+    std::vector<BundleFile> files;
+
+    bool parse(const std::string &jsonText);
+    bool load(const std::string &path);
+    const BundleFile *find(const std::string &path) const;
+};
+
+//******************
 // UpdateState
 //******************
 // What the launcher remembers between runs, so a check happens once a day and a "skip" or "remind me

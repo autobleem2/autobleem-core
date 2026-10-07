@@ -209,6 +209,46 @@ string trimSlash(const string &path) {
 
 } // namespace
 
+//*******************************
+// BundleCatalog
+//*******************************
+bool BundleCatalog::parse(const string &jsonText) {
+    json j = parseOrNull(jsonText);
+    if (!j.is_object())
+        return false;
+    auto list = j.find("files");
+    if (list == j.end() || !list->is_array())
+        return false;
+    BundleCatalog found;
+    found.format = static_cast<int>(inum(j, "format"));
+    found.version = str(j, "version");
+    found.package = trimSlash(str(j, "package"));
+    for (const json &item : *list) {
+        BundleFile f;
+        f.path = trimSlash(str(item, "path"));
+        f.size = num(item, "size");
+        f.sha256 = str(item, "sha256");
+        if (!sitePath(f.path) || f.sha256.size() != 64)
+            return false; // a manifest with one bad line is not trusted at all
+        found.files.push_back(f);
+    }
+    if (found.format != 1 || found.files.empty() || (!found.package.empty() && !found.find(found.package)))
+        return false;
+    *this = found;
+    return true;
+}
+
+bool BundleCatalog::load(const string &path) {
+    return parse(readText(path));
+}
+
+const BundleFile *BundleCatalog::find(const string &path) const {
+    for (const BundleFile &f : files)
+        if (f.path == path)
+            return &f;
+    return nullptr;
+}
+
 bool ChannelCatalog::parse(const string &jsonText) {
     json j = parseOrNull(jsonText);
     if (!j.is_object())

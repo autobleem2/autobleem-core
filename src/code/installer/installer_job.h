@@ -43,7 +43,15 @@ struct InstallOptions {
     bool coversPal = true;
     bool retroarch = false;
     bool bios = false; // needs retroarch (or RetroArch already on the stick)
+    // "PlayStation only": the BIOS the console copies from its own firmware at every boot is all a PS1 game needs,
+    // so there is nothing to fetch - the BIOS phase is left out even with `bios` set
+    bool ps1BiosOnly = false;
     bool samples = false;
+    // the folder of an installer download that carries its own payload (bundle.json inside, see LocalBundle): the
+    // run reads the catalogs, packs and bundles from it instead of the site, verifying each file once against the
+    // manifest, and takes the stick package from it when packageFile and channel are empty. What the folder does
+    // not hold (the BIOS files, UpdateRoms of another release) still comes over the net. "" = online as before
+    std::string bundleDir;
     // the console's own RetroArch update: a retroarch-psc-<v>.zip already downloaded and checked. The run then
     // does only that - the zip laid over the RetroArch that is on the stick (what the "RetroArch" phase does
     // with a new build, minus the cores, libraries, apps and bundles); packageFile and channel are not used
@@ -77,6 +85,19 @@ public:
     virtual ~Downloader() = default;
     virtual bool fetch(const std::string &url, const std::string &destFile, const Progress &progress,
                        std::string &error) = 0;
+    // fetch() for a file that may be partly there: when destFile already holds the first N bytes of the file, a
+    // downloader that can resume (HTTP Range) continues at byte N and appends; one that cannot starts the file
+    // over. destFile is the whole file after a true return either way. A failed resumable fetch keeps what it
+    // wrote, so the next run continues there; the caller removes a part whose checksum is wrong.
+    virtual bool fetchResumable(const std::string &url, const std::string &destFile, const Progress &progress,
+                                std::string &error);
+    // how many fetch() calls may run at the same time, each on its own thread (a connection each, kept alive
+    // between files); 1 = the downloader is not thread-safe
+    virtual int connections() const { return 1; }
+    // a file the downloader already holds on disk and has checked (a bundle next to the program): true with its
+    // path, and the run reads it in place instead of copying it. False with `error` empty = not held; false with
+    // `error` set = held but damaged or stopped. The progress reports the checking of a big file.
+    virtual bool localFile(const std::string &url, std::string &path, const Progress &progress, std::string &error);
     // a small text file (a latest.json, a .sha256 sidecar)
     bool fetchText(const std::string &url, const std::string &scratchFile, std::string &text, std::string &error);
 };
@@ -112,6 +133,11 @@ public:
 
     // the package next to the program: the newest autobleem-psc-*.tar.gz in argv[0]'s directory, "" if none
     static std::string packageNextTo(const std::string &programPath);
+    // the payload folder of a download that carries its own packs: <program's directory>/payload when a bundle.json
+    // is in it, "" if none (the online exe has no such folder)
+    static std::string bundleNextTo(const std::string &programPath);
+    // the stick package that bundle names (what packageFile is for a bundled run), "" when it names none
+    static std::string bundlePackage(const std::string &bundleDir);
     // the lists a channel reads on the site, in order (its own, then what stands in when it has none)
     static std::vector<std::string> channelLists(const std::string &channel);
     // what the channel offers a stick now - for the window to show before the run, and the run itself

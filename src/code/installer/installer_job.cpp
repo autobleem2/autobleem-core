@@ -1,6 +1,7 @@
 #include "installer/installer_job.h"
 #include "installer/install_job_base.h"
 #include "installer/legacy_layout.h"
+#include "installer/local_bundle.h"
 #include "core/services/default_theme.h"
 #include "core/services/extension_catalog.h"
 #include "core/services/processor_catalog.h"
@@ -99,8 +100,10 @@ public:
             package(error) && prepare(error) && legacy(error) && unpack(error) && updateRoms(error) && covers(error);
         if (ok && opt.retroarch)
             ok = retroarch(error);
-        if (ok && opt.bios && (opt.retroarch || info.hasRetroArch))
+        if (ok && opt.bios && !opt.ps1BiosOnly && (opt.retroarch || info.hasRetroArch))
             ok = bios(error);
+        else if (ok && opt.bios && opt.ps1BiosOnly)
+            say("BIOS: PlayStation only - the console copies its own BIOS at every boot, nothing to fetch");
         if (ok && opt.samples)
             ok = samples(error);
         if (ok)
@@ -412,12 +415,12 @@ private:
             say("  RetroArch " + ra.version + " is on the stick already");
         } else {
             say("  RetroArch " + ra.version);
-            const string zip = scratch + "/" + ra.zip.name;
-            if (!downloadVerified(ra.zip, zip, error))
+            string zip;
+            if (!obtain(ra.zip, zip, error))
                 return false;
             if (!installZip(zip, ra.zip.name, error))
                 return false;
-            DirEntry::removeFile(zip);
+            discard(zip);
         }
         if (!writeRetroArchCfg(error))
             return false;
@@ -447,21 +450,24 @@ private:
                 continue;
             }
             say("  " + string(b.name));
-            const string zip = scratch + "/" + b.name + ".zip";
-            if (!download(opt.buildbotUrl + "/" + b.name + ".zip", zip, error)) {
-                say("  could not download " + string(b.name) + ".zip: " + error + " - going on without it");
+            UpdateFile file; // libretro publishes no checksum: a bundle's own manifest carries one
+            file.name = string(b.name) + ".zip";
+            file.url = opt.buildbotUrl + "/" + file.name;
+            string zip;
+            if (!obtain(file, zip, error)) {
+                say("  could not download " + file.name + ": " + error + " - going on without it");
                 error.clear();
                 if (string(b.name) == "assets")
                     assetsReady = false;
                 continue;
             }
             if (!ZipArchive::extract(zip, dest)) {
-                say("  could not unpack " + string(b.name) + ".zip - going on without it");
+                say("  could not unpack " + file.name + " - going on without it");
                 if (string(b.name) == "assets")
                     assetsReady = false;
             }
             error.clear();
-            DirEntry::removeFile(zip);
+            discard(zip);
         }
         return applyTheme(assetsReady, error) && stampVersion(error);
     }
@@ -618,12 +624,12 @@ private:
             return false;
         }
         say("  " + cat.file.name + (cat.count ? " (" + to_string(cat.count) + " " + what + ")" : ""));
-        const string tarball = scratch + "/" + cat.file.name;
-        if (!downloadVerified(cat.file, tarball, error))
+        string tarball;
+        if (!obtain(cat.file, tarball, error))
             return false;
         DirEntry::createDirs(dest);
         bool ok = untar(tarball, dest, error, filter);
-        DirEntry::removeFile(tarball);
+        discard(tarball);
         return ok;
     }
 
@@ -781,8 +787,8 @@ private:
                 error = "samples/latest.json is not what was expected";
             return false;
         }
-        const string tarball = scratch + "/" + cat.file.name;
-        if (!downloadVerified(cat.file, tarball, error))
+        string tarball;
+        if (!obtain(cat.file, tarball, error))
             return false;
         // Games/ and SAMPLES.md as they are; the RetroArch part only with RetroArch on the stick, and laid
         // out the console's way: the pack's RetroArch/roms is RetroArch/roms, its RetroArch/thumbnails is
@@ -792,7 +798,7 @@ private:
         if (ok && withRetroArch)
             ok = untar(tarball, at("RetroArch/roms"), error, TarArchive::Filter(), "RetroArch/roms/") &&
                  untar(tarball, at("RetroArch/bin/thumbnails"), error, TarArchive::Filter(), "RetroArch/thumbnails/");
-        DirEntry::removeFile(tarball);
+        discard(tarball);
         if (!ok)
             return false;
         writeText(at(SamplesMarker), cat.file.name + "\n");
@@ -824,6 +830,18 @@ private:
 };
 
 } // namespace
+
+//*******************************
+// Downloader::fetchResumable / localFile
+//*******************************
+bool Downloader::fetchResumable(const string &url, const string &destFile, const Progress &progress, string &error) {
+    return fetch(url, destFile, progress, error); // cannot continue a part: the file starts over
+}
+
+bool Downloader::localFile(const string &, string &, const Progress &, string &error) {
+    error.clear();
+    return false;
+}
 
 //*******************************
 // Downloader::fetchText
@@ -865,6 +883,24 @@ string InstallerJob::packageNextTo(const string &programPath) {
             best = e.name;
     }
     return best.empty() ? "" : dir + "/" + best;
+}
+
+//*******************************
+// InstallerJob::bundleNextTo / bundlePackage
+//*******************************
+string InstallerJob::bundleNextTo(const string &programPath) {
+    string dir = programPath;
+    replace(dir.begin(), dir.end(), '\\', '/');
+    size_t slash = dir.find_last_of('/');
+    dir = slash == string::npos ? "." : dir.substr(0, slash);
+    return DirEntry::exists(dir + "/payload/bundle.json") ? dir + "/payload" : "";
+}
+
+string InstallerJob::bundlePackage(const string &bundleDir) {
+    ableem::BundleCatalog catalog;
+    if (!catalog.load(normalizeRoot(bundleDir) + "/bundle.json") || catalog.package.empty())
+        return "";
+    return normalizeRoot(bundleDir) + "/" + catalog.package;
 }
 
 //*******************************
@@ -957,7 +993,7 @@ vector<string> InstallerJob::phasesFor(const InstallOptions &options, const Stic
     if (options.retroarch)
         for (const char *p : {"RetroArch", "RetroArch cores", "Runtime libraries", "Apps", "RetroArch assets"})
             phases.push_back(p);
-    if (options.bios && (options.retroarch || info.hasRetroArch))
+    if (options.bios && !options.ps1BiosOnly && (options.retroarch || info.hasRetroArch))
         phases.push_back("BIOS files");
     if (options.samples)
         phases.push_back("Sample games");
@@ -972,19 +1008,35 @@ bool InstallerJob::run(const InstallOptions &input, Downloader &downloader, Inst
                        const ShouldStop &shouldStop, string &error) {
     InstallOptions options = input;
     options.root = normalizeRoot(options.root);
+    // a bundled run: the packs come from the folder (LocalBundle, checked once), the rest from `downloader`
+    LocalBundle bundle(normalizeRoot(options.bundleDir), &downloader);
+    Downloader *source = &downloader;
+    if (!options.bundleDir.empty()) {
+        options.bundleDir = normalizeRoot(options.bundleDir);
+        if (!bundle.load(error))
+            return false;
+        source = &bundle;
+        if (options.packageFile.empty() && options.channel.empty() && !bundle.catalog().package.empty()) {
+            // the package is read before the run starts (its VERSION): checked against the manifest first
+            string checked;
+            if (!bundle.checkedPath(bundle.catalog().package, checked, Downloader::Progress(), error))
+                return false;
+            options.packageFile = checked;
+        }
+    }
     StickInfo info = inspect(options);
     if (!info.isStick) {
         error = "No such drive: " + options.root;
         return false;
     }
     if (!options.retroarchZip.empty()) { // the console's RetroArch update: no package, no channel
-        Run zipRun(options, info, downloader, listener, shouldStop);
+        Run zipRun(options, info, *source, listener, shouldStop);
         return zipRun.go(error);
     }
     if (info.packageVersion.empty() && options.channel.empty()) { // a channel's package is read in the run
         error = info.error.empty() ? "The package has no VERSION" : info.error;
         return false;
     }
-    Run run(options, info, downloader, listener, shouldStop);
+    Run run(options, info, *source, listener, shouldStop);
     return run.go(error);
 }

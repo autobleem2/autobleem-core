@@ -3,6 +3,7 @@
 
 #include "installer/installer_job.h"
 #include "installer/legacy_layout.h"
+#include "installer/local_bundle.h"
 #include "core/services/retroarch_version.h"
 
 #include <ableem/engine/filesystem.h>
@@ -13,9 +14,14 @@
 #include "support/temp_dir.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstring>
+#include <fstream>
 #include <map>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace std;
@@ -1057,4 +1063,428 @@ TEST_CASE("a scratch path that is a file (abupdate ran as /tmp/abupdate) fails a
     CHECK_FALSE(fx.run(error));
     CHECK(error.find("scratch folder") != string::npos);
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF old");
+}
+
+//******************
+// ParallelSite
+//******************
+// a Downloader that may run on several threads and can resume: url -> file, every request recorded
+class ParallelSite : public Downloader {
+public:
+    map<string, string> files;
+    mutex m;
+    vector<string> requests;
+    vector<uint64_t> resumedAt; // the offsets fetchResumable continued from
+    int active = 0, mostActive = 0;
+    int fetchDelayMs = 15;
+    map<string, size_t> cutAt; // url -> bytes written before the connection drops (once)
+
+    bool fetch(const string &url, const string &destFile, const Progress &, string &error) override {
+        return serve(url, destFile, false, error);
+    }
+    bool fetchResumable(const string &url, const string &destFile, const Progress &, string &error) override {
+        return serve(url, destFile, true, error);
+    }
+    int connections() const override { return 8; }
+    int count(const string &part) {
+        lock_guard<mutex> lock(m);
+        int n = 0;
+        for (const string &u : requests)
+            if (u.find(part) != string::npos)
+                n++;
+        return n;
+    }
+
+private:
+    bool serve(const string &url, const string &destFile, bool resume, string &error) {
+        {
+            lock_guard<mutex> lock(m);
+            requests.push_back(url);
+            active++;
+            mostActive = max(mostActive, active);
+        }
+        this_thread::sleep_for(chrono::milliseconds(fetchDelayMs)); // long enough for the others to be in too
+        bool ok = true;
+        {
+            lock_guard<mutex> lock(m);
+            active--;
+            auto it = files.find(url);
+            if (it == files.end()) {
+                error = url + ": HTTP 404";
+                ok = false;
+            } else {
+                ifstream src(it->second, ios::binary);
+                string body((istreambuf_iterator<char>(src)), istreambuf_iterator<char>());
+                const long long have = DirEntry::fileSize(destFile);
+                const bool resuming = resume && have > 0 && static_cast<size_t>(have) <= body.size();
+                if (resuming)
+                    resumedAt.push_back(static_cast<uint64_t>(have));
+                string tail = resuming ? body.substr(static_cast<size_t>(have)) : body;
+                auto cut = cutAt.find(url);
+                if (cut != cutAt.end()) {
+                    tail = tail.substr(0, cut->second);
+                    cutAt.erase(cut);
+                    ok = false;
+                    error = url + ": the connection was lost";
+                }
+                ofstream out(destFile, ios::binary | (resuming ? ios::app : ios::trunc));
+                out << tail;
+            }
+        }
+        return ok;
+    }
+};
+
+// the fixture's BIOS list replaced by `count` files bios/f<i>.bin; returns their contents by path
+map<string, string> useBiosFiles(Fixture &fx, int count) {
+    map<string, string> content;
+    string list = "# the list\n";
+    for (int i = 0; i < count; i++) {
+        const string path = "bios/f" + to_string(i) + ".bin";
+        string body = "bios file " + to_string(i) + " ";
+        while (body.size() < 400)
+            body += body;
+        content[path] = body;
+        fx.tmp.writeFile("site/" + path, body);
+        fx.site.files[string(Site) + "/" + path] = fx.tmp.at("site/" + path);
+        list += Sha256::ofFile(fx.tmp.at("site/" + path)) + " " + to_string(body.size()) + " " + Site + "/" + path +
+                " " + path + "\n";
+    }
+    fx.tmp.writeFile("site/biospack.txt", list);
+    string j = json("biospack.txt", fx.tmp.at("site/biospack.txt"), ", \"count\": " + to_string(count));
+    j.replace(j.find("http://site/biospack.txt"), strlen("http://site/biospack.txt"),
+              string(Site) + "/psc/bios/biospack.txt");
+    fx.tmp.writeFile("site/bios.json", j);
+    // RetroArch is on the stick already: the BIOS phase runs without the RetroArch ones
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "ELF");
+    fx.options.coversJapan = fx.options.coversUsa = fx.options.coversPal = false;
+    fx.options.bios = true;
+    return content;
+}
+
+TEST_CASE("the BIOS files go several at a time on a downloader that allows it") {
+    Fixture fx;
+    const map<string, string> bios = useBiosFiles(fx, 12);
+    ParallelSite site;
+    site.files = fx.site.files;
+    string error;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, site, fx.out, []() { return false; }, error), error);
+    for (const auto &b : bios)
+        CHECK(fx.tmp.readFile("stick/RetroArch/bios/" + b.first) == b.second);
+    CHECK(site.count("/bios/f") == 12);
+    CHECK(site.mostActive > 1);
+    CHECK(site.mostActive <= 4);
+    CHECK(fx.out.said("12 fetched, 0 already there, 0 failed"));
+    CHECK_FALSE(fx.has("RetroArch/bios/bios/f0.bin.part"));
+}
+
+TEST_CASE("the BIOS files on a downloader that is not thread-safe go one at a time, as before") {
+    Fixture fx;
+    const map<string, string> bios = useBiosFiles(fx, 6);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    for (const auto &b : bios)
+        CHECK(fx.tmp.readFile("stick/RetroArch/bios/" + b.first) == b.second);
+    CHECK(fx.out.said("6 fetched, 0 already there, 0 failed"));
+}
+
+TEST_CASE("a part file an interrupted run left is continued, a wrong one is fetched again") {
+    Fixture fx;
+    const map<string, string> bios = useBiosFiles(fx, 4);
+    const string whole0 = bios.at("bios/f0.bin"), whole1 = bios.at("bios/f1.bin");
+    fx.tmp.writeFile("stick/RetroArch/bios/bios/f0.bin.part", whole0.substr(0, 150)); // the true first bytes
+    fx.tmp.writeFile("stick/RetroArch/bios/bios/f1.bin.part", string(150, 'x'));      // not this file's bytes
+    ParallelSite site;
+    site.files = fx.site.files;
+    string error;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, site, fx.out, []() { return false; }, error), error);
+    CHECK(fx.tmp.readFile("stick/RetroArch/bios/bios/f0.bin") == whole0);
+    CHECK(fx.tmp.readFile("stick/RetroArch/bios/bios/f1.bin") == whole1);
+    // f0 went on at byte 150; f1 went on at 150 too, did not check out, and came whole on a second request
+    CHECK(count(site.resumedAt.begin(), site.resumedAt.end(), 150u) == 2);
+    CHECK(site.count("/bios/f1.bin") == 2);
+    CHECK(site.count("/bios/f0.bin") == 1);
+    CHECK(fx.out.said("4 fetched, 0 already there, 0 failed"));
+}
+
+TEST_CASE("a BIOS file whose connection drops keeps its part for the next run, which continues it") {
+    Fixture fx;
+    const map<string, string> bios = useBiosFiles(fx, 3);
+    ParallelSite site;
+    site.files = fx.site.files;
+    site.cutAt[string(Site) + "/bios/f2.bin"] = 100;
+    string error;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, site, fx.out, []() { return false; }, error), error);
+    CHECK(fx.out.said("could not fetch bios/f2.bin"));
+    CHECK(fx.out.said("2 fetched, 0 already there, 1 failed"));
+    CHECK_FALSE(fx.has("RetroArch/bios/bios/f2.bin"));
+    CHECK(fx.tmp.readFile("stick/RetroArch/bios/bios/f2.bin.part") == bios.at("bios/f2.bin").substr(0, 100));
+
+    Recorder again;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, site, again, []() { return false; }, error), error);
+    CHECK(again.said("1 fetched, 2 already there, 0 failed"));
+    CHECK(fx.tmp.readFile("stick/RetroArch/bios/bios/f2.bin") == bios.at("bios/f2.bin"));
+    CHECK(count(site.resumedAt.begin(), site.resumedAt.end(), 100u) == 1);
+    CHECK_FALSE(fx.has("RetroArch/bios/bios/f2.bin.part"));
+}
+
+TEST_CASE("a file a verified pass recorded is kept on its size; no record, it is read through again") {
+    Fixture fx;
+    const map<string, string> bios = useBiosFiles(fx, 3);
+    ParallelSite site;
+    site.files = fx.site.files;
+    string error;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, site, fx.out, []() { return false; }, error), error);
+    REQUIRE(fx.has("RetroArch/bios/.biospack-verified"));
+    const string record = fx.tmp.readFile("stick/RetroArch/bios/.biospack-verified");
+    CHECK(record.find(" bios/f1.bin\n") != string::npos);
+
+    // the same size, other bytes: the record says "verified", so the second pass trusts the size
+    string wrong = bios.at("bios/f1.bin");
+    wrong[3] = '#';
+    fx.tmp.writeFile("stick/RetroArch/bios/bios/f1.bin", wrong);
+    Recorder again;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, site, again, []() { return false; }, error), error);
+    CHECK(again.said("0 fetched, 3 already there, 0 failed"));
+    CHECK(site.count("/bios/f") == 3); // only the first pass fetched
+
+    // without the record every file is checked, and the damaged one comes again
+    DirEntry::removeFile(fx.root + "/RetroArch/bios/.biospack-verified");
+    Recorder third;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, site, third, []() { return false; }, error), error);
+    CHECK(third.said("1 fetched, 2 already there, 0 failed"));
+    CHECK(fx.tmp.readFile("stick/RetroArch/bios/bios/f1.bin") == bios.at("bios/f1.bin"));
+}
+
+TEST_CASE("a stop request during the BIOS files stops the run and the workers") {
+    Fixture fx;
+    useBiosFiles(fx, 12);
+    ParallelSite site;
+    site.files = fx.site.files;
+    string error;
+    // the package and the covers poll too; the BIOS phase is the last: stop once it has begun
+    CHECK_FALSE(InstallerJob::run(fx.options, site, fx.out, [&]() { return site.count("/bios/f") >= 3; }, error));
+    CHECK(error == "Stopped");
+    CHECK(site.count("/bios/f") < 12);
+    CHECK_FALSE(fx.has("RetroArch/bios/.biospack-verified"));
+}
+
+TEST_CASE("PlayStation-only BIOS: nothing is fetched and the phase is left out, on the console too") {
+    Fixture fx;
+    fx.options.retroarch = true;
+    fx.options.bios = true;
+    fx.options.ps1BiosOnly = true;
+    StickInfo before = InstallerJob::inspect(fx.options);
+    const vector<string> phases = InstallerJob::phasesFor(fx.options, before);
+    CHECK(find(phases.begin(), phases.end(), "BIOS files") == phases.end());
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.out.phases == phases);
+    CHECK(fx.out.said("BIOS: PlayStation only"));
+    CHECK(fx.site.count("/psc/bios/") == 0);
+    CHECK(fx.site.count("/bios/") == 0);
+    CHECK_FALSE(fx.has("RetroArch/bios/scph5501.bin"));
+    CHECK(fx.has("RetroArch/bin/retroarch")); // RetroArch itself was installed as asked
+}
+
+//******************
+// the installer download with its own packs (LocalBundle)
+//******************
+namespace {
+
+// the fixture's site files laid out as a bundle folder (everything but the BIOS and the channel lists), the
+// package at its root, bundle.json over them; returns the folder
+string makeBundle(Fixture &fx, const string &name = "payload") {
+    const string dir = fx.tmp.makeSubDir(name);
+    string files;
+    auto add = [&](const string &rel, const string &from) {
+        DirEntry::createDirs((dir + "/" + rel).substr(0, (dir + "/" + rel).find_last_of('/')));
+        REQUIRE(DirEntry::copyFile(from, dir + "/" + rel));
+        files += string(files.empty() ? "" : ",") + "{\"path\": \"" + rel +
+                 "\", \"size\": " + to_string(DirEntry::fileSize(from)) + ", \"sha256\": \"" + Sha256::ofFile(from) +
+                 "\"}";
+    };
+    for (const auto &f : fx.site.files) {
+        const string rel = LocalBundle::urlPath(f.first);
+        if (rel.rfind("psc/bios/", 0) == 0 || rel.rfind("bios/", 0) == 0 || rel.rfind("releases/", 0) == 0 ||
+            rel.rfind("UpdateRoms-", 0) == 0)
+            continue;
+        add(rel, f.second);
+    }
+    const string package = fx.options.packageFile.substr(fx.options.packageFile.find_last_of('/') + 1);
+    add(package, fx.options.packageFile);
+    fx.tmp.writeFile(name + "/bundle.json", "{\"format\": 1, \"version\": \"v2.0.0-pre0-abc1234\", \"package\": \"" +
+                                                package + "\", \"files\": [" + files + "]}");
+    return dir;
+}
+
+// a site that has only what a bundle does not carry: the BIOS files
+struct BiosOnlySite : FakeSite {
+    explicit BiosOnlySite(const FakeSite &all) {
+        for (const auto &f : all.files)
+            if (f.first.find("bios/") != string::npos)
+                files[f.first] = f.second;
+    }
+};
+
+} // namespace
+
+TEST_CASE("LocalBundle: a URL is answered from the folder by its path, anything else by the downloader behind it") {
+    CHECK(LocalBundle::urlPath("https://autobleem.retromenele.pl/psc/cores/cores-psc-1.tar.gz") ==
+          "psc/cores/cores-psc-1.tar.gz");
+    CHECK(LocalBundle::urlPath("http://site/a%20b/c.zip?x=1#y") == "a b/c.zip");
+    CHECK(LocalBundle::urlPath("bundle:///autobleem-psc-v1.tar.gz") == "autobleem-psc-v1.tar.gz");
+    CHECK(LocalBundle::urlPath("psc/x.json") == "psc/x.json"); // already a path
+    CHECK(LocalBundle::urlPath("http://host").empty());
+
+    Fixture fx;
+    const string dir = makeBundle(fx);
+    BiosOnlySite inner(fx.site);
+    LocalBundle bundle(dir, &inner);
+    string error;
+    REQUIRE_MESSAGE(bundle.load(error), error);
+    string text;
+    REQUIRE_MESSAGE(bundle.fetchText(string(Site) + "/psc/cores/latest.json", fx.tmp.at("t.json"), text, error), error);
+    CHECK(text.find("cores-psc-20260920.tar.gz") != string::npos);
+    CHECK(inner.fetched.empty());
+    // what the bundle does not hold goes behind it
+    REQUIRE_MESSAGE(bundle.fetchText(string(Site) + "/psc/bios/biospack.txt", fx.tmp.at("t.json"), text, error), error);
+    CHECK(inner.count("biospack.txt") == 1);
+    // a file the downloader holds is handed out by path, no copy
+    string path;
+    CHECK(bundle.localFile(string(Site) + "/cores-psc-20260920.tar.gz", path, Downloader::Progress(), error));
+    CHECK(path == dir + "/cores-psc-20260920.tar.gz");
+    CHECK_FALSE(bundle.localFile(string(Site) + "/psc/bios/biospack.txt", path, Downloader::Progress(), error));
+    CHECK(error.empty());
+    // with nothing behind it a stranger URL is a plain failure
+    LocalBundle alone(dir, nullptr);
+    REQUIRE(alone.load(error));
+    CHECK_FALSE(alone.fetch(string(Site) + "/bios/scph5501.bin", fx.tmp.at("x.bin"), Downloader::Progress(), error));
+    CHECK(error.find("not in this download") != string::npos);
+    // no bundle.json
+    LocalBundle none(fx.tmp.at("empty"), nullptr);
+    CHECK_FALSE(none.load(error));
+}
+
+TEST_CASE("a bundled run installs everything from the folder: no pack goes over the net, each is checked once") {
+    Fixture fx;
+    fx.options.retroarch = true;
+    fx.options.bios = true;
+    fx.options.samples = true;
+    const string dir = makeBundle(fx);
+    fx.options.packageFile.clear(); // the bundle's own package
+    fx.options.bundleDir = dir;
+    BiosOnlySite site(fx.site);
+    string error;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, site, fx.out, []() { return false; }, error), error);
+    CHECK(fx.out.said("in this download, checked against its manifest"));
+    CHECK(fx.tmp.readFile("stick/VERSION") == "v2.0.0-pre0-abc1234\n");
+    CHECK(fx.tmp.readFile("stick/Autobleem/bin/db/coversJ.db") == "sqlite coversJ.db");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF retroarch");
+    CHECK(fx.has("RetroArch/bin/cores/snes9x_libretro.so"));
+    CHECK(fx.has("Autobleem/lib/modules/xpad.ko"));
+    CHECK(fx.has("Apps/doom/run.sh"));
+    CHECK(fx.has("RetroArch/bin/assets/assets-file.txt"));
+    CHECK(fx.has("RetroArch/bin/shaders/shaders_glsl-file.txt"));
+    CHECK(fx.has("Games/Tetrade/Tetrade.cue"));
+    // only the BIOS list and its one file came over the net (the other is 404 there, as in the online tests)
+    for (const string &u : site.fetched)
+        CHECK_MESSAGE((u.find("bios") != string::npos || u.find("releases/") != string::npos), u); // UpdateRoms lookups
+    CHECK(fx.tmp.readFile("stick/RetroArch/bios/scph5501.bin") == "bios!");
+    // nothing of the bundle was copied into the scratch folder, and all of it is still where it was
+    CHECK_FALSE(DirEntry::exists(fx.options.scratchDir + "/cores-psc-20260920.tar.gz"));
+    CHECK_FALSE(DirEntry::exists(fx.options.scratchDir + "/retroarch-psc-v1.22.2-4.zip"));
+    CHECK(DirEntry::exists(dir + "/cores-psc-20260920.tar.gz"));
+    CHECK(DirEntry::exists(dir + "/buildbot/assets.zip"));
+}
+
+TEST_CASE("a bundled run needs no net for what the bundle holds: a downloader that always fails is never asked") {
+    Fixture fx;
+    fx.options.retroarch = true;
+    const string dir = makeBundle(fx);
+    fx.options.packageFile.clear();
+    fx.options.bundleDir = dir;
+    FakeSite offline; // every URL is a 404
+    string error;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, offline, fx.out, []() { return false; }, error), error);
+    CHECK(fx.has("RetroArch/bin/cores/snes9x_libretro.so"));
+    CHECK(fx.has("Autobleem/bin/db/coversP.db"));
+    // the only lookups that left the bundle: UpdateRoms (no copy next to the package, none on this "site")
+    for (const string &u : offline.fetched)
+        CHECK_MESSAGE(u.find("releases/") != string::npos, u);
+    CHECK(fx.out.said("no UpdateRoms package on the site"));
+}
+
+TEST_CASE("a bundled run takes UpdateRoms from the folder next to the package") {
+    Fixture fx;
+    const string dir = makeBundle(fx);
+    fx.tmp.writeFile("payload/UpdateRoms/UpdateRoms.exe", "MZ from the bundle");
+    fx.options.packageFile.clear();
+    fx.options.bundleDir = dir;
+    FakeSite offline;
+    string error;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, offline, fx.out, []() { return false; }, error), error);
+    CHECK(fx.tmp.readFile("stick/UpdateRoms/UpdateRoms.exe") == "MZ from the bundle");
+    CHECK(offline.fetched.empty());
+}
+
+TEST_CASE("a bundle file that is damaged or cut short stops the run before it is used") {
+    Fixture fx;
+    fx.options.retroarch = true;
+    const string dir = makeBundle(fx);
+    fx.options.packageFile.clear();
+    fx.options.bundleDir = dir;
+    FakeSite offline;
+    string error;
+
+    SUBCASE("a flipped byte") {
+        string body = fx.tmp.readFile("payload/cores-psc-20260920.tar.gz");
+        body[body.size() / 2] ^= 0x55;
+        fx.tmp.writeFile("payload/cores-psc-20260920.tar.gz", body);
+        CHECK_FALSE(InstallerJob::run(fx.options, offline, fx.out, []() { return false; }, error));
+        CHECK(error.find("does not match the checksum") != string::npos);
+        CHECK_FALSE(fx.has("RetroArch/bin/cores/snes9x_libretro.so"));
+    }
+    SUBCASE("a short file") {
+        string body = fx.tmp.readFile("payload/apps-psc-20260920.tar.gz");
+        fx.tmp.writeFile("payload/apps-psc-20260920.tar.gz", body.substr(0, body.size() / 2));
+        CHECK_FALSE(InstallerJob::run(fx.options, offline, fx.out, []() { return false; }, error));
+        CHECK(error.find("wrong size") != string::npos);
+    }
+    SUBCASE("a file the zip lost") {
+        DirEntry::removeFile(dir + "/libs-psc-20260920.tar.gz");
+        CHECK_FALSE(InstallerJob::run(fx.options, offline, fx.out, []() { return false; }, error));
+        CHECK(error.find("is missing from this download") != string::npos);
+    }
+    SUBCASE("a damaged package") {
+        const string name = "autobleem-psc-v2.0.0-pre0-abc1234.tar.gz";
+        string body = fx.tmp.readFile("payload/" + name);
+        body[body.size() / 2] ^= 0x55;
+        fx.tmp.writeFile("payload/" + name, body);
+        CHECK_FALSE(InstallerJob::run(fx.options, offline, fx.out, []() { return false; }, error));
+        CHECK(error.find("does not match the checksum") != string::npos);
+        CHECK_FALSE(fx.has("Autobleem"));
+    }
+}
+
+TEST_CASE("a folder without a usable bundle.json is an error, an explicit package or channel overrides the bundle's") {
+    Fixture fx;
+    const string dir = makeBundle(fx);
+    FakeSite site;
+    string error;
+    InstallOptions o = fx.options;
+    o.bundleDir = fx.tmp.at("nowhere");
+    CHECK_FALSE(InstallerJob::run(o, site, fx.out, []() { return false; }, error));
+    CHECK(error.find("no bundle.json") != string::npos);
+
+    // --package names a file of its own: used as it is, the bundle still serves the packs
+    o = fx.options;
+    o.bundleDir = dir;
+    REQUIRE_MESSAGE(InstallerJob::run(o, site, fx.out, []() { return false; }, error), error);
+    CHECK(fx.tmp.readFile("stick/VERSION") == "v2.0.0-pre0-abc1234\n");
+
+    CHECK(InstallerJob::bundlePackage(dir) == dir + "/autobleem-psc-v2.0.0-pre0-abc1234.tar.gz");
+    CHECK(InstallerJob::bundlePackage(fx.tmp.at("nowhere")).empty());
+    CHECK(InstallerJob::bundleNextTo(fx.tmp.at("AutoBleemInstaller.exe")) == fx.tmp.path() + "/payload");
+    CHECK(InstallerJob::bundleNextTo(fx.tmp.at("sub/x.exe")).empty());
 }
