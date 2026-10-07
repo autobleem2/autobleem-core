@@ -208,3 +208,11 @@ TEST_CASE("the user's own screenshot wins, newest first, then the save state's p
     lookup.clearCache();
     CHECK(lookup.findLocalScreenshot("/games/Wild Arms (USA).cue") == t.screenshots + "/Wild Arms (USA).png");
 }
+
+TEST_CASE("a zipped game's picture is looked up under the entry's name, the way RetroArch names it") {
+    ThumbTree t;
+    ThumbnailLookup lookup;
+    t.touch(t.states + "/Entry Name.state.auto.png");
+    CHECK(lookup.findLocalScreenshot("/x/Archive Name.zip#Entry Name.md") == t.states + "/Entry Name.state.auto.png");
+    CHECK(lookup.findLocalScreenshot("/x/Archive Name.zip#Other.md") == "");
+}

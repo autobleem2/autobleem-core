@@ -637,6 +637,34 @@ string DirEntry::getFileNameWithoutExtension(const string &filename) {
 }
 
 //*******************************
+// DirEntry::getRetroArchContentBase
+//*******************************
+// RetroArch (runloop_path_set_basename, built with HAVE_COMPRESSION): for "dir/comp.7z#folder/game.ext" the basename
+// is "game" - the part after the archive delimiter. The delimiter is the first '#' directly after ".zip", ".apk" or
+// ".7z" (any case); a '#' elsewhere in a name is an ordinary character.
+string DirEntry::getRetroArchContentBase(const string &contentPath) {
+    string name = contentPath;
+    for (size_t hash = name.find('#'); hash != string::npos; hash = name.find('#', hash + 1)) {
+        string before = name.substr(0, hash);
+        std::transform(before.begin(), before.end(), before.begin(),
+                       [](unsigned char c) { return static_cast<char>(tolower(c)); });
+        const auto endsWith = [&before](const string &suffix) {
+            return before.size() > suffix.size() && before.compare(before.size() - suffix.size(), suffix.size(),
+                                                                   suffix) == 0;
+        };
+        if (endsWith(".zip") || endsWith(".apk") || endsWith(".7z")) {
+            name = name.substr(hash + 1);
+            break;
+        }
+    }
+    const size_t slash = name.find_last_of('/');
+    if (slash != string::npos)
+        name = name.substr(slash + 1);
+    const size_t dot = name.find_last_of('.');
+    return dot == string::npos || dot == 0 ? name : name.substr(0, dot);
+}
+
+//*******************************
 // DirEntry::cueToBinList
 //*******************************
 // Return the bin list declared in a cue file

@@ -132,3 +132,22 @@ TEST_CASE("liveFileSize sees what a writer that still has the file open has flus
     CHECK(DirEntry::liveFileSize(path) == 128 * 1024);
     CHECK(DirEntry::liveFileSize(tmp.at("absent.part")) == -1);
 }
+
+TEST_CASE("getRetroArchContentBase: the content name RetroArch builds its state names from") {
+    // loose files: the file name without its last extension, as before
+    CHECK(DirEntry::getRetroArchContentBase("/roms/Sonic The Hedgehog.md") == "Sonic The Hedgehog");
+    CHECK(DirEntry::getRetroArchContentBase("/roms/Wild Arms (USA) v1.1.cue") == "Wild Arms (USA) v1.1");
+    CHECK(DirEntry::getRetroArchContentBase("/roms/Game") == "Game");
+    CHECK(DirEntry::getRetroArchContentBase("/roms/.hidden") == ".hidden");
+    CHECK(DirEntry::getRetroArchContentBase("/roms/Game #1.md") == "Game #1"); // a '#' that is not an archive's
+    CHECK(DirEntry::getRetroArchContentBase("") == "");
+
+    // an archive entry: the entry's name, not the archive's (RetroArch: runloop_path_set_basename)
+    CHECK(DirEntry::getRetroArchContentBase("/roms/Pack.zip#Sonic.md") == "Sonic");
+    CHECK(DirEntry::getRetroArchContentBase("/roms/Pack.7z#Sonic.md") == "Sonic");
+    CHECK(DirEntry::getRetroArchContentBase("/roms/Pack.ZIP#Sonic.md") == "Sonic");
+    CHECK(DirEntry::getRetroArchContentBase("/roms/Pack.apk#Sonic.md") == "Sonic");
+    CHECK(DirEntry::getRetroArchContentBase("/roms/Same.zip#Same.md") == "Same");
+    CHECK(DirEntry::getRetroArchContentBase("/roms/Pack.zip#folder/Sonic 2.v1.md") == "Sonic 2.v1");
+    CHECK(DirEntry::getRetroArchContentBase("/roms/My #1 Pack.zip#Sonic.md") == "Sonic");
+}
