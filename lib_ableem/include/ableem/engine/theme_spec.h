@@ -76,11 +76,21 @@ struct ThemeRect {
 // ThemeMusic
 //******************
 // "music": null is a theme that plays no music at all (theme.ini's Loop=-1): set with none.
+// "languages" maps a launcher language (the language file's name, config.ini's `language` value: "Polski") to
+// the track played in that language instead of `file`. An entry whose file is missing is dropped by
+// resolveFiles(), so a language with no (usable) entry plays `file`.
 struct ThemeMusic {
     std::string file;
     bool loop = true;
     bool none = false;
     bool set = false;
+    std::map<std::string, std::string> languages;
+
+    // the track for `language`: its entry, or `file`
+    const std::string &fileFor(const std::string &language) const {
+        auto it = languages.find(language);
+        return it == languages.end() || it->second.empty() ? file : it->second;
+    }
 };
 
 //******************

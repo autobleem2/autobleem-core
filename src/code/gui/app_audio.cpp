@@ -7,6 +7,8 @@
 #include "../core/main.h"
 #include "../core/model/timing.h" // TicksPerSecond
 
+#include <ableem/engine/log.h>
+
 #include <unistd.h>
 
 using namespace std;
@@ -23,12 +25,23 @@ void AppAudio::playMusic() {
         return; // a silent theme stays silent, the user's own track included
 
     if (!customMusic) {
-        music = ableem::Music::load(themeMusic.file);
+        const string track = themeTrack();
+        PLOG_INFO << "Music: " << track << " (language " << config_.inifile.values["language"] << ")";
+        music = ableem::Music::load(track);
         music.play(themeMusic.loop ? -1 : 0);
     } else {
         music = ableem::Music::load(Env::getWorkingPath() + sep + "music/" + musicPath);
         music.play(-1);
     }
+}
+
+//*******************************
+// AppAudio::themeTrack
+//*******************************
+// the theme's track for the launcher's current language (config.ini's `language`): its per-language entry, or the
+// theme's own file
+string AppAudio::themeTrack() const {
+    return theme_.music().fileFor(config_.inifile.values["language"]);
 }
 
 //*******************************
@@ -45,7 +58,7 @@ AppAudio::MusicState AppAudio::wantedMusicState() const {
     MusicState next;
     const ableem::ThemeMusic &themeMusic = theme_.music();
     next.custom = config_.inifile.values["music"] != "--";
-    next.path = next.custom ? config_.inifile.values["music"] : themeMusic.file;
+    next.path = next.custom ? config_.inifile.values["music"] : themeTrack();
     next.freq = DirEntry::getFileExtension(next.path) == "ogg" ? 44100 : 32000;
     next.enabled = config_.inifile.values["nomusic"] != "true" && !themeMusic.none;
     next.loops = (next.custom || themeMusic.loop) ? -1 : 0;

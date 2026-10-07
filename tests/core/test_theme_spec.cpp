@@ -409,6 +409,96 @@ TEST_CASE("resolveFiles: the theme's own file, else the fallback's, else nothing
 }
 
 //*******************************
+// music.languages: a track per launcher language
+//*******************************
+TEST_CASE("music.languages: a round trip, the pick per language, English falls back to file") {
+    TempDir tmp("theme_spec");
+    ThemeSpec out;
+    out.music.set = true;
+    out.music.file = "ab.ogg";
+    out.music.languages["Polski"] = "ab-pl.ogg";
+    REQUIRE(out.save(tmp.at("theme.json")));
+    CHECK(tmp.readFile("theme.json").find("\"languages\"") != string::npos);
+
+    ThemeSpec in;
+    REQUIRE(in.load(tmp.at("theme.json")));
+    CHECK(in.music.file == "ab.ogg");
+    REQUIRE(in.music.languages.size() == 1);
+    CHECK(in.music.fileFor("Polski") == "ab-pl.ogg");
+    CHECK(in.music.fileFor("English") == "ab.ogg"); // no entry
+    CHECK(in.music.fileFor("") == "ab.ogg");
+    CHECK(in.referencedFiles() == std::vector<string>{"ab.ogg", "ab-pl.ogg"});
+}
+
+TEST_CASE("music.languages: bad entries are ignored, a theme without them writes no key") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("theme.json", "{ \"music\": { \"file\": \"a.ogg\", \"languages\": { \"Polski\": 5, \"Deutsch\": \"\","
+                                " \"Italiano\": \"it.ogg\" } } }");
+    ThemeSpec in;
+    REQUIRE(in.load(tmp.at("theme.json")));
+    CHECK(in.music.languages.size() == 1);
+    CHECK(in.music.fileFor("Polski") == "a.ogg");
+    CHECK(in.music.fileFor("Italiano") == "it.ogg");
+
+    tmp.writeFile("theme.json", "{ \"music\": { \"file\": \"a.ogg\", \"languages\": [\"x\"] } }");
+    ThemeSpec arr;
+    REQUIRE(arr.load(tmp.at("theme.json")));
+    CHECK(arr.music.languages.empty());
+
+    ThemeSpec plain = fullSpec();
+    REQUIRE(plain.save(tmp.at("out.json")));
+    CHECK(tmp.readFile("out.json").find("\"languages\"") == string::npos);
+}
+
+TEST_CASE("music.languages: resolved against the theme's own folder, a missing file drops the entry") {
+    TempDir tmp("theme_spec");
+    tmp.makeSubDir("mine");
+    tmp.makeSubDir("base");
+    tmp.writeFile("mine/ab.ogg", "x");
+    tmp.writeFile("mine/ab-pl.ogg", "x");
+    tmp.writeFile("base/ab-de.ogg", "x"); // only the fallback has it: not used for a language entry
+
+    ThemeSpec base;
+    base.music.set = true;
+    base.music.file = "ab-de.ogg";
+
+    ThemeSpec mine;
+    mine.music.set = true;
+    mine.music.file = "ab.ogg";
+    mine.music.languages["Polski"] = "ab-pl.ogg";
+    mine.music.languages["Deutsch"] = "ab-de.ogg"; // not in the theme's folder
+    mine.music.languages["Italiano"] = "gone.ogg";
+    mine.mergeOver(base);
+    mine.resolveFiles(tmp.at("mine"), base, tmp.at("base"));
+
+    CHECK(mine.music.fileFor("Polski") == tmp.at("mine/ab-pl.ogg"));
+    CHECK(mine.music.fileFor("Deutsch") == tmp.at("mine/ab.ogg")); // dropped: the theme's file
+    CHECK(mine.music.fileFor("Italiano") == tmp.at("mine/ab.ogg"));
+    CHECK(mine.music.languages.size() == 1);
+}
+
+TEST_CASE("music.languages: inherited with the music object, silent music drops them") {
+    ThemeSpec base = fullSpec();
+    base.music.languages["Polski"] = "pl.ogg";
+
+    ThemeSpec none; // sets nothing: takes the base's music object, languages included
+    none.mergeOver(base);
+    CHECK(none.music.fileFor("Polski") == "pl.ogg");
+
+    ThemeSpec own; // its own music object stays its own
+    own.music.set = true;
+    own.music.file = "own.ogg";
+    own.mergeOver(base);
+    CHECK(own.music.fileFor("Polski") == "own.ogg");
+
+    ThemeSpec silent;
+    silent.music.set = true;
+    silent.music.none = true;
+    silent.mergeOver(base);
+    CHECK(silent.music.languages.empty());
+}
+
+//*******************************
 // launcher.frames (ab_gui G4a)
 //*******************************
 namespace {
