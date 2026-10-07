@@ -67,5 +67,6 @@ private:
         }
     };
     MusicState wantedMusicState() const;
+    std::string themeTrack() const;
     MusicState playing_; // what loadTheme() last started (nothing yet: freq 0)
 };

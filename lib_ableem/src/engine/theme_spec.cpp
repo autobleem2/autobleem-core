@@ -278,6 +278,12 @@ bool ThemeSpec::load(const string &path) {
             const json *loop = child(*m, "loop");
             if (loop && loop->is_boolean())
                 music.loop = loop->get<bool>();
+            const json *languages = child(*m, "languages");
+            if (languages && languages->is_object()) {
+                for (auto it = languages->begin(); it != languages->end(); ++it)
+                    if (it.value().is_string() && !it.value().get<string>().empty())
+                        music.languages[it.key()] = it.value().get<string>();
+            }
         }
     }
 
@@ -421,6 +427,12 @@ bool ThemeSpec::save(const string &path) const {
             ordered_json m = ordered_json::object();
             m["file"] = music.file;
             m["loop"] = music.loop;
+            if (!music.languages.empty()) {
+                ordered_json l = ordered_json::object();
+                for (const auto &entry : music.languages)
+                    l[entry.first] = entry.second;
+                m["languages"] = l;
+            }
             j["music"] = m;
         }
     }
@@ -644,8 +656,10 @@ void ThemeSpec::mergeOver(const ThemeSpec &base) {
     vector<const string *> theirs = base.fileFields();
     for (size_t i = 0; i < mine.size(); i++)
         mergeStr(*mine[i], *theirs[i]);
-    if (music.none)
+    if (music.none) {
         music.file = ""; // "music": null inherits no file
+        music.languages.clear();
+    }
 }
 
 //*******************************
@@ -664,6 +678,18 @@ void ThemeSpec::resolveFiles(const string &dir, const ThemeSpec &fallback, const
             file = "";
         }
     }
+    // the per-language tracks: the theme's own folder only (the default theme has none to stand in); a missing
+    // file drops the entry, so that language plays the theme's `file` (logged once, here, per theme load)
+    for (auto it = music.languages.begin(); it != music.languages.end();) {
+        if (DirEntry::exists(dir + sep + it->second)) {
+            it->second = dir + sep + it->second;
+            ++it;
+        } else {
+            PLOG_INFO << "Theme music for language " << it->first << ": " << it->second << " is missing - using "
+                      << (music.file.empty() ? string("the default track") : music.file);
+            it = music.languages.erase(it);
+        }
+    }
 }
 
 //*******************************
@@ -674,6 +700,9 @@ vector<string> ThemeSpec::referencedFiles() const {
     for (const string *f : fileFields())
         if (!f->empty())
             files.push_back(*f);
+    for (const auto &entry : music.languages)
+        if (!entry.second.empty())
+            files.push_back(entry.second);
     return files;
 }
 
