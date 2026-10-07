@@ -441,6 +441,21 @@ TEST_CASE("RetroArch: preparing a launch clears the last run's state and, for a 
     CHECK_FALSE(ableem::DirEntry::exists(r.autoState()));
 }
 
+TEST_CASE("RetroArch: a zipped game's state and slot carry the entry's name, not the archive's (BUG-53)") {
+    for (const char *archive : {"Pack Name.zip", "Pack Name.7z"}) {
+        RaResume r;
+        r.game->image_path = r.tmp.at(string("RetroArch/roms/") + archive + "#Entry Name.md");
+        CHECK(r.service.raAutoState(*r.game) == r.tmp.at("RetroArch/bin/savestates/Entry Name.state.auto"));
+
+        r.tmp.writeFile("RetroArch/bin/savestates/Entry Name.state.auto", "zip state");
+        CHECK(r.service.raStateWritten(*r.game));
+        r.service.saveAfterLaunch(*r.game, 1);
+        CHECK(r.service.slotIsActive(*r.game, 1));
+        CHECK(ableem::DirEntry::exists(
+            r.tmp.at("RetroArch/bin/ab-states/picodrive_libretro/Entry Name/sstates/Entry Name.001.res")));
+    }
+}
+
 TEST_CASE("RetroArch: removing a slot clears its state and picture") {
     RaResume r;
     r.raExitsHavingWritten("state");

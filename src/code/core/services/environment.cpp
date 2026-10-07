@@ -285,6 +285,51 @@ string Env::takeNewCrashLogs() {
     return newest;
 }
 
+namespace {
+// the console's own logs (rc scripts): standby.log, poweroff_reason, update.log and watch.log are written to
+// System/Logs on the stick, watch.log also into the runtime dir; a platform without one simply has no file
+const char *const kConsoleLogs[] = {"standby.log", "poweroff_reason", "watch.log", "update.log"};
+const size_t kConsoleLogLines = 300;
+
+// the last lines of a text file, "" when it is missing or empty
+string tailOfFile(const string &path, size_t lines) {
+    string text;
+    if (!DirEntry::readFile(path, text) || text.empty())
+        return "";
+    size_t start = text.size();
+    size_t seen = 0;
+    if (text.back() == '\n')
+        --start; // the last line's own newline ends it, it does not start another
+    while (start > 0) {
+        if (text[start - 1] == '\n' && ++seen == lines)
+            break;
+        --start;
+    }
+    return text.substr(start);
+}
+
+// copies the tail of every console log found into dir; the run's own copy (RAM) keeps the plain name, the
+// stick's one gets a "stick-" prefix when both exist. Returns how many files were written.
+int copyConsoleLogs(const string &dir) {
+    int copied = 0;
+    for (const char *name : kConsoleLogs) {
+        const string sources[] = {string(name) == "watch.log" ? Env::getPathToRuntimeDir() + sep + name : "",
+                                  Env::getPathToPersistentLogsDir() + sep + name};
+        for (const string &source : sources) {
+            const string tail = source.empty() ? "" : tailOfFile(source, kConsoleLogLines);
+            if (tail.empty())
+                continue;
+            string target = dir + sep + name;
+            if (DirEntry::exists(target))
+                target = dir + sep + "stick-" + name;
+            ofstream(target, ios::binary) << tail;
+            ++copied;
+        }
+    }
+    return copied;
+}
+} // namespace
+
 string Env::copyLogsToStick() {
     if (keepLogs())
         return "";
@@ -301,6 +346,7 @@ string Env::copyLogsToStick() {
     for (const DirEntry &entry : DirEntry::diru_FilesOnly(getPathToLogsDir()))
         if (DirEntry::copy(getPathToLogsDir() + sep + entry.name, dir + sep + entry.name))
             ++copied;
+    copied += copyConsoleLogs(dir);
     for (const DirEntry &entry : DirEntry::diru_DirsOnly(keep)) {
         if (entry.name.compare(0, 6, "saved-") == 0 && atoi(entry.name.c_str() + 6) <= newest - 2)
             DirEntry::removeDirAndContents(keep + sep + entry.name);

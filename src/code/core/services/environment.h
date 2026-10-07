@@ -166,7 +166,9 @@ struct Environment : ableem::Environment {
     // none. Every .new marker is removed, so each crash is announced once.
     static std::string takeNewCrashLogs();
     // Hardware Information's "Save logs": this run's logs from RAM to System/Logs/saved-<n>/ (the last three
-    // kept) - a tester's way to hand over a session that did not crash. Returns the folder's name; "" when
+    // kept) - a tester's way to hand over a session that did not crash - with the last 300 lines of the console's
+    // own logs (System/Logs: standby.log, poweroff_reason, watch.log, update.log; a stick's copy of a name the
+    // run already has is saved as stick-<name>; missing ones are skipped). Returns the folder's name; "" when
     // the logs are on the stick already (keepLogs()) or nothing could be copied.
     static std::string copyLogsToStick();
     // after setKeepLogs(): makes the logs dir, puts it and the runtime dir into AB_LOG_DIR / AB_RUNTIME_DIR

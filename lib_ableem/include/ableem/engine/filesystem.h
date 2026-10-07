@@ -122,6 +122,9 @@ public:
     static std::string getDirNameFromPath(const std::string &path);
     static std::string getFileExtension(const std::string &fileName); // without the "."
     static std::string getFileNameWithoutExtension(const std::string &filename);
+    // the name RetroArch builds its state, screenshot and save names from: the content file without its last
+    // extension; for an archive entry ("a.zip#b.md") the entry's name ("b"), never the archive's
+    static std::string getRetroArchContentBase(const std::string &contentPath);
     static std::string findFirstFile(std::string ext, std::string path);
     static std::vector<std::string> cueToBinList(std::string cueFile);
     static bool isPBPFile(std::string path);

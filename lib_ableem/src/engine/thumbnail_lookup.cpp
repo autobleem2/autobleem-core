@@ -256,7 +256,7 @@ string ThumbnailLookup::findBoxArt(const string &dbName, const string &title, co
 string ThumbnailLookup::findLocalScreenshot(const string &romPath) {
     if (romPath.empty())
         return "";
-    const string base = DirEntry::getFileNameWithoutExtension(DirEntry::getFileNameFromPath(romPath));
+    const string base = DirEntry::getRetroArchContentBase(romPath);
     if (base.empty())
         return "";
 

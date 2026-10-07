@@ -13,6 +13,8 @@
 #include "../support/temp_dir.h"
 #include "../support/tree_snapshot.h"
 
+#include <algorithm>
+
 #include "core/services/app_manifest.h"
 #include "core/services/app_settings.h"
 #include "core/services/config.h"
@@ -188,6 +190,33 @@ TEST_CASE("Save logs copies this run's logs from RAM to System/Logs/saved-<n>, t
 
     Env::setKeepLogs(true); // on the stick already: nothing to copy
     CHECK(Env::copyLogsToStick() == "");
+}
+
+TEST_CASE("Save logs also takes the tail of the console's own logs, skipping the missing ones") {
+    TempDir tmp("quiet_save_console_logs");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    ableem::Environment::setRuntimeDir(tmp.at("run"));
+    tmp.writeFile("run/logs/autobleem.log", "a line");
+    std::string many;
+    for (int i = 1; i <= 400; i++)
+        many += "line " + std::to_string(i) + "\n";
+    tmp.writeFile("System/Logs/standby.log", many);
+    tmp.writeFile("System/Logs/update.log", "no newline at the end");
+    tmp.writeFile("System/Logs/poweroff_reason", ""); // empty: nothing to keep
+    tmp.writeFile("run/watch.log", "ram watch\n");
+    tmp.writeFile("System/Logs/watch.log", "stick watch\n");
+
+    CHECK(Env::copyLogsToStick() == "saved-1");
+    const std::string standby = tmp.readFile("System/Logs/saved-1/standby.log");
+    CHECK(standby.compare(0, 9, "line 101\n") == 0);
+    CHECK(std::count(standby.begin(), standby.end(), '\n') == 300);
+    CHECK(standby.substr(standby.size() - 9) == "line 400\n");
+    CHECK(tmp.readFile("System/Logs/saved-1/update.log") == "no newline at the end");
+    CHECK(tmp.readFile("System/Logs/saved-1/watch.log") == "ram watch\n");
+    CHECK(tmp.readFile("System/Logs/saved-1/stick-watch.log") == "stick watch\n");
+    CHECK_FALSE(ableem::DirEntry::exists(tmp.at("System/Logs/saved-1/poweroff_reason")));
+    CHECK(tmp.readFile("System/Logs/saved-1/autobleem.log") == "a line");
 }
 
 TEST_CASE(

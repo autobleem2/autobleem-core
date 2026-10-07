@@ -30,9 +30,10 @@ string withoutExtension(const string &path) {
     const size_t dot = name.find_last_of('.');
     return dot == string::npos || dot == 0 ? name : name.substr(0, dot);
 }
-// RetroArch names its state files after the content file without its last extension
+// RetroArch names its state files after the content file without its last extension - for an archive entry
+// ("a.zip#b.md") after the entry, not the archive
 string raBaseOf(const PsGame &game) {
-    return withoutExtension(game.image_path);
+    return DirEntry::getRetroArchContentBase(game.image_path);
 }
 // where a game's slots live: its !SaveStates folder, or for a RetroArch game one folder per core and game
 string folderOf(const PsGame &game) {
