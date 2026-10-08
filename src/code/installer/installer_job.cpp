@@ -64,6 +64,15 @@ const Bundle Bundles[] = {
     {"shaders_glsl", "shaders"},
 };
 
+// "PlayStation only" runs the BIOS step and nothing else
+bool biosOnly(const InstallOptions &opt) { return opt.bios && opt.ps1BiosOnly; }
+
+// the stick carries the package's version already: prepare, unpack and UpdateRoms have nothing to do
+bool skipsUnpack(const InstallOptions &opt, const StickInfo &info) {
+    return !opt.force && info.installed && !info.legacyLayout && !info.packageVersion.empty() &&
+           info.installedVersion == info.packageVersion;
+}
+
 //******************
 // Run
 //******************
@@ -96,11 +105,22 @@ public:
                 say("  RetroArch was not updated: " + error);
             return zipped;
         }
-        bool ok =
-            package(error) && prepare(error) && legacy(error) && unpack(error) && updateRoms(error) && covers(error);
-        if (ok && opt.retroarch)
-            ok = retroarch(error);
-        if (ok && opt.bios && (opt.retroarch || info.hasRetroArch))
+        bool ok = true;
+        if (!biosOnly(opt)) {
+            ok = package(error);
+            // the stick carries this very version: nothing of AutoBleem itself is unpacked again
+            if (ok && skipsUnpack(opt, info)) {
+                say("  the stick already has " + info.installedVersion +
+                    ", the same version as the package - not unpacking it again (force reinstalls)");
+                phases = InstallerJob::phasesFor(opt, info);
+                ok = covers(error);
+            } else {
+                ok = ok && prepare(error) && legacy(error) && unpack(error) && updateRoms(error) && covers(error);
+            }
+            if (ok && opt.retroarch)
+                ok = retroarch(error);
+        }
+        if (ok && opt.bios && (biosOnly(opt) || opt.retroarch || info.hasRetroArch))
             ok = bios(error);
         if (ok && opt.samples)
             ok = samples(error);
@@ -989,6 +1009,22 @@ StickInfo InstallerJob::inspect(const InstallOptions &options) {
 vector<string> InstallerJob::phasesFor(const InstallOptions &options, const StickInfo &info) {
     if (!options.retroarchZip.empty())
         return {"RetroArch"};
+    if (biosOnly(options))
+        return {"BIOS files", "Finishing"};
+    if (skipsUnpack(options, info)) {
+        vector<string> kept{"Getting the package"};
+        if (options.coversJapan || options.coversUsa || options.coversPal)
+            kept.push_back("Cover databases");
+        if (options.retroarch)
+            for (const char *p : {"RetroArch", "RetroArch cores", "Runtime libraries", "Apps", "RetroArch assets"})
+                kept.push_back(p);
+        if (options.bios && (options.retroarch || info.hasRetroArch))
+            kept.push_back("BIOS files");
+        if (options.samples)
+            kept.push_back("Sample games");
+        kept.push_back("Finishing");
+        return kept;
+    }
     vector<string> phases{"Getting the package", info.installed ? "Preparing the update" : "Preparing the stick"};
     if (info.legacyLayout)
         phases.push_back("Bringing the old layout up to date");
@@ -1039,7 +1075,7 @@ bool InstallerJob::run(const InstallOptions &input, Downloader &downloader, Inst
         Run zipRun(options, info, *source, listener, shouldStop);
         return zipRun.go(error);
     }
-    if (info.packageVersion.empty() && options.channel.empty()) { // a channel's package is read in the run
+    if (!biosOnly(options) && info.packageVersion.empty() && options.channel.empty()) { // a channel's package is read in the run
         error = info.error.empty() ? "The package has no VERSION" : info.error;
         return false;
     }

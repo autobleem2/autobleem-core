@@ -45,7 +45,9 @@ struct InstallOptions {
     bool bios = false; // needs retroarch (or RetroArch already on the stick)
     // "PlayStation only" (the owner, 2026-10-07): with `bios`, only the PlayStation BIOS files of the pack are
     // fetched, from the same source and by the same code as the whole pack (InstallJobBase::isPs1PackFile)
-    bool ps1BiosOnly = false;
+    bool ps1BiosOnly = false; // with `bios`: the BIOS step alone - no package, unpacking, covers or RetroArch
+    // reinstall AutoBleem even when the stick already carries the package's version (otherwise it is not unpacked again)
+    bool force = false;
     bool samples = false;
     // the folder of an installer download that carries its own payload (bundle.json inside, see LocalBundle): the
     // run reads the catalogs, packs and bundles from it instead of the site, verifying each file once against the
