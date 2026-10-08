@@ -1295,6 +1295,24 @@ TEST_CASE("PlayStation-only BIOS: only the PlayStation entries are asked for, th
     CHECK(fx.out.said("0 fetched, 1 already there, 0 failed"));
 }
 
+TEST_CASE("the console installer puts the PlayStation BIOS at System/Bios/romw.bin, in both modes, keeping a good one") {
+    for (const bool only : {true, false}) {
+        Fixture fx;
+        fx.options.retroarch = true;
+        fx.options.bios = true;
+        fx.options.ps1BiosOnly = only;
+        string error;
+        REQUIRE_MESSAGE(fx.run(error), error);
+        CHECK(fx.tmp.readFile("stick/RetroArch/bios/scph5501.bin") == "bios!");
+        CHECK(fx.tmp.readFile("stick/System/Bios/romw.bin") == "bios!");
+        CHECK_FALSE(fx.has("System/Bios/romJP.bin")); // no scph5500.bin in the pack: nothing to copy
+        // a romw.bin that is there is not overwritten
+        fx.tmp.writeFile("stick/System/Bios/romw.bin", "mine");
+        REQUIRE_MESSAGE(fx.run(error), error);
+        CHECK(fx.tmp.readFile("stick/System/Bios/romw.bin") == "mine");
+    }
+}
+
 namespace {
 struct Ps1Pack : InstallJobBase {
     using InstallJobBase::isPs1PackFile;

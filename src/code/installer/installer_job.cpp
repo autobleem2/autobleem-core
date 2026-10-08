@@ -766,8 +766,13 @@ private:
             return false;
         if (opt.ps1BiosOnly)
             say("  PlayStation only: the PlayStation BIOS files of the pack, not the rest");
-        return fetchBiosPack("psc/bios/latest.json", at("RetroArch/bios"), error,
-                             opt.ps1BiosOnly ? BiosFilter(isPs1PackFile) : BiosFilter());
+        const string biosDir = at("RetroArch/bios");
+        if (!fetchBiosPack("psc/bios/latest.json", biosDir, error,
+                           opt.ps1BiosOnly ? BiosFilter(isPs1PackFile) : BiosFilter()))
+            return false;
+        // the PlayStation emulator reads System/Bios/romw.bin and romJP.bin; an existing one is kept
+        installPs1Bios(biosDir, at("System/Bios"));
+        return true;
     }
 
     //******************
