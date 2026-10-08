@@ -1529,3 +1529,46 @@ TEST_CASE("a folder without a usable bundle.json is an error, an explicit packag
     CHECK(InstallerJob::bundleNextTo(fx.tmp.at("AutoBleemInstaller.exe")) == fx.tmp.path() + "/payload");
     CHECK(InstallerJob::bundleNextTo(fx.tmp.at("sub/x.exe")).empty());
 }
+
+TEST_CASE("UpdateRoms runs on the finished stick before the install ends; its result is logged and never fatal") {
+    // the program is on the stick and the runner is a fake: asked once, with the stick's root, after the games
+    {
+        Fixture fx;
+        vector<string> lines;
+        fx.options.programRunner = [&](const string &line) {
+            lines.push_back(line);
+            return 0;
+        };
+        fx.tmp.writeFile("pkg/UpdateRoms/UpdateRoms.exe", "MZ");
+        string error;
+        REQUIRE_MESSAGE(fx.run(error), error);
+        REQUIRE(lines.size() == 1);
+        CHECK(lines[0] == "\"" + fx.root + "/UpdateRoms/UpdateRoms.exe\" \"" + fx.root + "\" --quiet");
+        CHECK(fx.out.said("UpdateRoms scanned the games"));
+        const string log = fx.tmp.readFile("stick/System/Logs/installer.log");
+        CHECK(log.find("UpdateRoms scanned the games") != string::npos);
+    }
+    // it fails: said, and the install still succeeds
+    {
+        Fixture fx;
+        fx.tmp.writeFile("pkg/UpdateRoms/UpdateRoms.exe", "MZ");
+        fx.options.programRunner = [](const string &) { return 1; };
+        string error;
+        REQUIRE_MESSAGE(fx.run(error), error);
+        CHECK(fx.out.said("UpdateRoms ended with 1"));
+        CHECK(fx.has("Autobleem/bin/autobleem/autobleem-gui"));
+    }
+    // no UpdateRoms.exe on the stick: the runner is never asked
+    {
+        Fixture fx;
+        int asked = 0;
+        fx.options.programRunner = [&](const string &) {
+            asked++;
+            return 0;
+        };
+        string error;
+        REQUIRE_MESSAGE(fx.run(error), error);
+        CHECK(asked == 0);
+        CHECK(fx.out.said("UpdateRoms is not on the stick"));
+    }
+}
