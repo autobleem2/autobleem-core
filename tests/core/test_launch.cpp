@@ -1371,6 +1371,8 @@ TEST_CASE("RetroArch on the CRT mode (720x480): 1.5 aspect, no 16:9 viewport, no
     CHECK(contains(inPlay, "menu_pixel_aspect = \"0.888889\""));
     CHECK(contains(inPlay, "menu_scale_factor = \"1.3\""));
     CHECK(contains(inPlay, "menu_safe_margin = \"10\""));
+    CHECK(contains(inPlay, "input_menu_toggle_gamepad_combo = \"4\"")); // Start+Select opens the menu
+    CHECK(occurrences(inPlay, "menu_safe_margin =") == 1);
     CHECK_FALSE(contains(inPlay, "custom_viewport"));
     CHECK_FALSE(contains(inPlay, "menu_driver")); // XMB stays
     for (const char *key : {"aspect_ratio_index", "video_shader_enable", "video_scale_integer", "video_message_pos_x"})
@@ -1408,6 +1410,7 @@ TEST_CASE("RetroArch on a square-pixel 4:3 output (640x480): untouched, the CRT 
     CHECK_FALSE(contains(inPlay, "menu_pixel_aspect"));
     CHECK_FALSE(contains(inPlay, "menu_scale_factor"));
     CHECK_FALSE(contains(inPlay, "video_shader_enable"));
+    CHECK(contains(inPlay, "input_menu_toggle_gamepad_combo = \"4\"")); // on every output mode
 }
 
 // ---------------------------------------------------------------------------------------------------------

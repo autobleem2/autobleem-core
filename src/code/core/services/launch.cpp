@@ -885,6 +885,8 @@ string LaunchService::raScanlinesOverlay() {
 //*******************************
 // LaunchService::prepareRaAppend / restoreAppended
 //*******************************
+static void replaceLine(ConfigFileEditor::CfgLines &lines, const string &key, const string &value);
+
 void LaunchService::prepareRaAppend(PsGame *game) {
     ConfigFileEditor::CfgLines raConfig, coreOptions;
     auto set = [](ConfigFileEditor::CfgLines &lines, const string &key, const string &value) {
@@ -909,6 +911,26 @@ void LaunchService::prepareRaAppend(PsGame *game) {
                                 raConfig); // the game editor's rows, over the scaler and the like
     if (mode.isCrt())
         raCrtSettings(raConfig); // the 720x480 tube: 3:2 pixels at 8:9, the margin for the messages, no shaders
+    // Start+Select opens the RetroArch menu (gamepad combo 4), on every platform
+    replaceLine(raConfig, "input_menu_toggle_gamepad_combo", "4");
+#ifdef AB_PLATFORM_PSC
+    {
+        // the PSC's CRT menu values (proven on the owner's stick), where neither the lines above nor the player's
+        // retroarch.cfg set them
+        string cfg, ignored;
+        DirEntry::readFile(raConfigFile(), cfg);
+        auto absent = [&](const char *key) {
+            for (const auto &line : raConfig)
+                if (line.first == key)
+                    return false;
+            return !ConfigFileEditor::valueIn(cfg, key, &ignored);
+        };
+        if (absent("menu_pixel_aspect"))
+            replaceLine(raConfig, "menu_pixel_aspect", "0.888889");
+        if (absent("menu_safe_margin"))
+            replaceLine(raConfig, "menu_safe_margin", "8");
+    }
+#endif
     if (raStates_.active) {
         // our slots (ResumePointService): RetroArch writes <game>.state.auto + picture when it ends and reads the
         // state the launcher put there only when asked to. The folder and the sorting are pinned so the file is
