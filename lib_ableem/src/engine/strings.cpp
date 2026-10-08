@@ -134,6 +134,39 @@ string Strings::trim(const string &s) {
 }
 
 //*******************************
+// Strings::stripBracketTags
+//*******************************
+string Strings::stripBracketTags(const string &name) {
+    string out;
+    int depth = 0; // an unclosed bracket keeps the rest of the name as it is
+    size_t open = 0;
+    for (size_t i = 0; i < name.size(); i++) {
+        const char c = name[i];
+        if (depth == 0 && (c == '(' || c == '[')) {
+            if (name.find(c == '(' ? ')' : ']', i) == string::npos) {
+                out += name.substr(i);
+                break;
+            }
+            open = i;
+            depth = 1;
+            out += ' ';
+        } else if (depth > 0) {
+            if ((name[open] == '(' && c == ')') || (name[open] == '[' && c == ']'))
+                depth = 0;
+        } else {
+            out += c;
+        }
+    }
+    string cleaned;
+    for (char c : out) // the gaps the tags left close up
+        if (!(c == ' ' && (cleaned.empty() || cleaned.back() == ' ')))
+            cleaned += c;
+    while (!cleaned.empty() && cleaned.back() == ' ')
+        cleaned.pop_back();
+    return cleaned.empty() ? name : cleaned;
+}
+
+//*******************************
 // Strings::getStringWithinChar
 //*******************************
 string Strings::getStringWithinChar(string s, char del) {

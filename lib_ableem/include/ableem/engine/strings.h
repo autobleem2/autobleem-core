@@ -107,6 +107,9 @@ public:
     // Cyrillic letters go up; every other byte sequence stays as it is (a byte is never cut - unlike toupper() in a
     // Latin-1 locale). "ß" stays "ß"; a broken sequence is copied through
     static std::string upperUtf8(const std::string &s);
+    // a ROM name without its bracketed tags: "Space Invaders (USA) [!]" -> "Space Invaders" (every "(...)" and
+    // "[...]" goes, the gaps close). A name that is nothing but tags is returned as it is
+    static std::string stripBracketTags(const std::string &name);
 };
 
 } // namespace ableem

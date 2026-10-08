@@ -46,3 +46,13 @@ TEST_CASE("text it does not know, and broken bytes, pass through untouched") {
     const string stray = "\x80z";
     CHECK(Strings::upperUtf8(stray) == "\x80Z");
 }
+
+TEST_CASE("stripBracketTags: region, version and dump tags go, the title stays") {
+    CHECK(Strings::stripBracketTags("Space Invaders (USA)") == "Space Invaders");
+    CHECK(Strings::stripBracketTags("Sonic The Hedgehog (Europe) (Rev 1) [!]") == "Sonic The Hedgehog");
+    CHECK(Strings::stripBracketTags("Zelda (USA) (Beta) - Part (2)") == "Zelda - Part");
+    CHECK(Strings::stripBracketTags("Plain Name") == "Plain Name");
+    CHECK(Strings::stripBracketTags("Broken (USA") == "Broken (USA");
+    CHECK(Strings::stripBracketTags("(USA)") == "(USA)"); // nothing but a tag: kept
+    CHECK(Strings::stripBracketTags("").empty());
+}

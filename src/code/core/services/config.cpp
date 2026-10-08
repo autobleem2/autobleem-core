@@ -102,6 +102,11 @@ Config::Config() {
     if (inifile.values["rapersist"] != "false") {
         inifile.values["rapersist"] = "true";
     }
+    // Options -> "Clean RetroArch game names": the RetroArch lists show "Space Invaders", not "Space Invaders (USA)"
+    // (the file name stays in the game's details; PS1 titles and the files are never touched). On unless switched off
+    if (inifile.values["cleannames"] != "false") {
+        inifile.values["cleannames"] = "true";
+    }
     // the scan may fetch missing box art (and the databases) from libretro's servers, where the platform
     // has a download_command and the server answers; Options -> "Fetch box art online"
     if (inifile.values["online"] == "") {
