@@ -44,7 +44,9 @@ ab_add_test(test_extension_catalog core/test_extension_catalog.cpp)
 if (AB_CORE_UI)
     # the runtime is ab_classic's (it knows Extension), tested with in-process fake plugins
     ab_add_test(test_extension_runtime classic/test_extension_runtime.cpp LIBS ab_classic)
-    ab_add_test(test_hold_repeat classic/test_hold_repeat.cpp LIBS ab_gui)
+    # BUG-55: the sizeof/offsetof of what extensions reach, against tests/classic/sdk_layout_table.h
+    ab_add_test(test_sdk_layout classic/test_sdk_layout.cpp LIBS ab_classic)
+    ab_add_test(test_hold_repeatclassic/test_hold_repeat.cpp LIBS ab_gui)
     # UIREV-39: the surprise game's pure layout numbers (gui/surprise_layout.h, header-only)
     ab_add_test(test_surprise_layout classic/test_surprise_layout.cpp LIBS ab_classic)
     # GuiTextPage's line layout (splitItem is pure; the class is ab_classic's)
