@@ -46,7 +46,17 @@ class AppBase;
 //    (and, joining the same unreleased ABI, ableem::StoreItem gained category - the package type, 2026-10-06)
 //    and, the second piece of it (APPS-12, docs/packages.md 9): StoreItem provides/uses, PsGame package/package_id,
 //    AppCategory::Packages, ScanPackages in ScanAll
-#define AB_SDK_ABI 10
+// 11: ableem::ThemeMusic gained `languages` (UIREV-60, 2026-10-07, a std::map): Theme grew by 48 bytes, so AppBase's
+//    clock_, gui_ and audio_ moved by 48 - an inline app.audio() in a plugin built for 10 read the wrong member and
+//    crashed in Sound::play() (BUG-55). That change was made without a bump; the Store and PSC-Bios built for 10 are
+//    refused now and must be rebuilt.
+//
+// THE LAYOUT TABLE: tests/classic/sdk_layout_table.h is the one place that lists the sizeof/offsetof of the classes an
+// extension reaches through inline code (AppBase and its members, Theme, Gui, ThemeAssets, StoreItem...).
+// tests/classic/test_sdk_layout.cpp compares it with the build (x86_64 Linux, libstdc++ only) and fails with
+// "layout changed - bump AB_SDK_ABI and update the table". Change a class an extension reaches: bump AB_SDK_ABI
+// here, add a line above, then copy the numbers the test prints into the table. Never update the table alone.
+#define AB_SDK_ABI 11
 
 #define AB_SDK_STR2(x) #x
 #define AB_SDK_STR(x) AB_SDK_STR2(x)

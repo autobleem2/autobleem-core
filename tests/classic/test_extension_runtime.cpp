@@ -316,7 +316,7 @@ TEST_CASE("ExtensionRuntime::runProvider runs whichever runnable extension provi
 
 TEST_CASE("the SDK stamp names the ABI, the compiler and the target") {
     string stamp = AB_SDK_STAMP;
-    CHECK(AB_SDK_ABI == 10); // requestRescan takes the ScanScope of the scan
+    CHECK(AB_SDK_ABI == 11); // ThemeMusic::languages moved AppBase's members (BUG-55)
     CHECK(stamp.find("sdk=" + to_string(AB_SDK_ABI) + ";") == 0);
     CHECK(stamp.find(";cxx=") != string::npos);
     CHECK(stamp.find(";target=") != string::npos);
