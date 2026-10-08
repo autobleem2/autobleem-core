@@ -56,6 +56,11 @@ struct InstallOptions {
     // does only that - the zip laid over the RetroArch that is on the stick (what the "RetroArch" phase does
     // with a new build, minus the cores, libraries, apps and bundles); packageFile and channel are not used
     std::string retroarchZip;
+    // runs a command line and returns its exit status: how the run starts <stick>/UpdateRoms/UpdateRoms.exe once
+    // the games are in place. Empty = System::runShellCommand on Windows (the program is a Windows exe), nothing
+    // elsewhere; a fake in the tests
+    using Runner = std::function<int(const std::string &commandLine)>;
+    Runner programRunner;
 };
 
 //******************

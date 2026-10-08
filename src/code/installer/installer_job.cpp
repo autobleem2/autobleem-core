@@ -6,6 +6,7 @@
 #include "core/services/extension_catalog.h"
 #include "core/services/processor_catalog.h"
 #include "core/services/retroarch_version.h"
+#include "core/services/system.h"
 
 #include <ableem/engine/filesystem.h>
 #include <ableem/engine/log.h>
@@ -812,8 +813,35 @@ private:
         return true;
     }
 
+    // The console has no network, so the ROMs' names and box art come from a PC run of UpdateRoms: started
+    // here, after everything is on the stick, before the first boot. Optional - it needs the PC's network and
+    // may be missing or fail, and the stick boots without it (the launcher's own scan then does the work).
+    void scanGames() {
+        const string exe = at("UpdateRoms/UpdateRoms.exe");
+        if (!DirEntry::exists(exe)) {
+            say("  UpdateRoms is not on the stick - the launcher scans the games on its first start");
+            return;
+        }
+        InstallOptions::Runner runner = opt.programRunner;
+#ifdef _WIN32
+        if (!runner)
+            runner = [](const string &line) { return System::runShellCommand(line); };
+#endif
+        if (!runner) {
+            say("  UpdateRoms runs on Windows only - run it from the stick's UpdateRoms folder on a PC");
+            return;
+        }
+        say("  running UpdateRoms on the stick (box art needs this PC's network)");
+        const int status = runner("\"" + exe + "\" \"" + root + "\" --quiet");
+        if (status == 0)
+            say("  UpdateRoms scanned the games");
+        else
+            say("  UpdateRoms ended with " + to_string(status) + " - going on, the launcher scans on its first start");
+    }
+
     void finish() {
         phase("Finishing");
+        scanGames();
         out.onProgress(1, 1);
         say(info.installed ? "Updated. Put the stick into the console's second controller port and boot it."
                            : "Installed. Put the stick into the console's second controller port and boot it.");
