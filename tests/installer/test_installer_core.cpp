@@ -1295,6 +1295,52 @@ TEST_CASE("PlayStation-only BIOS: only the PlayStation entries are asked for, th
     CHECK(fx.out.said("0 fetched, 1 already there, 0 failed"));
 }
 
+TEST_CASE("PlayStation-only BIOS runs the BIOS step alone: no unpacking, covers or RetroArch") {
+    Fixture fx;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error); // an AutoBleem stick
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/mine.txt", "a new run must not unpack over this");
+    DirEntry::removeFile(fx.root + "/Autobleem/bin/db/coversJ.db");
+    fx.options.retroarch = true;
+    fx.options.bios = true;
+    fx.options.ps1BiosOnly = true;
+    Recorder out;
+    const int covers = fx.site.count("/db/");
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, fx.site, out, []() { return false; }, error), error);
+    CHECK(out.phases == vector<string>{"BIOS files", "Finishing"});
+    CHECK(fx.site.count("/db/") == covers);
+    CHECK(fx.site.count("/psc/cores/") == 0);
+    CHECK_FALSE(fx.has("RetroArch/bin/retroarch"));
+    CHECK_FALSE(fx.has("Autobleem/bin/db/coversJ.db"));
+    CHECK(fx.has("Autobleem/bin/autobleem/mine.txt"));
+    CHECK(fx.tmp.readFile("stick/RetroArch/bios/scph5501.bin") == "bios!");
+}
+
+TEST_CASE("PlayStation-only BIOS needs no package at all") {
+    Fixture fx;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.options.packageFile.clear();
+    fx.options.bios = true;
+    fx.options.ps1BiosOnly = true;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.out.said("PlayStation only"));
+}
+
+TEST_CASE("a stick that carries the package's version is not unpacked again") {
+    Fixture fx;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/mine.txt", "survives a run that skips the unpack");
+    Recorder out;
+    REQUIRE_MESSAGE(InstallerJob::run(fx.options, fx.site, out, []() { return false; }, error), error);
+    CHECK(out.said("same version"));
+    CHECK(fx.has("Autobleem/bin/autobleem/mine.txt"));
+    CHECK(find(out.phases.begin(), out.phases.end(), "Unpacking AutoBleem") == out.phases.end());
+    // the other options still run on it
+    CHECK(fx.has("Autobleem/bin/db/coversJ.db"));
+}
+
 TEST_CASE("the console installer puts the PlayStation BIOS at System/Bios/romw.bin, in both modes, keeping a good one") {
     for (const bool only : {true, false}) {
         Fixture fx;
