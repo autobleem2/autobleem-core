@@ -1544,6 +1544,7 @@ TEST_CASE("UpdateRoms runs on the finished stick before the install ends; its re
         REQUIRE_MESSAGE(fx.run(error), error);
         REQUIRE(lines.size() == 1);
         CHECK(lines[0] == "\"" + fx.root + "/UpdateRoms/UpdateRoms.exe\" \"" + fx.root + "\" --quiet");
+        CHECK(fx.out.said("Running UpdateRoms - this can take several minutes"));
         CHECK(fx.out.said("UpdateRoms scanned the games"));
         const string log = fx.tmp.readFile("stick/System/Logs/installer.log");
         CHECK(log.find("UpdateRoms scanned the games") != string::npos);
@@ -1558,9 +1559,11 @@ TEST_CASE("UpdateRoms runs on the finished stick before the install ends; its re
         CHECK(fx.out.said("UpdateRoms ended with 1"));
         CHECK(fx.has("Autobleem/bin/autobleem/autobleem-gui"));
     }
-    // no UpdateRoms.exe on the stick: the runner is never asked
+    // no UpdateRoms.exe on the stick (none beside the package, none on the site): the runner is never asked
     {
         Fixture fx;
+        fx.site.files.erase(string(Site) + "/releases/unstable.json");
+        fx.site.files.erase(string(Site) + "/releases/latest.json");
         int asked = 0;
         fx.options.programRunner = [&](const string &) {
             asked++;

@@ -832,6 +832,7 @@ private:
             return;
         }
         say("  running UpdateRoms on the stick (box art needs this PC's network)");
+        say("  Running UpdateRoms - this can take several minutes");
         const int status = runner("\"" + exe + "\" \"" + root + "\" --quiet");
         if (status == 0)
             say("  UpdateRoms scanned the games");
