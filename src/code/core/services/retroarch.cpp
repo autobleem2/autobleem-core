@@ -9,6 +9,7 @@
 #include <ableem/engine/path_compare.h>
 #include <ableem/engine/rdb_reader.h>
 #include <ableem/engine/retroarch_playlist.h>
+#include <ableem/engine/startup_timer.h>
 #include <ableem/engine/thumbnail_lookup.h>
 
 #include <algorithm>
@@ -31,8 +32,14 @@ void RetroArchService::ensureLoaded() {
     if (loaded_)
         return;
     loaded_ = true;
-    loadCores();
-    loadPlaylists();
+    {
+        ableem::StartupTimer timer("ra-core-info");
+        loadCores();
+    }
+    {
+        ableem::StartupTimer timer("ra-playlists");
+        loadPlaylists();
+    }
 }
 
 //********************

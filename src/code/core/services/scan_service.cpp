@@ -8,6 +8,7 @@
 
 #include <ableem/engine/retroarch_cores.h>
 #include <ableem/engine/retroarch_scanner.h>
+#include <ableem/engine/startup_timer.h>
 
 #include <algorithm>
 #include <chrono>
@@ -354,7 +355,11 @@ int ScanService::scanRetroArchRoms(Listener &listener, vector<string> &playlists
         online->ensureDatabases(Env::getPathToRetroarchRdbDir());
 
     ableem::CoreInfoTable cores;
-    cores.load(Env::getPathToRetroarchDir(), RetroArchService::coresCfgPath(), RetroArchService::userCoresCfgPath());
+    {
+        ableem::StartupTimer timer("scan-ra-core-info"); // on the scan worker, off the menu's path
+        cores.load(Env::getPathToRetroarchDir(), RetroArchService::coresCfgPath(),
+                   RetroArchService::userCoresCfgPath());
+    }
 
     ableem::RetroArchScanner::Options options;
     options.romsDir = Env::getPathToRetroarchRomsDir();
@@ -367,7 +372,11 @@ int ScanService::scanRetroArchRoms(Listener &listener, vector<string> &playlists
     options.stateFile = romScanStateFilePath();              // so a folder nothing changed in is not scanned again
     options.coreMigrationMarker = coreMigrationMarkerPath(); // once per stick
     ableem::RetroArchScanner scanner(&listener);
-    ableem::RetroArchScanResult result = scanner.scan(options, ableem::RetroArchScanner::systemsFrom(cores));
+    ableem::RetroArchScanResult result;
+    {
+        ableem::StartupTimer timer("scan-ra-roms");
+        result = scanner.scan(options, ableem::RetroArchScanner::systemsFrom(cores));
+    }
     playlistsWritten = result.playlistsWritten;
     PLOG_INFO << "RetroArch ROM scan: " << result.systemsScanned << " systems, " << result.gamesFound << " games ("
               << result.gamesIdentified << " named by a database), " << result.playlistsWritten.size()

@@ -1,6 +1,7 @@
 #include "ableem/engine/metadata_lookup.h"
 #include "ableem/engine/filesystem.h"
 #include "ableem/engine/serial_scanner.h"
+#include "ableem/engine/startup_timer.h"
 #include "ableem/engine/strings.h"
 
 #include <iostream>
@@ -14,6 +15,7 @@ namespace ableem {
 // MetadataLookup::MetadataLookup
 //*******************************
 MetadataLookup::MetadataLookup(const string &coversDir, const string &rdbFile) : covers_(coversDir) {
+    StartupTimer timer("rdb-read");
     if (DirEntry::exists(rdbFile)) {
         rdb_.open(rdbFile); // logs what it found, or why not
     } else {
