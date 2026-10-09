@@ -2,6 +2,7 @@
 #include "ableem/engine/environment.h"
 #include "ableem/engine/filesystem.h"
 #include "ableem/engine/retroarch_playlist.h"
+#include "ableem/engine/startup_timer.h"
 #include "ableem/engine/strings.h"
 #include "ableem/engine/log.h"
 
@@ -30,9 +31,13 @@ GameLibrary::~GameLibrary() {
 // GameLibrary::openCoversAndUsbGames
 //*******************************
 bool GameLibrary::openCoversAndUsbGames() {
-    metadata_ = std::make_unique<MetadataLookup>(Environment::getPathToCoversDBDir(),
-                                                 Environment::getPathToPlayStationRdbFile());
+    {
+        StartupTimer timer("metadata-open");
+        metadata_ = std::make_unique<MetadataLookup>(Environment::getPathToCoversDBDir(),
+                                                     Environment::getPathToPlayStationRdbFile());
+    }
 
+    StartupTimer timer("regional-db");
     regionalDb = std::make_unique<GameDatabase>();
     if (!regionalDb->open(Environment::getPathToRegionalDBFile())) {
         return false;
@@ -45,6 +50,7 @@ bool GameLibrary::openCoversAndUsbGames() {
 // GameLibrary::openInternalGames
 //*******************************
 bool GameLibrary::openInternalGames() {
+    StartupTimer timer("internal-db");
     internalDb = std::make_unique<GameDatabase>();
     if (!internalDb->open(Environment::getPathToInternalDBFile())) {
         return false;

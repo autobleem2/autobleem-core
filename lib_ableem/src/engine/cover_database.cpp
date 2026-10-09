@@ -1,5 +1,6 @@
 #include "ableem/engine/cover_database.h"
 #include "ableem/engine/filesystem.h"
+#include "ableem/engine/startup_timer.h"
 
 #include <iostream>
 #include <memory>
@@ -13,6 +14,7 @@ namespace ableem {
 // CoverDatabase::CoverDatabase
 //*******************************
 CoverDatabase::CoverDatabase(const string &coversDir) {
+    StartupTimer timer("covers-dbs-open");
     regionStr[0] = "U";
     regionStr[1] = "P";
     regionStr[2] = "J";
