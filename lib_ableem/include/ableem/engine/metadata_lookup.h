@@ -4,6 +4,8 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -38,6 +40,10 @@ public:
     void load();
     void startLoading();
     bool ready() const { return ready_.load(std::memory_order_acquire); }
+    // Blocks until the load has published. For worker threads only (the scan worker, the LAN library): the UI
+    // thread polls ready() and never calls this. Returns at once when ready, and also when no load was ever
+    // started (a Deferred lookup nobody loads would otherwise block for ever).
+    void waitReady();
 
     // Which sources exist as files - no database is opened, no byte of them read: what the "no cover db" warning
     // at startup needs while the real load is still under way.
@@ -70,6 +76,8 @@ private:
     std::string rdbFile_;
     std::atomic<bool> ready_{false};
     std::atomic<bool> started_{false}; // load() or startLoading() was called
+    std::mutex readyMutex_;
+    std::condition_variable readyCv_;
     std::thread worker_;
     RdbReader rdb_;
     CoverDatabase covers_;

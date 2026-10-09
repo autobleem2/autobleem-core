@@ -332,6 +332,7 @@ void LanLibrary::readGame(const string &dir, const string &rel, LanSnapshot &out
     if (!known.empty())
         game.title = known;
     if (game.title.empty() && !game.serial.empty()) {
+        metadata_->waitReady(); // a worker thread; returns at once for a lookup that is loaded
         lock_guard<mutex> lock(metadataMutex_);
         ableem::GameMetadata md;
         if (metadata_->findBySerial(game.serial, md))
@@ -470,6 +471,7 @@ bool LanLibrary::cover(const string &id, string &bytes, string &contentType) {
         }
         if (game.serial.empty())
             return false;
+        metadata_->waitReady();
         lock_guard<mutex> lock(metadataMutex_);
         ableem::GameMetadata md;
         if (!metadata_->findBySerial(game.serial, md) || md.bytes.empty())

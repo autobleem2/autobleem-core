@@ -53,7 +53,18 @@ void MetadataLookup::loadSources() {
             PLOG_INFO << "rdb: no " << rdbFile_ << " - game metadata comes from the covers databases only";
         }
     }
-    ready_.store(true, std::memory_order_release); // publishes covers_ and rdb_
+    {
+        std::lock_guard<std::mutex> lock(readyMutex_);
+        ready_.store(true, std::memory_order_release); // publishes covers_ and rdb_
+    }
+    readyCv_.notify_all();
+}
+
+void MetadataLookup::waitReady() {
+    if (ready() || !started_.load())
+        return;
+    std::unique_lock<std::mutex> lock(readyMutex_);
+    readyCv_.wait(lock, [this]() { return ready(); });
 }
 
 //*******************************

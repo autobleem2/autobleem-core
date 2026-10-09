@@ -115,6 +115,41 @@ TEST_CASE("startLoading publishes from a worker; a lookup polling meanwhile neve
     CHECK(notYet >= 0);
 }
 
+TEST_CASE("waitReady: a scan started before ready() ends with the metadata found") {
+    TempDir tmp("lazy-meta-wait");
+    tmp.makeSubDir("db");
+    const string rdb = makeRdbFile(tmp);
+    MetadataLookup lookup(tmp.at("db"), rdb, MetadataLookup::Load::Deferred);
+    lookup.startLoading();
+
+    // what a scan worker does: wait first, then ask - whatever the loader's progress when the worker begins
+    GameMetadata md;
+    bool found = false;
+    std::thread scan([&]() {
+        lookup.waitReady();
+        found = lookup.findBySerial("SCES-01237", md);
+    });
+    scan.join();
+    CHECK(found);
+    CHECK(lookup.ready());
+    CHECK(md.title == "Tekken 3");
+    lookup.waitReady(); // ready already: returns at once
+}
+
+TEST_CASE("waitReady on a Deferred lookup nobody started returns instead of blocking") {
+    TempDir tmp("lazy-meta-nostart");
+    tmp.makeSubDir("db");
+    MetadataLookup lookup(tmp.at("db"), makeRdbFile(tmp), MetadataLookup::Load::Deferred);
+    lookup.waitReady();
+    CHECK_FALSE(lookup.ready());
+    GameMetadata md;
+    CHECK_FALSE(lookup.findBySerial("SCES-01237", md));
+
+    MetadataLookup now(tmp.at("db"), makeRdbFile(tmp)); // Load::Now: ready from the constructor
+    now.waitReady();
+    CHECK(now.ready());
+}
+
 TEST_CASE("destroying a lookup whose worker is still loading waits for it") {
     TempDir tmp("lazy-meta-destroy");
     tmp.makeSubDir("db");
