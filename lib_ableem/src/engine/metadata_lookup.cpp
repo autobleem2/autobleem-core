@@ -14,13 +14,59 @@ namespace ableem {
 //*******************************
 // MetadataLookup::MetadataLookup
 //*******************************
-MetadataLookup::MetadataLookup(const string &coversDir, const string &rdbFile) : covers_(coversDir) {
-    StartupTimer timer("rdb-read");
-    if (DirEntry::exists(rdbFile)) {
-        rdb_.open(rdbFile); // logs what it found, or why not
-    } else {
-        PLOG_INFO << "rdb: no " << rdbFile << " - game metadata comes from the covers databases only";
+MetadataLookup::MetadataLookup(const string &coversDir, const string &rdbFile, Load mode)
+    : coversDir_(coversDir), rdbFile_(rdbFile) {
+    if (mode == Load::Now)
+        load();
+}
+
+//*******************************
+// MetadataLookup::~MetadataLookup
+//*******************************
+MetadataLookup::~MetadataLookup() {
+    if (worker_.joinable())
+        worker_.join();
+}
+
+//*******************************
+// MetadataLookup::load / startLoading / loadSources
+//*******************************
+void MetadataLookup::load() {
+    if (started_.exchange(true))
+        return; // a load is under way (or done): a second one would write the same members
+    loadSources();
+}
+
+void MetadataLookup::startLoading() {
+    if (started_.exchange(true))
+        return;
+    worker_ = std::thread([this]() { loadSources(); });
+}
+
+void MetadataLookup::loadSources() {
+    covers_.open(coversDir_);
+    {
+        StartupTimer timer("rdb-read");
+        if (DirEntry::exists(rdbFile_)) {
+            rdb_.open(rdbFile_); // logs what it found, or why not
+        } else {
+            PLOG_INFO << "rdb: no " << rdbFile_ << " - game metadata comes from the covers databases only";
+        }
     }
+    ready_.store(true, std::memory_order_release); // publishes covers_ and rdb_
+}
+
+//*******************************
+// MetadataLookup::sourcesPresent
+//*******************************
+bool MetadataLookup::sourcesPresent(const string &coversDir, const string &rdbFile) {
+    if (DirEntry::exists(rdbFile))
+        return true;
+    for (const char *region : {"U", "P", "J"}) {
+        if (DirEntry::exists(coversDir + sep + "covers" + region + ".db"))
+            return true;
+    }
+    return false;
 }
 
 //*******************************
@@ -92,6 +138,8 @@ bool MetadataLookup::fromRecord(const RdbReader::Record &rec, const string &seri
 // MetadataLookup::findBySerial
 //*******************************
 bool MetadataLookup::findBySerial(const string &serial, GameMetadata &md) {
+    if (!ready())
+        return false; // not yet
     if (rdb_.isValid()) {
         const RdbReader::Record *rec = rdb_.findBySerial(serial);
         if (rec != nullptr)
@@ -108,6 +156,8 @@ bool MetadataLookup::findBySerial(const string &serial, GameMetadata &md) {
 // MetadataLookup::findByTitle
 //*******************************
 bool MetadataLookup::findByTitle(const string &title, GameMetadata &md) {
+    if (!ready())
+        return false; // not yet
     if (rdb_.isValid()) {
         const RdbReader::Record *rec = rdb_.findByName(title);
         if (rec != nullptr)

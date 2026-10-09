@@ -19,9 +19,13 @@ public:
     std::unique_ptr<GameDatabase> covers[regionCount]; // U, P, J. nullptr when that region's covers db is not installed
     std::string regionStr[regionCount];                // "U", "P", "J"
 
+    CoverDatabase(); // opens nothing: open() does, later (MetadataLookup's deferred load)
     explicit CoverDatabase(
         const std::string &coversDir); // opens <coversDir>/covers<region>.db for every region present
     ~CoverDatabase();
+
+    // opens <coversDir>/covers<region>.db for every region present; once, on an object that opened nothing yet
+    void open(const std::string &coversDir);
 
     bool hasAnyRegion() const;
 

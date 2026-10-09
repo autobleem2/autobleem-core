@@ -27,8 +27,10 @@ public:
 
     // split in two (rather than one open()) because the application needs to run a shell hook between them
     // (importing internal.db from the console) - see the "Importing internal games" step in App::openLibrary.
-    bool
-    openCoversAndUsbGames();  // MetadataLookup (the rdb + the covers dbs) + regional.db (creates the schema if missing)
+    // MetadataLookup (the rdb + the covers dbs) + regional.db (creates the schema if missing). deferMetadata: the
+    // lookup is read on a worker thread (the launcher's startup); until metadata().ready() its answers are "not
+    // found", and the sources' presence is metadata().sourcesPresent().
+    bool openCoversAndUsbGames(bool deferMetadata = false);
     bool openInternalGames(); // internal.db (adds the favorite/history/last_played/play_using_ra columns if missing)
     void close();             // safe to call more than once; also runs at destruction
 

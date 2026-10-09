@@ -3,7 +3,9 @@
 // is still asked for its PNG when the rdb answered, so a stick without a thumbnails tree keeps its art.
 #pragma once
 
+#include <atomic>
 #include <string>
+#include <thread>
 
 #include "cover_database.h"
 #include "game_metadata.h"
@@ -18,11 +20,32 @@ namespace ableem {
 // sqlite handles must not be shared). Either source may be missing; a lookup with neither simply fails.
 class MetadataLookup {
 public:
-    // coversDir: where covers{U,P,J}.db live; rdbFile: the PlayStation .rdb (an absent file is fine)
-    MetadataLookup(const std::string &coversDir, const std::string &rdbFile);
+    // Now: opened in the constructor (the scan worker, the tools). Deferred: nothing is read until load() or
+    // startLoading() - the launcher's startup, where the rdb (13k records) and the three covers databases must not
+    // stand between the process and the first menu.
+    enum class Load { Now, Deferred };
 
-    bool hasRdb() const { return rdb_.isValid(); }
-    bool hasAnyCovers() const { return covers_.hasAnyRegion(); }
+    // coversDir: where covers{U,P,J}.db live; rdbFile: the PlayStation .rdb (an absent file is fine)
+    MetadataLookup(const std::string &coversDir, const std::string &rdbFile, Load mode = Load::Now);
+    ~MetadataLookup(); // waits for a load under way
+    MetadataLookup(const MetadataLookup &) = delete;
+    MetadataLookup &operator=(const MetadataLookup &) = delete;
+
+    // Deferred only. load() reads on the calling thread; startLoading() on a worker that is the only writer
+    // until it publishes (ready() turns true, with release/acquire ordering). Both are once-only and safe to call
+    // again. A lookup made before ready() answers "not found" at once and leaves its output alone: the caller
+    // asks ready() to tell "not yet" from "no such game" and tries again on a later frame.
+    void load();
+    void startLoading();
+    bool ready() const { return ready_.load(std::memory_order_acquire); }
+
+    // Which sources exist as files - no database is opened, no byte of them read: what the "no cover db" warning
+    // at startup needs while the real load is still under way.
+    static bool sourcesPresent(const std::string &coversDir, const std::string &rdbFile);
+
+    bool hasRdb() const { return ready() && rdb_.isValid(); }
+    bool hasAnyCovers() const { return ready() && covers_.hasAnyRegion(); }
+    // for a Deferred lookup only after ready()
     CoverDatabase &covers() { return covers_; }
     const RdbReader &rdb() const { return rdb_; }
 
@@ -41,7 +64,13 @@ public:
 
 private:
     bool fromRecord(const RdbReader::Record &rec, const std::string &serial, GameMetadata &md);
+    void loadSources();
 
+    std::string coversDir_;
+    std::string rdbFile_;
+    std::atomic<bool> ready_{false};
+    std::atomic<bool> started_{false}; // load() or startLoading() was called
+    std::thread worker_;
     RdbReader rdb_;
     CoverDatabase covers_;
 };

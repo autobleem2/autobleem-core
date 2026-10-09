@@ -13,12 +13,21 @@ namespace ableem {
 //*******************************
 // CoverDatabase::CoverDatabase
 //*******************************
-CoverDatabase::CoverDatabase(const string &coversDir) {
-    StartupTimer timer("covers-dbs-open");
+CoverDatabase::CoverDatabase() {
     regionStr[0] = "U";
     regionStr[1] = "P";
     regionStr[2] = "J";
+}
 
+CoverDatabase::CoverDatabase(const string &coversDir) : CoverDatabase() {
+    open(coversDir);
+}
+
+//*******************************
+// CoverDatabase::open
+//*******************************
+void CoverDatabase::open(const string &coversDir) {
+    StartupTimer timer("covers-dbs-open");
     for (int i = 0; i < regionCount; i++) {
         auto filename = coversDir + sep + "covers" + regionStr[i] + ".db";
         if (DirEntry::exists(filename)) {

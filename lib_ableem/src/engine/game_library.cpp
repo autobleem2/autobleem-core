@@ -30,11 +30,14 @@ GameLibrary::~GameLibrary() {
 //*******************************
 // GameLibrary::openCoversAndUsbGames
 //*******************************
-bool GameLibrary::openCoversAndUsbGames() {
+bool GameLibrary::openCoversAndUsbGames(bool deferMetadata) {
     {
-        StartupTimer timer("metadata-open");
-        metadata_ = std::make_unique<MetadataLookup>(Environment::getPathToCoversDBDir(),
-                                                     Environment::getPathToPlayStationRdbFile());
+        StartupTimer timer(deferMetadata ? "metadata-start" : "metadata-open");
+        metadata_ = std::make_unique<MetadataLookup>(
+            Environment::getPathToCoversDBDir(), Environment::getPathToPlayStationRdbFile(),
+            deferMetadata ? MetadataLookup::Load::Deferred : MetadataLookup::Load::Now);
+        if (deferMetadata)
+            metadata_->startLoading();
     }
 
     StartupTimer timer("regional-db");

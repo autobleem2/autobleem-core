@@ -8,10 +8,12 @@
 
 #include <ableem/engine/retroarch_cores.h>
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 //********************
@@ -56,6 +58,20 @@ struct RACorePlatform {
 class RetroArchService : public RetroArchGames {
 public:
     RetroArchService() = default;
+    ~RetroArchService() override;
+    RetroArchService(const RetroArchService &) = delete;
+    RetroArchService &operator=(const RetroArchService &) = delete;
+
+    // Startup, off the menu's path: reads the cores and the playlists on a worker thread. Nothing else changes -
+    // every question below still works at once, by waiting for the worker (ensureLoaded joins it), so a caller
+    // that cannot do without the data is never given half of it. The worker is the only writer until it is
+    // done; the main thread touches the data only after ready() or after the join.
+    void startBackgroundLoad();
+    // everything is read and published. False until then: a caller that can do without asks again next frame
+    // (tryPlaylistNames) instead of blocking.
+    bool ready() const { return loaded_ || ready_.load(std::memory_order_acquire); }
+    // playlistNames() when ready(); false ("not yet") and `names` untouched otherwise - never blocks
+    bool tryPlaylistNames(std::vector<std::string> &names);
 
     // RetroArchGames, for GameQueryService
     PsGames gamesInPlaylist(const std::string &playlistName) override;
@@ -133,7 +149,11 @@ private:
 
     bool autoDetectCorePath(const PsGame &game, std::string &core_name, std::string &core_path) const;
 
-    bool loaded_ = false;
+    void loadEverything(); // loadCores() + loadPlaylists(), timed
+
+    bool loaded_ = false; // main thread only
+    std::thread loader_;  // startBackgroundLoad's worker
+    std::atomic<bool> ready_{false}; // the worker's "published" flag
     ableem::CoreInfoTable cores_;
     std::vector<RAPlaylistInfo> playlistInfos_;
     std::string favoritesDisplayName_{"Favorites"};
