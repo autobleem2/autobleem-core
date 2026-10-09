@@ -340,6 +340,10 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
     gamesToAddToDB.clear();     // clear games list
     ThumbnailLookup thumbnails; // this scan's own listing cache of the thumbnails folders
 
+    // a scan runs on a worker, so it may wait: a Deferred lookup still loading would answer "not found" for every
+    // game, and the result is stored (UsbGame::recoverMissingFiles asks the same lookup)
+    metadata.waitReady();
+
     report(ScanStage::Scanning);
 
     if (!DirEntry::exists(Environment::getPathToSaveStatesDir())) {

@@ -9,6 +9,7 @@
 #include <ableem/engine/path_compare.h>
 #include <ableem/engine/rdb_reader.h>
 #include <ableem/engine/retroarch_playlist.h>
+#include <ableem/engine/startup_timer.h>
 #include <ableem/engine/thumbnail_lookup.h>
 
 #include <algorithm>
@@ -28,11 +29,53 @@ using ableem::PathCompare;
 // The singleton read everything the first time it was asked for, which is after main() has configured
 // Environment. Same here: nothing is read until the first question.
 void RetroArchService::ensureLoaded() {
+    if (loader_.joinable()) { // the background load is under way (or done): wait for it, then it is ours alone
+        loader_.join();
+        loaded_ = true;
+        return;
+    }
     if (loaded_)
         return;
     loaded_ = true;
-    loadCores();
-    loadPlaylists();
+    loadEverything();
+}
+
+//********************
+// RetroArchService::loadEverything
+//********************
+void RetroArchService::loadEverything() {
+    {
+        ableem::StartupTimer timer("ra-core-info");
+        loadCores();
+    }
+    {
+        ableem::StartupTimer timer("ra-playlists");
+        loadPlaylists();
+    }
+}
+
+//********************
+// RetroArchService::~RetroArchService / startBackgroundLoad / tryPlaylistNames
+//********************
+RetroArchService::~RetroArchService() {
+    if (loader_.joinable())
+        loader_.join();
+}
+
+void RetroArchService::startBackgroundLoad() {
+    if (loaded_ || loader_.joinable())
+        return;
+    loader_ = std::thread([this]() {
+        loadEverything();
+        ready_.store(true, std::memory_order_release); // publishes cores_ and playlistInfos_
+    });
+}
+
+bool RetroArchService::tryPlaylistNames(vector<string> &names) {
+    if (!ready())
+        return false;
+    names = playlistNames();
+    return true;
 }
 
 //********************
