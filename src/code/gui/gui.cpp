@@ -15,6 +15,7 @@
 #include <cassert>
 #include <ableem/engine/ext_trace.h>
 #include <ableem/engine/log.h>
+#include <ableem/engine/startup_timer.h>
 #include <ableem/ui/debug_driver.h>
 #include <ab_gui/panel.h>
 #include <ab_gui/splash_picture.h>
@@ -464,7 +465,10 @@ void Gui::display(bool resume) {
         // on black meanwhile (GuiLauncher::render ends it with its first frame)
         beginBusy(_("Loading..."), [this]() { stack_.frame(Color(0, 0, 0, 255), []() {}); });
     }
-    loadAssets();
+    {
+        ableem::StartupTimer timer(resume ? "theme-reload" : "theme-load"); // images, fonts, the music
+        loadAssets();
+    }
 
     if (!resume) {
         // Options -> Interface -> "Splash screen": off skips the boot splash (AB_NO_SPLASH does too)

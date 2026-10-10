@@ -27,8 +27,9 @@
 // whole fade-in/hold went by before the picture appeared - so the splash waits for it (1500 until 2026-09-29,
 // 300 since: the owner found the wait too long).
 #define SplashSettleDuration (300)
-// GuiSplash::prepareFrame(): how long the fully-faded-in splash holds before fading back out, milliseconds
-#define SplashHoldDuration (2 * TicksPerSecond)
+// GuiSplash::prepareFrame(): the least the fully-faded-in splash holds, milliseconds - longer while the start-up work it
+// runs is not done (2 s of a fixed wait after the loading until 2026-10-10; the owner chose 1 s as the least)
+#define SplashHoldDuration (1 * TicksPerSecond)
 // GuiSplash's two Fade transitions (in, and out), milliseconds - what 10 alpha a frame took at 60 fps
 #define SplashFadeDuration 425
 // GuiLauncher: how long the launcher takes to fade in from black when it is first shown, milliseconds

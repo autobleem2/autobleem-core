@@ -7,7 +7,35 @@
 #include "../../core/model/timing.h"
 #include "../../core/services/environment.h"
 
+#include <ableem/engine/startup_timer.h>
+
+#include <deque>
+
 using namespace std;
+
+namespace {
+// the steps setWork() gave, not run yet - the main thread's only (the splash and the launcher's start-up)
+deque<function<void()>> &pendingWork() {
+    static deque<function<void()>> steps;
+    return steps;
+}
+} // namespace
+
+//*******************************
+// GuiSplash::setWork / runPendingWork
+//*******************************
+void GuiSplash::setWork(vector<function<void()>> steps) {
+    pendingWork().assign(steps.begin(), steps.end());
+}
+
+void GuiSplash::runPendingWork() {
+    deque<function<void()>> &steps = pendingWork();
+    while (!steps.empty()) {
+        function<void()> step = std::move(steps.front());
+        steps.pop_front();
+        step();
+    }
+}
 
 //*******************************
 // GuiSplash::GuiSplash
@@ -28,12 +56,21 @@ bool GuiSplash::prepareFrame() {
     gui->assets().backgroundImg.setBlendMode(ableem::BlendMode::Blend);
     if (ctx.stack().bringsIn(*this))
         return true; // still fading in
-    const unsigned int now = ctx.ticks();
     if (!holding_) {
         holding_ = true;
-        holdStart_ = now;
+        holdStart_ = ctx.ticks();
+        ableem::StartupTimer::milestone("splash-up");
     }
-    if (now - holdStart_ >= static_cast<unsigned int>(SplashHoldDuration)) {
+    // one step of the start-up work a frame: the picture stays as it is meanwhile, and the next frame comes when
+    // the step is done
+    deque<function<void()>> &steps = pendingWork();
+    if (!steps.empty()) {
+        function<void()> step = std::move(steps.front());
+        steps.pop_front();
+        step();
+        return true;
+    }
+    if (ctx.ticks() - holdStart_ >= static_cast<unsigned int>(SplashHoldDuration)) {
         ctx.stack().keepPictureOnClose(*this); // no fade out: the launcher drops in over this picture
         menuVisible = false;
     }
