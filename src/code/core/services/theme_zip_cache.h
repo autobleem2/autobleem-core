@@ -27,6 +27,14 @@
 // ThemeInstaller does. A zip that could not be unpacked for lack of room is left as it is.
 class ThemeZipCache {
 public:
+    // why a picked zip theme is not the one in use (UIREV-50, UIREV-54)
+    enum class Fallback {
+        None,         // nothing wrong (or `picked` is no zip theme)
+        NoSpace,      // not enough free room to unpack it; the zip is left alone
+        Broken,       // not an archive, no theme inside, or refused by the extractor; renamed .zip.bad
+        CannotUnpack, // the archive is fine but the cache could not be written or converted; left alone
+    };
+
     // the names (file name without ".zip") of the zips in `themesDir` that hold a theme and have no folder of
     // the same name, sorted. Reads nothing but each archive's directory; writes nothing.
     static std::vector<std::string> listZipThemes(const std::string &themesDir);
@@ -38,8 +46,9 @@ public:
     // previous theme, a half-done unpack left by a power cut - is deleted (and .cache itself when that leaves
     // it empty); when `picked` is a zip theme with no folder, its cache is unpacked if it is not there (or
     // the zip's size changed). Returns the cache folder to load, or "" when `picked` is not a zip theme or
-    // could not be unpacked.
-    static std::string prepare(const std::string &themesDir, const std::string &picked);
+    // could not be unpacked;
+    // then `why` (when given) says why. It is None otherwise.
+    static std::string prepare(const std::string &themesDir, const std::string &picked, Fallback *why = nullptr);
 
     // <themes>/.cache and <themes>/.cache/<name>
     static std::string cacheRoot(const std::string &themesDir);
