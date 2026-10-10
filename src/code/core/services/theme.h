@@ -28,13 +28,16 @@ public:
     explicit Theme(Config &config) : config_(config) {}
 
     // (re)reads themes/default/theme.json and merges the selected theme's theme.json over it, converting
-    // either folder from the old layout first. If the selected folder is not a theme it falls back to
-    // "default" and writes that back to config.ini.
+    // either folder from the old layout first. If the selected theme is not usable (not there, not a theme, a
+    // zip that is broken or cannot be unpacked) it falls back to the shipped default theme (DefaultTheme::Name
+    // when that folder is there, else "default") and writes that name back to config.ini.
     void load();
 
-    // why the last load() did not use the picked zip theme (and reset config.ini to "default"): None when it did.
+    // why a load() did not use the picked theme (broken or unpackable zip, a theme that is gone) and reset
+    // config.ini to the default one: None when it did. The reason is kept until someone takes it - a later load()
+    // of the default theme does not wipe it, so the start-up toast still finds it - and taking it clears it.
     // Kept outside the class (one Theme exists) so that Theme's layout - and the SDK ABI - stays as it is.
-    static ThemeZipCache::Fallback fallbackReason();
+    static ThemeZipCache::Fallback takeFallbackReason();
 
     // <themes>/<name>, else the unpacked <themes>/.cache/<name>, else <themes>/default
     std::string path();

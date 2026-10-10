@@ -33,6 +33,7 @@ public:
         NoSpace,      // not enough free room to unpack it; the zip is left alone
         Broken,       // not an archive, no theme inside, or refused by the extractor; renamed .zip.bad
         CannotUnpack, // the archive is fine but the cache could not be written or converted; left alone
+        Missing,      // set by Theme::load(), never by prepare(): config.ini names a theme that is not there
     };
 
     // the names (file name without ".zip") of the zips in `themesDir` that hold a theme and have no folder of
