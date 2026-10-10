@@ -1369,7 +1369,7 @@ TEST_CASE("RetroArch on the CRT mode (720x480): 1.5 aspect, no 16:9 viewport, no
     CHECK(contains(inPlay, "video_message_pos_x = \"0.150000\"")); // 0.05 + 10 %
     CHECK(contains(inPlay, "video_message_pos_y = \"0.150000\""));
     CHECK(contains(inPlay, "menu_pixel_aspect = \"0.888889\""));
-    CHECK(contains(inPlay, "menu_scale_factor = \"1.3\""));
+    CHECK(contains(inPlay, "menu_scale_factor = \"1.300000\""));
     CHECK(contains(inPlay, "menu_safe_margin = \"10\""));
     CHECK_FALSE(contains(inPlay, "custom_viewport"));
     CHECK_FALSE(contains(inPlay, "menu_driver")); // XMB stays
@@ -1395,7 +1395,7 @@ TEST_CASE("RetroArch on the CRT mode: the full scaler is RetroArch's Full (24), 
     CHECK(contains(inPlay, "menu_safe_margin = \"5\""));
 }
 
-TEST_CASE("RetroArch on a square-pixel 4:3 output (640x480): untouched, the CRT lines are the tube's alone") {
+TEST_CASE("RetroArch on a square-pixel 4:3 output (640x480): the CRT lines are the tube's alone, the menu square") {
     Launching lib;
     lib.configure("Raconfig=true\nScaler=full\nOutputmode=640x480\n");
     PsGamePtr game = lib.foreignGame(false);
@@ -1405,9 +1405,11 @@ TEST_CASE("RetroArch on a square-pixel 4:3 output (640x480): untouched, the CRT 
     CHECK(contains(inPlay, "aspect_ratio_index = \"23\""));
     CHECK(contains(inPlay, "custom_viewport_width = \"1280\""));
     CHECK_FALSE(contains(inPlay, "video_message_pos"));
-    CHECK_FALSE(contains(inPlay, "menu_pixel_aspect"));
-    CHECK_FALSE(contains(inPlay, "menu_scale_factor"));
     CHECK_FALSE(contains(inPlay, "video_shader_enable"));
+    // the menu of a VGA 4:3 mode: square pixels inside its own margin (0 unless set)
+    CHECK(contains(inPlay, "menu_pixel_aspect = \"1.000000\""));
+    CHECK(contains(inPlay, "menu_scale_factor = \"1.000000\""));
+    CHECK(contains(inPlay, "menu_safe_margin = \"0\""));
 }
 
 // ---------------------------------------------------------------------------------------------------------
