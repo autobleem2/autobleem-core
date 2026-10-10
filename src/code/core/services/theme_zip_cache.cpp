@@ -93,8 +93,9 @@ bool giveUp(const string &name, const string &zip, const string &staging, const 
     return false;
 }
 
-// the cache for `name` is there and complete: true; unpacked and converted now: true; else false
-bool ensureCache(const string &themesDir, const string &name) {
+// the cache for `name` is there and complete: true; unpacked and converted now: true; else false, `why` says why
+bool ensureCache(const string &themesDir, const string &name, ThemeZipCache::Fallback &why) {
+    using Fallback = ThemeZipCache::Fallback;
     const string zip = zipPathOf(themesDir, name);
     const string cache = ThemeZipCache::cacheDir(themesDir, name);
     const string staging = ThemeZipCache::cacheRoot(themesDir) + sep + "." + name + ".unzip";
@@ -110,25 +111,31 @@ bool ensureCache(const string &themesDir, const string &name) {
     }
 
     vector<ableem::ZipEntry> entries;
-    if (!ableem::ZipArchive::listEntries(zip, entries))
+    if (!ableem::ZipArchive::listEntries(zip, entries)) {
+        why = Fallback::Broken;
         return giveUp(name, zip, staging, "not a zip archive");
+    }
     vector<string> names;
     uint64_t needed = 0;
     for (const ableem::ZipEntry &entry : entries) {
         names.push_back(entry.name);
         needed += entry.size;
     }
-    if (!namesHoldTheme(names))
+    if (!namesHoldTheme(names)) {
+        why = Fallback::Broken;
         return giveUp(name, zip, staging, "no theme.json or theme.ini in it");
+    }
 
     const string root = ThemeZipCache::cacheRoot(themesDir);
     if (!DirEntry::createDirs(root)) {
         PLOG_WARNING << "Theme zip " << name << " left alone: could not create " << root;
+        why = Fallback::CannotUnpack;
         return false;
     }
     const uint64_t room = freeSpace(root);
     if (room < needed + SPACE_MARGIN) {
         PLOG_WARNING << "Theme zip " << name << " needs " << needed << " bytes, " << room << " are free";
+        why = Fallback::NoSpace;
         return false; // the zip is fine, the stick is full
     }
 
@@ -136,33 +143,41 @@ bool ensureCache(const string &themesDir, const string &name) {
     if (!ableem::ZipArchive::extract(zip, staging)) {
         if (freeSpace(root) < SPACE_MARGIN) { // ran out of room on the way: not the zip's fault
             DirEntry::removeDirAndContents(staging);
+            why = Fallback::NoSpace;
             return false;
         }
         DirEntry::removeDirAndContents(staging);
         if (ableem::ZipArchive::verify(zip)) { // the archive is sound: the cache could not be written
             PLOG_WARNING << "Theme zip " << name << " left alone: could not write into " << root
                          << " (not writable, or no room); the default theme is used this time";
+            why = Fallback::CannotUnpack;
             return false;
         }
+        why = Fallback::Broken;
         return giveUp(name, zip, staging, "could not unpack it");
     }
 
     const string themeRoot = ThemeInstaller::findThemeRoot(staging);
-    if (themeRoot.empty())
+    if (themeRoot.empty()) {
+        why = Fallback::Broken;
         return giveUp(name, zip, staging, "no theme.json or theme.ini in it");
+    }
 
     // the conversion happens here, in the staging folder: the cache is complete or it is not there
     if (ThemeConverter::needsConversion(themeRoot) && !ThemeConverter::convert(themeRoot)) {
         DirEntry::removeDirAndContents(staging);
+        why = Fallback::CannotUnpack;
         return false;
     }
     if (DirEntry::writeFileIfChanged(themeRoot + sep + SOURCE_STAMP, zipSize) == DirEntry::WriteResult::Failed) {
         DirEntry::removeDirAndContents(staging);
+        why = Fallback::CannotUnpack;
         return false;
     }
 
     if (!DirEntry::renameFile(themeRoot, cache)) {
         DirEntry::removeDirAndContents(staging);
+        why = Fallback::CannotUnpack;
         return false;
     }
     if (themeRoot != staging)
@@ -243,11 +258,15 @@ vector<string> ThemeZipCache::listZipThemes(const string &themesDir) {
 //*******************************
 // ThemeZipCache::prepare
 //*******************************
-string ThemeZipCache::prepare(const string &themesDir, const string &picked) {
+string ThemeZipCache::prepare(const string &themesDir, const string &picked, Fallback *why) {
+    Fallback reason = Fallback::None;
     const bool zipTheme = isPlainName(picked) && !DirEntry::isDirectory(themesDir + sep + picked) &&
                           DirEntry::fileSize(zipPathOf(themesDir, picked)) >= 0;
     cleanCache(themesDir, zipTheme ? picked : "");
-    if (!zipTheme || !ensureCache(themesDir, picked))
+    const bool ready = zipTheme && ensureCache(themesDir, picked, reason);
+    if (why)
+        *why = reason;
+    if (!ready)
         return "";
     return cacheDir(themesDir, picked);
 }

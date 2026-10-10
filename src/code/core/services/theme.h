@@ -4,6 +4,7 @@
 #pragma once
 
 #include "config.h"
+#include "theme_zip_cache.h"
 #include "../main.h"
 
 #include <string>
@@ -30,6 +31,10 @@ public:
     // either folder from the old layout first. If the selected folder is not a theme it falls back to
     // "default" and writes that back to config.ini.
     void load();
+
+    // why the last load() did not use the picked zip theme (and reset config.ini to "default"): None when it did.
+    // Kept outside the class (one Theme exists) so that Theme's layout - and the SDK ABI - stays as it is.
+    static ThemeZipCache::Fallback fallbackReason();
 
     // <themes>/<name>, else the unpacked <themes>/.cache/<name>, else <themes>/default
     std::string path();

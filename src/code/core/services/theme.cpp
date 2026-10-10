@@ -14,6 +14,7 @@ using namespace std;
 
 namespace {
 const char *THEME_JSON = "theme.json";
+ThemeZipCache::Fallback fallback_ = ThemeZipCache::Fallback::None;
 } // namespace
 
 //*******************************
@@ -21,6 +22,13 @@ const char *THEME_JSON = "theme.json";
 //*******************************
 string Theme::defaultsPath() {
     return Env::getPathToThemesDir() + sep + "default";
+}
+
+//*******************************
+// Theme::fallbackReason
+//*******************************
+ThemeZipCache::Fallback Theme::fallbackReason() {
+    return fallback_;
 }
 
 //*******************************
@@ -44,13 +52,14 @@ string Theme::path() {
 void Theme::load() {
     // a picked <name>.zip is unpacked into themes/.cache/<name>/ (and converted there) first; whatever else
     // the cache holds - the previous zip theme, a leftover of a power cut - is removed
-    ThemeZipCache::prepare(Env::getPathToThemesDir(), config_.inifile.values["theme"]);
+    fallback_ = ThemeZipCache::Fallback::None;
+    ThemeZipCache::prepare(Env::getPathToThemesDir(), config_.inifile.values["theme"], &fallback_);
 
     const string defaultsDir = defaultsPath();
     loadedPath_ = path();
 
     PLOG_INFO << "Loading UI theme:" << loadedPath_;
-    if (!ThemeConverter::isThemeFolder(loadedPath_)) {
+    if (fallback_ != ThemeZipCache::Fallback::None || !ThemeConverter::isThemeFolder(loadedPath_)) {
         loadedPath_ = defaultsDir;
         config_.inifile.values["theme"] = "default";
         config_.save();
