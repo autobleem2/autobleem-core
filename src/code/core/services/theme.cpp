@@ -63,7 +63,9 @@ void Theme::load() {
     loadedPath_ = path();
 
     PLOG_INFO << "Loading UI theme:" << loadedPath_;
-    if (reason != ThemeZipCache::Fallback::None || !ThemeConverter::isThemeFolder(loadedPath_)) {
+    // path() answers themes/default for a name it cannot find: that is a fallback too, unless "default" was picked
+    const bool gone = loadedPath_ == defaultsDir && !picked.empty() && picked != "default";
+    if (reason != ThemeZipCache::Fallback::None || gone || !ThemeConverter::isThemeFolder(loadedPath_)) {
         const string shipped = Env::getPathToThemesDir() + sep + DefaultTheme::Name;
         const string fallbackName = ThemeConverter::isThemeFolder(shipped) ? DefaultTheme::Name : "default";
         // a name that is no zip problem and not the default itself: the theme is simply gone (renamed .zip.bad,
