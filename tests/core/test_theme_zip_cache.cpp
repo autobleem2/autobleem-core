@@ -508,13 +508,14 @@ TEST_CASE("Theme::load() with too little room keeps the zip, shows default, rese
     makeNewTheme(tmp, "Neon");
     tmp.writeFile("config.ini", "Theme=Neon\n");
     ThemeZipCache::setFreeSpaceProbe([](const string &) { return uint64_t(10); });
+    Theme::takeFallbackReason();
 
     {
         Config config;
         Theme theme(config);
         theme.load();
         CHECK(theme.loadedPath() == tmp.at("themes/default"));
-        CHECK(Theme::fallbackReason() == ThemeZipCache::Fallback::NoSpace);
+        CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::NoSpace);
         CHECK(config.inifile.values["theme"] == "default");
     }
     CHECK(DirEntry::exists(tmp.at("themes/Neon.zip")));
@@ -524,7 +525,7 @@ TEST_CASE("Theme::load() with too little room keeps the zip, shows default, rese
     CHECK(again.inifile.values["theme"] == "default");
     Theme theme(again);
     theme.load();
-    CHECK(Theme::fallbackReason() == ThemeZipCache::Fallback::None);
+    CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::None);
 }
 
 TEST_CASE("Theme::load() with a broken zip renames it .bad, resets config.ini and says Broken") {
@@ -535,17 +536,78 @@ TEST_CASE("Theme::load() with a broken zip renames it .bad, resets config.ini an
     tmp.writeFile("themes/default/theme.json", "{ \"classic\": { \"menuLines\": 12 } }");
     tmp.writeFile("themes/broken.zip", "not an archive");
     tmp.writeFile("config.ini", "Theme=broken\n");
+    Theme::takeFallbackReason();
 
     {
         Config config;
         Theme theme(config);
         theme.load();
         CHECK(theme.loadedPath() == tmp.at("themes/default"));
-        CHECK(Theme::fallbackReason() == ThemeZipCache::Fallback::Broken);
+        CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::Broken);
+        CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::None); // taking clears it
         CHECK(config.inifile.values["theme"] == "default");
     }
     CHECK(DirEntry::exists(tmp.at("themes/broken.zip.bad")));
 
     Config again;
     CHECK(again.inifile.values["theme"] == "default");
+}
+
+// UIREV-54 (VM): the start-up load fell back, and a second load (the assets are loaded again) then saw the default
+// theme and wiped the reason before the launcher looked for it
+TEST_CASE("a later load() of the default theme does not wipe the reason of the fallback before it") {
+    EnvFixture env;
+    TempDir tmp("zipcache");
+    env.setWorkingPath(tmp.path());
+    env.setThemesDir(tmp.makeSubDir("themes"));
+    tmp.writeFile("themes/default/theme.json", "{ \"classic\": { \"menuLines\": 12 } }");
+    tmp.writeFile("themes/bad.zip", string(4096, 'x'));
+    tmp.writeFile("config.ini", "Theme=bad\n");
+    Theme::takeFallbackReason();
+
+    Config config;
+    Theme theme(config);
+    theme.load();
+    theme.load(); // config.ini says default now
+    CHECK(config.inifile.values["theme"] == "default");
+    CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::Broken);
+}
+
+TEST_CASE("Theme::load() of a theme that is gone (renamed .zip.bad, deleted) resets config.ini and says Missing") {
+    EnvFixture env;
+    TempDir tmp("zipcache");
+    env.setWorkingPath(tmp.path());
+    env.setThemesDir(tmp.makeSubDir("themes"));
+    tmp.writeFile("themes/default/theme.json", "{ \"classic\": { \"menuLines\": 12 } }");
+    tmp.writeFile("themes/bad.zip.bad", string(4096, 'x'));
+    tmp.writeFile("config.ini", "Theme=bad\n");
+    Theme::takeFallbackReason();
+
+    Config config;
+    Theme theme(config);
+    theme.load();
+    CHECK(theme.loadedPath() == tmp.at("themes/default"));
+    CHECK(config.inifile.values["theme"] == "default");
+    CHECK(tmp.readFile("config.ini").find("Theme=default") != string::npos);
+    CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::Missing);
+}
+
+TEST_CASE("Theme::load() falls back to the shipped ab2.0.0 theme when it is there") {
+    EnvFixture env;
+    TempDir tmp("zipcache");
+    env.setWorkingPath(tmp.path());
+    env.setThemesDir(tmp.makeSubDir("themes"));
+    tmp.writeFile("themes/default/theme.json", "{ \"classic\": { \"menuLines\": 12 } }");
+    tmp.writeFile("themes/ab2.0.0/theme.json", "{ \"classic\": { \"menuLines\": 7 } }");
+    tmp.writeFile("themes/bad.zip", string(4096, 'x'));
+    tmp.writeFile("config.ini", "Theme=bad\n");
+    Theme::takeFallbackReason();
+
+    Config config;
+    Theme theme(config);
+    theme.load();
+    CHECK(theme.loadedPath() == tmp.at("themes/ab2.0.0"));
+    CHECK(int(theme.classic().menuLines) == 7);
+    CHECK(config.inifile.values["theme"] == "ab2.0.0");
+    CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::Broken);
 }

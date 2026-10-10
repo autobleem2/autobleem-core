@@ -122,11 +122,14 @@ TEST_CASE("every file is resolved: the theme's own, else the default theme's, el
 TEST_CASE("a theme that does not exist at all is the default theme") {
     Themes t;
     t.configure("nosuchtheme");
+    Theme::takeFallbackReason();
 
     CHECK(t.theme->path() == t.tmp.at("themes/default"));
     t.theme->load();
     CHECK(t.theme->classic().background == t.tmp.at("themes/default/bg.png"));
-    CHECK(t.config->inifile.values["theme"] == "nosuchtheme"); // the name is kept: the folder may turn up
+    // UIREV-54: Options and config.ini show the theme really in use, and the launcher says why
+    CHECK(t.config->inifile.values["theme"] == "default");
+    CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::Missing);
 }
 
 TEST_CASE("a theme directory that is no theme falls back to default and says so in config.ini") {
