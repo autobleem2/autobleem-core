@@ -26,7 +26,8 @@
 // splash fades in, milliseconds. A TV takes a moment to lock onto the freshly set HDMI mode at boot - on the Pi 400 the
 // whole fade-in/hold went by before the picture appeared - so the splash waits for it (1500 until 2026-09-29,
 // 300 since: the owner found the wait too long).
-#define SplashSettleDuration (300)
+// 0 since 2026-10-10 (the owner: one black frame, not 0.3 s): the fade in starts at once - its first frame is the black one
+#define SplashSettleDuration (0)
 // GuiSplash::prepareFrame(): the least the fully-faded-in splash holds, milliseconds - longer while the start-up work it
 // runs is not done (2 s of a fixed wait after the loading until 2026-10-10; the owner chose 1 s as the least)
 #define SplashHoldDuration (1 * TicksPerSecond)
