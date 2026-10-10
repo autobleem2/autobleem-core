@@ -27,15 +27,22 @@ public:
 
     // split in two (rather than one open()) because the application needs to run a shell hook between them
     // (importing internal.db from the console) - see the "Importing internal games" step in App::openLibrary.
-    bool
-    openCoversAndUsbGames();  // MetadataLookup (the rdb + the covers dbs) + regional.db (creates the schema if missing)
+    bool openCoversAndUsbGames(); // regional.db (creates the schema if missing); the metadata waits for metadata()
     bool openInternalGames(); // internal.db (adds the favorite/history/last_played/play_using_ra columns if missing)
     void close();             // safe to call more than once; also runs at destruction
 
     GameDatabase &usbGames() { return *regionalDb; }
     GameDatabase &internalGames() { return *internalDb; }
-    MetadataLookup &metadata() { return *metadata_; }
-    CoverDatabase &covers() { return metadata_->covers(); }
+    // The library's own MetadataLookup (the rdb + the covers dbs), opened the first time it is asked for - on the
+    // thread that owns the library. Every scan, the LAN library, the Store and the disc reader open their own, so at
+    // start-up nobody needs this one: reading the whole rdb (13k records, four indexes) there only kept the screen
+    // black. It used to be a CoverDatabase (a few cheap sqlite opens) until the rdb joined it (core f71c288).
+    MetadataLookup &metadata();
+    CoverDatabase &covers() { return metadata().covers(); }
+
+    // what the start-up warning needs, without loading anything: an rdb file that starts like one, or a covers db
+    // that opens. The same answer metadata().hasRdb() || covers().hasAnyRegion() gives, minus the rdb's full parse.
+    static bool metadataSourcesPresent();
 
     // internal games live in internal.db, USB games in regional.db - every call site that used to branch on
     // game.internal to pick one of "gui->db"/"gui->internalDB" can use this instead.

@@ -38,6 +38,14 @@ void ThemeAssets::unload() {
 // ThemeAssets::load
 //*******************************
 void ThemeAssets::load() {
+    loadForSplash();
+    loadRest();
+}
+
+//*******************************
+// ThemeAssets::loadForSplash
+//*******************************
+void ThemeAssets::loadForSplash() {
     theme_.load(); // (re)reads theme.json, merged over themes/default, every file resolved
     const ClassicTheme &classic = theme_.classic();
     const LauncherTheme &launcher = theme_.launcher();
@@ -80,6 +88,40 @@ void ThemeAssets::load() {
         logoRect.x = static_cast<int>(centreX - logoRect.w / 2.0 + 0.5);
         logoRect.y = static_cast<int>(centreY - logoRect.h / 2.0 + 0.5);
     }
+
+    // a theme without launcher fonts gets the shipped pair - Red Hat Text Medium/SemiBold (OFL), since UIREV-31
+    // (it was Open Sans Medium/Bold, the stand-in for the console's SST, from 2026-09-21)
+    // the classic screens' font is one with the launcher's (UIREV-31): the theme's launcher.fonts medium - Red Hat Text
+    // Medium on a theme that sets none - or the user's own when Options says so, or the CJK font for a language that
+    // needs it; a theme's classic.font is not read (2026-09-29, the owner) - so it is never opened either
+    const Fonts::Pick pick =
+        Fonts::pickFonts(config_.inifile.values["themefont"], config_.inifile.values["font"],
+                         config_.inifile.values["language"], launcher.fonts.medium, launcher.fonts.bold);
+    const string &medium = pick.medium;
+    string classicFont = pick.classic;
+    const bool cjk = Fonts::cjkFontFor(config_.inifile.values["language"]) != "";
+    if (cjk) {
+        PLOG_INFO << "Language " << config_.inifile.values["language"] << ": every font is " << classicFont;
+    }
+    classicFontFile_ = classicFont;
+    PLOG_INFO << "Classic font: " << classicFont;
+    Gui::tickBusy();
+    themeFont = Fonts::openNewSharedCachedFont(classicFont, Fonts::ClassicFontSize, renderer_);
+    if (!themeFont.valid() && classicFont != medium) {
+        // a file that is no font (an empty one crashed every screen drawing with it) - the default instead
+        PLOG_WARNING << "Cannot open the font " << classicFont << ", using the default";
+        classicFont = classicFontFile_ = medium;
+        themeFont = Fonts::openNewSharedCachedFont(classicFont, Fonts::ClassicFontSize, renderer_);
+    }
+}
+
+//*******************************
+// ThemeAssets::loadRest
+//*******************************
+void ThemeAssets::loadRest() {
+    const ClassicTheme &classic = theme_.classic();
+    const LauncherTheme &launcher = theme_.launcher();
+
     bigBoxFrame = loadImage(renderer_, Env::getWorkingPath() + sep + "evoimg/bigbox.png");
     if (config_.inifile.values["jewel"] != "none") {
         if (config_.inifile.values["jewel"] == "default") {
@@ -141,37 +183,17 @@ void ThemeAssets::load() {
     arrow("dpadLeft", dpadLeft, dpadLeftOutline);
     arrow("dpadRight", dpadRight, dpadRightOutline);
 
-    // a theme without launcher fonts gets the shipped pair - Red Hat Text Medium/SemiBold (OFL), since UIREV-31
-    // (it was Open Sans Medium/Bold, the stand-in for the console's SST, from 2026-09-21)
-    // the classic screens' font is one with the launcher's (UIREV-31): the theme's launcher.fonts medium - Red Hat Text
-    // Medium on a theme that sets none - or the user's own when Options says so, or the CJK font for a language that
-    // needs it; a theme's classic.font is not read (2026-09-29, the owner) - so it is never opened either
+    // the font pair of loadForSplash()'s pick (the same config and theme, so the same answer); a user's font that
+    // could not be opened was replaced there by the default (classicFontFile_ no longer the picked one)
     const Fonts::Pick pick =
         Fonts::pickFonts(config_.inifile.values["themefont"], config_.inifile.values["font"],
                          config_.inifile.values["language"], launcher.fonts.medium, launcher.fonts.bold);
-    const string &medium = pick.medium;
-    const string &bold = pick.bold;
-    string classicFont = pick.classic;
-    const bool cjk = Fonts::cjkFontFor(config_.inifile.values["language"]) != "";
-    if (cjk) {
-        PLOG_INFO << "Language " << config_.inifile.values["language"] << ": every font is " << classicFont;
-    }
-    classicFontFile_ = classicFont;
-    PLOG_INFO << "Classic font: " << classicFont;
+    const bool userFont = pick.userFont && classicFontFile_ == pick.classic;
     Gui::tickBusy();
-    themeFont = Fonts::openNewSharedCachedFont(classicFont, Fonts::ClassicFontSize, renderer_);
-    bool userFont = pick.userFont;
-    if (!themeFont.valid() && classicFont != medium) {
-        // a file that is no font (an empty one crashed every screen drawing with it) - the default instead
-        PLOG_WARNING << "Cannot open the font " << classicFont << ", using the default";
-        classicFont = classicFontFile_ = medium;
-        userFont = false;
-        themeFont = Fonts::openNewSharedCachedFont(classicFont, Fonts::ClassicFontSize, renderer_);
-    }
-    fixedFonts().openAllFonts(medium, bold, renderer_);
+    fixedFonts().openAllFonts(pick.medium, pick.bold, renderer_);
     if (userFont) {
-        PLOG_INFO << "UI font: " << classicFont;
-        themeFonts.openAllFonts(classicFont, classicFont, renderer_); // a user's font has no bold of its own
+        PLOG_INFO << "UI font: " << classicFontFile_;
+        themeFonts.openAllFonts(classicFontFile_, classicFontFile_, renderer_); // a user's font has no bold of its own
     } else {
         themeFonts = fixedFonts(); // the same pair: shared handles, nothing opened twice
     }

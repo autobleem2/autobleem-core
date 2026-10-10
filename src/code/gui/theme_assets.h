@@ -25,8 +25,14 @@ class ThemeAssets {
 public:
     ThemeAssets(ableem::Renderer &renderer, Theme &theme, Config &config);
 
-    // (re)loads theme.ini and everything below for the theme it names; the previous textures are released first
+    // (re)loads theme.ini and everything below for the theme it names; the previous textures are released first.
+    // = loadForSplash() + loadRest()
     void load();
+    // the theme preload: theme.json, the background (its 4:3 picture on a 4:3 output), the logo and themeFont - what
+    // the boot splash draws. loadRest() the rest (frames, buttons, hints, d-pad icons, every font size); the boot runs
+    // it as the splash's first step of work (Gui::display)
+    void loadForSplash();
+    void loadRest();
     // drops every texture and font: they belong to the renderer and must be gone before Gui::releaseDisplay()
     // destroys it. load() brings them back once the display is acquired again.
     void unload();

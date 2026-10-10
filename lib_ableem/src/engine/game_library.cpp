@@ -2,6 +2,7 @@
 #include "ableem/engine/environment.h"
 #include "ableem/engine/filesystem.h"
 #include "ableem/engine/retroarch_playlist.h"
+#include "ableem/engine/startup_timer.h"
 #include "ableem/engine/strings.h"
 #include "ableem/engine/log.h"
 
@@ -30,9 +31,7 @@ GameLibrary::~GameLibrary() {
 // GameLibrary::openCoversAndUsbGames
 //*******************************
 bool GameLibrary::openCoversAndUsbGames() {
-    metadata_ = std::make_unique<MetadataLookup>(Environment::getPathToCoversDBDir(),
-                                                 Environment::getPathToPlayStationRdbFile());
-
+    StartupTimer timer("regional-db");
     regionalDb = std::make_unique<GameDatabase>();
     if (!regionalDb->open(Environment::getPathToRegionalDBFile())) {
         return false;
@@ -42,9 +41,43 @@ bool GameLibrary::openCoversAndUsbGames() {
 }
 
 //*******************************
+// GameLibrary::metadata
+//*******************************
+MetadataLookup &GameLibrary::metadata() {
+    if (!metadata_) {
+        StartupTimer timer("metadata-open");
+        metadata_ = std::make_unique<MetadataLookup>(Environment::getPathToCoversDBDir(),
+                                                     Environment::getPathToPlayStationRdbFile());
+    }
+    return *metadata_;
+}
+
+//*******************************
+// GameLibrary::metadataSourcesPresent
+//*******************************
+bool GameLibrary::metadataSourcesPresent() {
+    // the rdb: its 8-byte magic (RdbReader::open checks the same before it parses the rest)
+    ifstream rdb(Environment::getPathToPlayStationRdbFile(), ios::binary);
+    char magic[8] = {};
+    if (rdb && rdb.read(magic, sizeof(magic)) && string(magic, sizeof(magic)) == string("RARCHDB\0", 8))
+        return true;
+    // a covers db: opened read-only, as CoverDatabase opens it
+    for (const char *region : {"U", "P", "J"}) {
+        const string file = Environment::getPathToCoversDBDir() + sep + "covers" + region + ".db";
+        if (!DirEntry::exists(file))
+            continue;
+        GameDatabase db;
+        if (db.open(file, true))
+            return true;
+    }
+    return false;
+}
+
+//*******************************
 // GameLibrary::openInternalGames
 //*******************************
 bool GameLibrary::openInternalGames() {
+    StartupTimer timer("internal-db");
     internalDb = std::make_unique<GameDatabase>();
     if (!internalDb->open(Environment::getPathToInternalDBFile())) {
         return false;

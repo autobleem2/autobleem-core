@@ -834,6 +834,7 @@ void LaunchService::raMemcardIn(PsGame &game) {
         if (DirEntry::exists(inpath)) {
             DirEntry::copy(inpath, outpath);
         }
+        memcards_.noteSessionCard(game, outpath); // the session's saves are in the .srm until raMemcardOut
     }
 }
 
@@ -842,8 +843,8 @@ void LaunchService::raMemcardIn(PsGame &game) {
 //*******************************
 void LaunchService::raMemcardOut(PsGame &game) {
     if (!game.foreign) {
-        memcards_.swapOutAfterLaunch(game);
-
+        // the session's card onto the swapped-in card first, and only then the set swapped out: the other way round
+        // the set got its cards back unchanged and the session's saves landed on the game's own card instead
         string outpath = game.ssFolder + sep + "memcards" + sep + "card1.mcd";
         string inpath = raSavesDir() + sep + raBaseNameFor(game) + ".srm";
         string backup = inpath + ".bak";
@@ -855,6 +856,8 @@ void LaunchService::raMemcardOut(PsGame &game) {
             DirEntry::removeFile(inpath);
             DirEntry::renameFile(backup, inpath);
         }
+
+        memcards_.swapOutAfterLaunch(game); // also clears the crash journal
     }
 }
 

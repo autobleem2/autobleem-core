@@ -39,6 +39,17 @@ public:
     // missing drops the game back to the stock card rather than letting it run on another game's saves.
     void swapInForLaunch(PsGame &game);
     void swapOutAfterLaunch(PsGame &game);
+    // RetroArch plays card 1 as a copy in its saves folder (`file`, the .srm): noted in the journal, so a crash before
+    // raMemcardOut copied it back still gets its saves onto the game's card - and the set's
+    void noteSessionCard(PsGame &game, const std::string &file);
+
+    // The crash journal (<save states>/memcard-swap.ini): which game folder holds a copied set or a session card
+    // right now. swapInForLaunch()/noteSessionCard() write it once the cards are in place, swapOutAfterLaunch()
+    // removes it once they are back. At start-up recoverAfterCrash() finishes what a crash left: the session card onto
+    // the game's card, the cards back into the set, the game's own cards back - the saves made meanwhile are kept.
+    // One file looked at, no walk of the save-state folders (was MemcardManager::restoreAll).
+    static std::string journalPath();
+    void recoverAfterCrash();
     // For an emulator that plays a set where it is ($AB_MEMCARD_DIR, abfeatures: memcarddir) instead of the
     // swap above: the set's folder (Games/!MemCards/<set>), "" for the stock card. A set that has gone
     // missing drops the game back to the stock card, as swapInForLaunch does.
@@ -55,6 +66,8 @@ public:
 private:
     // built per call rather than held: Environment's paths are configured after App is constructed
     ableem::MemcardManager manager() const;
+    static void writeJournal(const std::string &folder, const std::string &set, const std::string &card1);
+    static bool readJournal(std::string &folder, std::string &set, std::string &card1); // false: no journal
 
     ableem::GameLibrary &library_;
 };
