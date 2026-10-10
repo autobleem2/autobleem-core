@@ -29,8 +29,9 @@
 // 0 since 2026-10-10 (the owner: one black frame, not 0.3 s): the fade in starts at once - its first frame is the black one
 #define SplashSettleDuration (0)
 // GuiSplash::prepareFrame(): the least the fully-faded-in splash holds, milliseconds - longer while the start-up work it
-// runs is not done (2 s of a fixed wait after the loading until 2026-10-10; the owner chose 1 s as the least)
-#define SplashHoldDuration (1 * TicksPerSecond)
+// runs is not done (2 s of a fixed wait after the loading until 2026-10-10; then 1 s, then 0.5 s - on the PSC the
+// work itself takes about that long)
+#define SplashHoldDuration (TicksPerSecond / 2)
 // GuiSplash's two Fade transitions (in, and out), milliseconds - what 10 alpha a frame took at 60 fps
 #define SplashFadeDuration 425
 // GuiLauncher: how long the launcher takes to fade in from black when it is first shown, milliseconds
