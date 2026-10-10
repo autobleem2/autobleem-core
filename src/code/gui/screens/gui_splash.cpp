@@ -58,6 +58,10 @@ GuiSplash::GuiSplash(ableem::GuiBase &_gui) : GuiScreen(_gui) {
 // before each frame: the hold starts when the fade in is over (at once with the animations off) and ends the screen
 bool GuiSplash::prepareFrame() {
     gui->assets().backgroundImg.setBlendMode(ableem::BlendMode::Blend);
+    if (!firstFrameLogged_) {
+        firstFrameLogged_ = true;
+        ableem::StartupTimer::milestone("splash-first-frame");
+    }
     if (ctx.stack().bringsIn(*this))
         return true; // still fading in
     if (!holding_) {

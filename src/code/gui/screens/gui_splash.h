@@ -36,6 +36,7 @@ public:
     void draw() override; // the background, the logo and the version
 
 private:
+    bool firstFrameLogged_ = false;
     bool holding_ = false;
     unsigned int holdStart_ = 0;
 };
