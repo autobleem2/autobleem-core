@@ -4,6 +4,7 @@
 //
 #include "doctest/doctest.h"
 
+#include "support/free_port.h"
 #include "support/temp_dir.h"
 #include <ableem/lanserver/http_server.h>
 #include <ableem/lanserver/index_page.h>
@@ -40,36 +41,9 @@ using namespace ableem;
 
 namespace {
 
-// A port taken from the clock collides with another test process when ctest runs the suites in parallel ("port N is
-// in use or not allowed", seen in CI). Pick a random port of the dynamic range and try the next random one when the
-// bind is refused.
-constexpr int portAttempts = 25;
-
-int randomPort() {
-    static mt19937 gen{random_device{}()};
-    return 20000 + static_cast<int>(gen() % 20000);
-}
-
-// listens on a free port, which is left in `port`
-bool listenOnFreePort(HttpServer &server, int &port, string &error, const string &bindAddress) {
-    for (int attempt = 0; attempt < portAttempts; ++attempt) {
-        port = randomPort();
-        if (server.listen(port, error, bindAddress))
-            return true;
-    }
-    return false;
-}
-
-// a LanServer started on a free port, which is left in `config.port`; null (and `error`) when none could be bound
-unique_ptr<LanServer> startOnFreePort(LanServer::Config &config, string &error) {
-    for (int attempt = 0; attempt < portAttempts; ++attempt) {
-        config.port = randomPort();
-        auto server = make_unique<LanServer>(config);
-        if (server->start(error))
-            return server;
-    }
-    return nullptr;
-}
+using testsupport::listenOnFreePort;
+using testsupport::randomPort;
+using testsupport::startOnFreePort;
 
 // every file under dir with its size - to prove the scan wrote nothing
 string listing(const string &dir) {
