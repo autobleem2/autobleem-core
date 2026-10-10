@@ -92,6 +92,25 @@ bool Gui::fullscreen() {
 //********************
 string Gui::windowTitle_ = "AutoBleem";
 
+namespace {
+// Gui::deferPadSetup(): the constructor leaves the pads to display(false); padSetupPending: not done yet
+bool padSetupDeferred = false;
+bool padSetupPending = false;
+
+// the pad mappings the launcher and the pscbios wizard share; probePads() reads the first that exists (and starts
+// SDL's joystick subsystems itself, so no pad event comes before it)
+void setUpPads(ableem::Input &input) {
+    ableem::StartupTimer timer("pad-setup");
+    input.loadMappings(Env::padMappingFiles());
+    input.probePads();
+    padSetupPending = false;
+}
+} // namespace
+
+void Gui::deferPadSetup() {
+    padSetupDeferred = true;
+}
+
 Gui::Gui()
     : ableem::GuiBase(windowTitle_, ScreenWidth, ScreenHeight, outputScale(), multisampleSamples(), fullscreen()),
       assets_(renderer(), AppBase::get().theme(), AppBase::get().config()),
@@ -99,9 +118,10 @@ Gui::Gui()
       uiContext_(renderer(), input(), platform()), stack_(renderer()) {
     wireUiContext();
     renderer().setRestCanvas(CrtCanvasW, CrtCanvasH); // kept for a 4:3 output (applied at once on one, else after a live switch to one)
-    // the pad mappings the launcher and the pscbios wizard share; probePads() reads the first that exists
-    input().loadMappings(Env::padMappingFiles());
-    input().probePads();
+    if (padSetupDeferred)
+        padSetupPending = true; // display(false) does it, on the splash
+    else
+        setUpPads(input());
     renderer().setPerfOverlay(AppBase::get().config().inifile.values["perfoverlay"] == "true");
 }
 
@@ -330,17 +350,16 @@ void Gui::splash(const string &message) {
 // Gui::loadAssets
 //*******************************
 void Gui::loadAssets(bool reloadMusic) {
+    loadSplashAssets();
+    loadRestAssets(reloadMusic);
+}
+
+//*******************************
+// Gui::loadSplashAssets
+//*******************************
+void Gui::loadSplashAssets() {
     text_.clearTextCache(); // keyed on the font handles about to be replaced
-    assets_.load();
-    frames_.assign(themeFrames(AppBase::get().theme().loadedPath(),
-                               AppBase::get().theme().launcher())); // the textures load when first drawn
-    icons_.assign(ThemeAssets::iconSpecs(AppBase::get().theme()), ThemeAssets::iconHalo(AppBase::get().theme()));
-    // the theme's own launcher logo and resume picture mask (G5q, G5s): nothing when it sets none
-    const ableem::ThemeLauncherLogo logo = ableem::loadThemeLogo(AppBase::get().theme().loadedPath());
-    launcherLogo_ = logo.set ? ThemeAssets::loadImage(renderer(), logo.file) : Texture();
-    launcherLogoRect_ = launcherLogo_.valid() ? Rect(logo.x, logo.y, logo.w, logo.h) : Rect();
-    resumeMask_ = ThemeAssets::loadImage(renderer(), ableem::loadThemeResumeMask(AppBase::get().theme().loadedPath()));
-    spinner_.assign(themeSpinner(AppBase::get().theme().loadedPath())); // the strip loads when first drawn
+    assets_.loadForSplash();
     // the theme's own `disabled` role (G5t): the veil's colour and alpha - nothing when it sets none
     const ableem::ThemeDisabledVeil veil = ableem::loadThemeDisabledVeil(AppBase::get().theme().loadedPath());
     disabledVeil_ = abgui::DisabledVeil();
@@ -364,7 +383,6 @@ void Gui::loadAssets(bool reloadMusic) {
     inactiveAlphas_.barTrack = inactive.barTrack;
     // Options -> Interface -> "Animations" (UIREV-48): off, every screen change is instant
     stack_.setAnimations(AppBase::get().config().inifile.values["animations"] != "false");
-    AppBase::get().audio().loadTheme(reloadMusic);
 
     // the classic screens' text halo, on unless the theme says otherwise; the launcher sets its own
     // around its frame and puts this one back
@@ -372,6 +390,25 @@ void Gui::loadAssets(bool reloadMusic) {
     const ableem::Opt<bool> &textShadow = AppBase::get().theme().classic().textShadow;
     shadow.enabled = !textShadow.set || textShadow;
     text_.setShadow(shadow);
+    text_.setFonts(&assets_.themeFonts);
+}
+
+//*******************************
+// Gui::loadRestAssets
+//*******************************
+void Gui::loadRestAssets(bool reloadMusic) {
+    text_.clearTextCache(); // themeFonts are opened now
+    assets_.loadRest();
+    frames_.assign(themeFrames(AppBase::get().theme().loadedPath(),
+                               AppBase::get().theme().launcher())); // the textures load when first drawn
+    icons_.assign(ThemeAssets::iconSpecs(AppBase::get().theme()), ThemeAssets::iconHalo(AppBase::get().theme()));
+    // the theme's own launcher logo and resume picture mask (G5q, G5s): nothing when it sets none
+    const ableem::ThemeLauncherLogo logo = ableem::loadThemeLogo(AppBase::get().theme().loadedPath());
+    launcherLogo_ = logo.set ? ThemeAssets::loadImage(renderer(), logo.file) : Texture();
+    launcherLogoRect_ = launcherLogo_.valid() ? Rect(logo.x, logo.y, logo.w, logo.h) : Rect();
+    resumeMask_ = ThemeAssets::loadImage(renderer(), ableem::loadThemeResumeMask(AppBase::get().theme().loadedPath()));
+    spinner_.assign(themeSpinner(AppBase::get().theme().loadedPath())); // the strip loads when first drawn
+    AppBase::get().audio().loadTheme(reloadMusic);
     text_.setFonts(&assets_.themeFonts);
     text_.setCheckIconRightMargin(assets_.checkIconRightMargin);
 }
@@ -465,19 +502,40 @@ void Gui::display(bool resume) {
         // on black meanwhile (GuiLauncher::render ends it with its first frame)
         beginBusy(_("Loading..."), [this]() { stack_.frame(Color(0, 0, 0, 255), []() {}); });
     }
-    {
-        ableem::StartupTimer timer(resume ? "theme-reload" : "theme-load"); // images, fonts, the music
-        loadAssets();
-    }
-
+    bool splash = false;
     if (!resume) {
         // Options -> Interface -> "Splash screen": off skips the boot splash (AB_NO_SPLASH does too)
-        bool splash = AppBase::get().config().inifile.values["splashscreen"] != "false";
+        splash = AppBase::get().config().inifile.values["splashscreen"] != "false";
 #ifdef AB_DEBUG_HOST
         // AB_NO_SPLASH=1: straight through - the DebugDriver's tests (tools/ab_drive.py) start that way
         if (const char *skip = getenv("AB_NO_SPLASH"))
             splash = splash && *skip != '1';
 #endif
+    }
+
+    if (splash) {
+        // the theme preload: only what the splash draws now; the rest of the theme (music included) and the pads are
+        // the splash's first steps of work, ahead of whatever the program gave it (GuiSplash::setWork)
+        {
+            ableem::StartupTimer timer("theme-preload");
+            loadSplashAssets();
+        }
+        std::vector<std::function<void()>> first;
+        first.push_back([this]() {
+            ableem::StartupTimer timer("theme-rest");
+            loadRestAssets();
+        });
+        if (padSetupPending)
+            first.push_back([this]() { setUpPads(input()); });
+        GuiSplash::pushWorkFront(std::move(first));
+    } else {
+        ableem::StartupTimer timer(resume ? "theme-reload" : "theme-load"); // images, fonts, the music
+        loadAssets();
+        if (padSetupPending)
+            setUpPads(input());
+    }
+
+    if (!resume) {
         if (splash) {
             GuiSplash splashScreen(*this);
             splashScreen.show();

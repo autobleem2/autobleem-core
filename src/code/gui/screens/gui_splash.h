@@ -25,6 +25,8 @@ public:
 
     // the start-up steps for the next splash (they replace any not run yet)
     static void setWork(std::vector<std::function<void()>> steps);
+    // steps that go before the ones already given (Gui::display's theme rest and pad setup)
+    static void pushWorkFront(std::vector<std::function<void()>> steps);
     // runs the steps no splash ran: the splash is off (Options -> Interface, AB_NO_SPLASH) or ended early (a Quit)
     static void runPendingWork();
 

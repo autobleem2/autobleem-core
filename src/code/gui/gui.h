@@ -49,7 +49,14 @@ public:
     // change once the window exists
     static void setWindowTitle(const std::string &title) { windowTitle_ = title; }
     // (re)loads the theme's textures and fonts, and its music unless told not to
-    void loadAssets(bool reloadMusic = true);
+    void loadAssets(bool reloadMusic = true); // = loadSplashAssets() + loadRestAssets()
+    // the boot's theme preload: what the splash draws (ThemeAssets::loadForSplash, the animations switch, the text
+    // shadow); loadRestAssets() the rest, music included - display(false) runs it as the splash's first step
+    void loadSplashAssets();
+    void loadRestAssets(bool reloadMusic = true);
+    // the launcher's boot: the pad mappings and the pad probe wait for the splash instead of running in the
+    // constructor (nothing reads a pad before the first screen). Called before the first getInstance().
+    static void deferPadSetup();
 
     void display(bool resume);
 

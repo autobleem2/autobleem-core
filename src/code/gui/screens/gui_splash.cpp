@@ -28,6 +28,10 @@ void GuiSplash::setWork(vector<function<void()>> steps) {
     pendingWork().assign(steps.begin(), steps.end());
 }
 
+void GuiSplash::pushWorkFront(vector<function<void()>> steps) {
+    pendingWork().insert(pendingWork().begin(), steps.begin(), steps.end());
+}
+
 void GuiSplash::runPendingWork() {
     deque<function<void()>> &steps = pendingWork();
     while (!steps.empty()) {
