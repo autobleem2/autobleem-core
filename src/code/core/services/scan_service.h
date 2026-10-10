@@ -154,8 +154,9 @@ public:
     void start(); // spawns the worker thread; a no-op if already running
     void stop();  // signals the worker to stop and joins it; a no-op if not running
 
-    // true if it took (a scan was not already running); a no-op returning false while scanning() is already
-    // true - the caller shows "scan already in progress" instead of queuing another
+    // true when the scan can start now; while scanning() is true the request is still kept - the worker runs it after
+    // the running scan, the scopes of every such request ORed into one - and false says so (the caller may show "scan
+    // already in progress"); ScanNone is refused (false)
     // `scope` is what to look at (core/model/scan_scope.h): the Store asks for what it changed, the watcher for
     // the folders that changed; the default is everything, as every other caller wants.
     bool requestScan(ScanScope scope = ScanAll);

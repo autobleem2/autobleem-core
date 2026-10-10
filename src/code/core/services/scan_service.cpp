@@ -207,10 +207,12 @@ void ScanService::stop() {
 // ScanService::requestScan
 //*******************************
 bool ScanService::requestScan(ScanScope scope) {
-    if (scanning_.load() || scope == ScanNone)
+    if (scope == ScanNone)
         return false;
+    // kept even while a scan runs: the worker takes it after that one (the Store's ScanMods after an install landed
+    // during a running scan and was lost - the package stayed in Mods/ unconverted, AUTOBLEEM-17)
     scanRequested_.fetch_or(scope & ScanAll);
-    return true;
+    return !scanning_.load();
 }
 
 //*******************************
