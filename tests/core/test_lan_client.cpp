@@ -4,6 +4,7 @@
 // the server's share, a taken name, a wrong token, a server that is not there - and the helpers.
 //
 #include "doctest/doctest.h"
+#include "support/free_port.h"
 #include "support/temp_dir.h"
 
 #include <ableem/lanserver/lan_client.h>
@@ -31,19 +32,22 @@ struct Rig {
         tmp.writeFile("PC/Cue Game/game.cue", "FILE \"game.bin\" BINARY\n  TRACK 01 MODE2/2352\n");
         tmp.writeFile("PC/Cue Game/game.bin", string(3 * 1024 * 1024, 'b')); // big enough to be sent in parts
         tmp.writeFile("PC/Cue Game/cover.png", "png");
-        port = 20000 + static_cast<int>((chrono::steady_clock::now().time_since_epoch().count() / 13) % 20000);
+        // a random port, retried when the bind is refused: a port taken from the clock collided with another test
+        // process under parallel ctest or load, and `started` stayed false
         LanServer::Config c;
         c.library.gamesDir = tmp.at("Server");
         c.library.stateDir = tmp.at("state");
-        c.port = port;
         c.bindAddress = "127.0.0.1";
         c.name = "Pi";
         c.checksums = false;
         c.uploads = true;
         c.uploadToken = "tok";
-        server.reset(new LanServer(c));
         string error;
-        started = server->start(error);
+        server = testsupport::startOnFreePort(c, error);
+        started = server != nullptr;
+        port = c.port;
+        if (!started)
+            MESSAGE("LAN server rig did not start: " << error);
     }
     string url() const { return "http://127.0.0.1:" + to_string(port) + "/store.tsv"; }
     TempDir tmp;
@@ -118,7 +122,7 @@ TEST_CASE("Publisher uploads a game over HTTP; a stopped upload goes on from wha
     CHECK_FALSE(DirEntry::exists(rig.tmp.at("Server/Cue Game")));
     // the server may still be writing what came before the client went: give it a moment
     long long staged = -1;
-    for (int i = 0; i < 50 && staged <= 0; i++) {
+    for (int i = 0; i < 300 && staged <= 0; i++) { // up to 30 s: only a loaded machine gets there
         staged = DirEntry::fileSize(rig.tmp.at("Server/.uploading/Cue Game/game.bin"));
         if (staged <= 0)
             this_thread::sleep_for(chrono::milliseconds(100));
@@ -181,7 +185,7 @@ TEST_CASE("Publisher copies to the server's share, and asks for a rescan") {
     CHECK(rig.tmp.readFile("Server/Tekken 3 (2)/game.cue").find("game.bin") != string::npos);
     // the rescan it asked for: the watcher picks it up at once
     bool seen = false;
-    for (int i = 0; i < 50 && !seen; i++) {
+    for (int i = 0; i < 300 && !seen; i++) { // up to 30 s: only a loaded machine gets there
         this_thread::sleep_for(chrono::milliseconds(100));
         seen = client.status().games.size() == 2;
     }
@@ -224,7 +228,7 @@ TEST_CASE("Publisher removes a game from the server - never deleted, kept in .re
     CHECK(rig.tmp.readFile("Server/.removed/Nested/n.chd") == "nested");
     CHECK_FALSE(DirEntry::exists(rig.tmp.at("Server/RPG/Nested")));
     bool gone = false;
-    for (int i = 0; i < 50 && !gone; i++) {
+    for (int i = 0; i < 300 && !gone; i++) { // up to 30 s: only a loaded machine gets there
         this_thread::sleep_for(chrono::milliseconds(100));
         gone = client.status().games.size() == 1;
     }
