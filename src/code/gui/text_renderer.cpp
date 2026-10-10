@@ -602,12 +602,19 @@ ableem::Font TextRenderer::fittingFont(FontType type, int maxSize, int minSize, 
         return themeFont_;
     if (minSize > maxSize)
         minSize = maxSize;
-    for (int size = maxSize; size > minSize; size--) {
-        ableem::Font &font = fonts_->atSize(type, size);
-        if (textWidth(font, text) <= maxWidth)
-            return font;
-    }
-    return fonts_->atSize(type, minSize);
+    const int widest = textWidth(fonts_->atSize(type, maxSize), text);
+    if (widest <= maxWidth || maxSize == minSize)
+        return widest <= maxWidth ? fonts_->atSize(type, maxSize) : fonts_->atSize(type, minSize);
+    // the largest size that fits, as before - but not by opening every size from the top: each one opened builds its
+    // glyph cache (~10-20 ms on the PSC, ~150 ms for a long title at start-up). The width grows with the size about in
+    // proportion, so the search starts at the size that proportion gives and moves a step or two from there.
+    auto fits = [&](int size) { return textWidth(fonts_->atSize(type, size), text) <= maxWidth; };
+    int size = std::max(minSize, std::min(maxSize - 1, maxSize * maxWidth / std::max(widest, 1)));
+    while (size > minSize && !fits(size))
+        size--;
+    while (size + 1 < maxSize && fits(size + 1))
+        size++;
+    return fonts_->atSize(type, size);
 }
 
 //*******************************
