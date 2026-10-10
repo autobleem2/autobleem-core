@@ -28,8 +28,8 @@ public:
     // split in two (rather than one open()) because the application needs to run a shell hook between them
     // (importing internal.db from the console) - see the "Importing internal games" step in App::openLibrary.
     bool openCoversAndUsbGames(); // regional.db (creates the schema if missing); the metadata waits for metadata()
-    bool openInternalGames();     // internal.db (adds the favorite/history/last_played/play_using_ra columns if missing)
-    void close();                 // safe to call more than once; also runs at destruction
+    bool openInternalGames(); // internal.db (adds the favorite/history/last_played/play_using_ra columns if missing)
+    void close();             // safe to call more than once; also runs at destruction
 
     GameDatabase &usbGames() { return *regionalDb; }
     GameDatabase &internalGames() { return *internalDb; }

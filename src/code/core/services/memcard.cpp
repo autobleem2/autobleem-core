@@ -108,8 +108,8 @@ void MemcardService::recoverAfterCrash() {
     string folder, set, card1;
     if (!readJournal(folder, set, card1))
         return;
-    PLOG_WARNING << "The last game did not hand its memory cards back (a crash): " << folder << " set '" << set
-                 << "'" << (card1.empty() ? "" : " session card " + card1) << " - putting them back";
+    PLOG_WARNING << "The last game did not hand its memory cards back (a crash): " << folder << " set '" << set << "'"
+                 << (card1.empty() ? "" : " session card " + card1) << " - putting them back";
     if (!folder.empty() && DirEntry::exists(folder)) {
         // RetroArch's copy holds the session's saves: onto the game's card first, its own .srm back (raMemcardOut)
         if (!card1.empty() && DirEntry::exists(card1)) {
