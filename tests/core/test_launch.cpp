@@ -553,6 +553,9 @@ TEST_CASE("rapersist=false: RetroArch is told not to save its config at exit; no
                                                               "content_runtime_log_aggregate = \"false\"\n"
                                                               "video_fullscreen_x = \"0\"\n"
                                                               "video_fullscreen_y = \"0\"\n"
+                                                              "menu_pixel_aspect = \"1.000000\"\n"
+                                                              "menu_scale_factor = \"1.000000\"\n"
+                                                              "menu_safe_margin = \"0\"\n"
                                                               "savestate_directory = \"" +
                                                                   lib.tmp.at("RetroArch/bin/savestates") +
                                                                   "\"\n"
