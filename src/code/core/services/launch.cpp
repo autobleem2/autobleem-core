@@ -578,10 +578,11 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint, const
                                    : OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey]);
             env.emplace_back("AB_CRT_MARGIN", to_string(margin));
         }
-        // the picture height adjust (output pixels, -40..40 even, one value for every 4:3 output) the emulator shows its
-        // picture with, when it knows it
+        // the picture height adjust (output pixels, -40..40 even, one value for every 4:3 output) the emulator shows
+        // its picture with, when it knows it
         if (has("crtvsize"))
-            env.emplace_back("AB_CRT_VSIZE", to_string(OutputMode::vsize(config_.inifile.values[OutputMode::VsizeKey])));
+            env.emplace_back("AB_CRT_VSIZE",
+                             to_string(OutputMode::vsize(config_.inifile.values[OutputMode::VsizeKey])));
         // Options -> Diagnostics -> "Show performance": the emulator's HUD shows its FPS and CPU as well, for
         // this run only (it keeps them out of the game's saved config)
         if (has("perfoverlay") && config_.inifile.values["perfoverlay"] == "true")
@@ -912,7 +913,7 @@ void LaunchService::prepareRaAppend(PsGame *game) {
         RaOptionsService::apply(raGameOptions_, raScanlinesOverlay(),
                                 raConfig); // the game editor's rows, over the scaler and the like
     if (mode.isCrt())
-        raCrtSettings(raConfig); // the 720x480 tube: 3:2 pixels at 8:9, the margin for the messages, no shaders
+        raCrtSettings(raConfig);    // the 720x480 tube: 3:2 pixels at 8:9, the margin for the messages, no shaders
     raMenuSettings(mode, raConfig); // the menu for the mode shown now, whatever an earlier mode left in the file
     if (raStates_.active) {
         // our slots (ResumePointService): RetroArch writes <game>.state.auto + picture when it ends and reads the
