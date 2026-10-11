@@ -1175,7 +1175,7 @@ TEST_CASE("a RetroArch game resumed from a slot: the slot is the state RetroArch
     CHECK(contains(append, "savestate_auto_load = \"false\""));
 }
 
-TEST_CASE("a core without savestates, an App and a PS1 game in RetroArch get no save-state keys") {
+TEST_CASE("a core without savestates and an App get no save-state keys; a PS1 game in RetroArch saves its state") {
     {
         Launching lib;
         lib.configure("Raconfig=false\n");
@@ -1193,7 +1193,9 @@ TEST_CASE("a core without savestates, an App and a PS1 game in RetroArch get no 
         string append;
         lib.runner.whileRunning = [&] { append = lib.tmp.readFile("System/Runtime/ra-append.cfg"); };
         lib.service->launch(game, EmuMode::RetroArch, -1);
-        CHECK_FALSE(contains(append, "savestate"));
+        // its state goes to the game's own slots, marked RA (the owner, 2026-10-11) - a fresh start loads none
+        CHECK(contains(append, "savestate_auto_save = \"true\""));
+        CHECK(contains(append, "savestate_auto_load = \"false\""));
     }
 }
 
