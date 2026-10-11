@@ -178,6 +178,8 @@ private:
     void restoreAppended();
     // the CRT 4:3 mode (720x480): the aspect, shader, refresh and message-margin lines over `lines`
     void raCrtSettings(ableem::ConfigFileEditor::CfgLines &lines);
+    // a 4:3 output with a picture height adjust: the game's picture that much taller (shorter), centred, over `lines`
+    void raPictureHeight(const OutputMode &mode, ableem::ConfigFileEditor::CfgLines &lines);
     // every mode: the menu's pixel aspect, safe margin and scale for the tube, a VGA 4:3 mode or HD over `lines`
     void raMenuSettings(const OutputMode &mode, ableem::ConfigFileEditor::CfgLines &lines);
     // the game's pcsx.cfg settings as retroarch.cfg lines and core-option lines
