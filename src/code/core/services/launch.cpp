@@ -913,8 +913,9 @@ void LaunchService::prepareRaAppend(PsGame *game) {
         RaOptionsService::apply(raGameOptions_, raScanlinesOverlay(),
                                 raConfig); // the game editor's rows, over the scaler and the like
     if (mode.isCrt())
-        raCrtSettings(raConfig);    // the 720x480 tube: 3:2 pixels at 8:9, the margin for the messages, no shaders
-    raMenuSettings(mode, raConfig); // the menu for the mode shown now, whatever an earlier mode left in the file
+        raCrtSettings(raConfig);     // the 720x480 tube: 3:2 pixels at 8:9, the margin for the messages, no shaders
+    raPictureHeight(mode, raConfig); // a 4:3 output: the launcher's picture height on the game's picture too
+    raMenuSettings(mode, raConfig);  // the menu for the mode shown now, whatever an earlier mode left in the file
     if (raStates_.active) {
         // our slots (ResumePointService): RetroArch writes <game>.state.auto + picture when it ends and reads the
         // state the launcher put there only when asked to. The folder and the sorting are pinned so the file is
@@ -990,6 +991,54 @@ void LaunchService::raCrtSettings(ConfigFileEditor::CfgLines &lines) {
     const double message = 0.05 + OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey]) / 100.0;
     replaceLine(lines, "video_message_pos_x", to_string(message));
     replaceLine(lines, "video_message_pos_y", to_string(message));
+}
+
+// The launcher's picture height (Options -> Display -> Picture height, -40..40 output pixels, every 4:3 output) on
+// RetroArch's game picture too (the owner, 2026-10-11: "musi sie zgadzac z launchera opcjami"): as the launcher's own
+// frame (canvas.h, mapCanvas), that many pixels taller (shorter), centred, a taller one cropped at the top and bottom,
+// the width unchanged - a custom viewport (index 23) of the output's height plus the adjust, at the width the aspect
+// in force gives. RetroArch 1.22 centres a custom viewport by itself (video_viewport_bias 0.5: x and y are offsets from
+// the centre, one taller than the window starts above it), so both stay 0. The aspect is the one `lines` set, else
+// retroarch.cfg's; only those whose width is known here (4:3, the config ratio, Full, the custom viewport) - any other,
+// and integer scaling (the player's choice, which a stretched height would undo), keep RetroArch's own picture
+void LaunchService::raPictureHeight(const OutputMode &mode, ConfigFileEditor::CfgLines &lines) {
+    const int adjust = OutputMode::vsize(config_.inifile.values[OutputMode::VsizeKey]);
+    if (!mode.is43() || adjust == 0)
+        return;
+    string file;
+    DirEntry::readFile(raConfigFile(), file);
+    auto valueOf = [&lines, &file](const string &key) {
+        string value;
+        for (const auto &line : lines)
+            if (line.first == key)
+                ConfigFileEditor::valueIn(line.second, key, &value);
+        if (value.empty())
+            ConfigFileEditor::valueIn(file, key, &value);
+        return value;
+    };
+    if (valueOf("video_scale_integer") == "true")
+        return;
+    const string aspect = valueOf("aspect_ratio_index");
+    long width = 0;
+    if (aspect == "0") // 4:3
+        width = lround(mode.h * 4.0 / 3.0);
+    else if (aspect == "20") // "config": video_aspect_ratio (the tube's 1.5)
+        width = lround(mode.h * strtod(valueOf("video_aspect_ratio").c_str(), nullptr));
+    else if (aspect == "23") // the custom viewport's own width (raSettingsFor's "full")
+        width = atol(valueOf("custom_viewport_width").c_str());
+    else if (aspect == "24") // Full
+        width = mode.w;
+    if (width <= 0) {
+        PLOG_INFO << "RetroArch: picture height " << adjust << " px not applied (aspect_ratio_index \"" << aspect << "\")";
+        return;
+    }
+    if (width > mode.w)
+        width = mode.w;
+    replaceLine(lines, "aspect_ratio_index", "23");
+    replaceLine(lines, "custom_viewport_width", to_string(width));
+    replaceLine(lines, "custom_viewport_height", to_string(mode.h + adjust));
+    replaceLine(lines, "custom_viewport_x", "0");
+    replaceLine(lines, "custom_viewport_y", "0");
 }
 
 // RetroArch's menu for the mode shown, at every launch (the owner, 2026-10-11: "przy kazdej zmianie zaleznie od
