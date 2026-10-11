@@ -249,19 +249,36 @@ bool InstallJobBase::isPs1BiosFile(const string &path) {
 //*******************************
 // InstallJobBase::installPs1Bios
 //*******************************
-void InstallJobBase::installPs1Bios(const string &systemDir, const string &biosDir) {
+bool InstallJobBase::isOpenBios(const string &path) {
+    string bytes;
+    return DirEntry::readFile(path, bytes) && bytes.size() >= 0x80 && bytes.compare(0x78, 8, "OpenBIOS") == 0;
+}
+
+void InstallJobBase::installPs1Bios(const string &systemDir, const string &biosDir, const string &openBios) {
     DirEntry::createDirs(biosDir);
     for (const auto &pair : {make_pair("romw.bin", "scph5501.bin"), make_pair("romJP.bin", "scph5500.bin")}) {
         const string dest = biosDir + "/" + pair.first, src = systemDir + "/" + pair.second;
-        if (DirEntry::exists(dest)) {
+        const bool there = DirEntry::exists(dest), ours = there && isOpenBios(dest);
+        if (there && !ours) {
             say(string("  keeping the existing ") + pair.first);
-        } else if (!DirEntry::exists(src)) {
+        } else if (DirEntry::exists(src)) {
+            if (DirEntry::copyFile(src, dest))
+                say(string("  PlayStation BIOS: ") + pair.second + " -> System/Bios/" + pair.first);
+            else
+                say(string("  could not copy ") + pair.second + " to " + dest);
+        } else if (!openBios.empty() && DirEntry::exists(openBios)) {
+            string have, shipped;
+            if (ours && DirEntry::readFile(dest, have) && DirEntry::readFile(openBios, shipped) && have == shipped)
+                say(string("  keeping OpenBIOS as ") + pair.first + " (no Sony BIOS)");
+            else if (DirEntry::copyFile(openBios, dest))
+                say(string("  PlayStation BIOS: OpenBIOS -> System/Bios/") + pair.first + " (no Sony BIOS)");
+            else
+                say(string("  could not copy OpenBIOS to ") + dest);
+        } else if (ours) {
+            say(string("  keeping OpenBIOS as ") + pair.first);
+        } else {
             say(string("  no ") + pair.second + " - the PlayStation emulator has no " + pair.first +
                 " and will use its built-in BIOS");
-        } else if (DirEntry::copyFile(src, dest)) {
-            say(string("  PlayStation BIOS: ") + pair.second + " -> System/Bios/" + pair.first);
-        } else {
-            say(string("  could not copy ") + pair.second + " to " + dest);
         }
     }
 }
