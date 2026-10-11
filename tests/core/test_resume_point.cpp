@@ -349,13 +349,16 @@ TEST_CASE("RetroArch: its state is named after the game file and sits in the pin
     r.raExitsHavingWritten("state one");
     CHECK(r.service.raStateWritten(*r.game));
 
-    // an App has none, and neither does one of our own games
+    // an App has none; one of our own games' is named after its disc image (played in RetroArch, its state is kept
+    // in the game's own slots)
     PsGame app;
     app.foreign = true;
     app.app = true;
     CHECK(r.service.raAutoState(app) == "");
     PsGame ps1;
-    CHECK(r.service.raAutoState(ps1) == "");
+    ps1.folder = r.tmp.at("Games/Tekken 3");
+    ps1.base = "Tekken 3";
+    CHECK(r.service.raAutoState(ps1) == r.tmp.at("RetroArch/bin/savestates/Tekken 3.state.auto"));
 }
 
 TEST_CASE("RetroArch: saving after a run keeps the state and its picture as the slot, in the PS1 layout") {

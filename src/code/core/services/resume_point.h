@@ -33,6 +33,13 @@
 // `savestate_auto_load` says to load it (prepareRaLaunch). Only a core whose .info does not say
 // `savestate = "false"` takes part (raSupportsStates).
 //
+// One of our PS1 games played in RetroArch (Square, or "play in RetroArch") keeps its RetroArch states in the same
+// four slots as PCSX's, in its own save-state folder (the owner, 2026-10-11): saveAfterLaunch(retroArch = true)
+// takes the run's <content>.state.auto (+ .png) from raStatesDir() as sstates/<content>.00<n>.res and the
+// picture, and slot.<n>.ra says which core wrote it (the core argument the launch was given: a core path, or
+// the console's NEON / PEOPS). Such a slot is resumed only in RetroArch with that core - the two emulators'
+// states are not interchangeable - and the launcher marks each slot "RA" or "AB".
+//
 // An emulator that takes $AB_EXIT_DIR (abfeatures: exitdir - docs/quiet-stick-plan.md) writes the run's
 // four files - filename.txt, lastcdimg.txt, sstates/<name>.000, screenshots/<name>.png - there instead, in
 // RAM: setExitDir() says where, and every "what the run just wrote" below looks there first. Only what the
@@ -74,7 +81,8 @@ public:
     // loadInPlace (abfeatures: loadstate): the slot's kept state is not copied to slot 0 - its path is
     // returned, for $AB_LOAD_STATE; otherwise (and when there is none) "".
     std::string prepareForLaunch(const PsGame &game, int slot, bool loadInPlace = false);
-    void saveAfterLaunch(const PsGame &game, int slot);
+    // retroArch: the run that just ended was one of our PS1 games in RetroArch (session's EmuMode::RetroArch)
+    void saveAfterLaunch(const PsGame &game, int slot, bool retroArch = false);
     // Drops what the run just wrote (its filename file, state, screenshot and disc note) without keeping it as a
     // slot; the kept slots are never touched
     void discardRun(const PsGame &game);
@@ -83,13 +91,26 @@ public:
     void setExitDir(const std::string &dir) { exitDir_ = dir; }
 
     // --- games played through RetroArch ---
+    // the file RetroArch is given for the game: a playlist entry's own, for one of ours its disc image (.cue, .pbp,
+    // .chd) or the folder's <base>.m3u of a multi-disc game - RetroArch names the game's states and card after it
+    static std::string raContentFor(const PsGame &game);
+    // true for a slot RetroArch wrote: every slot of a RetroArch playlist entry, and one of our PS1 games' slots
+    // kept from a run in RetroArch
+    bool slotIsRetroArch(const PsGame &game, int slot) const;
+    // the core one of our PS1 games' RetroArch slot was written with, "" for a PCSX slot (or a playlist entry's)
+    std::string raCoreForSlot(const PsGame &game, int slot) const;
+    // before one of our PS1 games starts in RetroArch: the core it runs with, so a slot kept from the run says it
+    void noteRaCore(const std::string &core) { raCore_ = core; }
     // where RetroArch keeps its states while the launcher runs it (savestate_directory in ra-append.cfg, with the
     // sorting off, so the file is exactly <dir>/<game>.state.auto): <RetroArch dir>/savestates
     static std::string raStatesDir();
     // a RetroArch playlist entry that takes part: not an App, and its core's .info does not say savestate = false
     // (no .info, or no such key: it does)
     bool raSupportsStates(const PsGame &game) const;
-    // <raStatesDir()>/<game>.state.auto, "" for a game that is not a RetroArch playlist entry
+    // the same for a core given by its path (one of our PS1 games' core): its .info next to RetroArch's others;
+    // the console's NEON / PEOPS (pcsx_rearmed builds) can
+    static bool raCoreSupportsStates(const std::string &core);
+    // <raStatesDir()>/<content>.state.auto (raContentFor), "" for an App
     std::string raAutoState(const PsGame &game) const;
     // true when the run that just ended left a state (prepareRaLaunch removed the older one first)
     bool raStateWritten(const PsGame &game) const;
@@ -100,12 +121,14 @@ public:
     // the decision on a log's text: any line saying the auto save of `stateFileName` failed
     static bool logSaysAutoSaveFailed(const std::string &logText, const std::string &stateFileName);
     // Before a RetroArch launch: the last run's .state.auto and picture go; for slot >= 0 the slot is copied in as
-    // .state.auto (+ picture) and true says "load it" (savestate_auto_load); -1, or a slot that is not there,
-    // is false - a fresh start. The slots themselves are never touched.
+    // .state.auto (+ picture) and true says "load it" (savestate_auto_load); -1, a slot that is not there, or one
+    // of our PS1 games' slot PCSX wrote, is false - a fresh start. The slots themselves are never touched.
     bool prepareRaLaunch(const PsGame &game, int slot);
 
 private:
     void saveRaSlot(const PsGame &game, int slot);
+    void savePs1RaSlot(const PsGame &game, int slot);
+    std::string raCore_;
     // the run's own file `relative` (under the exit dir or the save-state folder, whichever it is in)
     std::string fresh(const PsGame &game, const std::string &relative) const;
     std::string exitDir_;

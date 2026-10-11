@@ -143,6 +143,10 @@ private:
     static std::string discImageFor(const PsGame &game);
     // the image's base name with a .pbp extension dropped - what RetroArch names its saves after
     static std::string raBaseNameFor(const PsGame &game);
+    // RetroArch's PS1 core for one of our games: NEON / PEOPS (the game's pcsx GPU plugin picks the pcsx_rearmed
+    // build - the rc script and planRetroArch know them) while the platform's core is pcsx_rearmed, else that core's
+    // path (SwanStation on a PC stick and Windows, the owner 2026-10-11)
+    static std::string ps1RaCore(const PsGame &game);
 
     // --- PCSX ---
     // env: what the emulator is handed on top (AB_EXIT_DIR, AB_MEMCARD_DIR, AB_LOAD_STATE)
