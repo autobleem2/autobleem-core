@@ -630,10 +630,25 @@ string LaunchService::discImageFor(const PsGame &game) {
 // LaunchService::raBaseNameFor
 //*******************************
 string LaunchService::raBaseNameFor(const PsGame &game) {
-    if (DirEntry::isPBPFile(game.base)) {
+    // a .pbp's or a .chd's base carries its extension; RetroArch names the card after the file without it
+    if (DirEntry::isPBPFile(game.base) || DirEntry::matchExtension(game.base, ".chd")) {
         return game.base.substr(0, game.base.length() - 4);
     }
     return game.base;
+}
+
+//*******************************
+// LaunchService::ps1RaCore
+//*******************************
+string LaunchService::ps1RaCore(const PsGame &game) {
+    const string platformCore = Env::getPathToRetroarchCoreFile();
+    if (DirEntry::getFileNameFromPath(platformCore).compare(0, 12, "pcsx_rearmed") != 0)
+        return platformCore;
+    string gpu = Strings::trim(PcsxConfig::value(game, "gpu3")); // the game's own config's, when it has one
+    if (gpu.empty())
+        gpu = PcsxNeonGpu;
+    PLOG_INFO << "Using GPU plugin: " << gpu;
+    return gpu == PcsxNeonGpu ? RaNeonCore : RaPeopsCore;
 }
 
 //*******************************
@@ -766,48 +781,38 @@ void LaunchService::launchRetroArch(PsGame &game, int resumePoint) {
         PLOG_INFO << "RA FOREIGN MODE";
     }
 
-    if (!game.foreign) {
-        gameFile = discImageFor(game);
-        string base = raBaseNameFor(game);
-        if (DirEntry::exists(game.folder + sep + base + ".m3u")) {
-            gameFile = game.folder + sep + base + ".m3u";
-        }
-    } else {
-        gameFile = game.image_path;
-    }
-    // figure out which plugin is selected
-    string gpu;
-    if (!game.foreign) {
-        gpu = PcsxConfig::value(game, "gpu3"); // the game's own config's, when it has one
-        gpu = Strings::trim(gpu);
-        if (gpu.empty()) {
-            gpu = PcsxNeonGpu;
-        }
-    } else {
-        gpu = "NONE";
-    }
-    PLOG_INFO << "Using GPU plugin: " << gpu;
+    // a playlist entry's own file; for one of ours the disc image, or the folder's .m3u of a multi-disc game
+    gameFile = ResumePointService::raContentFor(game);
 
-    string RACore = RaNeonCore;
-    if (gpu != PcsxNeonGpu) {
-        RACore = RaPeopsCore;
-    }
-
+    string RACore;
     if (game.foreign) {
         RACore = game.core_path;
+    } else {
+        RACore = ps1RaCore(game);
+        // a slot kept from a run in RetroArch resumes with the core that wrote it
+        const string slotCore = resumePoint >= 0 ? resumePoints_.raCoreForSlot(game, resumePoint) : "";
+        if (!slotCore.empty())
+            RACore = slotCore;
     }
+    PLOG_INFO << "RetroArch core: " << RACore;
 
     restoreLegacyRaBackup();
-    // the game's own save-state slots (a playlist entry whose core can save): the slot to resume is put in place
-    // now, and ra-append.cfg tells RetroArch where its states are, to write one on the way out and whether to load
+    // the game's own save-state slots (a playlist entry or one of our PS1 games, whose core can save): the slot to
+    // resume is put in place now, and ra-append.cfg tells RetroArch where its states are, to write one on the way
+    // out and whether to load
     raStates_ = RaStates();
     raGameOptions_ = raOptions_ != nullptr ? raOptions_->get(game) : RaGameOptions();
-    if (game.foreign && !game.app && resumePoints_.raSupportsStates(game)) {
+    const bool ra = game.foreign && !game.app && resumePoints_.raSupportsStates(game);
+    const bool ps1 = !game.foreign && ResumePointService::raCoreSupportsStates(RACore);
+    if (ra || ps1) {
         raStates_.active = true;
         // RetroArch does not make its savestate folder: without it the first game of a fresh stick writes no state
         DirEntry::createDirs(ResumePointService::raStatesDir());
-        raStates_.save = raGameOptions_.resume != RaGameOptions::ResumeNever;
+        // a PS1 game's Resume row "Never" is the launcher's after the run, as after PCSX (discardRun)
+        raStates_.save = ps1 || raGameOptions_.resume != RaGameOptions::ResumeNever;
         raStates_.load = resumePoints_.prepareRaLaunch(game, resumePoint);
+        if (ps1)
+            resumePoints_.noteRaCore(RACore);
     }
     prepareRaAppend(&game);
     runner_.run(planRetroArch(gameFile, RACore));

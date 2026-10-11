@@ -79,6 +79,8 @@ struct Environment {
     static std::string getPathToRetroarchScreenshotsDir();
     static std::string getPathToRetroarchStatesDir();
     static std::string getPathToPlayStationRdbFile(); // "Sony - PlayStation.rdb" in there, what MetadataLookup reads
+    // RetroArch's PS1 core for our own games (the platform ini's retroarch_core); pcsx_rearmed when that one is
+    // not installed and pcsx_rearmed is
     static std::string getPathToRetroarchCoreFile();
     static const std::string &getRetroarchCoreExtension(); // ".so" unless setRetroarchCoreExtension() said otherwise
     static bool hasRetroBoot();                     // <retroarch>/retroboot exists - RetroBoot's tree is still there

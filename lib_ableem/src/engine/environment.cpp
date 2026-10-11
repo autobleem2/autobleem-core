@@ -170,9 +170,13 @@ string Environment::getPathToPlayStationRdbFile() {
     return getPathToRetroarchRdbDir() + sep + "Sony - PlayStation.rdb";
 }
 string Environment::getPathToRetroarchCoreFile() {
-    return retroarchCoreFile.empty()
-               ? getPathToRetroarchDir() + sep + "cores/pcsx_rearmed_libretro" + retroarchCoreExtension
-               : retroarchCoreFile;
+    const string pcsxRearmed = getPathToRetroarchDir() + sep + "cores/pcsx_rearmed_libretro" + retroarchCoreExtension;
+    if (retroarchCoreFile.empty())
+        return pcsxRearmed;
+    // the platform's PS1 core (SwanStation on a PC, the owner 2026-10-11) - pcsx_rearmed where it is not installed
+    if (!DirEntry::exists(retroarchCoreFile) && DirEntry::exists(pcsxRearmed))
+        return pcsxRearmed;
+    return retroarchCoreFile;
 }
 bool Environment::hasRetroBoot() {
     return DirEntry::exists(getPathToRetroarchDir() + sep + "retroboot");
