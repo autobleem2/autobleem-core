@@ -92,6 +92,8 @@ public:
             ok = retroarch(error) && cores(error);
         if (ok && opt.bios)
             ok = bios(error);
+        else if (ok)
+            installPs1Bios(at("RetroArch/bin/system"), at("System/Bios"), openBios()); // no pack: OpenBIOS
         if (ok && opt.samples)
             ok = samples(error);
         if (ok)
@@ -361,9 +363,13 @@ private:
         if (!fetchBiosPack("win/bios/latest.json", systemDir, error,
                            withRetroArch ? BiosFilter() : BiosFilter(isPs1BiosFile)))
             return false;
-        installPs1Bios(systemDir, at("System/Bios"));
+        installPs1Bios(systemDir, at("System/Bios"), openBios());
         return true;
     }
+
+    // the OpenBIOS the program folder ships (autobleem-appliance's assemble-win.sh: Bios/openbios.bin), the
+    // PlayStation emulator's BIOS where there is no Sony one
+    string openBios() const { return opt.programDir.empty() ? string() : opt.programDir + "/Bios/openbios.bin"; }
 
     //******************
     // 6. the sample games

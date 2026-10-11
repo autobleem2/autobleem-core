@@ -60,8 +60,11 @@ protected:
                        const BiosFilter &only = BiosFilter());
     // the two files pcsx-ab wants under System/Bios by the console's names - romw.bin (SCPH-5501, NTSC-U)
     // for every game, romJP.bin (SCPH-5500) for a Japanese one - copied from the pack in `systemDir`
-    // unless the user has put their own there (the originals stay for RetroArch's cores)
-    void installPs1Bios(const std::string &systemDir, const std::string &biosDir);
+    // unless the user has put their own there (the originals stay for RetroArch's cores). `openBios`, the
+    // OpenBIOS the package ships, fills a name the pack cannot, in place of the emulator's built-in (HLE)
+    // BIOS; a file with OpenBIOS's name at 0x78 is ours, so a Sony BIOS or a newer OpenBIOS replaces it
+    void installPs1Bios(const std::string &systemDir, const std::string &biosDir, const std::string &openBios = "");
+    static bool isOpenBios(const std::string &path);
     static bool isPs1BiosFile(const std::string &path);
     // <romsDir>/<system>/ - one empty folder per system in `listFile` (the shared platform/roms_systems.cfg,
     // RetroArch's database names), made only where missing, so a user has somewhere to drop each system's
