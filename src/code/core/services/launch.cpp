@@ -14,6 +14,7 @@
 #include <ableem/engine/config_file_editor.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -577,10 +578,11 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint, const
                                    : OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey]);
             env.emplace_back("AB_CRT_MARGIN", to_string(margin));
         }
-        // the picture height adjust (output pixels, -40..40 even, one value for every 4:3 output) the emulator shows its
-        // picture with, when it knows it
+        // the picture height adjust (output pixels, -40..40 even, one value for every 4:3 output) the emulator shows
+        // its picture with, when it knows it
         if (has("crtvsize"))
-            env.emplace_back("AB_CRT_VSIZE", to_string(OutputMode::vsize(config_.inifile.values[OutputMode::VsizeKey])));
+            env.emplace_back("AB_CRT_VSIZE",
+                             to_string(OutputMode::vsize(config_.inifile.values[OutputMode::VsizeKey])));
         // Options -> Diagnostics -> "Show performance": the emulator's HUD shows its FPS and CPU as well, for
         // this run only (it keeps them out of the game's saved config)
         if (has("perfoverlay") && config_.inifile.values["perfoverlay"] == "true")
@@ -911,7 +913,8 @@ void LaunchService::prepareRaAppend(PsGame *game) {
         RaOptionsService::apply(raGameOptions_, raScanlinesOverlay(),
                                 raConfig); // the game editor's rows, over the scaler and the like
     if (mode.isCrt())
-        raCrtSettings(raConfig); // the 720x480 tube: 3:2 pixels at 8:9, the margin for the messages, no shaders
+        raCrtSettings(raConfig);    // the 720x480 tube: 3:2 pixels at 8:9, the margin for the messages, no shaders
+    raMenuSettings(mode, raConfig); // the menu for the mode shown now, whatever an earlier mode left in the file
     if (raStates_.active) {
         // our slots (ResumePointService): RetroArch writes <game>.state.auto + picture when it ends and reads the
         // state the launcher put there only when asked to. The folder and the sorting are pinned so the file is
@@ -987,10 +990,34 @@ void LaunchService::raCrtSettings(ConfigFileEditor::CfgLines &lines) {
     const double message = 0.05 + OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey]) / 100.0;
     replaceLine(lines, "video_message_pos_x", to_string(message));
     replaceLine(lines, "video_message_pos_y", to_string(message));
-    // the RetroArch patch's menu keys (an older RetroArch ignores them): the menu at pixel aspect 8:9, inside the margin
-    replaceLine(lines, "menu_pixel_aspect", "0.888889");
-    replaceLine(lines, "menu_scale_factor", "1.3"); // the starting value: XMB comes out small inside a 5 % margin (device round)
-    replaceLine(lines, "menu_safe_margin", to_string(OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey])));
+}
+
+// RetroArch's menu for the mode shown, at every launch (the owner, 2026-10-11: "przy kazdej zmianie zaleznie od
+// wybranej rozdzielczosci"): the RetroArch patch's pixel aspect and safe margin (an older RetroArch ignores them) and
+// the menu scale. The tube: pixels 8:9 inside the CRT margin, the menu bigger (XMB comes out small inside a 5 % margin,
+// device round); a VGA 4:3 mode: square pixels inside its own margin; HD: the whole screen. Written for every mode,
+// so a mode change never keeps what an earlier one left in retroarch.cfg (the tube's margin stayed on 720p).
+void LaunchService::raMenuSettings(const OutputMode &mode, ConfigFileEditor::CfgLines &lines) {
+    int margin = 0;
+    if (mode.isCrt())
+        margin = OutputMode::crtMargin(config_.inifile.values[OutputMode::MarginKey]);
+    else if (mode.is43())
+        margin = OutputMode::vgaMargin(config_.inifile.values[OutputMode::VgaMarginKey]);
+    // in RetroArch's own format, so the value it saves back is the same string (restoreAppended)
+    replaceLine(lines, "menu_pixel_aspect", mode.isCrt() ? "0.888889" : "1.000000");
+    replaceLine(lines, "menu_scale_factor", mode.isCrt() ? "1.300000" : "1.000000");
+    replaceLine(lines, "menu_safe_margin", to_string(margin));
+}
+
+// the same setting in two spellings: RetroArch saves a float as "1.300000" whatever it was given ("1.3")
+static bool sameValue(const string &a, const string &b) {
+    if (a == b)
+        return true;
+    if (a.empty() || b.empty())
+        return false;
+    char *endA = nullptr, *endB = nullptr;
+    const double x = strtod(a.c_str(), &endA), y = strtod(b.c_str(), &endB);
+    return *endA == '\0' && *endB == '\0' && fabs(x - y) < 1e-4;
 }
 
 void LaunchService::restoreAppended() {
@@ -1003,7 +1030,7 @@ void LaunchService::restoreAppended() {
         ConfigFileEditor::valueIn(raAppended_[i].second, raAppended_[i].first, &ours);
         // RetroArch saved our value into its file: the file's own value back (none: the line goes). A value
         // the player set in RetroArch meanwhile is theirs and stays.
-        if (ConfigFileEditor::valueIn(after, raAppended_[i].first, &now) && now == ours)
+        if (ConfigFileEditor::valueIn(after, raAppended_[i].first, &now) && sameValue(now, ours))
             restore.push_back(raOriginal_[i]);
     }
     // writes nothing when RetroArch did not save - every line is then as it was
