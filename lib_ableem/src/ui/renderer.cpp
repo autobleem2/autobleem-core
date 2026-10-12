@@ -119,8 +119,9 @@ Texture createLinearTarget(Renderer &renderer, int w, int h) {
 
 // The CRT's safe area: the margin around the frame is the frame's own edge mirrored outward (a strip of the frame
 // flipped across the edge it touches, the corners flipped both ways), softened and a little dimmed - the colours go on
-// smoothly past the safe rectangle instead of a black frame (`frame` is the softened copy: Renderer::mirrorMargin). Only on a side where the frame really sits on the safe
-// rectangle (a letterboxed canvas keeps its black bars), and only with a margin. `display` is where the frame goes.
+// smoothly past the safe rectangle instead of a black frame (`frame` is the softened copy: Renderer::mirrorMargin).
+// Only on a side where the frame really sits on the safe rectangle (a letterboxed canvas keeps its black bars), and
+// only with a margin. `display` is where the frame goes.
 void copyMirroredMargin(SDL_Renderer *renderer, SDL_Texture *frame, const SDL_Rect &display, int outW, int outH,
                         int marginPercent, int verticalAdjust) {
     if (marginPercent <= 0 || display.w <= 0 || display.h <= 0)
@@ -132,7 +133,8 @@ void copyMirroredMargin(SDL_Renderer *renderer, SDL_Texture *frame, const SDL_Re
     const int insetY = static_cast<int>(std::lround(outH * marginPercent / 100.0));
     const bool left = std::abs(display.x - insetX) <= 1 && display.x > 0;
     const bool right = std::abs(display.x + display.w - (outW - insetX)) <= 1 && outW - (display.x + display.w) > 0;
-    // the picture height adjust moved the safe rectangle's top and bottom edges the way mapCanvas did (y -= v / 2, h += v)
+    // the picture height adjust moved the safe rectangle's top and bottom edges the way mapCanvas did (y -= v / 2, h +=
+    // v)
     const int expectedTop = insetY - verticalAdjust / 2;
     const int expectedBottom = outH - insetY + (verticalAdjust - verticalAdjust / 2);
     const bool top = std::abs(display.y - expectedTop) <= 1 && display.y > 0;
@@ -273,13 +275,13 @@ struct Renderer::Impl {
     int baseWidth = 0, baseHeight = 0;
     int marginPercent = DefaultSafeMargin; // the CRT safe area (Renderer::setSafeMargin)
     int verticalAdjust = 0; // the picture height adjust (Renderer::setVerticalAdjust), kept across recreate()
-    bool marginSet = false;                // the program asked for one; until then only the 720x480 tube has a margin
+    bool marginSet = false; // the program asked for one; until then only the 720x480 tube has a margin
     // the canvas every frame has unless it asks for another (setCanvas): the base one until setRestCanvas says
     int restWidth = 0, restHeight = 0;
     int wantRestWidth = 0, wantRestHeight = 0; // what setRestCanvas asked for: kept across a recreate()
     Rect display;
     Texture frameTarget;
-    Texture marginSoft1, marginSoft2; // the frame blurred down for the CRT margin (Renderer::mirrorMargin)
+    Texture marginSoft1, marginSoft2;  // the frame blurred down for the CRT margin (Renderer::mirrorMargin)
     unsigned long marginSoftAt = ~0ul; // the targetsLost() they were made at
     bool framing = false;
     void useCanvas(int w, int h) {
@@ -461,7 +463,7 @@ void Renderer::recreate(Platform &platform) {
     release();
     impl->targetStack.clear();
     impl->askedTarget = impl->gotTarget = nullptr; // the old renderer's textures are gone
-    impl->targetsLost++; // a new renderer: nothing drawn into the old one's targets survives
+    impl->targetsLost++;                           // a new renderer: nothing drawn into the old one's targets survives
     SDL_Window *window = static_cast<SDL_Window *>(platform.nativeWindow());
     impl->window = window;
     impl->renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
@@ -493,10 +495,10 @@ void Renderer::recreate(Platform &platform) {
     impl->restHeight = impl->baseHeight;
     // the frame target only for a wide canvas on a 4:3 output (the launcher's 1280x720 on 480p); a canvas of the
     // output's own shape (a test's 320x240 window) is drawn straight, as always
-    const CanvasMapping mapping = usesFrameTarget(outputWidth, outputHeight, impl->width, impl->height)
-                                      ? mapCanvas(outputWidth, outputHeight, impl->width, impl->height, impl->marginPercent,
-                                                impl->verticalAdjust)
-                                      : fitCanvas(outputWidth, outputHeight, impl->width, impl->height);
+    const CanvasMapping mapping =
+        usesFrameTarget(outputWidth, outputHeight, impl->width, impl->height)
+            ? mapCanvas(outputWidth, outputHeight, impl->width, impl->height, impl->marginPercent, impl->verticalAdjust)
+            : fitCanvas(outputWidth, outputHeight, impl->width, impl->height);
     impl->fourByThree = mapping.fourByThree;
     impl->display = mapping.display;
     if (mapping.fourByThree && impl->wantRestWidth > 0 && impl->wantRestHeight > 0) {
@@ -529,7 +531,8 @@ void Renderer::recreate(Platform &platform) {
 }
 
 // the margin of a 4:3 frame (see copyMirroredMargin): the frame is blurred down twice (a quarter of its size, then a
-// quarter of that, linear filtering) and back up to a quarter, so the UI at the edges reads as soft colour, not as shapes in the margin
+// quarter of that, linear filtering) and back up to a quarter, so the UI at the edges reads as soft colour, not as
+// shapes in the margin
 void Renderer::mirrorMargin(void *frameTexture, const Rect &displayRect) {
     if (impl->marginPercent <= 0)
         return;
@@ -600,9 +603,9 @@ void Renderer::setVerticalAdjust(int pixels) {
     if (impl->fourByThree) {
         impl->useCanvas(impl->width, impl->height); // the next present() places the frame in the new height
         if (changed) {
-            PLOG_INFO << "Picture height " << adjust << " px: a " << impl->width << "x" << impl->height << " canvas shown "
-                      << impl->display.w << "x" << impl->display.h << " at " << impl->display.x << ","
-                      << impl->display.y;
+            PLOG_INFO << "Picture height " << adjust << " px: a " << impl->width << "x" << impl->height
+                      << " canvas shown " << impl->display.w << "x" << impl->display.h << " at " << impl->display.x
+                      << "," << impl->display.y;
         }
     }
 }
@@ -691,8 +694,7 @@ void Renderer::clear() {
             // linear: stretched to the output, and the CRT margin's blur reads it (createLinearTarget)
             impl->frameTarget = createLinearTarget(*this, impl->width, impl->height);
         }
-        if (impl->frameTarget.valid() &&
-            impl->bindTarget(static_cast<SDL_Texture *>(impl->frameTarget.native())))
+        if (impl->frameTarget.valid() && impl->bindTarget(static_cast<SDL_Texture *>(impl->frameTarget.native())))
             impl->framing = true;
     }
     if (ext_trace::active()) {

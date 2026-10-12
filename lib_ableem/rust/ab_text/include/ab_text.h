@@ -40,8 +40,7 @@ int32_t abt_font_line_height(const AbtFont *font);
 int32_t abt_font_ascent(const AbtFont *font);
 
 // the width of the widest line and the number of lines; wrapWidth <= 0 = no wrapping ('\n' still breaks)
-void abt_measure(const AbtFont *font, const char *text, size_t len, int32_t wrapWidth, int32_t *width,
-                 int32_t *lines);
+void abt_measure(const AbtFont *font, const char *text, size_t len, int32_t wrapWidth, int32_t *width, int32_t *lines);
 
 // the text broken into lines no wider than wrapWidth (Unicode line breaking, a word wider than the line broken
 // between characters), joined with '\n'. Writes up to cap bytes (no terminator) and returns the full length.

@@ -150,8 +150,8 @@ TEST_CASE("wrapText breaks Chinese between characters, never before its punctuat
     const string zh = "\xE5\xBC\x80\xE5\xA7\x8B\xE6\xB8\xB8\xE6\x88\x8F\xE3\x80\x82\xE5\xA5\xBD"; // 开始游戏。好
     const auto rows = abgui::wrapText(zh, 12, chars);
     REQUIRE(rows.size() == 2);
-    CHECK(rows[0] == "\xE5\xBC\x80\xE5\xA7\x8B\xE6\xB8\xB8");             // 开始游
-    CHECK(rows[1] == "\xE6\x88\x8F\xE3\x80\x82\xE5\xA5\xBD");             // 戏。好
+    CHECK(rows[0] == "\xE5\xBC\x80\xE5\xA7\x8B\xE6\xB8\xB8"); // 开始游
+    CHECK(rows[1] == "\xE6\x88\x8F\xE3\x80\x82\xE5\xA5\xBD"); // 戏。好
     // a hyphen is a place to break too, and the word comes back whole when it fits
     CHECK(abgui::wrapText("Wi-Fi on", 20, chars) == vector<string>{"Wi-Fi on"});
     CHECK(abgui::wrapText("Wi-Fi", 3, chars) == vector<string>{"Wi-", "Fi"});
