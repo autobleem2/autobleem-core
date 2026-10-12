@@ -157,3 +157,34 @@ TEST_CASE("parseIndex reads the shape and refuses a broken one") {
     CHECK_FALSE(SbiService::parseIndex("[]", index));
     CHECK_FALSE(SbiService::parseIndex("{\"A\": \"x\"}", index));
 }
+
+TEST_CASE("a missing scratch folder is created, with its parents, before the index is fetched") {
+    Sbi lib;
+    // the fake command writes only into an existing folder, as curl does
+    Downloader strict("get %u %o", "", [&](const string &line) {
+        size_t b = line.rfind(' ');
+        if (!DirEntry::isDirectory(DirEntry::getDirNameFromPath(line.substr(b + 1)))) {
+            return 23;
+        }
+        return lib.fake.runner()(line);
+    });
+    const string scratch = lib.tmp.at("a/b/scratch");
+    SbiService service(strict, Site, scratch);
+    CHECK_FALSE(DirEntry::exists(lib.tmp.at("a")));
+    CHECK(service.fetchFor("SLES-00001", lib.save) == SbiService::Result::Fetched);
+    CHECK(DirEntry::isDirectory(scratch));
+    CHECK_FALSE(DirEntry::exists(scratch + sep + "sbi-index.json"));
+}
+
+TEST_CASE("a scratch folder that cannot be made is an error, not offline, and nothing is fetched") {
+    Sbi lib;
+    ofstream(lib.tmp.at("file")) << "x";
+    SbiService service(lib.downloader, Site, lib.tmp.at("file/scratch"));
+    CHECK(service.fetchFor("SLES-00001", lib.save) == SbiService::Result::Error);
+    CHECK(lib.fake.urls.empty());
+    CHECK_FALSE(DirEntry::exists(lib.save));
+
+    SbiService noScratch(lib.downloader, Site, "");
+    CHECK(noScratch.fetchFor("SLES-00001", lib.save) == SbiService::Result::Error);
+    CHECK(lib.fake.urls.empty());
+}

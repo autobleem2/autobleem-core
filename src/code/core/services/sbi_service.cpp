@@ -170,7 +170,14 @@ SbiService::Index SbiService::loadIndex() {
     while (!base.empty() && base.back() == '/') {
         base.pop_back();
     }
-    if (base.empty() || !DirEntry::createDirs(scratchDir_)) {
+    if (base.empty()) {
+        return index_;
+    }
+    // the folder the index is fetched into (and its .part) must exist before the command runs - curl exits 23
+    // (write error) otherwise, which would read as "offline"
+    if (scratchDir_.empty() || !DirEntry::createDirs(scratchDir_) || !DirEntry::isDirectory(scratchDir_)) {
+        PLOG_WARNING << "SbiService: cannot create the scratch folder \"" << scratchDir_ << "\"";
+        index_ = Index::Bad; // not the network's fault: an error, not "offline"
         return index_;
     }
     DownloadRequest request;
@@ -230,6 +237,7 @@ SbiService::Result SbiService::fetchFor(const string &serial, const string &save
                 return Result::Error;
             }
             if (!DirEntry::createDirs(saveFolder)) {
+                PLOG_WARNING << "SbiService: cannot create the save folder \"" << saveFolder << "\"";
                 return Result::Error;
             }
             DownloadRequest request;
@@ -247,6 +255,7 @@ SbiService::Result SbiService::fetchFor(const string &serial, const string &save
                 return Result::Error;
             }
             if (!DirEntry::renameFile(request.target, target)) {
+                PLOG_WARNING << "SbiService: cannot rename \"" << request.target << "\" to \"" << target << "\"";
                 DirEntry::removeFile(request.target);
                 return Result::Error;
             }
