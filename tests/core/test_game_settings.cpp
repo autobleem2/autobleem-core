@@ -322,7 +322,7 @@ TEST_CASE("the smoothing is soft_filter, none when the cfg has no line, clamped 
     CHECK(std::string(GameSettingsService::SmoothingNames[4]) == "HQ3x");
 }
 
-TEST_CASE("the filter is plat_target.hwfilter - pcsx-abnxt's seven, Nearest when the cfg has no line, clamped") {
+TEST_CASE("the filter is plat_target.hwfilter - pcsx-abnxt's eight, Nearest when the cfg has no line, clamped") {
     Editing lib;
     lib.writeAllUsbCfgs(); // no hwfilter line
     GameSettings s = lib.service->open(lib.usbGame());
@@ -333,10 +333,10 @@ TEST_CASE("the filter is plat_target.hwfilter - pcsx-abnxt's seven, Nearest when
     CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "plat_target.hwfilter = 2"));
     CHECK(contains(lib.tmp.readFile("Games/!SaveStates/Driver 2/pcsx.cfg"), "plat_target.hwfilter = 2"));
 
-    lib.service->setFilter(s, 6); // CRT-Pi
-    CHECK(s.pcsx.filter == 6);
-    lib.service->setFilter(s, 7); // past CRT-Pi stays CRT-Pi, below Nearest stays Nearest
-    CHECK(s.pcsx.filter == 6);
+    lib.service->setFilter(s, 7); // CRT (raster)
+    CHECK(s.pcsx.filter == 7);
+    lib.service->setFilter(s, 8); // past CRT (raster) stays there, below Nearest stays Nearest
+    CHECK(s.pcsx.filter == 7);
     lib.service->setFilter(s, -1);
     CHECK(s.pcsx.filter == 0);
     CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "plat_target.hwfilter = 0"));
@@ -383,9 +383,9 @@ TEST_CASE("scanlines are off or 1..3, a 1 from before is the thinnest, and pcsx-
 }
 
 TEST_CASE("each platform's lists are pcsx-abnxt's") {
-    const std::vector<int> all7 = {0, 1, 2, 3, 4, 5, 6};
+    const std::vector<int> all8 = {0, 1, 2, 3, 4, 5, 6, 7};
     for (const char *platform : {"psc", "rpi", "pcusb", "win", "pc"})
-        CHECK(GameSettingsService::filtersFor(platform) == all7);
+        CHECK(GameSettingsService::filtersFor(platform) == all8);
 
     CHECK(GameSettingsService::smoothingsFor("psc") == std::vector<int>{0, 1, 2}); // no HQ2x/HQ3x on the console
     for (const char *platform : {"rpi", "pcusb", "win", "pc"})
