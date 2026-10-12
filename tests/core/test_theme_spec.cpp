@@ -206,6 +206,51 @@ TEST_CASE("a full theme survives a save/load round trip") {
     CHECK(text.find("\"#000000\"") != string::npos);
 }
 
+namespace {
+const ableem::ThemeIcon *iconNamed(const std::vector<ableem::ThemeIcon> &icons, const string &name); // below
+}
+
+TEST_CASE("launcher.icons.discDrive and launcher.icons.audioCdCase are icons by name; absent = none") {
+    TempDir tmp("theme_spec");
+    tmp.writeFile("theme.json", "{ \"launcher\": { \"icons\": {"
+                                " \"discDrive\": { \"image\": \"icons/drive.png\", \"image2x\": \"icons/drive@2x.png\" },"
+                                " \"audioCdCase\": { \"image\": \"images/audio_cd_case.png\","
+                                " \"image2x\": \"images/audio_cd_case@2x.png\" } } } }");
+    const std::vector<ableem::ThemeIcon> icons = ableem::readThemeIcons(tmp.at("theme.json"));
+    const ableem::ThemeIcon *drive = iconNamed(icons, "discDrive");
+    REQUIRE(drive != nullptr);
+    CHECK(drive->image == "icons/drive.png");
+    CHECK(drive->image2x == "icons/drive@2x.png");
+    const ableem::ThemeIcon *jewel = iconNamed(icons, "audioCdCase");
+    REQUIRE(jewel != nullptr);
+    CHECK(jewel->image == "images/audio_cd_case.png");
+    CHECK(jewel->image2x == "images/audio_cd_case@2x.png");
+
+    // the ThemeSpec leaves icons alone: it still loads, and nothing of them is written back
+    ThemeSpec spec;
+    REQUIRE(spec.load(tmp.at("theme.json")));
+    CHECK(spec.referencedFiles().empty());
+
+    // resolved from the folder: the 1x, and the @2x next to it
+    tmp.makeSubDir("t/images");
+    tmp.writeFile("t/images/audio_cd_case.png", "x");
+    tmp.writeFile("t/images/audio_cd_case@2x.png", "x");
+    tmp.writeFile("t/theme.json", "{ \"launcher\": { \"icons\": { \"audioCdCase\": \"images/audio_cd_case.png\" } } }");
+    const std::vector<ableem::ThemeIcon> loaded = ableem::loadThemeIcons(tmp.at("t"));
+    const ableem::ThemeIcon *found = iconNamed(loaded, "audioCdCase");
+    REQUIRE(found != nullptr);
+    CHECK(found->image == tmp.at("t") + "/images/audio_cd_case.png");
+    CHECK(found->image2x == tmp.at("t") + "/images/audio_cd_case@2x.png");
+
+    // a theme without them parses and has neither
+    tmp.writeFile("old.json", "{ \"launcher\": { \"playButton\": \"p.png\" } }");
+    ThemeSpec old;
+    REQUIRE(old.load(tmp.at("old.json")));
+    const std::vector<ableem::ThemeIcon> none = ableem::readThemeIcons(tmp.at("old.json"));
+    CHECK(iconNamed(none, "discDrive") == nullptr);
+    CHECK(iconNamed(none, "audioCdCase") == nullptr);
+}
+
 TEST_CASE("a partial theme writes only what it sets and reads back as partial") {
     TempDir tmp("theme_spec");
     ThemeSpec out;
