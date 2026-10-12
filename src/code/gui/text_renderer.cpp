@@ -350,7 +350,9 @@ const TextRenderer::CachedRun &TextRenderer::cachedRun(const ableem::Font &font,
     CachedRun entry;
     entry.lastUsed = ++useCounter;
     entry.drawnAt = lost;
-    entry.pad = halo ? 3 : 0;
+    // room around the advance box: the halo's 3px, else 2px for ink that reaches past it (a "j" leaning left of
+    // the pen, an accent over a capital) - shaped text keeps the glyphs' own overhangs
+    entry.pad = halo ? 3 : 2;
     Size text = font.textSize(run);
     if (text.w > 0 && text.h > 0) {
         entry.tex = ableem::Texture::createTarget(renderer_, text.w + 2 * entry.pad, text.h + 2 * entry.pad);
