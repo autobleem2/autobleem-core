@@ -77,6 +77,17 @@ public:
     virtual ~Downloader() = default;
     virtual bool fetch(const std::string &url, const std::string &destFile, const Progress &progress,
                        std::string &error) = 0;
+    // what the next fetch() should come to (size 0 / sha256 "" = not known). A downloader that checks the file
+    // itself (a resumed download needs the size to know it is whole) says so by returning true: its failure
+    // then starts with ErrChecksum and the caller does not hash the file a second time.
+    virtual bool expect(uint64_t size, const std::string &sha256) {
+        (void)size;
+        (void)sha256;
+        return false;
+    }
+    // how a failed fetch's `error` starts when the machine has no network / the file is not what was published
+    static constexpr const char *ErrNoNetwork = "no network";
+    static constexpr const char *ErrChecksum = "checksum";
     // a small text file (a latest.json, a .sha256 sidecar)
     bool fetchText(const std::string &url, const std::string &scratchFile, std::string &text, std::string &error);
 };
@@ -104,11 +115,56 @@ public:
 };
 
 //******************
+// RetroArchOptions / RetroArchResult
+//******************
+// The RetroArch-only jobs for the PSC layout (<root>/RetroArch/bin) - InstallerJob::retroarchInstall /
+// retroarchRemove, what `abupdate <ROOT> --retroarch install|remove [--bios] --progress <FILE>` runs.
+// The one-call wiring is RetroArchRunner::run (installer/retroarch_runner.h): it builds the progress file,
+// the downloader and the stop flag and returns the process exit code.
+struct RetroArchOptions {
+    std::string root; // the PSC's USB root ("/media", "F:/")
+    std::string repoUrl = "https://autobleem.retromenele.pl";
+    std::string buildbotUrl = "https://buildbot.libretro.com/assets/frontend";
+    std::string scratchDir; // "" = <root>/System/Install/retroarch (kept on a stop or an error, for the resume)
+    // free and total bytes of the filesystem `path` is on; empty = System::diskSpace
+    std::function<bool(const std::string &path, uint64_t &freeBytes, uint64_t &totalBytes)> diskSpace;
+    // a RetroArch the distribution's package manager owns (the Pi's /usr/bin/retroarch): remove refuses it
+    // with FailKind::AptProvided when the root has no RetroArch of ours. "" = none (the PSC)
+    std::string aptBinary;
+};
+
+// why a run failed; the progress file's end|error|<code> (RetroArchRunner::errorCode)
+enum class FailKind { None, NoNetwork, NoSpace, Download, Checksum, AptProvided, Other };
+
+struct RetroArchResult {
+    bool ok = false;
+    bool stopped = false; // SIGTERM / the stop flag: scratch files kept, a second install resumes
+    FailKind kind = FailKind::None;
+    std::string error;
+};
+
+//******************
 // InstallerJob
 //******************
 class InstallerJob {
 public:
     using ShouldStop = std::function<bool()>;
+
+    // RetroArch alone (also the update: a newer remote version replaces the old one). Phases, in order, titled
+    // with the contract's keys: check-space, download-retroarch, download-cores, download-libs, download-apps,
+    // download-assets, [download-bios, only with `withBios`], unpack, merge-config, install-binary. Everything
+    // lands first; the binary last (retroarch.new, then renamed), then the VERSION stamp. Downloads are kept
+    // as .part files and complete files in the scratch folder until the run succeeds, so a stopped or failed
+    // run resumes (HTTP Range through the downloader) without fetching a finished file again.
+    static RetroArchResult retroarchInstall(const RetroArchOptions &options, bool withBios, Downloader &downloader,
+                                            InstallListener &listener, const ShouldStop &shouldStop);
+    // Removes the binary (+ VERSION, theme files), then cores, info, assets, database, cheats, overlays,
+    // shaders, downloads, records, "Retroarch themes" (each renamed .removing, then deleted), and with
+    // `withBios` the BIOS files. Roms, playlists, thumbnails, saves, savestates, screenshots, config/,
+    // autoconfig, retroarch.cfg, retroboot/, games, Apps/, Autobleem/lib and (without `withBios`) the BIOS stay.
+    // One phase: remove-files.
+    static RetroArchResult retroarchRemove(const RetroArchOptions &options, bool withBios, InstallListener &listener,
+                                           const ShouldStop &shouldStop);
 
     // the package next to the program: the newest autobleem-psc-*.tar.gz in argv[0]'s directory, "" if none
     static std::string packageNextTo(const std::string &programPath);

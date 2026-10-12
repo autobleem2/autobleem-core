@@ -267,3 +267,4 @@ ab_add_test(test_installer_core installer/test_installer_core.cpp LIBS ab_instal
 ab_add_test(test_windows_install_job installer/test_windows_install_job.cpp LIBS ab_installer)
 ab_add_test(test_flasher_job installer/test_flasher_job.cpp LIBS ab_installer)
 ab_add_test(test_command_downloader installer/test_command_downloader.cpp LIBS ab_installer)
+ab_add_test(test_progress_file installer/test_progress_file.cpp LIBS ab_installer)

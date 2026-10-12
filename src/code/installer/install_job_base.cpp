@@ -109,7 +109,15 @@ bool InstallJobBase::download(const string &url, const string &dest, string &err
         error);
     if (!ok && stop && stop())
         error = "Stopped";
+    else if (!ok)
+        classifyFailure(error);
     return ok;
+}
+
+void InstallJobBase::classifyFailure(const string &error) {
+    failKind = error.rfind(Downloader::ErrNoNetwork, 0) == 0   ? FailKind::NoNetwork
+               : error.rfind(Downloader::ErrChecksum, 0) == 0 ? FailKind::Checksum
+                                                              : FailKind::Download;
 }
 
 //*******************************
@@ -122,11 +130,15 @@ bool InstallJobBase::downloadVerified(const UpdateFile &file, const string &dest
     }
     say("  " + file.name + (file.size ? " (" + humanSize(file.size) + ")" : ""));
     const string part = dest + ".part";
-    if (!download(file.url, part, error))
+    const bool checkedByDownloader = dl.expect(file.size, file.sha256);
+    const bool fetched = download(file.url, part, error);
+    dl.expect(0, "");
+    if (!fetched)
         return false;
-    if (!file.sha256.empty() && Sha256::ofFile(part) != file.sha256) {
+    if (!checkedByDownloader && !file.sha256.empty() && Sha256::ofFile(part) != file.sha256) {
         DirEntry::removeFile(part);
         error = file.name + ": the download does not match its sha256";
+        failKind = FailKind::Checksum;
         return false;
     }
     DirEntry::removeFile(dest);
@@ -208,9 +220,13 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
         DirEntry::createDirs(dest.substr(0, dest.find_last_of('/')));
         const string part = dest + ".part";
         string why;
+        const bool checkedByDownloader = dl.expect(it.size, it.sha);
         bool ok = dl.fetch(it.url, part, [this](uint64_t, uint64_t) { return !(stop && stop()); }, why);
-        if (ok && Sha256::ofFile(part) != it.sha) {
+        dl.expect(0, "");
+        bool mismatch = !ok && why.rfind(Downloader::ErrChecksum, 0) == 0;
+        if (ok && !checkedByDownloader && Sha256::ofFile(part) != it.sha) {
             ok = false;
+            mismatch = true;
             why = "checksum mismatch";
         }
         if (ok) {
@@ -220,7 +236,8 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
         if (ok) {
             fetched++;
         } else {
-            DirEntry::removeFile(part);
+            if (mismatch) // a part that failed its check is no use to a resume; any other part is kept for one
+                DirEntry::removeFile(part);
             failed++;
             if (failed <= 20)
                 say("  could not fetch " + it.path + ": " + why);
