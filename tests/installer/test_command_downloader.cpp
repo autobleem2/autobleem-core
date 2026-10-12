@@ -8,6 +8,7 @@
 
 #include "support/temp_dir.h"
 
+#include <chrono>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -206,3 +207,23 @@ TEST_CASE("CommandDownloader retries a failed command and waits for the network 
     CHECK(error.rfind(Downloader::ErrNoNetwork, 0) == 0);
     CHECK(none.lines.empty());
 }
+
+#ifndef _WIN32
+TEST_CASE("CommandDownloader kills a running download when the progress callback says stop, and keeps the .part") {
+    TempDir tmp("command_downloader");
+    // the default runner: a real shell, a long command that has written the start of its file
+    CommandDownloader dl("printf abc > \"%o\"; sleep 30 # %c %u");
+    dl.setRetry(0, 1000, 20);
+    dl.setNetwork([]() { return true; }, [](unsigned) {});
+    string error;
+    const auto start = chrono::steady_clock::now();
+    const bool ok = dl.fetch("http://site/pack.tar", tmp.path() + "/pack.tar",
+                             [](uint64_t done, uint64_t) { return done == 0; }, error);
+    const auto took = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - start).count();
+    CHECK_FALSE(ok);
+    CHECK(error == "Stopped");
+    CHECK(took < 2000);
+    CHECK(DirEntry::fileSize(tmp.path() + "/pack.tar.part") == 3);
+    CHECK_FALSE(DirEntry::exists(tmp.path() + "/pack.tar"));
+}
+#endif

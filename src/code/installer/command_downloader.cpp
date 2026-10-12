@@ -29,8 +29,6 @@ void realSleep(unsigned ms) {
 
 CommandDownloader::CommandDownloader(string commandTemplate, Runner runner)
     : template_(move(commandTemplate)), runner_(move(runner)) {
-    if (!runner_)
-        runner_ = [](const string &line) { return System::runShellCommand(line); };
     network_ = []() { return System::hasDefaultRoute(); };
     sleeper_ = realSleep;
 }
@@ -115,16 +113,21 @@ bool CommandDownloader::fetch(const string &url, const string &destFile, const P
         // the command runs on its own thread so the .part's growth can be reported from this one
         atomic<int> status(-1);
         atomic<bool> done(false);
+        atomic<bool> stopNow(false);
         thread runner([&]() {
-            status = runner_(command);
+            status = runner_ ? runner_(command) : System::runShellCommand(command, [&]() { return stopNow.load(); });
             done = true;
         });
         while (!done) {
             for (unsigned waited = 0; waited < pollMs_ && !done; waited += 10)
                 this_thread::sleep_for(chrono::milliseconds(10));
             const long long size = DirEntry::liveFileSize(part);
-            if (progress && !done && !progress(size > 0 ? static_cast<uint64_t>(size) : 0, wantSize))
-                stopped = true; // the command cannot be interrupted: it ends, and the part stays for the resume
+            if (progress && !done && !progress(size > 0 ? static_cast<uint64_t>(size) : 0, wantSize)) {
+                // the default command is killed with its process group; a custom runner cannot be interrupted
+                // and ends by itself. Either way the part stays for the resume
+                stopped = true;
+                stopNow = true;
+            }
         }
         runner.join();
         if (status == 0 && DirEntry::fileSize(part) >= 0) {

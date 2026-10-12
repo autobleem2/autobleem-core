@@ -25,7 +25,9 @@ public:
     using Runner = std::function<int(const std::string &commandLine)>;
     using NetworkUp = std::function<bool()>;
     using Sleeper = std::function<void(unsigned ms)>;
-    // `runner` defaults to System::runShellCommand
+    // Without `runner` the command runs through System::runShellCommand(line, cancelled): when the progress
+    // callback asks to stop (SIGTERM -> ProgressFile), the command and its process group are killed within about
+    // a second and fetch() returns "Stopped" with the .part kept. A `runner` of a test cannot be interrupted.
     explicit CommandDownloader(std::string commandTemplate, Runner runner = Runner());
     bool fetch(const std::string &url, const std::string &destFile, const Progress &progress,
                std::string &error) override;
