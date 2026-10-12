@@ -23,9 +23,13 @@
 #pragma once
 
 #include <array>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <fstream>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 //******************
@@ -69,13 +73,20 @@ public:
     ChdWriter(const ChdWriter &) = delete;
     ChdWriter &operator=(const ChdWriter &) = delete;
 
+    // Full hunks are compressed and written by one worker thread through a queue of QueueHunks (the reader waits
+    // only when it is full); the file is the same as a single-threaded write. true = no thread, the writing
+    // thread does it all (for the tests). Set before open().
+    static const size_t QueueHunks = 4;
+    void setSynchronous(bool synchronous) { synchronous_ = synchronous; }
+
     // creates the file; tracks in order, each with at least one frame
     bool open(const std::string &path, const std::vector<Track> &tracks, std::string &error);
     // the next sector of the image (2352 bytes), track after track; the padding is added by the writer
     bool writeSector(const uint8_t *sector, std::string &error);
-    // the last hunk, the map, the metadata and the header; every sector of every track must be written
+    // the last hunk, the map, the metadata and the header; every sector of every track must be written. Waits for
+    // the worker; an error of its writing is reported here or by the next writeSector().
     bool finish(std::string &error);
-    // closes the file as it is (the caller deletes it)
+    // stops the worker (hunks still queued are dropped) and closes the file as it is (the caller deletes it)
     void abort();
 
     // the parts, for the tests
@@ -103,6 +114,9 @@ public:
 private:
     bool pushFrame(const uint8_t *sector, bool swapBytes, std::string &error);
     bool flushHunk(std::string &error);
+    bool processHunk(const uint8_t *hunk, std::string &error); // compress and write one hunk, in order
+    void workerLoop();
+    bool stopWorker(bool drain); // joins the worker; drain: it writes what is queued first
     bool put(const uint8_t *data, size_t size, std::string &error);
 
     std::ofstream out_;
@@ -117,4 +131,16 @@ private:
     std::array<uint32_t, 8> hunksOfType_{};
     uint64_t offset_ = 0;
     Sha1 raw_;
+
+    // the worker (out_, raw_, entries_, hunksOfType_, offset_ and hunksDone_ belong to it while it runs)
+    bool synchronous_ = false;
+    bool open_ = false; // the writing thread's view of "the file is open"
+    std::thread worker_;
+    std::mutex mutex_;
+    std::condition_variable notEmpty_, notFull_;
+    std::deque<std::vector<uint8_t>> queue_;
+    bool stop_ = false;    // abort: leave at once
+    bool closing_ = false; // finish: leave when the queue is empty
+    bool failed_ = false;
+    std::string workerError_;
 };

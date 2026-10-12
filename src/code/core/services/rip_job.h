@@ -53,6 +53,7 @@ public:
     };
 
     static const int Retries = 3;
+    static const uint32_t BatchSectors = 24; // sectors per READ CD (56448 bytes, under the PSC's 120 KB limit)
 
     // set before start(): after the rip read the 16 LibCrypt places through the drive's Q channel and write the
     // marks as <name>.sbi next to the CHD (nothing is written when there are none)

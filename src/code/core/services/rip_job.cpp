@@ -3,6 +3,7 @@
 #include "core/services/chd_writer.h"
 #include "core/services/system.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -62,6 +63,7 @@ struct Cleanup {
 // RipJob: the helpers
 //*******************************
 const int RipJob::Retries;
+const uint32_t RipJob::BatchSectors;
 
 uint64_t RipJob::neededBytes(const CdToc &toc) {
     return static_cast<uint64_t>(toc.leadout) * DiscReader::SectorSize;
@@ -163,25 +165,44 @@ RipJob::Result RipJob::start(CdDrive &drive, const string &outPath, const Progre
             progress(p);
     };
 
-    for (uint32_t lba = 0; lba < toc.leadout; lba++) {
-        if (lba % ChdWriter::FramesPerHunk == 0 && cancelled_) {
+    vector<uint8_t> batch(static_cast<size_t>(BatchSectors) * DiscReader::SectorSize);
+    uint32_t lba = 0;
+    while (lba < toc.leadout) {
+        if (cancelled_) {
             r.cancelled = true;
             cancelled_ = false;
             return r;
         }
-        const bool audio = toc.tracks[trackOf(toc, lba)].audio;
-        if (!readWithRetries(drive, lba, audio, sector.data())) {
-            if (r.firstBadLba < 0)
-                r.firstBadLba = lba;
-            r.badSectors++;
-            p.badSectors = r.badSectors;
+        // a batch stays inside its track (audio and data sectors are read with different READ CD types)
+        const size_t t = trackOf(toc, lba);
+        const uint32_t trackEnd = t + 1 < toc.tracks.size() ? toc.tracks[t + 1].start : toc.leadout;
+        const uint32_t count = min(BatchSectors, min(trackEnd, toc.leadout) - lba);
+        const bool audio = toc.tracks[t].audio;
+        // the whole batch in one command; when it fails, sector by sector with the retries, as before
+        const bool batchOk = drive.readSectors(lba, count, audio, batch.data());
+        for (uint32_t i = 0; i < count; i++) {
+            uint8_t *s = batch.data() + static_cast<size_t>(i) * DiscReader::SectorSize;
+            if (!batchOk) {
+                if (i > 0 && (lba + i) % ChdWriter::FramesPerHunk == 0 && cancelled_) {
+                    r.cancelled = true;
+                    cancelled_ = false;
+                    return r;
+                }
+                if (!readWithRetries(drive, lba + i, audio, s)) {
+                    if (r.firstBadLba < 0)
+                        r.firstBadLba = lba + i;
+                    r.badSectors++;
+                    p.badSectors = r.badSectors;
+                }
+            }
+            if (!writer.writeSector(s, error)) {
+                r.error = error;
+                cancelled_ = false;
+                return r;
+            }
+            report(lba + i + 1, false);
         }
-        if (!writer.writeSector(sector.data(), error)) {
-            r.error = error;
-            cancelled_ = false;
-            return r;
-        }
-        report(lba + 1, false);
+        lba += count;
     }
     if (!writer.finish(error)) {
         r.error = error;

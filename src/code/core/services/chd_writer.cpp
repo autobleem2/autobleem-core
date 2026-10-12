@@ -443,6 +443,8 @@ ChdWriter::~ChdWriter() {
 }
 
 void ChdWriter::abort() {
+    stopWorker(false); // before the file closes: the worker writes nothing after this
+    open_ = false;
     if (out_.is_open())
         out_.close();
 }
@@ -489,31 +491,102 @@ bool ChdWriter::open(const string &path, const vector<Track> &tracks, string &er
     entries_.reserve(hunkCount_);
     raw_ = Sha1();
     offset_ = 0;
+    stop_ = closing_ = failed_ = false;
+    queue_.clear();
+    workerError_.clear();
     const vector<uint8_t> placeholder(HeaderBytes, 0); // the header is written last
-    return put(placeholder.data(), placeholder.size(), error);
+    if (!put(placeholder.data(), placeholder.size(), error))
+        return false;
+    open_ = true;
+    if (!synchronous_)
+        worker_ = thread(&ChdWriter::workerLoop, this);
+    return true;
 }
 
-bool ChdWriter::flushHunk(string &error) {
+bool ChdWriter::processHunk(const uint8_t *hunk, string &error) {
     const uint64_t before = static_cast<uint64_t>(hunksDone_) * HunkBytes;
-    raw_.update(hunk_.data(), static_cast<size_t>(min<uint64_t>(HunkBytes, logicalBytes_ - before)));
+    raw_.update(hunk, static_cast<size_t>(min<uint64_t>(HunkBytes, logicalBytes_ - before)));
     HunkEntry entry;
-    entry.crc = crc16(hunk_.data(), HunkBytes);
+    entry.crc = crc16(hunk, HunkBytes);
     vector<uint8_t> packed;
     bool ok;
-    entry.type = smallestHunk(hunk_.data(), packed);
+    entry.type = smallestHunk(hunk, packed);
     if (entry.type != TypeStored) {
         entry.length = static_cast<uint32_t>(packed.size());
         ok = put(packed.data(), packed.size(), error);
     } else {
         entry.length = HunkBytes;
-        ok = put(hunk_.data(), HunkBytes, error);
+        ok = put(hunk, HunkBytes, error);
     }
     hunksOfType_[entry.type]++;
     entries_.push_back(entry);
     hunksDone_++;
-    fill(hunk_.begin(), hunk_.end(), 0);
-    frameInHunk_ = 0;
     return ok;
+}
+
+void ChdWriter::workerLoop() {
+    for (;;) {
+        vector<uint8_t> hunk;
+        {
+            unique_lock<mutex> lock(mutex_);
+            notEmpty_.wait(lock, [this] { return stop_ || closing_ || !queue_.empty(); });
+            if (stop_ || queue_.empty()) // empty and not stopped: finish() has queued the last hunk
+                return;
+            hunk = move(queue_.front());
+            queue_.pop_front();
+        }
+        notFull_.notify_one();
+        string error;
+        if (!processHunk(hunk.data(), error)) {
+            {
+                lock_guard<mutex> lock(mutex_);
+                failed_ = true;
+                workerError_ = error;
+            }
+            notFull_.notify_all();
+            return;
+        }
+    }
+}
+
+bool ChdWriter::stopWorker(bool drain) {
+    {
+        lock_guard<mutex> lock(mutex_);
+        if (drain) {
+            closing_ = true;
+        } else {
+            stop_ = true;
+            queue_.clear();
+        }
+    }
+    notEmpty_.notify_all();
+    notFull_.notify_all();
+    if (worker_.joinable())
+        worker_.join();
+    lock_guard<mutex> lock(mutex_);
+    return !failed_;
+}
+
+bool ChdWriter::flushHunk(string &error) {
+    if (synchronous_) {
+        const bool ok = processHunk(hunk_.data(), error);
+        fill(hunk_.begin(), hunk_.end(), 0);
+        frameInHunk_ = 0;
+        return ok;
+    }
+    {
+        unique_lock<mutex> lock(mutex_);
+        notFull_.wait(lock, [this] { return failed_ || queue_.size() < QueueHunks; });
+        if (failed_) {
+            error = workerError_;
+            return false;
+        }
+        queue_.push_back(move(hunk_));
+    }
+    notEmpty_.notify_one();
+    hunk_.assign(HunkBytes, 0);
+    frameInHunk_ = 0;
+    return true;
 }
 
 bool ChdWriter::pushFrame(const uint8_t *sector, bool swapBytes, string &error) {
@@ -532,9 +605,16 @@ bool ChdWriter::pushFrame(const uint8_t *sector, bool swapBytes, string &error) 
 }
 
 bool ChdWriter::writeSector(const uint8_t *sector, string &error) {
-    if (!out_.is_open() || track_ >= tracks_.size()) {
+    if (!open_ || track_ >= tracks_.size()) {
         error = "more sectors than the tracks hold";
         return false;
+    }
+    {
+        lock_guard<mutex> lock(mutex_);
+        if (failed_) {
+            error = workerError_;
+            return false;
+        }
     }
     // CD audio is stored big-endian, as chdman does (the drive delivers it little-endian)
     if (!pushFrame(sector, tracks_[track_].type == "AUDIO", error))
@@ -550,13 +630,17 @@ bool ChdWriter::writeSector(const uint8_t *sector, string &error) {
 }
 
 bool ChdWriter::finish(string &error) {
-    if (!out_.is_open() || track_ != tracks_.size()) {
+    if (!open_ || track_ != tracks_.size()) {
         error = "the image is not complete";
         return false;
     }
     while (frameInHunk_ != 0)
         if (!pushFrame(nullptr, false, error))
             return false;
+    if (!stopWorker(true)) { // every hunk is written; offset_, entries_ and raw_ are ours again
+        error = workerError_;
+        return false;
+    }
 
     const uint64_t mapOffset = offset_;
     const vector<uint8_t> map = packMap(entries_, HeaderBytes);
@@ -620,5 +704,6 @@ bool ChdWriter::finish(string &error) {
         return false;
     }
     out_.close();
+    open_ = false;
     return !out_.fail();
 }
