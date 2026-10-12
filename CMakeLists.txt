@@ -99,6 +99,7 @@ add_library(ab_core STATIC
         src/code/core/services/disc_identity.cpp
         src/code/core/services/disc_reader.cpp
         src/code/core/services/downloader.cpp
+        src/code/core/services/drive_watcher.cpp
         src/code/core/services/extension_catalog.cpp
         src/code/core/services/image_cd_drive.cpp
         src/code/core/services/package_service.cpp
