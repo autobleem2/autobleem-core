@@ -391,11 +391,16 @@ the `@2x` file is not `<name>@2x.png` next to it. `iconHalo: false` drops the co
       "dpadLeft": "icons/dpad_left.png", "dpadRight": "icons/dpad_right.png",
       "tabPlayStation": "icons/tab_playstation.png", "tabRetroArch": "icons/tab_retroarch.png",
       "tabApps": "icons/tab_apps.png",
-      "battery": "icons/battery.png"
-    }
+      "battery": "icons/battery.png",
+      "discDrive": "icons/disc_drive.png"
+    },
+    "audioCdCase": "images/audio_cd_case.png"
   }
 }
 ```
+
+(`launcher.audioCdCase` - the Audio CD jewel case, an image like `playButton` - and the `discDrive` icon - the disc
+drive chip - are both optional: absent, the launcher uses its built-in images.)
 
 (`play`, `badge` and `footer` frames, and the `play`, `extension`, `raCover`, `appCover`, `bigBox`, `switchOn`/`switchOff`
 icons, only when drawn - see their rows. Which pieces take effect: each as its G5 step lands.)
