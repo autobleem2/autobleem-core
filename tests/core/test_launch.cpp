@@ -179,13 +179,13 @@ TEST_CASE("a launch before the clock is set leaves an earlier last-played time a
     CHECK(lib.usbGame()->last_played > 0);
 }
 
-TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg as pcsx-abnxt's 0..6") {
+TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg as pcsx-abnxt's 0..7") {
     Launching lib;
     lib.configure("Aspect=true\n");
     PsGamePtr game = lib.usbGame();
 
     // launch.sh gets pcsx-abnxt's numbering as is and converts it for the classic pcsx-ab itself
-    for (const char *mode : {"0", "1", "2", "3", "4", "5", "6"}) {
+    for (const char *mode : {"0", "1", "2", "3", "4", "5", "6", "7"}) {
         lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", string("plat_target.hwfilter = ") + mode + "\n");
         lib.runner.calls.clear();
         lib.service->launch(game, EmuMode::Pcsx, -1);
@@ -194,7 +194,7 @@ TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg
         CHECK(args[7] == mode);
     }
     // no line, or a value out of range: Off
-    lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "plat_target.hwfilter = 7\n");
+    lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "plat_target.hwfilter = 8\n");
     lib.runner.calls.clear();
     lib.service->launch(game, EmuMode::Pcsx, -1);
     CHECK(lib.runner.only().args[7] == "0");
