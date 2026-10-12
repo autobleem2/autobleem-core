@@ -156,6 +156,11 @@ Config::Config() {
     if (inifile.values["perfoverlay"] != "true")
         inifile.values["perfoverlay"] = "false";
 
+    // "Screen halo" (Options -> Interface, under the emulator's scaling): the PS1 emulator fills the bands beside
+    // the picture with its glow (AB_SCREEN_HALO), off unless asked for
+    if (inifile.values["screenhalo"] != "true")
+        inifile.values["screenhalo"] = "false";
+
     inifile.values["pcsx"] = "bleemsync";
 
     // once, and only when a key was dropped or a default filled in: save() leaves an unchanged file alone
