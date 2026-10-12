@@ -444,7 +444,7 @@ ChdWriter::~ChdWriter() {
 }
 
 void ChdWriter::abort() {
-    stopWorker(false); // before the file closes: the worker writes nothing after this
+    stopWorkers(false); // before the file closes: the worker writes nothing after this
     open_ = false;
     if (out_.is_open())
         out_.close();
@@ -494,69 +494,125 @@ bool ChdWriter::open(const string &path, const vector<Track> &tracks, string &er
     offset_ = 0;
     stop_ = closing_ = failed_ = false;
     queue_.clear();
+    results_.clear();
+    pushed_ = 0;
+    writing_ = false;
     workerError_.clear();
     const vector<uint8_t> placeholder(HeaderBytes, 0); // the header is written last
     if (!put(placeholder.data(), placeholder.size(), error))
         return false;
     open_ = true;
     if (!synchronous_)
-        worker_ = thread(&ChdWriter::workerLoop, this);
+        for (unsigned i = 0; i < compressThreads_; i++)
+            workers_.emplace_back(&ChdWriter::workerLoop, this);
     return true;
 }
 
-bool ChdWriter::processHunk(const uint8_t *hunk, string &error) {
-    const uint64_t before = static_cast<uint64_t>(hunksDone_) * HunkBytes;
-    raw_.update(hunk, static_cast<size_t>(min<uint64_t>(HunkBytes, logicalBytes_ - before)));
-    HunkEntry entry;
-    entry.crc = crc16(hunk, HunkBytes);
-    vector<uint8_t> packed;
-    bool ok;
-    entry.type = smallestHunk(hunk, packed);
-    if (entry.type != TypeStored) {
-        entry.length = static_cast<uint32_t>(packed.size());
-        ok = put(packed.data(), packed.size(), error);
-    } else {
-        entry.length = HunkBytes;
-        ok = put(hunk, HunkBytes, error);
-    }
-    hunksOfType_[entry.type]++;
-    entries_.push_back(entry);
+void ChdWriter::compressHunk(Packed &hunk) {
+    hunk.entry.crc = crc16(hunk.raw.data(), HunkBytes);
+    hunk.entry.type = smallestHunk(hunk.raw.data(), hunk.packed);
+    hunk.entry.length = hunk.entry.type != TypeStored ? static_cast<uint32_t>(hunk.packed.size()) : HunkBytes;
+}
+
+bool ChdWriter::writeHunk(uint32_t index, const Packed &hunk, string &error) {
+    const uint64_t before = static_cast<uint64_t>(index) * HunkBytes;
+    raw_.update(hunk.raw.data(), static_cast<size_t>(min<uint64_t>(HunkBytes, logicalBytes_ - before)));
+    const bool ok = hunk.entry.type != TypeStored ? put(hunk.packed.data(), hunk.packed.size(), error)
+                                                  : put(hunk.raw.data(), HunkBytes, error);
+    hunksOfType_[hunk.entry.type]++;
+    entries_.push_back(hunk.entry);
+    return ok;
+}
+
+bool ChdWriter::processHunk(vector<uint8_t> hunk, string &error) {
+    Packed p;
+    p.raw = move(hunk);
+    compressHunk(p);
+    const bool ok = writeHunk(hunksDone_, p, error);
     hunksDone_++;
     return ok;
 }
 
-void ChdWriter::workerLoop() {
-    for (;;) {
-        vector<uint8_t> hunk;
-        {
-            unique_lock<mutex> lock(mutex_);
-            notEmpty_.wait(lock, [this] { return stop_ || closing_ || !queue_.empty(); });
-            if (stop_ || queue_.empty()) // empty and not stopped: finish() has queued the last hunk
-                return;
-            hunk = move(queue_.front());
-            queue_.pop_front();
+void ChdWriter::fail(const string &error) {
+    {
+        lock_guard<mutex> lock(mutex_);
+        if (!failed_) {
+            failed_ = true;
+            workerError_ = error;
         }
-        notFull_.notify_one();
+    }
+    notEmpty_.notify_all();
+    notFull_.notify_all();
+}
+
+// Whoever deposits a result calls this; one at a time writes (the others find writing_ set and leave, and the
+// writer looks again before it lets go), so the hunks reach the file in order while the others keep compressing.
+void ChdWriter::writeReady() {
+    unique_lock<mutex> lock(mutex_);
+    if (writing_)
+        return;
+    writing_ = true;
+    while (!stop_ && !failed_) {
+        auto it = results_.find(hunksDone_);
+        if (it == results_.end())
+            break;
+        const uint32_t index = it->first;
+        Packed hunk = move(it->second);
+        results_.erase(it);
+        lock.unlock();
         string error;
         bool ok = false;
         try {
-            ok = processHunk(hunk.data(), error);
-        } catch (const std::exception &e) { // an exception must not leave the thread (it would end the program)
-            error = string("the CHD worker failed: ") + e.what();
+            ok = writeHunk(index, hunk, error);
+        } catch (const std::exception &e) {
+            error = string("the CHD writer failed: ") + e.what();
         }
+        lock.lock();
         if (!ok) {
-            {
-                lock_guard<mutex> lock(mutex_);
+            if (!failed_) {
                 failed_ = true;
                 workerError_ = error;
             }
-            notFull_.notify_all();
-            return;
+            break;
         }
+        hunksDone_++;
+        notFull_.notify_all();
+    }
+    writing_ = false;
+    if (failed_) {
+        notFull_.notify_all();
+        notEmpty_.notify_all();
     }
 }
 
-bool ChdWriter::stopWorker(bool drain) {
+void ChdWriter::workerLoop() {
+    for (;;) {
+        Job job;
+        {
+            unique_lock<mutex> lock(mutex_);
+            notEmpty_.wait(lock, [this] { return stop_ || failed_ || closing_ || !queue_.empty(); });
+            if (stop_ || failed_ || queue_.empty()) // empty and not stopped: finish() has queued the last hunk
+                return;
+            job = move(queue_.front());
+            queue_.pop_front();
+        }
+        Packed packed;
+        try {
+            packed.raw = move(job.hunk);
+            compressHunk(packed);
+            {
+                lock_guard<mutex> lock(mutex_);
+                results_.emplace(job.index, move(packed));
+            }
+        } catch (const std::exception &e) { // an exception must not leave the thread (it would end the program)
+            fail(string("the CHD worker failed: ") + e.what());
+            return;
+        }
+        writeReady();
+    }
+}
+
+bool ChdWriter::stopWorkers(bool drain) {
     {
         lock_guard<mutex> lock(mutex_);
         if (drain) {
@@ -564,31 +620,34 @@ bool ChdWriter::stopWorker(bool drain) {
         } else {
             stop_ = true;
             queue_.clear();
+            results_.clear();
         }
     }
     notEmpty_.notify_all();
     notFull_.notify_all();
-    if (worker_.joinable())
-        worker_.join();
+    for (thread &t : workers_)
+        if (t.joinable())
+            t.join();
+    workers_.clear();
     lock_guard<mutex> lock(mutex_);
     return !failed_;
 }
 
 bool ChdWriter::flushHunk(string &error) {
     if (synchronous_) {
-        const bool ok = processHunk(hunk_.data(), error);
-        fill(hunk_.begin(), hunk_.end(), 0);
+        const bool ok = processHunk(move(hunk_), error);
+        hunk_.assign(HunkBytes, 0);
         frameInHunk_ = 0;
         return ok;
     }
     {
         unique_lock<mutex> lock(mutex_);
-        notFull_.wait(lock, [this] { return failed_ || queue_.size() < QueueHunks; });
+        notFull_.wait(lock, [this] { return failed_ || pushed_ - hunksDone_ < 2 * compressThreads_; });
         if (failed_) {
             error = workerError_;
             return false;
         }
-        queue_.push_back(move(hunk_));
+        queue_.push_back(Job{pushed_++, move(hunk_)});
     }
     notEmpty_.notify_one();
     hunk_.assign(HunkBytes, 0);
@@ -644,7 +703,7 @@ bool ChdWriter::finish(string &error) {
     while (frameInHunk_ != 0)
         if (!pushFrame(nullptr, false, error))
             return false;
-    if (!stopWorker(true)) { // every hunk is written; offset_, entries_ and raw_ are ours again
+    if (!stopWorkers(true)) { // every hunk is written; offset_, entries_ and raw_ are ours again
         error = workerError_;
         return false;
     }

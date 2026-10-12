@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <deque>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -73,20 +74,23 @@ public:
     ChdWriter(const ChdWriter &) = delete;
     ChdWriter &operator=(const ChdWriter &) = delete;
 
-    // Full hunks are compressed and written by one worker thread through a queue of QueueHunks (the reader waits
-    // only when it is full); the file is the same as a single-threaded write. true = no thread, the writing
-    // thread does it all (for the tests). Set before open().
-    static const size_t QueueHunks = 4;
+    // Full hunks are compressed by CompressThreads worker threads (each hunk by one, the codecs' state is the
+    // worker's own) and written in hunk order: the file is the same as a single-threaded write. At most
+    // 2 * CompressThreads hunks are in flight (queued, being compressed, or waiting for their turn to be written);
+    // the reader waits when that is reached. true = no thread, the writing thread does it all (for the tests).
+    // Set before open().
+    static const unsigned DefaultCompressThreads = 3;
     void setSynchronous(bool synchronous) { synchronous_ = synchronous; }
+    void setCompressThreads(unsigned threads) { compressThreads_ = threads < 1 ? 1 : threads; }
 
     // creates the file; tracks in order, each with at least one frame
     bool open(const std::string &path, const std::vector<Track> &tracks, std::string &error);
     // the next sector of the image (2352 bytes), track after track; the padding is added by the writer
     bool writeSector(const uint8_t *sector, std::string &error);
     // the last hunk, the map, the metadata and the header; every sector of every track must be written. Waits for
-    // the worker; an error of its writing is reported here or by the next writeSector().
+    // the workers; an error of theirs is reported here or by the next writeSector().
     bool finish(std::string &error);
-    // stops the worker (hunks still queued are dropped) and closes the file as it is (the caller deletes it)
+    // stops the workers (hunks still queued are dropped) and closes the file as it is (the caller deletes it)
     void abort();
 
     // the parts, for the tests
@@ -114,9 +118,23 @@ public:
 private:
     bool pushFrame(const uint8_t *sector, bool swapBytes, std::string &error);
     bool flushHunk(std::string &error);
-    bool processHunk(const uint8_t *hunk, std::string &error); // compress and write one hunk, in order
+    // one hunk compressed, with what its map entry and the file need
+    struct Packed {
+        std::vector<uint8_t> raw;    // the hunk as it came
+        std::vector<uint8_t> packed; // the smallest codec's bytes, unless stored
+        HunkEntry entry;
+    };
+    struct Job {
+        uint32_t index;
+        std::vector<uint8_t> hunk;
+    };
+    static void compressHunk(Packed &hunk); // pure: touches nothing of the writer
+    bool writeHunk(uint32_t index, const Packed &hunk, std::string &error); // in hunk order only
+    bool processHunk(std::vector<uint8_t> hunk, std::string &error);       // synchronous: compress and write
     void workerLoop();
-    bool stopWorker(bool drain); // joins the worker; drain: it writes what is queued first
+    void writeReady();            // writes the results that are next in line, if no one else is doing it
+    void fail(const std::string &error);
+    bool stopWorkers(bool drain); // joins the workers; drain: they write what is queued first
     bool put(const uint8_t *data, size_t size, std::string &error);
 
     std::ofstream out_;
@@ -132,15 +150,19 @@ private:
     uint64_t offset_ = 0;
     Sha1 raw_;
 
-    // the worker (out_, raw_, entries_, hunksOfType_, offset_ and hunksDone_ belong to it while it runs)
+    // the workers (out_, raw_, entries_, hunksOfType_ and offset_ belong to whoever is writing, see writing_)
     bool synchronous_ = false;
+    unsigned compressThreads_ = DefaultCompressThreads;
     bool open_ = false; // the writing thread's view of "the file is open"
-    std::thread worker_;
+    std::vector<std::thread> workers_;
     std::mutex mutex_;
     std::condition_variable notEmpty_, notFull_;
-    std::deque<std::vector<uint8_t>> queue_;
-    bool stop_ = false;    // abort: leave at once
-    bool closing_ = false; // finish: leave when the queue is empty
+    std::deque<Job> queue_;
+    std::map<uint32_t, Packed> results_; // compressed, waiting for their turn
+    uint32_t pushed_ = 0;                // hunks handed to the queue; hunksDone_ of them are written
+    bool writing_ = false;               // some worker is writing, outside the mutex
+    bool stop_ = false;                  // abort: leave at once
+    bool closing_ = false;               // finish: leave when the queue is empty
     bool failed_ = false;
     std::string workerError_;
 };

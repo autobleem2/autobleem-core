@@ -501,9 +501,11 @@ struct SyntheticDisc {
     }
 };
 
-bool writeDisc(const SyntheticDisc &disc, const string &path, bool synchronous, string &error) {
+bool writeDisc(const SyntheticDisc &disc, const string &path, bool synchronous, string &error, unsigned threads = 0) {
     ChdWriter w;
     w.setSynchronous(synchronous);
+    if (threads != 0)
+        w.setCompressThreads(threads);
     if (!w.open(path, disc.tracks, error))
         return false;
     for (const auto &s : disc.sectors)
@@ -614,4 +616,98 @@ TEST_CASE("ChdWriter: a write error of the worker comes back from writeSector or
     CHECK(failed);
     CHECK_FALSE(error.empty());
     CHECK_FALSE(w.writeSector(disc.sectors[0].data(), error)); // and it stays failed
+}
+
+TEST_CASE("ChdWriter: 1 to 4 compression threads write the synchronous file, run after run") {
+    TempDir dir("chd_nthreads");
+    const SyntheticDisc disc(203, 117);
+    const SyntheticDisc small(5, 4);
+    string error;
+    REQUIRE_MESSAGE(writeDisc(disc, dir.path() + "/sync.chd", true, error), error);
+    REQUIRE_MESSAGE(writeDisc(small, dir.path() + "/sync_small.chd", true, error), error);
+    const string expected = readFile(dir.path() + "/sync.chd");
+    const string expectedSmall = readFile(dir.path() + "/sync_small.chd");
+    CHECK(expected.size() > 1000);
+    for (unsigned threads = 1; threads <= 4; threads++) {
+        for (int run = 0; run < 5; run++) { // the ordering races show up in some runs only
+            INFO("threads " << threads << ", run " << run);
+            const string path = dir.path() + "/n.chd";
+            REQUIRE_MESSAGE(writeDisc(disc, path, false, error, threads), error);
+            CHECK(readFile(path) == expected);
+            REQUIRE_MESSAGE(writeDisc(small, path, false, error, threads), error);
+            CHECK(readFile(path) == expectedSmall);
+        }
+    }
+}
+
+#ifndef AB_NO_CHD
+
+TEST_CASE("ChdWriter: a write with 4 compression threads reads back sector by sector through libchdr") {
+    TempDir dir("chd_nthreads_read");
+    const SyntheticDisc disc(203, 117);
+    const string path = dir.path() + "/disc.chd";
+    string error;
+    REQUIRE_MESSAGE(writeDisc(disc, path, false, error, 4), error);
+    Chd chd;
+    REQUIRE(chd.open(path));
+    vector<uint8_t> frames;
+    REQUIRE(chd.frames(frames));
+    for (uint32_t i = 0; i < 203; i++)
+        CHECK(memcmp(&frames[i * ChdWriter::FrameBytes], disc.sectors[i].data(), S) == 0);
+    const uint32_t audioStart = ChdWriter::paddedFrames(203);
+    for (uint32_t i = 0; i < 117; i++)
+        CHECK(memcmp(&frames[(audioStart + i) * ChdWriter::FrameBytes], bigEndian(disc.sectors[203 + i]).data(), S) ==
+              0);
+}
+
+#endif
+
+TEST_CASE("ChdWriter: abort with 3 compression threads joins them and writes nothing after it") {
+    TempDir dir("chd_abort3");
+    const SyntheticDisc disc(203, 117);
+    const string path = dir.path() + "/a.chd";
+    string error;
+    for (int run = 0; run < 5; run++) {
+        ChdWriter w;
+        w.setCompressThreads(3);
+        REQUIRE_MESSAGE(w.open(path, disc.tracks, error), error);
+        for (size_t i = 0; i < 150; i++)
+            REQUIRE_MESSAGE(w.writeSector(disc.sectors[i].data(), error), error);
+        w.abort();
+        const string atAbort = readFile(path);
+        CHECK_FALSE(w.writeSector(disc.sectors[150].data(), error));
+        CHECK_FALSE(w.finish(error));
+        CHECK(readFile(path) == atAbort);
+    }
+    { // destroyed with hunks in flight
+        ChdWriter busy;
+        busy.setCompressThreads(3);
+        REQUIRE_MESSAGE(busy.open(path, disc.tracks, error), error);
+        for (size_t i = 0; i < 100; i++)
+            REQUIRE_MESSAGE(busy.writeSector(disc.sectors[i].data(), error), error);
+    }
+}
+
+TEST_CASE("ChdWriter: a write error with 3 compression threads comes back from writeSector or finish") {
+    ifstream probe("/dev/full");
+    if (!probe.good())
+        return; // no such device here
+    probe.close();
+    const SyntheticDisc disc(203, 117);
+    ChdWriter w;
+    w.setCompressThreads(3);
+    string error;
+    if (!w.open("/dev/full", disc.tracks, error))
+        return;
+    bool failed = false;
+    for (const auto &s : disc.sectors)
+        if (!w.writeSector(s.data(), error)) {
+            failed = true;
+            break;
+        }
+    if (!failed)
+        failed = !w.finish(error);
+    CHECK(failed);
+    CHECK_FALSE(error.empty());
+    CHECK_FALSE(w.writeSector(disc.sectors[0].data(), error));
 }
