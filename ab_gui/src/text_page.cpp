@@ -20,12 +20,15 @@ namespace abgui {
 //*******************************
 vector<string> wrapText(const string &text, int width, const function<int(const string &)> &measure) {
     vector<string> rows;
-    // the words, a tab a space; a word wider than the column is cut into pieces that fit
-    vector<string> words;
-    string word;
-    auto flushWord = [&]() {
-        if (word.empty())
-            return;
+    // the pieces a row may end after (Font::lineBreaks: Unicode line breaking - after a space, and between two
+    // Chinese characters); the blanks after a piece are one space between it and the next, a tab is a space.
+    // A piece wider than the column is cut into pieces that fit.
+    struct Piece {
+        string text;
+        bool spaceAfter;
+    };
+    vector<Piece> pieces;
+    auto addPiece = [&](string word, bool spaceAfter) {
         while (width > 0 && measure(word) > width && word.size() > 1) {
             size_t cut = word.size();
             do {
@@ -35,29 +38,40 @@ vector<string> wrapText(const string &text, int width, const function<int(const 
             } while (cut > 1 && measure(word.substr(0, cut)) > width);
             if (cut == 0)
                 break;
-            words.push_back(word.substr(0, cut));
+            pieces.push_back({word.substr(0, cut), false});
             word = word.substr(cut);
         }
-        words.push_back(word);
-        word.clear();
+        pieces.push_back({word, spaceAfter});
     };
-    for (char c : text) {
-        if (c == ' ' || c == '\t')
-            flushWord();
-        else
-            word += c;
+    vector<size_t> ends = ableem::Font::lineBreaks(text);
+    ends.push_back(text.size());
+    size_t start = 0;
+    for (size_t end : ends) {
+        string piece = text.substr(start, end - start);
+        start = end;
+        const size_t ink = piece.find_last_not_of(" \t");
+        const bool spaceAfter = ink == string::npos || ink + 1 < piece.size();
+        piece = ink == string::npos ? "" : piece.substr(0, ink + 1);
+        const size_t lead = piece.find_first_not_of(" \t"); // blanks at the very start of the text
+        if (!piece.empty() && lead != 0)
+            piece = piece.substr(lead);
+        if (!piece.empty())
+            addPiece(piece, spaceAfter);
+        else if (!pieces.empty())
+            pieces.back().spaceAfter = true;
     }
-    flushWord();
 
     string row;
-    for (const string &w : words) {
-        string candidate = row.empty() ? w : row + " " + w;
+    bool spaceBefore = false;
+    for (const Piece &p : pieces) {
+        string candidate = row.empty() ? p.text : row + (spaceBefore ? " " : "") + p.text;
         if (!row.empty() && measure(candidate) > width) {
             rows.push_back(row);
-            row = w;
+            row = p.text;
         } else {
             row = candidate;
         }
+        spaceBefore = p.spaceAfter;
     }
     if (!row.empty() || rows.empty())
         rows.push_back(row);

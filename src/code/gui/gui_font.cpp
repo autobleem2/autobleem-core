@@ -65,6 +65,13 @@ void Fonts::openAllFonts(const std::string &mediumTtf, const std::string &boldTt
     this->renderer = &renderer;
     medPath = mediumTtf;
     boldPath = boldTtf;
+    // what the theme's fonts lack (a Chinese, Japanese or Russian game title in any language) comes from these;
+    // added once, a second call is free
+    for (const char *fallback : {"NotoSansSC-Regular.otf", "OpenSans-Medium.ttf"}) {
+        const std::string path = Env::getPathToFontsDir() + sep + fallback;
+        if (DirEntry::exists(path))
+            ableem::Font::addFallback(path);
+    }
 
     for (auto fontInfo : allFontInfos) {
         string path;
