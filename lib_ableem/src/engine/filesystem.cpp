@@ -100,7 +100,12 @@ void DirEntry::generateM3UForDirectory(std::string path, std::string basename) {
     if (files.size() <= 1)
         return;
 
-    sort(files.begin(), files.end());
+    // by the name without its extension: a plain sort puts "Title (Disc 2).chd" before "Title.chd" (a space is
+    // below a dot), and a disc copied from a drive is named "Title.chd" for disc 1, "Title (Disc N).chd" after
+    sort(files.begin(), files.end(), [](const string &a, const string &b) {
+        const string ba = getFileNameWithoutExtension(a), bb = getFileNameWithoutExtension(b);
+        return ba != bb ? ba < bb : a < b;
+    });
     const string m3uFile = basename + ".m3u";
     for (const DirEntry &entry : filesInPath) {
         if (Strings::compareCaseInsensitive(DirEntry::getFileExtension(entry.name), "m3u") && entry.name != m3uFile)

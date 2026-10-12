@@ -94,6 +94,8 @@ public:
     // called by Input::poll() when the console power button or Esc is seen. the app is expected to show a
     // message and actually power off/exit; the library has no policy of its own here.
     void setPowerOffHandler(std::function<void()> handler);
+    // the handler set now (empty when none) - for a screen that sets it aside while it runs and puts it back
+    std::function<void()> powerOffHandler() const;
 
     // calls SDL_Quit(). must run after every ableem object (this Platform included) has already been
     // destroyed - register it with atexit() from main(), before constructing the first GuiBase.

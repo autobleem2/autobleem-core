@@ -23,6 +23,7 @@ struct DiscGame {
     std::vector<char> cover;    // the covers db's PNG for the serial; empty when it has none
     std::string keySerial;     // the set's: the first disc's serial when the disc sets say, else the disc's own
     bool sharesLibraryGame = false; // game->ssFolder is that of a game already in the library
+    bool inDatabase = false;        // the databases know the serial: the title is theirs, not the volume label
 
     // Creates game->ssFolder (every level). Called at launch, never at construction: a scan or a boot writes
     // nothing to the stick. True when the folder exists afterwards.

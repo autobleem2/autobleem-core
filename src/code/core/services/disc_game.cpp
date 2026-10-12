@@ -169,6 +169,7 @@ DiscGame DiscGameService::make(const string &serial, const string &region, const
         game->players = md.players;
         game->recordName = md.recordName;
         disc.cover = md.bytes;
+        disc.inDatabase = true;
     } else {
         game->title = volumeLabel;
     }

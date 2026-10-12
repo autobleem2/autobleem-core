@@ -57,6 +57,17 @@ TEST_CASE("generateM3UForDirectory strips the image extension a PBP or CHD base 
     CHECK(lines(tmp, "Chd/Chd (Disc 1).m3u") == "Chd (Disc 1).chd\nChd (Disc 2).chd\n");
 }
 
+TEST_CASE("generateM3UForDirectory puts a bare Title.chd before Title (Disc N).chd") {
+    // a disc copied from a drive: disc 1 is "Title.chd", the others "Title (Disc N).chd"; by plain string order
+    // the space sorts below the dot and disc 2 came first
+    TempDir tmp("m3u");
+    tmp.makeSubDir("Rip");
+    tmp.writeFile("Rip/Title (Disc 2).chd", "");
+    tmp.writeFile("Rip/Title.chd", "");
+    DirEntry::generateM3UForDirectory(tmp.at("Rip"), "Title.chd");
+    CHECK(lines(tmp, "Rip/Title.m3u") == "Title.chd\nTitle (Disc 2).chd\n");
+}
+
 TEST_CASE("copy and copyFile copy every byte of a file bigger than one buffer") {
     // was a readsome() loop, which copies nothing under libc++ (the llvm-mingw Windows builds)
     TempDir tmp("copy");
