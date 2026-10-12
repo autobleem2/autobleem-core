@@ -284,7 +284,7 @@ TEST_CASE("the RetroArch set comes from the playlist and is sorted by title") {
 
 TEST_CASE("Clean game names: the RetroArch lists show and sort by the name without tags, title stays the label") {
     ThreeGames lib;
-    ConfigIn cfg(lib.tmp, "");
+    ConfigIn cfg(lib.tmp, "CleanNames=true\n"); // the switch is off by default
     GameQueryService query(lib.library, *cfg);
 
     FakeRetroArch retroArch;
@@ -309,8 +309,8 @@ TEST_CASE("Clean game names: the RetroArch lists show and sort by the name witho
     CHECK(shown(games) == vector<string>{"(USA)", "Alien", "Alien", "Sonic"});
     CHECK(games[3]->title == "Sonic (Rev 1) [!]");
 
-    // switched off: the whole name again, sorted by it
-    ConfigIn off(lib.tmp, "CleanNames=false\n");
+    // off (the default): the whole name again, sorted by it
+    ConfigIn off(lib.tmp, "");
     GameQueryService plain(lib.library, *off);
     plain.setRetroArchGames(&retroArch);
     CHECK(shown(plain.gamesFor(selection)) ==
