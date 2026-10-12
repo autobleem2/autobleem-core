@@ -102,6 +102,7 @@ add_library(ab_core STATIC
         src/code/core/services/downloader.cpp
         src/code/core/services/drive_watcher.cpp
         src/code/core/services/extension_catalog.cpp
+        src/code/core/services/flac_encoder.cpp
         src/code/core/services/image_cd_drive.cpp
         src/code/core/services/package_service.cpp
         src/code/core/services/package_table.cpp
@@ -148,6 +149,10 @@ target_link_libraries(ab_core ableem_engine ${CMAKE_DL_LIBS}) # dlopen: PluginLo
 target_include_directories(ab_core PUBLIC src/code ${CMAKE_BINARY_DIR}/generated)
 # ChdWriter deflates with the engine's vendored miniz (a private header of ableem_engine)
 target_include_directories(ab_core PRIVATE lib_ableem/third_party/miniz)
+if (AB_ENABLE_CHD)
+    # ... and compresses its CD hunks with LZMA (cdlz) through the LZMA SDK libchdr vendors (the encoder is in it)
+    target_link_libraries(ab_core lzma)
+endif()
 set_source_files_properties(src/code/core/services/chd_writer.cpp PROPERTIES COMPILE_DEFINITIONS "MINIZ_NO_TIME")
 if (AB_ONLINE_UPDATE)
     target_sources(ab_core PRIVATE src/code/core/services/update_service.cpp)

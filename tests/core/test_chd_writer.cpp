@@ -8,6 +8,10 @@
 
 #include "core/services/chd_writer.h"
 
+#include "core/services/flac_encoder.h"
+
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -16,6 +20,9 @@
 
 #ifndef AB_NO_CHD
 #include <libchdr/chd.h>
+extern "C" {
+#include <libchdr/flac.h>
+}
 #endif
 
 using namespace std;
@@ -51,6 +58,35 @@ vector<uint8_t> dataSector(uint32_t lba, bool noisy) {
     s[13] = bcd(f / 75 % 60);
     s[14] = bcd(f % 75);
     s[15] = 2;
+    return s;
+}
+
+// the sector of an AUDIO track as the image stores it: the drive's little-endian samples, byte pairs swapped
+vector<uint8_t> bigEndian(vector<uint8_t> sector) {
+    for (uint32_t i = 0; i + 1 < S; i += 2)
+        swap(sector[i], sector[i + 1]);
+    return sector;
+}
+
+// 588 stereo samples of CD audio (little-endian, as a drive reads them): 'music' is two sines and a little noise,
+// otherwise silence; 'sector' is the position in the track, so the waves run on from one sector to the next
+vector<uint8_t> audioSector(uint32_t sector, bool music) {
+    vector<uint8_t> s(S, 0);
+    uint32_t x = sector * 2654435761u + 7;
+    for (uint32_t i = 0; music && i < S / 4; i++) {
+        const double t = (sector * (S / 4.0) + i) / 44100.0;
+        x = x * 1664525u + 1013904223u;
+        const int noiseL = static_cast<int>(x >> 24) - 128;
+        x = x * 1664525u + 1013904223u;
+        const int noiseR = static_cast<int>(x >> 24) - 128;
+        const double common = 2000 * sin(2 * 3.14159265358979 * 1250 * t);
+        const int16_t left = static_cast<int16_t>(9000 * sin(2 * 3.14159265358979 * 440 * t) + common + noiseL * 8);
+        const int16_t right = static_cast<int16_t>(7000 * sin(2 * 3.14159265358979 * 660 * t) + common + noiseR * 8);
+        s[i * 4] = static_cast<uint8_t>(left);
+        s[i * 4 + 1] = static_cast<uint8_t>(left >> 8);
+        s[i * 4 + 2] = static_cast<uint8_t>(right);
+        s[i * 4 + 3] = static_cast<uint8_t>(right >> 8);
+    }
     return s;
 }
 
@@ -179,7 +215,10 @@ TEST_CASE("a two-track disc written by ChdWriter reads back sector by sector thr
     CHECK(h->unitbytes == ChdWriter::FrameBytes);
     CHECK(h->hunkcount == 10);
     CHECK(h->logicalbytes == 76u * ChdWriter::FrameBytes); // 40 + 33 padded to 36; the last hunk is partial
-    CHECK(h->compression[0] == CHD_CODEC_CD_ZLIB);
+    CHECK(h->compression[0] == CHD_CODEC_CD_LZMA);
+    CHECK(h->compression[1] == CHD_CODEC_CD_ZLIB);
+    CHECK(h->compression[2] == CHD_CODEC_CD_FLAC);
+    CHECK(h->compression[3] == 0);
 
     const vector<string> meta = chd.tracks();
     REQUIRE(meta.size() == 2);
@@ -194,7 +233,8 @@ TEST_CASE("a two-track disc written by ChdWriter reads back sector by sector thr
     }
     for (uint32_t i = 0; i < audioFrames; i++) {
         INFO("audio sector " << i);
-        CHECK(memcmp(&frames[(dataFrames + i) * ChdWriter::FrameBytes], sectors[dataFrames + i].data(), S) == 0);
+        CHECK(memcmp(&frames[(dataFrames + i) * ChdWriter::FrameBytes], bigEndian(sectors[dataFrames + i]).data(), S) ==
+              0);
     }
     // the audio track's padding (33 -> 36) and the hunk's tail are zeros, and so is every subchannel
     for (uint32_t i = dataFrames + audioFrames; i < 80; i++)
@@ -259,6 +299,184 @@ TEST_CASE("ChdWriter matches the file chdman wrote (tests/data/test.chd)") {
     vector<uint8_t> mineFrames;
     REQUIRE(mine.frames(mineFrames));
     CHECK(mineFrames == refFrames);
+}
+
+namespace {
+
+// a Mode 2 data track and four audio tracks (three of music, one silent) - the kind of disc a game with a CD
+// soundtrack is
+struct CodecDisc {
+    vector<ChdWriter::Track> tracks;
+    vector<vector<uint8_t>> sectors; // as a drive delivers them, track after track
+    vector<uint32_t> firstSector;    // of each track in the padded image
+    CodecDisc() {
+        const char *types[5] = {"MODE2_RAW", "AUDIO", "AUDIO", "AUDIO", "AUDIO"};
+        const uint32_t frames[5] = {400, 300, 301, 200, 160};
+        uint32_t at = 0;
+        for (int t = 0; t < 5; t++) {
+            ChdWriter::Track track;
+            track.number = t + 1;
+            track.type = types[t];
+            track.frames = frames[t];
+            tracks.push_back(track);
+            firstSector.push_back(at);
+            at += ChdWriter::paddedFrames(frames[t]);
+            for (uint32_t i = 0; i < frames[t]; i++) {
+                if (t == 0)
+                    sectors.push_back(dataSector(i, i % 3 == 0));
+                else
+                    sectors.push_back(audioSector(i + t * 1000, t != 4));
+            }
+        }
+    }
+    bool write(const string &path, ChdWriter &w, string &error) const {
+        if (!w.open(path, tracks, error))
+            return false;
+        for (const auto &s : sectors)
+            if (!w.writeSector(s.data(), error))
+                return false;
+        return w.finish(error);
+    }
+};
+
+} // namespace
+
+TEST_CASE("every CD codec is chosen for some hunk and the disc reads back sector by sector through libchdr") {
+    TempDir dir("chd_codecs");
+    const string path = dir.path() + "/disc.chd";
+    const CodecDisc disc;
+    ChdWriter w;
+    string error;
+    REQUIRE_MESSAGE(disc.write(path, w, error), error);
+    INFO("hunks: cdlz " << w.hunksOfType(0) << ", cdzl " << w.hunksOfType(1) << ", cdfl " << w.hunksOfType(2)
+                        << ", stored " << w.hunksOfType(4));
+    CHECK(w.hunksOfType(0) > 0);
+    CHECK(w.hunksOfType(1) > 0);
+    CHECK(w.hunksOfType(2) > 0);
+
+    Chd chd;
+    REQUIRE(chd.open(path));
+    const chd_header *h = chd.header();
+    CHECK(h->compression[0] == CHD_CODEC_CD_LZMA);
+    CHECK(h->compression[1] == CHD_CODEC_CD_ZLIB);
+    CHECK(h->compression[2] == CHD_CODEC_CD_FLAC);
+    CHECK(w.hunksOfType(0) + w.hunksOfType(1) + w.hunksOfType(2) + w.hunksOfType(4) == h->hunkcount);
+
+    vector<uint8_t> frames;
+    REQUIRE(chd.frames(frames));
+    size_t track = 0, inTrack = 0;
+    for (size_t i = 0; i < disc.sectors.size(); i++) {
+        while (inTrack == disc.tracks[track].frames) {
+            track++;
+            inTrack = 0;
+        }
+        const bool audio = disc.tracks[track].type == "AUDIO";
+        const vector<uint8_t> want = audio ? bigEndian(disc.sectors[i]) : disc.sectors[i];
+        const size_t frame = disc.firstSector[track] + inTrack;
+        INFO("track " << track + 1 << " sector " << inTrack);
+        REQUIRE(memcmp(&frames[frame * ChdWriter::FrameBytes], want.data(), S) == 0);
+        for (uint32_t b = S; b < ChdWriter::FrameBytes; b++)
+            REQUIRE(frames[frame * ChdWriter::FrameBytes + b] == 0);
+        inTrack++;
+    }
+}
+
+TEST_CASE("an audio-heavy disc comes out clearly smaller than with cdzl alone") {
+    TempDir dir("chd_size");
+    const string path = dir.path() + "/disc.chd";
+    const CodecDisc disc;
+    ChdWriter w;
+    string error;
+    REQUIRE_MESSAGE(disc.write(path, w, error), error);
+
+    // what the same hunks cost as cdzl only (stored when that does not shrink them)
+    Chd chd;
+    REQUIRE(chd.open(path));
+    vector<uint8_t> frames;
+    REQUIRE(chd.frames(frames));
+    uint64_t cdzlOnly = 0;
+    for (size_t hunk = 0; hunk < chd.header()->hunkcount; hunk++) {
+        vector<uint8_t> packed;
+        cdzlOnly += ChdWriter::cdzlHunk(&frames[hunk * ChdWriter::HunkBytes], packed) ? packed.size()
+                                                                                       : ChdWriter::HunkBytes;
+    }
+    const uint64_t all = readFile(path).size();
+    MESSAGE("file " << all << " bytes; the hunks as cdzl alone " << cdzlOnly << " (" << cdzlOnly * 100 / all << "%)");
+    CHECK(all * 10 < cdzlOnly * 9); // at least 10% smaller
+}
+
+TEST_CASE("each codec packs a hunk of music, of silence and of data, and smallestHunk takes the best") {
+    for (int kind = 0; kind < 3; kind++) {
+        vector<uint8_t> hunk(ChdWriter::HunkBytes, 0);
+        for (uint32_t f = 0; f < ChdWriter::FramesPerHunk; f++) {
+            vector<uint8_t> s = kind == 2 ? dataSector(f, false) : bigEndian(audioSector(f, kind == 0));
+            memcpy(&hunk[f * ChdWriter::FrameBytes], s.data(), S);
+        }
+        vector<uint8_t> packed;
+        const bool lz = ChdWriter::cdlzHunk(hunk.data(), packed);
+        const size_t lzBytes = packed.size();
+        const bool zl = ChdWriter::cdzlHunk(hunk.data(), packed);
+        const size_t zlBytes = packed.size();
+        const bool fl = ChdWriter::cdflHunk(hunk.data(), packed);
+        INFO("kind " << kind << ": cdlz " << (lz ? lzBytes : 0) << ", cdzl " << (zl ? zlBytes : 0) << ", cdfl "
+                     << (fl ? packed.size() : 0));
+        CHECK(lz);
+        CHECK(zl);
+        if (kind < 2)
+            CHECK(fl);
+        const size_t flBytes = fl ? packed.size() : ChdWriter::HunkBytes;
+        const uint8_t type = ChdWriter::smallestHunk(hunk.data(), packed);
+        CHECK(type < 3);
+        const size_t lzCost = lz ? lzBytes : ChdWriter::HunkBytes, zlCost = zl ? zlBytes : ChdWriter::HunkBytes;
+        CHECK(packed.size() == min({lzCost, zlCost, flBytes}));
+        if (kind == 0)
+            CHECK(type == 2); // music: FLAC
+    }
+}
+
+TEST_CASE("FlacEncoder: frames libchdr's (dr_flac) decoder reads back, on odd sizes too") {
+    const size_t sizes[] = {1, 2, 3, 4, 5, 17, 100, 255, 256, 1000, 2352, 2353, 4704, 5000};
+    for (size_t n : sizes) {
+        for (int kind = 0; kind < 4; kind++) {
+            vector<int16_t> pcm(n * 2);
+            uint32_t x = static_cast<uint32_t>(n * 31 + kind);
+            for (size_t i = 0; i < n; i++) {
+                x = x * 1664525u + 1013904223u;
+                switch (kind) {
+                case 0: // a tone with a little noise
+                    pcm[i * 2] = static_cast<int16_t>(8000 * sin(static_cast<double>(i) * 0.05) + (x >> 28));
+                    pcm[i * 2 + 1] = static_cast<int16_t>(6000 * sin(static_cast<double>(i) * 0.07));
+                    break;
+                case 1: // white noise, both channels
+                    pcm[i * 2] = static_cast<int16_t>(x >> 16);
+                    pcm[i * 2 + 1] = static_cast<int16_t>(x);
+                    break;
+                case 2: // full scale, opposite signs (the side channel needs 17 bits)
+                    pcm[i * 2] = (x >> 20) & 1 ? -32768 : 32767;
+                    pcm[i * 2 + 1] = (x >> 21) & 1 ? 32767 : -32768;
+                    break;
+                default: // silence, then one constant level
+                    pcm[i * 2] = 0;
+                    pcm[i * 2 + 1] = i < n / 2 ? 0 : -1234;
+                    break;
+                }
+            }
+            const uint32_t blockSize = static_cast<uint32_t>(n < 2352 ? n : 2352);
+            const vector<uint8_t> coded = FlacEncoder::encode(pcm.data(), n, blockSize);
+            INFO("samples " << n << ", kind " << kind << ", " << coded.size() << " bytes");
+            REQUIRE_FALSE(coded.empty());
+
+            flac_decoder decoder;
+            flac_decoder_init(&decoder);
+            vector<int16_t> back(n * 2, 0x5555);
+            const uint32_t length = static_cast<uint32_t>(coded.size());
+            REQUIRE(flac_decoder_reset(&decoder, 44100, 2, blockSize, coded.data(), length));
+            REQUIRE(flac_decoder_decode_interleaved(&decoder, back.data(), static_cast<uint32_t>(n), 0));
+            CHECK(flac_decoder_finish(&decoder) == coded.size()); // the decoder consumed exactly the frames
+            flac_decoder_free(&decoder);
+            CHECK(back == pcm);
+        }
+    }
 }
 
 #endif
