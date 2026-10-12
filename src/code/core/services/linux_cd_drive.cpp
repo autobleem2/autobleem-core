@@ -154,6 +154,20 @@ LinuxCdDrive::ReadPlan LinuxCdDrive::planRead(int32_t lba, int shift, bool wantQ
     return plan;
 }
 
+void LinuxCdDrive::setSpeedCommand(uint8_t *cdb, unsigned kbPerSecond) {
+    memset(cdb, 0, 12);
+    cdb[0] = 0xbb;
+    cdb[2] = static_cast<uint8_t>(kbPerSecond >> 8);
+    cdb[3] = static_cast<uint8_t>(kbPerSecond);
+    cdb[4] = 0xff; // write speed: unchanged / maximum
+    cdb[5] = 0xff;
+}
+
+bool LinuxCdDrive::decodeQ(const uint8_t *subcode96, uint8_t *q12) {
+    DiscReader::deinterleaveQ(subcode96, q12);
+    return DiscReader::qCrc(q12) == static_cast<uint16_t>(q12[10] << 8 | q12[11]);
+}
+
 //*******************************
 // LinuxCdDrive: the drive
 //*******************************
@@ -226,6 +240,20 @@ bool LinuxCdDrive::rawRead(int32_t lba, bool audio, uint8_t *buffer, bool subcha
     uint8_t cdb[12];
     readCdCommand(cdb, lba, audio, subchannel);
     return command(cdb, 12, buffer, subchannel ? RawSize + SubSize : RawSize);
+}
+
+bool LinuxCdDrive::setSpeed(unsigned kbPerSecond) {
+    uint8_t cdb[12];
+    setSpeedCommand(cdb, kbPerSecond);
+    return command(cdb, 12, nullptr, 0);
+}
+
+bool LinuxCdDrive::readSubcode(uint32_t lba, bool audio, uint8_t *subcode96) {
+    uint8_t buffer[RawSize + SubSize];
+    if (!rawRead(static_cast<int32_t>(lba), audio, buffer, true))
+        return false;
+    memcpy(subcode96, buffer + RawSize, SubSize);
+    return true;
 }
 
 bool LinuxCdDrive::probeSubchannel(bool audio) {

@@ -41,6 +41,17 @@ public:
     bool readToc(CdToc &toc, std::string &error) override;
     bool readSector(uint32_t lba, bool audio, uint8_t *data, uint8_t *q) override;
     bool hasSubchannel() const override { return subchannel_ == Subchannel::RawPW; }
+    // SET CD SPEED: the top speed while ripping, 4x after (the CdDrive hook RipJob calls)
+    bool setRipSpeed(bool maximum) override { return setSpeed(maximum ? MaxSpeed : Speed4x); }
+
+    enum : unsigned {
+        MaxSpeed = 0xffff, // "as fast as the drive goes"
+        Speed4x = 706      // kB/s, 4 * 176.4
+    };
+    bool setSpeed(unsigned kbPerSecond);
+    // the raw P-W subchannel of one sector, 96 bytes as the drive gives it (READ CD with sub-channel selection,
+    // no shift applied - readSector() is the shifted Q). The 2352 main bytes are read and dropped.
+    bool readSubcode(uint32_t lba, bool audio, uint8_t *subcode96);
 
     Subchannel subchannel() const { return subchannel_; }
     int shift() const { return shift_; }
@@ -68,6 +79,10 @@ public:
         int32_t subLba = 0;
     };
     static ReadPlan planRead(int32_t lba, int shift, bool wantQ);
+    // the 12-byte SET CD SPEED (0xBB), read speed in kB/s
+    static void setSpeedCommand(uint8_t *cdb, unsigned kbPerSecond);
+    // 96 raw P-W bytes -> Q's 12 bytes (de-interleaved); true when its CRC is right
+    static bool decodeQ(const uint8_t *subcode96, uint8_t *q12);
 
 private:
     bool command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, size_t size);

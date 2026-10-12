@@ -47,6 +47,9 @@ public:
     // the sector could not be read.
     virtual bool readSector(uint32_t lba, bool audio, uint8_t *data, uint8_t *q) = 0;
     virtual bool hasSubchannel() const = 0;
+    // The ripper (RipJob) asks for the drive's top speed while it reads and for 4x after; a drive that cannot
+    // change its speed (or is a file) just says false.
+    virtual bool setRipSpeed(bool /*maximum*/) { return false; }
 };
 
 //******************
