@@ -7,8 +7,11 @@
 #include "../support/rdb_builder.h"
 
 #include "core/services/disc_game.h"
+#include "core/services/game_settings.h"
 
+#include <ableem/engine/config_file_editor.h>
 #include <ableem/engine/environment.h>
+#include <ableem/engine/ini_file.h>
 
 #include <string>
 
@@ -111,4 +114,68 @@ TEST_CASE("metadata comes from the lookup; the volume label is the title when no
     CHECK(unknown.game->title == "SOME GAME");
     CHECK(unknown.game->region == "P");
     CHECK(unknown.cover.empty());
+}
+
+TEST_CASE("a disc no library game shares gets its pcsx.cfg, Game.ini and cover when the folder is made, once") {
+    Rig rig;
+    DiscGame disc = rig.service.make("SCUS-94900", "U", "CRASH", 0);
+    REQUIRE_FALSE(disc.sharesLibraryGame);
+    CHECK(disc.game->physicalDisc);
+    disc.cover = {'P', 'N', 'G'};
+
+    REQUIRE(disc.ensureFolder());
+    const string folder = disc.game->folder;
+    string cfg;
+    REQUIRE(DirEntry::readFile(folder + "pcsx.cfg", cfg));
+    CHECK(cfg.find("SlowBoot = 1") != string::npos);
+    ableem::IniFile ini;
+    ini.load(folder + ableem::GAME_INI);
+    CHECK(ini.values["title"] == "Crash Bandicoot");
+    CHECK(ini.values["serial"] == "SCUS-94900");
+    CHECK(ini.values["memcard"] == "SONY");
+    string png;
+    REQUIRE(DirEntry::readFile(folder + "cover.png", png));
+    CHECK(png == "PNG");
+
+    // what is there stays: an edit survives the next launch
+    ableem::ConfigFileEditor().replaceInFile(folder + "pcsx.cfg", "SlowBoot", "SlowBoot = 0");
+    REQUIRE(disc.ensureFolder());
+    REQUIRE(DirEntry::readFile(folder + "pcsx.cfg", cfg));
+    CHECK(cfg.find("SlowBoot = 0") != string::npos);
+}
+
+TEST_CASE("a disc that shares a library game gets no files of its own") {
+    Rig rig;
+    rig.addLibraryGame(1, "Crash Bandicoot", "SCUS-94900");
+    DiscGame disc = rig.service.make("SCUS-94900", "U", "CRASH", 0);
+    disc.cover = {'P', 'N', 'G'};
+    REQUIRE(disc.ensureFolder());
+    CHECK_FALSE(DirEntry::exists(disc.game->folder + "/cover.png"));
+}
+
+TEST_CASE("the game options of a seeded disc save a dithering change in its pcsx.cfg") {
+    Rig rig;
+    DiscGame disc = rig.service.make("SLES-55555", "P", "SOMEGAME", 0);
+    REQUIRE(disc.ensureFolder());
+
+    GameSettingsService settings(rig.lib.library);
+    GameSettings s = settings.open(disc.game);
+    settings.setDithering(s, 2);
+    CHECK_FALSE(s.cfgMissing);
+    CHECK(s.pcsx.dither == 2);
+    string cfg;
+    REQUIRE(DirEntry::readFile(disc.game->folder + "pcsx.cfg", cfg));
+    CHECK(cfg.find("dithering2 = 2") != string::npos);
+}
+
+TEST_CASE("without a pcsx.cfg a setting is reported as not saved") {
+    Rig rig;
+    DiscGame disc = rig.service.make("SLES-55555", "P", "SOMEGAME", 0);
+    REQUIRE(DirEntry::createDirs(disc.game->ssFolder)); // the folder, not ensureFolder's files
+
+    GameSettingsService settings(rig.lib.library);
+    GameSettings s = settings.open(disc.game);
+    settings.setDithering(s, 2);
+    CHECK(s.cfgMissing);
+    CHECK_FALSE(DirEntry::exists(disc.game->folder + "pcsx.cfg"));
 }

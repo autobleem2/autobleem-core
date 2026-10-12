@@ -52,6 +52,8 @@ struct GameSettings {
     // the game has its own config, saved in an emulator's menu (PcsxConfig): `pcsx` shows its values and
     // the pcsx.cfg setters below do nothing until unlock()
     bool custom = false;
+    // the last pcsx.cfg setter found no pcsx.cfg to edit: nothing was saved (the editor says so)
+    bool cfgMissing = false;
     ableem::IniFile ini;
     PcsxSettings pcsx;
     int resume = ResumePointService::Ask; // the Resume row (ResumePointService::Mode)

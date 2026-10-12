@@ -113,7 +113,7 @@ TEST_CASE("replaceProperties: a batch is one write, a missing key is appended, C
     CHECK(tmp.readFile("pcsx.cfg") == "Bios = SET_BY_PCSX\nFrameskip3 = 1\nScanlines = 0\nSlowBoot = 0\n");
 
     // a file that is not there is not created
-    ableem::ConfigFileEditor().replaceProperties(tmp.at("missing.cfg"), {{"a", "a = 1"}});
+    CHECK_FALSE(ableem::ConfigFileEditor().replaceProperties(tmp.at("missing.cfg"), {{"a", "a = 1"}}));
     CHECK_FALSE(ableem::DirEntry::exists(tmp.at("missing.cfg")));
 }
 

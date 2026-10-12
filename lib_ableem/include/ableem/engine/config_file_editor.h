@@ -25,22 +25,25 @@ public:
     std::string getValueFromCfgFile(std::string fullCfgFilePath, std::string property);
 
     // example gamePathInSaveStates = "/media/Games/!SaveStates/12"
-    void replaceInternal(std::string gamePathInSaveStates, std::string property, std::string newline);
+    // The replace* functions return false when there was no cfg file to edit (a warning is logged, nothing is created).
+    bool replaceInternal(std::string gamePathInSaveStates, std::string property, std::string newline);
 
     // example entry = "Driver 2"
     // example gamePath = "/media/Games/Racing"
     // replaces in the game dir pcsx.cfg and the !SaveStates/<entry>/pcsx.cfg. Not in the per-disc
     // !SaveStates/<entry>/cfg/*.cfg any more (2026-09-24): the emulators no longer read those, a game's own
     // config is its pcsx.custom.cfg, which only the emulators write (the launcher's PcsxConfig)
-    void replaceUsb(std::string entry, std::string gamePath, std::string property, std::string newline);
+    // (true when at least one of the two files was there)
+    bool replaceUsb(std::string entry, std::string gamePath, std::string property, std::string newline);
 
-    void replace(std::string entry, std::string gamePath, std::string property, std::string newline, bool internal);
+    bool replace(std::string entry, std::string gamePath, std::string property, std::string newline, bool internal);
 
     // one arbitrary cfg file (RetroArch's retroarch.cfg, a core override, ...)
-    void replaceInFile(std::string fullCfgFilePath, std::string property, std::string newline);
+    bool replaceInFile(std::string fullCfgFilePath, std::string property, std::string newline);
     // several settings in one file: one read, and one write only if a line changed; a property the file has
     // no line for is appended; an empty new line removes the property's line; a missing file is left missing
-    void replaceProperties(const std::string &fullCfgFilePath, const CfgLines &properties);
+    // (a warning in the log, and false)
+    bool replaceProperties(const std::string &fullCfgFilePath, const CfgLines &properties);
     // the value a cfg text gives `property` ('key = "value"' -> value, quotes and blanks trimmed); false when
     // no line sets it
     static bool valueIn(const std::string &text, const std::string &property, std::string *value);
