@@ -94,10 +94,9 @@ struct AtlasTextures {
                 PLOG_ERROR << "Cannot make a glyph atlas page: " << SDL_GetError();
                 return false;
             }
+            // (no scale mode set: glyphs land on whole pixels at 1:1, so any filter samples texel centres - and the
+            // console's SDL 2.0.18 crashes in SDL_SetTextureScaleMode on GLES2, test_crt_frame keeps it out)
             SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
-#if SDL_VERSION_ATLEAST(2, 0, 12)
-            SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest); // glyphs land on whole pixels, 1:1
-#endif
             pages.push_back(t);
         }
         if (scratch.size() < static_cast<size_t>(pitch) * size)
