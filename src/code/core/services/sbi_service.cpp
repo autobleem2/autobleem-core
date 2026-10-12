@@ -237,6 +237,7 @@ SbiService::Result SbiService::fetchFor(const string &serial, const string &save
                 return Result::Error;
             }
             if (!DirEntry::createDirs(saveFolder)) {
+                PLOG_WARNING << "SbiService: cannot create the save folder \"" << saveFolder << "\"";
                 return Result::Error;
             }
             DownloadRequest request;
@@ -254,6 +255,7 @@ SbiService::Result SbiService::fetchFor(const string &serial, const string &save
                 return Result::Error;
             }
             if (!DirEntry::renameFile(request.target, target)) {
+                PLOG_WARNING << "SbiService: cannot rename \"" << request.target << "\" to \"" << target << "\"";
                 DirEntry::removeFile(request.target);
                 return Result::Error;
             }
