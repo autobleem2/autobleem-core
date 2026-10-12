@@ -130,6 +130,7 @@ add_library(ab_core STATIC
         src/code/core/services/process_runner.cpp
         src/code/core/services/resume_point.cpp
         src/code/core/services/retroarch.cpp
+        src/code/core/services/sbi_service.cpp
         src/code/core/services/scan_service.cpp
         src/code/core/services/online_assets.cpp
         src/code/core/services/pad_battery.cpp
