@@ -86,8 +86,12 @@ public:
     // 96 raw P-W bytes -> Q's 12 bytes (de-interleaved); true when its CRC is right
     static bool decodeQ(const uint8_t *subcode96, uint8_t *q12);
 
+    // did an SG_IO command succeed: no SG error flags (info), and for a read that must be whole (exact) nothing
+    // of the transfer left over (resid, bytes the drive did not deliver)
+    static bool commandSucceeded(unsigned info, int resid, bool exact);
+
 private:
-    bool command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, size_t size);
+    bool command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, size_t size, bool exact = false);
     bool rawRead(int32_t lba, bool audio, uint8_t *buffer, bool subchannel);
 
     int fd_ = -1;

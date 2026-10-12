@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 
 using namespace std;
 
@@ -537,7 +538,13 @@ void ChdWriter::workerLoop() {
         }
         notFull_.notify_one();
         string error;
-        if (!processHunk(hunk.data(), error)) {
+        bool ok = false;
+        try {
+            ok = processHunk(hunk.data(), error);
+        } catch (const std::exception &e) { // an exception must not leave the thread (it would end the program)
+            error = string("the CHD worker failed: ") + e.what();
+        }
+        if (!ok) {
             {
                 lock_guard<mutex> lock(mutex_);
                 failed_ = true;

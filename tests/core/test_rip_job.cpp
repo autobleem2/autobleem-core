@@ -188,3 +188,107 @@ TEST_CASE("RipJob: the .sbi is written on request") {
     CHECK(r.sbiFile.empty());
     CHECK_FALSE(exists(dir.path() + "/Other.sbi"));
 }
+
+TEST_CASE("RipJob: the drive is read in batches that stay inside a track and the lead-out") {
+    TempDir dir("rip6");
+    FakeCdDrive drive;
+    makeDisc(drive, 40, 33);
+    RipJob job;
+    RipJob::Result r = job.start(drive, dir.path() + "/Game.chd", nullptr);
+    CHECK_MESSAGE(r.ok, r.error);
+    REQUIRE(drive.batches.size() == 4);
+    const uint32_t want[4][3] = {{0, 24, 0}, {24, 16, 0}, {40, 24, 1}, {64, 9, 1}}; // lba, count, audio
+    for (size_t i = 0; i < 4; i++) {
+        INFO("batch " << i);
+        CHECK(drive.batches[i].lba == want[i][0]);
+        CHECK(drive.batches[i].count == want[i][1]);
+        CHECK(drive.batches[i].audio == (want[i][2] != 0));
+    }
+    CHECK(drive.singleReads <= 2); // only the look at each track's first sector
+    CHECK(RipJob::BatchSectors == 24);
+
+    // any track layout: no batch crosses a track start or the lead-out, together they cover every sector once
+    FakeCdDrive odd;
+    makeDisc(odd, 5, 100);
+    odd.toc.tracks.push_back({3, true, 77, 0}); // a third track inside the audio one
+    RipJob again;
+    r = again.start(odd, dir.path() + "/Odd.chd", nullptr);
+    CHECK_MESSAGE(r.ok, r.error);
+    uint32_t next = 0;
+    for (const FakeCdDrive::Batch &b : odd.batches) {
+        CHECK(b.lba == next);
+        CHECK(b.count >= 1);
+        CHECK(b.count <= RipJob::BatchSectors);
+        for (const CdTrack &t : odd.toc.tracks)
+            CHECK_FALSE((t.start > b.lba && t.start < b.lba + b.count));
+        next = b.lba + b.count;
+    }
+    CHECK(next == odd.toc.leadout);
+}
+
+TEST_CASE("RipJob: a failing batch is read again sector by sector with the same bad sectors as before") {
+    TempDir dir("rip7");
+    string files[2];
+    int badSectors[2] = {0, 0};
+    int64_t firstBad[2] = {0, 0};
+    for (int mode = 0; mode < 2; mode++) {
+        FakeCdDrive drive;
+        drive.batchRead = mode == 0; // 1: the default readSectors(), which stops at the first failing sector
+        makeDisc(drive, 40, 33);
+        drive.failing = {17, 50, 51};
+        drive.failFirst[5] = RipJob::Retries;
+        drive.failFirst[6] = RipJob::Retries + 1;
+        RipJob job;
+        const string out = dir.path() + "/Game" + to_string(mode) + ".chd";
+        RipJob::Result r = job.start(drive, out, nullptr);
+        CHECK_MESSAGE(r.ok, r.error);
+        badSectors[mode] = r.badSectors;
+        firstBad[mode] = r.firstBadLba;
+        ifstream in(out, ios::binary);
+        files[mode].assign(istreambuf_iterator<char>(in), istreambuf_iterator<char>());
+        if (mode == 0) {
+            // the batches with a bad sector (0-23 and 40-63) were read again one by one, the others were not
+            CHECK(drive.singleReads >= 48);
+            CHECK(drive.singleReads < 48 + 2 + 8 + 8); // plus the track probes and the retries
+        }
+    }
+    CHECK(badSectors[0] == 4);
+    CHECK(firstBad[0] == 6);
+    CHECK(badSectors[1] == badSectors[0]);
+    CHECK(firstBad[1] == firstBad[0]);
+    CHECK(files[0] == files[1]);
+    CHECK_FALSE(files[0].empty());
+}
+
+TEST_CASE("RipJob: a cancel during a rip stops within a few hunks") {
+    TempDir dir("rip8");
+    FakeCdDrive drive;
+    makeDisc(drive, 300, 100);
+    RipJob job;
+    drive.onRead = [&](uint32_t lba) {
+        if (lba == 100)
+            job.cancel();
+    };
+    const string out = dir.path() + "/Game.chd";
+    RipJob::Result r = job.start(drive, out, nullptr);
+    CHECK(r.cancelled);
+    CHECK_FALSE(exists(out));
+    CHECK_FALSE(exists(out + ".part"));
+    // the batch under way is finished, the next one is not started
+    CHECK(drive.reads <= 100 + 2 * static_cast<int>(RipJob::BatchSectors) + 2);
+}
+
+TEST_CASE("RipJob: a cancel during the sector-by-sector fallback stops at a hunk too") {
+    TempDir dir("rip9");
+    FakeCdDrive drive;
+    makeDisc(drive, 300, 100);
+    drive.failing = {3}; // the first batch fails and is read one by one
+    RipJob job;
+    drive.onRead = [&](uint32_t lba) {
+        if (lba == 5)
+            job.cancel();
+    };
+    RipJob::Result r = job.start(drive, dir.path() + "/Game.chd", nullptr);
+    CHECK(r.cancelled);
+    CHECK(drive.batches.size() == 1);
+}

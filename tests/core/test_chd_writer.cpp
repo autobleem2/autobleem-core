@@ -480,3 +480,138 @@ TEST_CASE("FlacEncoder: frames libchdr's (dr_flac) decoder reads back, on odd si
 }
 
 #endif
+
+namespace {
+
+// the tracks and sectors of a synthetic disc: a data track then an audio track, enough hunks to fill the queue
+struct SyntheticDisc {
+    vector<ChdWriter::Track> tracks;
+    vector<vector<uint8_t>> sectors;
+    SyntheticDisc(uint32_t dataFrames, uint32_t audioFrames) : tracks(2) {
+        tracks[0].number = 1;
+        tracks[0].type = "MODE2_RAW";
+        tracks[0].frames = dataFrames;
+        tracks[1].number = 2;
+        tracks[1].type = "AUDIO";
+        tracks[1].frames = audioFrames;
+        for (uint32_t i = 0; i < dataFrames; i++)
+            sectors.push_back(dataSector(i, i % 3 == 0));
+        for (uint32_t i = 0; i < audioFrames; i++)
+            sectors.push_back(audioSector(i, i % 4 != 3));
+    }
+};
+
+bool writeDisc(const SyntheticDisc &disc, const string &path, bool synchronous, string &error) {
+    ChdWriter w;
+    w.setSynchronous(synchronous);
+    if (!w.open(path, disc.tracks, error))
+        return false;
+    for (const auto &s : disc.sectors)
+        if (!w.writeSector(s.data(), error))
+            return false;
+    return w.finish(error);
+}
+
+bool exists(const string &path) {
+    return ifstream(path).good();
+}
+
+} // namespace
+
+TEST_CASE("ChdWriter: the threaded file is byte for byte the single-threaded one") {
+    TempDir dir("chd_threads");
+    const SyntheticDisc disc(203, 117); // 40+ hunks: the queue of 4 is full again and again
+    string error;
+    REQUIRE_MESSAGE(writeDisc(disc, dir.path() + "/sync.chd", true, error), error);
+    REQUIRE_MESSAGE(writeDisc(disc, dir.path() + "/threaded.chd", false, error), error);
+    const string a = readFile(dir.path() + "/sync.chd");
+    CHECK(a.size() > 1000);
+    CHECK(a == readFile(dir.path() + "/threaded.chd"));
+
+    // and again with a tiny disc (fewer hunks than the queue holds)
+    const SyntheticDisc small(5, 4);
+    REQUIRE_MESSAGE(writeDisc(small, dir.path() + "/sync2.chd", true, error), error);
+    REQUIRE_MESSAGE(writeDisc(small, dir.path() + "/threaded2.chd", false, error), error);
+    CHECK(readFile(dir.path() + "/sync2.chd") == readFile(dir.path() + "/threaded2.chd"));
+}
+
+#ifndef AB_NO_CHD
+
+TEST_CASE("ChdWriter: a threaded write reads back sector by sector through libchdr") {
+    TempDir dir("chd_threads_read");
+    const SyntheticDisc disc(203, 117);
+    const string path = dir.path() + "/disc.chd";
+    string error;
+    REQUIRE_MESSAGE(writeDisc(disc, path, false, error), error);
+    Chd chd;
+    REQUIRE(chd.open(path));
+    vector<uint8_t> frames;
+    REQUIRE(chd.frames(frames));
+    for (uint32_t i = 0; i < 203; i++) {
+        INFO("data sector " << i);
+        CHECK(memcmp(&frames[i * ChdWriter::FrameBytes], disc.sectors[i].data(), S) == 0);
+    }
+    const uint32_t audioStart = ChdWriter::paddedFrames(203);
+    for (uint32_t i = 0; i < 117; i++) {
+        INFO("audio sector " << i);
+        CHECK(memcmp(&frames[(audioStart + i) * ChdWriter::FrameBytes], bigEndian(disc.sectors[203 + i]).data(), S) ==
+              0);
+    }
+}
+
+#endif
+
+TEST_CASE("ChdWriter: abort in the middle of a write joins the worker and writes nothing after it") {
+    TempDir dir("chd_abort");
+    const SyntheticDisc disc(203, 117);
+    const string path = dir.path() + "/a.chd";
+    string error;
+    ChdWriter w;
+    REQUIRE_MESSAGE(w.open(path, disc.tracks, error), error);
+    for (size_t i = 0; i < 150; i++)
+        REQUIRE_MESSAGE(w.writeSector(disc.sectors[i].data(), error), error);
+    w.abort();
+    const string atAbort = readFile(path);
+    CHECK_FALSE(w.writeSector(disc.sectors[150].data(), error)); // closed
+    CHECK_FALSE(w.finish(error));
+    CHECK(readFile(path) == atAbort); // the joined worker wrote no more
+    remove(path.c_str());
+    CHECK_FALSE(exists(path));
+
+    // abort twice, and a writer destroyed with hunks in flight, both join cleanly
+    w.abort();
+    {
+        ChdWriter busy;
+        REQUIRE_MESSAGE(busy.open(dir.path() + "/b.chd", disc.tracks, error), error);
+        for (size_t i = 0; i < 100; i++)
+            REQUIRE_MESSAGE(busy.writeSector(disc.sectors[i].data(), error), error);
+    }
+    // the writer can be used again after an abort
+    REQUIRE_MESSAGE(w.open(path, disc.tracks, error), error);
+    for (const auto &s : disc.sectors)
+        REQUIRE_MESSAGE(w.writeSector(s.data(), error), error);
+    CHECK_MESSAGE(w.finish(error), error);
+}
+
+TEST_CASE("ChdWriter: a write error of the worker comes back from writeSector or finish") {
+    ifstream probe("/dev/full");
+    if (!probe.good())
+        return; // no such device here
+    probe.close();
+    const SyntheticDisc disc(203, 117);
+    ChdWriter w;
+    string error;
+    if (!w.open("/dev/full", disc.tracks, error))
+        return; // the header block is rejected at once: also an error, nothing to test about the worker
+    bool failed = false;
+    for (const auto &s : disc.sectors)
+        if (!w.writeSector(s.data(), error)) {
+            failed = true;
+            break;
+        }
+    if (!failed)
+        failed = !w.finish(error);
+    CHECK(failed);
+    CHECK_FALSE(error.empty());
+    CHECK_FALSE(w.writeSector(disc.sectors[0].data(), error)); // and it stays failed
+}

@@ -196,7 +196,11 @@ void LinuxCdDrive::close() {
     shift_ = 0;
 }
 
-bool LinuxCdDrive::command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, size_t size) {
+bool LinuxCdDrive::commandSucceeded(unsigned info, int resid, bool exact) {
+    return (info & SG_INFO_OK_MASK) == SG_INFO_OK && (!exact || resid == 0);
+}
+
+bool LinuxCdDrive::command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, size_t size, bool exact) {
     if (fd_ < 0)
         return false;
     uint8_t sense[32];
@@ -213,7 +217,7 @@ bool LinuxCdDrive::command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, siz
     hdr.timeout = TimeoutMs;
     if (ioctl(fd_, SG_IO, &hdr) != 0)
         return false;
-    return (hdr.info & SG_INFO_OK_MASK) == SG_INFO_OK;
+    return commandSucceeded(hdr.info, hdr.resid, exact);
 }
 
 bool LinuxCdDrive::testUnitReady() {
@@ -288,7 +292,8 @@ bool LinuxCdDrive::readSectors(uint32_t lba, uint32_t count, bool audio, uint8_t
         return true;
     uint8_t cdb[12];
     readCdCommand(cdb, static_cast<int32_t>(lba), audio, false, count);
-    return command(cdb, 12, data, static_cast<size_t>(count) * RawSize);
+    // a batch the drive delivers short is a failure: the caller then reads the sectors one by one
+    return command(cdb, 12, data, static_cast<size_t>(count) * RawSize, true);
 }
 
 bool LinuxCdDrive::readSector(uint32_t lba, bool audio, uint8_t *data, uint8_t *q) {
