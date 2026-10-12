@@ -38,6 +38,9 @@ cmake --build build
 ctest --test-dir build --output-on-failure -j4
 ```
 
+- Text is drawn by a Rust library, `lib_ableem/rust/ab_text` (cargo builds it for the target; no cargo = the old
+  SDL_FontCache path, `ABLEEM_TEXT_RUST` off). Its tests: `cargo test` in that folder with `AB_TEXT_FONTS` set to
+  the launcher's `src/resources/fonts`. Developer guide, "Font".
 - Options: `AB_CORE_UI=OFF` builds the SDL-free half only (ableem_engine + ab_core + ab_installer, no SDL needed);
   `AB_ENABLE_CHD`, `AB_ONLINE_UPDATE`, `AB_BUILD_TESTS` (all ON). C++14.
 - Tests are host-only. The ARM toolchain file of the consumer forces `AB_BUILD_TESTS` off (`tests/CMakeLists.txt`).
