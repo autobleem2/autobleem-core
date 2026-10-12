@@ -1,7 +1,10 @@
 // InstallerJob: a stick from a package and a fake download repository, fresh and as an update
 #include <doctest/doctest.h>
 
+#include "installer/command_downloader.h"
 #include "installer/installer_job.h"
+#include "installer/progress_file.h"
+#include "installer/retroarch_runner.h"
 #include "installer/legacy_layout.h"
 #include "core/services/retroarch_version.h"
 
@@ -13,6 +16,10 @@
 #include "support/temp_dir.h"
 
 #include <algorithm>
+#include <atomic>
+#include <fstream>
+#include <mutex>
+#include <sstream>
 #include <cstring>
 #include <map>
 #include <string>
@@ -1057,4 +1064,277 @@ TEST_CASE("a scratch path that is a file (abupdate ran as /tmp/abupdate) fails a
     CHECK_FALSE(fx.run(error));
     CHECK(error.find("scratch folder") != string::npos);
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF old");
+}
+
+//******************
+// RetroArch alone (retroarchInstall / retroarchRemove / RetroArchRunner)
+//******************
+namespace {
+
+RetroArchOptions raOptions(Fixture &fx, uint64_t freeBytes = 1ull << 40) {
+    RetroArchOptions o;
+    o.root = fx.root;
+    o.repoUrl = Site;
+    o.buildbotUrl = string(Site) + "/buildbot";
+    o.scratchDir = fx.tmp.at("scratch");
+    o.diskSpace = [freeBytes](const string &, uint64_t &free, uint64_t &total) {
+        free = total = freeBytes;
+        return true;
+    };
+    return o;
+}
+
+const InstallerJob::ShouldStop NeverStop = []() { return false; };
+
+// what is on the stick the moment the install-binary phase starts
+class BinaryWatcher : public Recorder {
+public:
+    explicit BinaryWatcher(const string &root) : root_(root) {}
+    void onPhase(int index, int total, const string &title) override {
+        Recorder::onPhase(index, total, title);
+        if (title == "install-binary") {
+            DirEntry::readFile(root_ + "/RetroArch/bin/retroarch", binary);
+            for (const char *rel : {"cores/snes9x_libretro.so", "retroarch.cfg", "assets/assets-file.txt",
+                                    "Retroarch themes/ab2-1280x720.png"})
+                everythingElse = everythingElse && DirEntry::exists(root_ + "/RetroArch/bin/" + rel);
+            versionStamped = DirEntry::exists(root_ + "/RetroArch/bin/VERSION");
+        }
+    }
+    string binary = "(not seen)";
+    bool everythingElse = true;
+    bool versionStamped = true;
+
+private:
+    string root_;
+};
+
+// the download command over the fake site's files: "fetch [--continue] <url> <part>". Serves a file from the
+// part's size on when asked to continue; `cut` (part of a url) serves half of what is left, sets `stop` and drops.
+struct ResumeSite {
+    FakeSite &site;
+    string cut;
+    atomic<bool> stop{false};
+    map<string, size_t> served;
+    vector<string> lines;
+    mutex lock;
+    int operator()(const string &line) {
+        lock_guard<mutex> guard(lock);
+        lines.push_back(line);
+        istringstream in(line);
+        string word, url, out;
+        bool resume = false;
+        while (in >> word) {
+            if (word == "--continue")
+                resume = true;
+            else if (word.rfind("http", 0) == 0)
+                url = word;
+            else if (word != "fetch")
+                out = word;
+        }
+        auto it = site.files.find(url);
+        if (it == site.files.end())
+            return 22;
+        string all, have;
+        DirEntry::readFile(it->second, all);
+        if (resume)
+            DirEntry::readFile(out, have);
+        string rest = all.substr(have.size());
+        bool drop = !cut.empty() && url.find(cut) != string::npos;
+        if (drop)
+            rest.resize(rest.size() / 2);
+        ofstream(out, resume ? ios::binary | ios::app : ios::binary | ios::trunc) << rest;
+        served[url] += rest.size();
+        if (drop)
+            stop = true;
+        return drop ? 18 : 0;
+    }
+};
+
+string progressText(Fixture &fx, const string &name) {
+    return fx.tmp.readFile(name);
+}
+
+} // namespace
+
+TEST_CASE("RetroArch alone: every key in order, and the binary is laid last") {
+    Fixture fx;
+    // an update: the old binary is still there while everything else lands
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "old retroarch");
+    BinaryWatcher out(fx.root);
+    RetroArchResult r = InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, out, NeverStop);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK(out.phases == vector<string>{"check-space", "download-retroarch", "download-cores", "download-libs",
+                                       "download-apps", "download-assets", "unpack", "merge-config",
+                                       "install-binary"});
+    CHECK(out.binary == "old retroarch"); // not touched until the last phase
+    CHECK(out.everythingElse);            // cores, cfg, assets and the theme were all in place by then
+    CHECK_FALSE(out.versionStamped);      // the stamp follows the binary
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF retroarch");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/VERSION") == "v1.22.2-4\n");
+    CHECK_FALSE(fx.has("RetroArch/bin/retroarch.new"));
+    CHECK_FALSE(fx.has("RetroArch/bios/scph5501.bin")); // no --bios
+    CHECK(fx.site.count("psc/bios") == 0);
+    CHECK(fx.has("Autobleem/lib/modules/xpad.ko"));
+    CHECK(fx.has("Apps/doom/run.sh"));
+    CHECK_FALSE(DirEntry::exists(fx.tmp.at("scratch"))); // the downloads go with a successful run
+
+    // the same with --bios: one more key, before unpack
+    Fixture withBios;
+    Recorder rec;
+    r = InstallerJob::retroarchInstall(raOptions(withBios), true, withBios.site, rec, NeverStop);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    REQUIRE(rec.phases.size() == 10);
+    CHECK(rec.phases[6] == "download-bios");
+    CHECK(rec.phases[9] == "install-binary");
+    CHECK(withBios.tmp.readFile("stick/RetroArch/bios/scph5501.bin") == "bios!");
+}
+
+TEST_CASE("RetroArch alone after a remove re-merges retroarch.cfg and keeps the user's keys") {
+    Fixture fx;
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch.cfg", "video_smooth = \"true\"\nxmb_theme = \"3\"\n");
+    Recorder out;
+    RetroArchResult r = InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, out, NeverStop);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    const string cfg = fx.tmp.readFile("stick/RetroArch/bin/retroarch.cfg");
+    CHECK(cfg.find("video_smooth = \"true\"") != string::npos);
+    CHECK(cfg.find("xmb_theme = \"6\"") != string::npos);
+    CHECK(cfg.find("quit_on_close_content = \"2\"") != string::npos);
+}
+
+TEST_CASE("RetroArch remove deletes RetroArch and keeps what is the user's") {
+    Fixture fx;
+    Recorder out;
+    REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), true, fx.site, out, NeverStop).ok);
+    for (const char *keep : {"RetroArch/roms/nes/game.nes", "RetroArch/bin/playlists/a.lpl",
+                             "RetroArch/bin/thumbnails/x.png", "RetroArch/bin/saves/s.srm",
+                             "RetroArch/bin/savestates/s.state", "RetroArch/bin/screenshots/p.png",
+                             "RetroArch/bin/config/c.cfg", "RetroArch/bin/retroboot/r.txt", "Games/g/g.cue",
+                             "Autobleem/lib/own.so", "Apps/own/run.sh"})
+        fx.tmp.writeFile(string("stick/") + keep, "mine");
+    fx.tmp.writeFile("stick/RetroArch/bin/cores.removing/old.so", "left by a cut-off run");
+    REQUIRE(fx.has("RetroArch/bin/retroarch"));
+
+    Recorder rm;
+    RetroArchResult r = InstallerJob::retroarchRemove(raOptions(fx), false, rm, NeverStop);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK(rm.phases == vector<string>{"remove-files"});
+    for (const char *gone :
+         {"retroarch", "VERSION", "cores", "cores.removing", "info", "assets", "database", "cheats", "overlays",
+          "shaders", "downloads", "records", "Retroarch themes", "fonts/selawik-light.ttf", "fonts/OFL.txt"})
+        CHECK_MESSAGE(!fx.has(string("RetroArch/bin/") + gone), gone);
+    for (const char *kept :
+         {"RetroArch/roms/nes/game.nes", "RetroArch/bin/playlists/a.lpl", "RetroArch/bin/thumbnails/x.png",
+          "RetroArch/bin/saves/s.srm", "RetroArch/bin/savestates/s.state", "RetroArch/bin/screenshots/p.png",
+          "RetroArch/bin/config/c.cfg", "RetroArch/bin/retroboot/r.txt", "RetroArch/bin/autoconfig/autoconfig-file.txt",
+          "RetroArch/bin/retroarch.cfg", "Games/g/g.cue", "Autobleem/lib/own.so", "Autobleem/lib/modules/xpad.ko",
+          "Apps/own/run.sh", "Apps/doom/run.sh", "RetroArch/bios/scph5501.bin"})
+        CHECK_MESSAGE(fx.has(kept), kept);
+
+    // --bios takes the BIOS files as well
+    r = InstallerJob::retroarchRemove(raOptions(fx), true, rm, NeverStop);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK_FALSE(fx.has("RetroArch/bios/scph5501.bin"));
+    CHECK(fx.has("RetroArch/roms/nes/game.nes"));
+    CHECK(fx.has("RetroArch/bin/retroarch.cfg"));
+}
+
+TEST_CASE("RetroArch remove leaves the system's own RetroArch alone: apt-provided") {
+    Fixture fx;
+    fx.tmp.writeFile("usr/bin/retroarch", "apt");
+    RetroArchOptions o = raOptions(fx);
+    o.aptBinary = fx.tmp.at("usr/bin/retroarch");
+    ProgressFile progress(fx.tmp.at("progress"), 0);
+    CHECK(RetroArchRunner::run("remove", o, false, fx.site, progress, NeverStop) == 1);
+    CHECK(progressText(fx, "progress") == "end|error|apt-provided");
+    CHECK(fx.tmp.readFile("usr/bin/retroarch") == "apt");
+}
+
+TEST_CASE("RetroArch install: no room ends end|error|no-space before anything big is downloaded") {
+    Fixture fx;
+    ProgressFile progress(fx.tmp.at("progress"), 0);
+    CHECK(RetroArchRunner::run("install", raOptions(fx, 1000), false, fx.site, progress, NeverStop) == 1);
+    CHECK(progressText(fx, "progress") == "end|error|no-space");
+    CHECK(fx.site.count(".tar.gz") == 0);
+    CHECK(fx.site.count(".zip") == 0);
+    CHECK_FALSE(fx.has("RetroArch/bin/retroarch"));
+}
+
+TEST_CASE("RetroArch install: a download that does not match its sha256 ends end|error|checksum") {
+    Fixture fx;
+    fx.tmp.writeFile("site/cores-psc-20260920.tar.gz", "tampered");
+    ProgressFile progress(fx.tmp.at("progress"), 0);
+    CHECK(RetroArchRunner::run("install", raOptions(fx), false, fx.site, progress, NeverStop) == 1);
+    CHECK(progressText(fx, "progress") == "end|error|checksum");
+    CHECK_FALSE(fx.has("RetroArch/bin/retroarch")); // the binary waits for everything else
+    CHECK_FALSE(DirEntry::exists(fx.tmp.at("scratch/cores-psc-20260920.tar.gz.part"))); // a wrong part is no use
+}
+
+TEST_CASE("RetroArch install: a lost download and a missing network end with their own codes") {
+    {
+        Fixture fx;
+        fx.site.files.erase(string(Site) + "/libs-psc-20260920.tar.gz");
+        ProgressFile progress(fx.tmp.at("progress"), 0);
+        CHECK(RetroArchRunner::run("install", raOptions(fx), false, fx.site, progress, NeverStop) == 1);
+        CHECK(progressText(fx, "progress") == "end|error|download");
+    }
+    {
+        struct NoNetwork : Downloader {
+            bool fetch(const string &, const string &, const Progress &, string &error) override {
+                error = string(ErrNoNetwork) + ": cannot be reached";
+                return false;
+            }
+        } none;
+        Fixture fx;
+        ProgressFile progress(fx.tmp.at("progress"), 0);
+        CHECK(RetroArchRunner::run("install", raOptions(fx), false, none, progress, NeverStop) == 1);
+        CHECK(progressText(fx, "progress") == "end|error|no-network");
+    }
+    {
+        Fixture fx;
+        ProgressFile progress(fx.tmp.at("progress"), 0);
+        CHECK(RetroArchRunner::run("install", raOptions(fx), false, fx.site, progress, []() { return true; }) == 3);
+        CHECK(progressText(fx, "progress") == "end|stopped");
+        CHECK(RetroArchRunner::run("upgrade", raOptions(fx), false, fx.site, progress, NeverStop) == 1);
+        CHECK(progressText(fx, "progress") == "end|error|other");
+    }
+}
+
+TEST_CASE("RetroArch install: a stop keeps the .part, the second install continues it and refetches nothing finished") {
+    Fixture fx;
+    ResumeSite net{fx.site};
+    net.cut = "cores-psc";
+    CommandDownloader dl("fetch %c %u %o", [&net](const string &line) { return net(line); });
+    dl.setRetry(0, 0, 5);
+    dl.setNetwork([]() { return true; }, [](unsigned) {});
+    const string coresUrl = string(Site) + "/cores-psc-20260920.tar.gz";
+    const string raUrl = string(Site) + "/retroarch-psc-v1.22.2-4.zip";
+    const string coresFile = fx.tmp.at("site/cores-psc-20260920.tar.gz");
+
+    ProgressFile progress(fx.tmp.at("progress"), 0);
+    InstallerJob::ShouldStop stop = [&net]() { return net.stop.load(); };
+    CHECK(RetroArchRunner::run("install", raOptions(fx), false, dl, progress, stop) == 3);
+    CHECK(progressText(fx, "progress") == "end|stopped");
+    const long long whole = DirEntry::fileSize(coresFile);
+    const long long half = DirEntry::fileSize(fx.tmp.at("scratch/cores-psc-20260920.tar.gz.part"));
+    CHECK(half > 0);
+    CHECK(half < whole);
+    CHECK(DirEntry::exists(fx.tmp.at("scratch/retroarch-psc-v1.22.2-4.zip"))); // the finished one stays
+    CHECK_FALSE(fx.has("RetroArch/bin/retroarch"));
+
+    // the second install: no cut, nothing stopped
+    net.stop = false;
+    net.cut.clear();
+    net.served.clear();
+    net.lines.clear();
+    ProgressFile again(fx.tmp.at("progress"), 0);
+    CHECK(RetroArchRunner::run("install", raOptions(fx), false, dl, again, stop) == 0);
+    CHECK(progressText(fx, "progress") == "end|ok");
+    CHECK(net.served.count(raUrl) == 0);                               // the finished zip was not fetched again
+    CHECK(net.served[coresUrl] == static_cast<size_t>(whole - half)); // only the rest of the cut one
+    bool continued = false;
+    for (const string &l : net.lines)
+        continued = continued || (l.find("--continue") != string::npos && l.find("cores-psc") != string::npos);
+    CHECK(continued);
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF retroarch");
+    CHECK(fx.has("RetroArch/bin/cores/snes9x_libretro.so"));
 }

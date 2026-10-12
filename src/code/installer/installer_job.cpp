@@ -5,6 +5,7 @@
 #include "core/services/extension_catalog.h"
 #include "core/services/processor_catalog.h"
 #include "core/services/retroarch_version.h"
+#include "core/services/system.h"
 
 #include <ableem/engine/filesystem.h>
 #include <ableem/engine/log.h>
@@ -17,6 +18,10 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 using namespace std;
 using ableem::DirEntry;
@@ -35,6 +40,8 @@ const char *const VersionFile = "VERSION";
 const char *const LauncherBinary = "Autobleem/bin/autobleem/autobleem-gui";
 const char *const ConfigIni = "Autobleem/bin/autobleem/config.ini";
 const char *const SamplesMarker = "System/samples.txt";
+// room kept for one libretro bundle not on the stick yet (assets is the big one, ~50 MB packed)
+const uint64_t BundleAllowance = 100ull * 1024 * 1024;
 
 struct CoverDb {
     const char *name;
@@ -110,8 +117,212 @@ public:
         return ok;
     }
 
+    //******************
+    // RetroArch alone
+    //******************
+    // InstallerJob::retroarchInstall: the phases are titled with the progress file's keys
+    bool raInstall(const RetroArchOptions &ro, bool withBios, string &error) {
+        keepDownloads = deferBinary = true;
+        phases.clear();
+        for (const char *key : {"check-space", "download-retroarch", "download-cores"})
+            phases.push_back(key);
+        for (const char *key : {"download-libs", "download-apps", "download-assets"})
+            phases.push_back(key);
+        if (withBios)
+            phases.push_back("download-bios");
+        for (const char *key : {"unpack", "merge-config", "install-binary"})
+            phases.push_back(key);
+        if (!DirEntry::createDirs(scratch) || !DirEntry::isDirectory(scratch)) {
+            error = "cannot make the scratch folder " + scratch;
+            failKind = FailKind::Other;
+            return false;
+        }
+        bool ok = raCheckSpace(ro, error);
+        if (ok) {
+            phase("download-retroarch");
+            ok = !stopped(error) && downloadVerified(raCatalog.zip, scratch + "/" + raCatalog.zip.name, error);
+        }
+        const pair<const char *, const PackCatalog *> packs[] = {{"download-cores", &coresCatalog},
+                                                                  {"download-libs", &libsCatalog},
+                                                                  {"download-apps", &appsCatalog}};
+        for (const auto &p : packs) {
+            if (!ok)
+                break;
+            phase(p.first);
+            ok = !stopped(error) && downloadVerified(p.second->file, scratch + "/" + p.second->file.name, error);
+        }
+        if (ok)
+            ok = raDownloadBundles(error);
+        if (ok && withBios) {
+            phase("download-bios");
+            ok = !stopped(error) && fetchBiosPack("psc/bios/latest.json", at("RetroArch/bios"), error);
+            if (!ok && !stopped(error))
+                failKind = FailKind::Download;
+        }
+        if (ok)
+            ok = raUnpack(error);
+        if (ok) {
+            phase("merge-config");
+            ok = !stopped(error) && writeRetroArchCfg(error) && applyTheme(assetsReady, error);
+        }
+        if (ok) {
+            phase("install-binary");
+            ok = !stopped(error) && installBinary(error) && stampVersion(error);
+        }
+        if (ok) { // done: the downloads are of no use any more
+            DirEntry::removeDirAndContents(scratch);
+        }
+        if (!ok && failKind == FailKind::None && error != "Stopped")
+            failKind = FailKind::Other;
+        return ok;
+    }
+
+    FailKind failure() const { return failKind; }
+
 private:
     string at(const string &rel) const { return root + "/" + rel; }
+
+    // the four catalogs, and the room the run needs: what has to be downloaded and unpacked, with a bundle
+    // allowance. Nothing is downloaded when the filesystem has less.
+    bool raCheckSpace(const RetroArchOptions &ro, string &error) {
+        phase("check-space");
+        string text;
+        if (!fetchCatalog("psc/retroarch/latest.json", text, error) || !raCatalog.parse(text))
+            return catalogLost("psc/retroarch/latest.json", error);
+        uint64_t need = 0;
+        const pair<const char *, PackCatalog *> packs[] = {
+            {"psc/cores/latest.json", &coresCatalog}, {"psc/libs/latest.json", &libsCatalog},
+            {"psc/apps/latest.json", &appsCatalog}};
+        for (const auto &p : packs) {
+            if (stopped(error))
+                return false;
+            if (!fetchCatalog(p.first, text, error) || !p.second->parse(text))
+                return catalogLost(p.first, error);
+            need += p.second->file.size * 2; // the download and what it unpacks to
+        }
+        need += raCatalog.zip.size * 2;
+        for (const Bundle &b : Bundles)
+            if (!DirEntry::exists(scratch + "/" + b.name + ".zip") && !bundleThere(b))
+                need += BundleAllowance;
+        // what is in the scratch folder already (a resume) is not to be fetched again
+        for (const UpdateFile *f : {&raCatalog.zip, &coresCatalog.file, &libsCatalog.file, &appsCatalog.file})
+            if (DirEntry::exists(scratch + "/" + f->name))
+                need -= min<uint64_t>(need, f->size);
+        uint64_t free = 0, total = 0;
+        const bool known = ro.diskSpace ? ro.diskSpace(root, free, total) : System::diskSpace(root, free, total);
+        const string room = known ? humanSize(free) + " free" : string("free space unknown");
+        say("  needs about " + humanSize(need) + ", " + room);
+        if (known && free < need) {
+            error = "Not enough room on " + root + ": " + humanSize(need) + " needed, " + humanSize(free) + " free";
+            failKind = FailKind::NoSpace;
+            return false;
+        }
+        return true;
+    }
+
+    // a catalog that could not be fetched (error says why: no network, a 404) or parsed (error empty)
+    bool catalogLost(const string &name, string &error) {
+        if (stopped(error))
+            return false;
+        if (error.empty()) {
+            error = name + " is not what was expected";
+            failKind = FailKind::Other;
+        } else {
+            classifyFailure(error);
+        }
+        return false;
+    }
+
+    bool bundleThere(const Bundle &b) const {
+        const string dest = at(string("RetroArch/bin/") + b.dest);
+        return DirEntry::isDirectory(dest) && !DirEntry::diru(dest).empty();
+    }
+
+    // libretro's bundles into the scratch folder (the ones the stick has already are not fetched); a lost one
+    // is reported and gone past, as the full install does
+    bool raDownloadBundles(string &error) {
+        phase("download-assets");
+        assetsReady = true;
+        for (size_t i = 0; i < sizeof(Bundles) / sizeof(Bundles[0]); i++) {
+            const Bundle &b = Bundles[i];
+            if (stopped(error))
+                return false;
+            out.onProgress(i, sizeof(Bundles) / sizeof(Bundles[0]));
+            const string zip = scratch + "/" + b.name + ".zip";
+            if (DirEntry::exists(zip) || bundleThere(b))
+                continue;
+            say("  " + string(b.name));
+            if (!download(opt.buildbotUrl + "/" + b.name + ".zip", zip, error)) {
+                if (stopped(error))
+                    return false;
+                say("  could not download " + string(b.name) + ".zip: " + error + " - going on without it");
+                error.clear();
+                failKind = FailKind::None;
+                if (string(b.name) == "assets")
+                    assetsReady = false;
+            }
+        }
+        return true;
+    }
+
+    // everything but the binary: the zip's loose files, the packs, the bundles
+    bool raUnpack(string &error) {
+        phase("unpack");
+        if (stopped(error))
+            return false;
+        const string bin = at("RetroArch/bin");
+        if (!installZip(scratch + "/" + raCatalog.zip.name, raCatalog.zip.name, error))
+            return false;
+        if (!DirEntry::exists(scratch + "/retroarch/retroarch")) {
+            error = raCatalog.zip.name + " has no retroarch binary";
+            return false;
+        }
+        const pair<const PackCatalog *, pair<string, TarArchive::Filter>> packs[] = {
+            {&coresCatalog, {bin, TarArchive::Filter()}},
+            {&libsCatalog, {at("Autobleem/lib"), [](const TarEntry &e) { return e.name != "libs.json"; }}},
+            {&appsCatalog, {root, [](const TarEntry &e) { return e.name != "apps.json"; }}}};
+        for (const auto &p : packs) {
+            if (stopped(error))
+                return false;
+            DirEntry::createDirs(p.second.first);
+            if (!untar(scratch + "/" + p.first->file.name, p.second.first, error, p.second.second))
+                return false;
+        }
+        for (const Bundle &b : Bundles) {
+            if (stopped(error))
+                return false;
+            const string zip = scratch + "/" + b.name + ".zip";
+            if (!DirEntry::exists(zip))
+                continue;
+            if (!ZipArchive::extract(zip, bin + "/" + b.dest)) {
+                say("  could not unpack " + string(b.name) + ".zip - going on without it");
+                DirEntry::removeFile(zip); // a broken zip would be unpacked again and again
+                if (string(b.name) == "assets")
+                    assetsReady = false;
+            }
+        }
+        return true;
+    }
+
+    // the binary, the very last thing: copied beside the old one as retroarch.new, then renamed over it, so an
+    // interrupted run leaves the old RetroArch or the new one, never half of one
+    bool installBinary(string &error) {
+        const string bin = at("RetroArch/bin/retroarch"), staged = bin + ".new";
+        DirEntry::removeFile(staged);
+        if (!DirEntry::copyFile(scratch + "/retroarch/retroarch", staged)) {
+            error = "cannot write " + staged;
+            return false;
+        }
+#ifndef _WIN32
+        chmod(staged.c_str(), 0755);
+#endif
+        if (!DirEntry::replaceFile(staged, bin)) {
+            DirEntry::removeFile(staged);
+            error = "cannot write " + bin;
+            return false;
+        }
+        return true;
+    }
 
     //******************
     // 1. the package
@@ -496,6 +707,8 @@ private:
               Place{"theme/ab2-1280x720.png", "Retroarch themes/ab2-1280x720.png"}}) {
             if (!DirEntry::exists(unpacked + "/" + p.from))
                 continue;
+            if (deferBinary && string(p.from) == "retroarch")
+                continue; // laid last, by installBinary
             const string dst = bin + "/" + p.to, tmpName = dst + ".new";
             DirEntry::removeFile(tmpName);
             if (!DirEntry::copyFile(unpacked + "/" + p.from, tmpName) || !DirEntry::replaceFile(tmpName, dst)) {
@@ -515,7 +728,8 @@ private:
         DirEntry::removeDirAndContents(themeAssets);
         if (DirEntry::isDirectory(unpacked + "/theme/assets"))
             DirEntry::renameFile(unpacked + "/theme/assets", themeAssets);
-        DirEntry::removeDirAndContents(unpacked);
+        if (!deferBinary) // else the binary is still in it
+            DirEntry::removeDirAndContents(unpacked);
         newBinary = true;
         return true;
     }
@@ -623,7 +837,8 @@ private:
             return false;
         DirEntry::createDirs(dest);
         bool ok = untar(tarball, dest, error, filter);
-        DirEntry::removeFile(tarball);
+        if (!keepDownloads)
+            DirEntry::removeFile(tarball);
         return ok;
     }
 
@@ -821,6 +1036,13 @@ private:
     string themeAssets; // the RetroArch zip's theme/assets tree, moved aside until the bundles are in
     bool hadDefaultTheme = false; // Themes/<DefaultTheme::Name> was on the stick before this run
     bool newBinary = false;
+    // the RetroArch-only run: downloads stay in the scratch folder until it succeeds (the resume), and the binary
+    // waits in the unpacked zip for installBinary
+    bool keepDownloads = false;
+    bool deferBinary = false;
+    bool assetsReady = true;
+    ableem::PscRetroArchCatalog raCatalog;
+    ableem::PackCatalog coresCatalog, libsCatalog, appsCatalog;
 };
 
 } // namespace
@@ -987,4 +1209,105 @@ bool InstallerJob::run(const InstallOptions &input, Downloader &downloader, Inst
     }
     Run run(options, info, downloader, listener, shouldStop);
     return run.go(error);
+}
+
+//*******************************
+// InstallerJob::retroarchInstall
+//*******************************
+RetroArchResult InstallerJob::retroarchInstall(const RetroArchOptions &ro, bool withBios, Downloader &downloader,
+                                               InstallListener &listener, const ShouldStop &shouldStop) {
+    RetroArchResult result;
+    InstallOptions options;
+    options.root = normalizeRoot(ro.root);
+    options.repoUrl = ro.repoUrl;
+    options.buildbotUrl = ro.buildbotUrl;
+    options.scratchDir = ro.scratchDir.empty() ? options.root + "/System/Install/retroarch" : ro.scratchDir;
+    const StickInfo info = inspect(options);
+    if (!info.isStick) {
+        result.error = "No such drive: " + options.root;
+        result.kind = FailKind::Other;
+        return result;
+    }
+    Run run(options, info, downloader, listener, shouldStop);
+    result.ok = run.raInstall(ro, withBios, result.error);
+    result.stopped = !result.ok && result.error == "Stopped";
+    result.kind = result.ok || result.stopped ? FailKind::None : run.failure();
+    return result;
+}
+
+//*******************************
+// InstallerJob::retroarchRemove
+//*******************************
+RetroArchResult InstallerJob::retroarchRemove(const RetroArchOptions &ro, bool withBios, InstallListener &listener,
+                                              const ShouldStop &shouldStop) {
+    RetroArchResult result;
+    const string root = normalizeRoot(ro.root), ra = root + "/RetroArch", bin = ra + "/bin";
+    if (!DirEntry::isDirectory(root)) {
+        result.error = "No such drive: " + root;
+        result.kind = FailKind::Other;
+        return result;
+    }
+    // the binary goes first, with its stamp and the theme's loose files
+    const vector<string> files{bin + "/retroarch", bin + "/retroarch.new", bin + "/VERSION",
+                               bin + "/fonts/selawik-light.ttf", bin + "/fonts/OFL.txt"};
+    // then these folders, each renamed <name>.removing and deleted. autoconfig, config, playlists, saves,
+    // savestates, screenshots, thumbnails, roms, retroarch.cfg and the rest of the user's stay.
+    vector<string> dirs;
+    for (const char *d : {"cores", "info", "assets", "database", "cheats", "overlays", "shaders", "downloads",
+                          "records", "Retroarch themes"})
+        dirs.push_back(bin + "/" + d);
+    if (withBios)
+        dirs.push_back(ra + "/bios");
+
+    listener.onPhase(1, 1, "remove-files");
+    if (!DirEntry::exists(bin + "/retroarch") && !ro.aptBinary.empty() && DirEntry::exists(ro.aptBinary)) {
+        listener.onLine("RetroArch here is the system's (" + ro.aptBinary + "): not removed");
+        result.error = ro.aptBinary + " belongs to the package manager";
+        result.kind = FailKind::AptProvided;
+        return result;
+    }
+    const uint64_t total = files.size() + dirs.size() * 2;
+    uint64_t done = 0;
+    auto stopNow = [&]() {
+        if (shouldStop && shouldStop()) {
+            result.stopped = true;
+            result.error = "Stopped";
+            return true;
+        }
+        return false;
+    };
+    listener.onProgress(0, total);
+    for (const string &f : files) {
+        if (stopNow())
+            return result;
+        DirEntry::removeFile(f);
+        listener.onProgress(++done, total);
+    }
+    // a run that was cut off left <name>.removing folders: they go with this one
+    for (const string &d : dirs) {
+        if (stopNow())
+            return result;
+        const string gone = d + ".removing";
+        if (DirEntry::isDirectory(gone))
+            DirEntry::removeDirAndContents(gone);
+        if (DirEntry::isDirectory(d) && !DirEntry::renameFile(d, gone)) {
+            result.error = "cannot remove " + d;
+            result.kind = FailKind::Other;
+            return result;
+        }
+        listener.onProgress(++done, total);
+    }
+    for (const string &d : dirs) {
+        if (stopNow())
+            return result;
+        const string gone = d + ".removing";
+        if (DirEntry::isDirectory(gone))
+            DirEntry::removeDirAndContents(gone);
+        listener.onLine("removed " + d);
+        listener.onProgress(++done, total);
+    }
+    if (withBios)
+        DirEntry::createDirs(ra + "/bios"); // the folder itself stays for the next install
+    result.ok = true;
+    return result;
 }
