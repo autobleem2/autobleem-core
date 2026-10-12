@@ -57,6 +57,17 @@ public:
     // count Q channels (12 bytes each, de-interleaved) of the sectors firstLba...: every one ADR 1 with an
     // address within +-2 of its sector's, all the same shift -> true and shift (the Q says sector + shift)
     static bool decideShift(const uint8_t *qs, int count, uint32_t firstLba, int &shift);
+    // How readSector gets a sector. The emulator shifts the Q only: the main channel is read at lba, the Q of
+    // the sector at lba - shift. shift 0 (or no Q wanted): one read at lba, with the subchannel when Q is wanted.
+    // shift != 0: a read of the main channel at lba without the subchannel, then (extraSubRead) a read of
+    // sector + subchannel at subLba, of which only the 96 subchannel bytes are kept.
+    struct ReadPlan {
+        int32_t mainLba = 0;
+        bool mainWithSub = false;
+        bool extraSubRead = false;
+        int32_t subLba = 0;
+    };
+    static ReadPlan planRead(int32_t lba, int shift, bool wantQ);
 
 private:
     bool command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, size_t size);

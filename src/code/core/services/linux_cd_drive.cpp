@@ -139,6 +139,21 @@ bool LinuxCdDrive::decideShift(const uint8_t *qs, int count, uint32_t firstLba, 
     return count > 0;
 }
 
+LinuxCdDrive::ReadPlan LinuxCdDrive::planRead(int32_t lba, int shift, bool wantQ) {
+    ReadPlan plan;
+    plan.mainLba = lba;
+    plan.subLba = lba;
+    if (!wantQ)
+        return plan;
+    if (shift == 0) {
+        plan.mainWithSub = true;
+        return plan;
+    }
+    plan.extraSubRead = true;
+    plan.subLba = lba - shift;
+    return plan;
+}
+
 //*******************************
 // LinuxCdDrive: the drive
 //*******************************
@@ -243,10 +258,14 @@ bool LinuxCdDrive::readSector(uint32_t lba, bool audio, uint8_t *data, uint8_t *
             memset(q, 0, 12);
         return rawRead(static_cast<int32_t>(lba), audio, data, false);
     }
+    const ReadPlan plan = planRead(static_cast<int32_t>(lba), shift_, true);
     uint8_t buffer[RawSize + SubSize];
-    if (!rawRead(static_cast<int32_t>(lba) - shift_, audio, buffer, true))
+    if (!rawRead(plan.mainLba, audio, plan.mainWithSub ? buffer : data, plan.mainWithSub))
         return false;
-    memcpy(data, buffer, RawSize);
+    if (plan.mainWithSub)
+        memcpy(data, buffer, RawSize);
+    else if (plan.extraSubRead && !rawRead(plan.subLba, audio, buffer, true))
+        return false;
     DiscReader::deinterleaveQ(buffer + RawSize, q);
     return true;
 }
