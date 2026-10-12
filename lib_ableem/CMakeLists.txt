@@ -50,6 +50,7 @@ add_library(ableem_engine ${ABLEEM_LIB_KIND}
         src/engine/retroarch_playlist.cpp
         src/engine/retroarch_cores.cpp
         src/engine/crc32.cpp
+        src/engine/spectrum.cpp
         src/engine/path_compare.cpp
         src/engine/retroarch_scanner.cpp
         src/engine/theme_spec.cpp
@@ -142,6 +143,7 @@ add_library(ableem ${ABLEEM_LIB_KIND}
         src/ui/texture.cpp
         src/ui/font.cpp
         src/ui/audio.cpp
+        src/ui/audio_stream.cpp
         src/ui/input.cpp
         src/ui/joystick.cpp
         src/ui/gui_base.cpp

@@ -93,10 +93,14 @@ add_library(ab_core STATIC
         src/code/core/model/timing.h
         src/code/core/services/app_manifest.cpp
         src/code/core/services/app_settings.cpp
+        src/code/core/services/cdda_player.cpp
         src/code/core/services/content_installer.cpp
+        src/code/core/services/disc_game.cpp
+        src/code/core/services/disc_identity.cpp
         src/code/core/services/disc_reader.cpp
         src/code/core/services/downloader.cpp
         src/code/core/services/extension_catalog.cpp
+        src/code/core/services/image_cd_drive.cpp
         src/code/core/services/package_service.cpp
         src/code/core/services/package_table.cpp
         src/code/core/services/processor_catalog.cpp
@@ -139,6 +143,10 @@ target_link_libraries(ab_core ableem_engine ${CMAKE_DL_LIBS}) # dlopen: PluginLo
 target_include_directories(ab_core PUBLIC src/code ${CMAKE_BINARY_DIR}/generated)
 if (AB_ONLINE_UPDATE)
     target_sources(ab_core PRIVATE src/code/core/services/update_service.cpp)
+endif()
+if (NOT WIN32)
+    # a CD drive over /dev/sgN (SG_IO); the Windows one is pc-tools' WinCdDrive
+    target_sources(ab_core PRIVATE src/code/core/services/linux_cd_drive.cpp)
 endif()
 if (WIN32)
     target_link_libraries(ab_core iphlpapi ws2_32 shell32 ole32 advapi32)
