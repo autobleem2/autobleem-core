@@ -160,7 +160,6 @@ struct LauncherTheme {
     std::string footer;
     std::string playButton;
     std::string playText;
-    std::string audioCdCase; // the Audio CD jewel case drawn for an audio disc; "" = the launcher's built-in image
     std::string settingsPanel;
     std::string metaPanel;
     Opt<bool> metaPanelSlides; // false: the meta panel stays put when the menu opens (a static layout)
@@ -294,7 +293,7 @@ std::vector<ThemeFrame> loadThemeFrames(const std::string &dir, const std::strin
 // icons fall back: the theme's own entry, else the default theme's, else the program's built-in file
 // (resolveThemeIcons) - so a theme may replace one icon and keep the rest.
 struct ThemeIcon {
-    std::string name;    // "dpadUp", "disc", "discDrive" (the disc drive chip), "tabApps", ...
+    std::string name;    // "dpadUp", "disc", "discDrive" (the disc drive chip), "audioCdCase" (the Audio CD jewel case), "tabApps", ...
     std::string image;   // the 1x PNG
     std::string image2x; // the @2x PNG ("" none)
 };

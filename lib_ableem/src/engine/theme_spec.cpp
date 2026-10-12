@@ -346,7 +346,6 @@ bool ThemeSpec::load(const string &path) {
         readStr(*l, "footer", launcher.footer);
         readStr(*l, "playButton", launcher.playButton);
         readStr(*l, "playText", launcher.playText);
-        readStr(*l, "audioCdCase", launcher.audioCdCase);
         readStr(*l, "settingsPanel", launcher.settingsPanel);
         readStr(*l, "metaPanel", launcher.metaPanel);
         readOptBool(*l, "metaPanelSlides", launcher.metaPanelSlides);
@@ -506,7 +505,6 @@ bool ThemeSpec::save(const string &path) const {
         putStr(l, "footer", launcher.footer);
         putStr(l, "playButton", launcher.playButton);
         putStr(l, "playText", launcher.playText);
-        putStr(l, "audioCdCase", launcher.audioCdCase);
         putStr(l, "settingsPanel", launcher.settingsPanel);
         putStr(l, "metaPanel", launcher.metaPanel);
         if (launcher.metaPanelSlides.set)
@@ -739,7 +737,6 @@ vector<string *> ThemeSpec::fileFields() {
         &l.footer,
         &l.playButton,
         &l.playText,
-        &l.audioCdCase,
         &l.settingsPanel,
         &l.metaPanel,
         &l.arrow,

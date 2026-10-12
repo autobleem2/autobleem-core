@@ -84,7 +84,6 @@ ThemeSpec fullSpec() {
     l.footer = "images/launcher_footer.png";
     l.playButton = "images/play_button.png";
     l.playText = "images/play_text.png";
-    l.audioCdCase = "images/audio_cd_case.png";
     l.settingsPanel = "images/settings_panel.png";
     l.metaPanel = "images/meta_panel.png";
     l.metaPanelSlides = true;
@@ -196,7 +195,7 @@ TEST_CASE("a full theme survives a save/load round trip") {
 
     // every file field made the trip - the one list in fileFields() is what everything else iterates
     CHECK(in.referencedFiles() == out.referencedFiles());
-    CHECK(in.referencedFiles().size() == 44);
+    CHECK(in.referencedFiles().size() == 43);
 
     // the file reads in section order, not alphabetically
     string text = tmp.readFile("theme.json");
@@ -211,35 +210,45 @@ namespace {
 const ableem::ThemeIcon *iconNamed(const std::vector<ableem::ThemeIcon> &icons, const string &name); // below
 }
 
-TEST_CASE("launcher.audioCdCase and launcher.icons.discDrive: read, written, absent = empty") {
+TEST_CASE("launcher.icons.discDrive and launcher.icons.audioCdCase are icons by name; absent = none") {
     TempDir tmp("theme_spec");
-    tmp.writeFile("theme.json", "{ \"launcher\": { \"audioCdCase\": \"images/case.png\","
-                                " \"icons\": { \"discDrive\": { \"image\": \"icons/drive.png\","
-                                " \"image2x\": \"icons/drive@2x.png\" } } } }");
-    ThemeSpec spec;
-    REQUIRE(spec.load(tmp.at("theme.json")));
-    CHECK(spec.launcher.audioCdCase == "images/case.png");
+    tmp.writeFile("theme.json", "{ \"launcher\": { \"icons\": {"
+                                " \"discDrive\": { \"image\": \"icons/drive.png\", \"image2x\": \"icons/drive@2x.png\" },"
+                                " \"audioCdCase\": { \"image\": \"images/audio_cd_case.png\","
+                                " \"image2x\": \"images/audio_cd_case@2x.png\" } } } }");
     const std::vector<ableem::ThemeIcon> icons = ableem::readThemeIcons(tmp.at("theme.json"));
     const ableem::ThemeIcon *drive = iconNamed(icons, "discDrive");
     REQUIRE(drive != nullptr);
     CHECK(drive->image == "icons/drive.png");
     CHECK(drive->image2x == "icons/drive@2x.png");
+    const ableem::ThemeIcon *jewel = iconNamed(icons, "audioCdCase");
+    REQUIRE(jewel != nullptr);
+    CHECK(jewel->image == "images/audio_cd_case.png");
+    CHECK(jewel->image2x == "images/audio_cd_case@2x.png");
 
-    // read -> write -> read
-    REQUIRE(spec.save(tmp.at("again.json")));
-    ThemeSpec again;
-    REQUIRE(again.load(tmp.at("again.json")));
-    CHECK(again.launcher.audioCdCase == "images/case.png");
-    CHECK(spec.referencedFiles().size() == 1); // the case image is on the list the theme checks walk
+    // the ThemeSpec leaves icons alone: it still loads, and nothing of them is written back
+    ThemeSpec spec;
+    REQUIRE(spec.load(tmp.at("theme.json")));
+    CHECK(spec.referencedFiles().empty());
 
-    // a theme without them parses, both empty
+    // resolved from the folder: the 1x, and the @2x next to it
+    tmp.makeSubDir("t/images");
+    tmp.writeFile("t/images/audio_cd_case.png", "x");
+    tmp.writeFile("t/images/audio_cd_case@2x.png", "x");
+    tmp.writeFile("t/theme.json", "{ \"launcher\": { \"icons\": { \"audioCdCase\": \"images/audio_cd_case.png\" } } }");
+    const std::vector<ableem::ThemeIcon> loaded = ableem::loadThemeIcons(tmp.at("t"));
+    const ableem::ThemeIcon *found = iconNamed(loaded, "audioCdCase");
+    REQUIRE(found != nullptr);
+    CHECK(found->image == tmp.at("t") + "/images/audio_cd_case.png");
+    CHECK(found->image2x == tmp.at("t") + "/images/audio_cd_case@2x.png");
+
+    // a theme without them parses and has neither
     tmp.writeFile("old.json", "{ \"launcher\": { \"playButton\": \"p.png\" } }");
     ThemeSpec old;
     REQUIRE(old.load(tmp.at("old.json")));
-    CHECK(old.launcher.audioCdCase.empty());
-    CHECK(iconNamed(ableem::readThemeIcons(tmp.at("old.json")), "discDrive") == nullptr);
-    REQUIRE(old.save(tmp.at("old2.json")));
-    CHECK(tmp.readFile("old2.json").find("audioCdCase") == string::npos);
+    const std::vector<ableem::ThemeIcon> none = ableem::readThemeIcons(tmp.at("old.json"));
+    CHECK(iconNamed(none, "discDrive") == nullptr);
+    CHECK(iconNamed(none, "audioCdCase") == nullptr);
 }
 
 TEST_CASE("a partial theme writes only what it sets and reads back as partial") {
@@ -318,7 +327,7 @@ TEST_CASE("mergeOver takes the base's value for everything the theme leaves out"
     CHECK(partial.launcher.metaPanel == "images/meta_panel.png");
     CHECK(partial.sounds.cursor == "sounds/cursor.wav");
     CHECK(partial.launcher.colors.hint.toHex() == "#ffffff"); // the base's, like any other colour
-    CHECK(partial.referencedFiles().size() == 44);
+    CHECK(partial.referencedFiles().size() == 43);
 }
 
 TEST_CASE("a hint colour the theme and the base both leave out stays unset after the merge") {
