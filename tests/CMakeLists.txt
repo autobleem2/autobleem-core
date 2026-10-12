@@ -42,6 +42,8 @@ ab_add_test(test_disc_game core/test_disc_game.cpp)
 ab_add_test(test_disc_reader core/test_disc_reader.cpp LIBS ableem_lanserver)
 ab_add_test(test_disc_identity core/test_disc_identity.cpp)
 ab_add_test(test_image_cd_drive core/test_image_cd_drive.cpp LIBS ableem_lanserver)
+ab_add_test(test_cdda_player core/test_cdda_player.cpp)
+ab_add_test(test_spectrum core/test_spectrum.cpp)
 if (NOT WIN32)
     # linux_cd_drive.cpp is not part of the Windows build
     ab_add_test(test_linux_cd_drive core/test_linux_cd_drive.cpp)
