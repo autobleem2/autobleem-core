@@ -67,7 +67,21 @@ struct Chd {
         if (file != nullptr)
             chd_close(file);
     }
-    bool open(const string &path) { return chd_open(path.c_str(), CHD_OPEN_READ, nullptr, &file) == CHDERR_NONE; }
+    chd_error error = CHDERR_NONE;
+    bool open(const string &path) {
+        error = chd_open(path.c_str(), CHD_OPEN_READ, nullptr, &file);
+        if (error == CHDERR_NONE)
+            return true;
+        const string head = readFile(path).substr(0, 124);
+        string hex;
+        char two[4];
+        for (unsigned char c : head) {
+            snprintf(two, sizeof(two), "%02x", c);
+            hex += two;
+        }
+        MESSAGE("chd_open " << path << ": " << chd_error_string(error) << " (" << error << "), header " << hex);
+        return false;
+    }
     const chd_header *header() const { return chd_get_header(file); }
     // the CHT2 texts, in order
     vector<string> tracks() const {
@@ -164,7 +178,7 @@ TEST_CASE("a two-track disc written by ChdWriter reads back sector by sector thr
     CHECK(h->hunkbytes == ChdWriter::HunkBytes);
     CHECK(h->unitbytes == ChdWriter::FrameBytes);
     CHECK(h->hunkcount == 10);
-    CHECK(h->logicalbytes == 10u * ChdWriter::HunkBytes);
+    CHECK(h->logicalbytes == 76u * ChdWriter::FrameBytes); // 40 + 33 padded to 36; the last hunk is partial
     CHECK(h->compression[0] == CHD_CODEC_CD_ZLIB);
 
     const vector<string> meta = chd.tracks();

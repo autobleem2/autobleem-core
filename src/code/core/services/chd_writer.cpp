@@ -12,7 +12,7 @@ using namespace std;
 namespace {
 
 const uint32_t TagCht2 = 0x43485432;   // 'CHT2'
-const uint32_t CodecCdzl = 0x6364726c; // 'cdzl'
+const uint32_t CodecCdzl = 0x63647a6c; // 'cdzl'
 const uint8_t TypeCdzl = 0;            // the header's first compressor
 const uint8_t TypeStored = 4;          // COMPRESSION_NONE
 
@@ -337,6 +337,9 @@ bool ChdWriter::open(const string &path, const vector<Track> &tracks, string &er
     frameInHunk_ = 0;
     hunksDone_ = 0;
     hunkCount_ = totalFrames(tracks_) / FramesPerHunk;
+    logicalBytes_ = 0;
+    for (const Track &t : tracks_)
+        logicalBytes_ += static_cast<uint64_t>(paddedFrames(t.frames)) * FrameBytes;
     entries_.clear();
     entries_.reserve(hunkCount_);
     raw_ = Sha1();
@@ -346,7 +349,8 @@ bool ChdWriter::open(const string &path, const vector<Track> &tracks, string &er
 }
 
 bool ChdWriter::flushHunk(string &error) {
-    raw_.update(hunk_.data(), HunkBytes);
+    const uint64_t before = static_cast<uint64_t>(hunksDone_) * HunkBytes;
+    raw_.update(hunk_.data(), static_cast<size_t>(min<uint64_t>(HunkBytes, logicalBytes_ - before)));
     HunkEntry entry;
     entry.crc = crc16(hunk_.data(), HunkBytes);
     vector<uint8_t> packed;
@@ -445,7 +449,7 @@ bool ChdWriter::finish(string &error) {
     be32(header, 0);
     be32(header, 0);
     be32(header, 0);
-    be64(header, static_cast<uint64_t>(hunkCount_) * HunkBytes);
+    be64(header, logicalBytes_);
     be64(header, mapOffset);
     be64(header, metaOffset);
     be32(header, HunkBytes);

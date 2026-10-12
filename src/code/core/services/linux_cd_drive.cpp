@@ -45,8 +45,7 @@ vector<int> LinuxCdDrive::findDrives(const string &sysfsRoot) {
         return found;
     while (const dirent *entry = readdir(dir)) {
         const string name = entry->d_name;
-        if (name.size() < 3 || name.compare(0, 2, "sg") != 0 ||
-            name.find_first_not_of("0123456789", 2) != string::npos)
+        if (name.size() < 3 || name.compare(0, 2, "sg") != 0 || name.find_first_not_of("0123456789", 2) != string::npos)
             continue;
         ifstream in(sysfsRoot + "/" + name + "/device/type");
         string type;
@@ -171,7 +170,9 @@ bool LinuxCdDrive::decodeQ(const uint8_t *subcode96, uint8_t *q12) {
 //*******************************
 // LinuxCdDrive: the drive
 //*******************************
-LinuxCdDrive::~LinuxCdDrive() { close(); }
+LinuxCdDrive::~LinuxCdDrive() {
+    close();
+}
 
 bool LinuxCdDrive::open(int sgIndex, string &error) {
     close();

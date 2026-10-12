@@ -101,6 +101,7 @@ private:
     std::vector<uint8_t> hunk_;
     uint32_t frameInHunk_ = 0;
     uint32_t hunksDone_ = 0, hunkCount_ = 0;
+    uint64_t logicalBytes_ = 0; // the padded tracks, as chdman: the last hunk may be only partly logical
     std::vector<HunkEntry> entries_;
     uint64_t offset_ = 0;
     Sha1 raw_;
