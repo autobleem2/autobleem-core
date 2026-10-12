@@ -1694,9 +1694,17 @@ TEST_CASE("a disc that matched a library game counts as that game's play; one th
 
 TEST_CASE("AB_FAKE_DRIVE: the disc's cdfile is the cue itself") {
     DiscLaunching lib;
+#ifdef _WIN32
+    _putenv_s("AB_FAKE_DRIVE", "/some/disc.cue");
+#else
     setenv("AB_FAKE_DRIVE", "/some/disc.cue", 1);
+#endif
     DiscGame disc = lib.discOf(true, 4);
     LaunchPlan plan = lib.service->planDisc(*disc.game, 4, "2", -1, "0", "0");
+#ifdef _WIN32
+    _putenv_s("AB_FAKE_DRIVE", "");
+#else
     unsetenv("AB_FAKE_DRIVE");
+#endif
     CHECK(argAfter(plan.args, "-cdfile") == "/some/disc.cue");
 }
