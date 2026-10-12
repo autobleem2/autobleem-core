@@ -25,9 +25,10 @@
 
 namespace abgui {
 
-// `text` split into rows no wider than `width` (as measure() sees them): words at spaces and tabs, a word wider than
-// the width cut into pieces that fit (whole UTF-8 characters); an empty text is one empty row. The pure form of the
-// classic renderer's wrapLines().
+// `text` split into rows no wider than `width` (as measure() sees them): at the places ableem::Font::lineBreaks()
+// gives (Unicode line breaking: after spaces and tabs, between Chinese characters), blanks between words kept as
+// one space, a piece wider than the width cut into pieces that fit (whole UTF-8 characters); an empty text is one
+// empty row. The pure form of the classic renderer's wrapLines().
 std::vector<std::string> wrapText(const std::string &text, int width,
                                   const std::function<int(const std::string &)> &measure);
 

@@ -173,6 +173,14 @@ if (ABLEEM_EMBEDDED_TARGET)
     target_compile_definitions(ableem PRIVATE ABLEEM_EMBEDDED_TARGET)
 endif()
 
+include(rust/ab_text.cmake)
+if (ABLEEM_TEXT_RUST)
+    target_link_libraries(ableem PRIVATE ab_text)
+    add_dependencies(ableem ab_text_cargo)
+    # public: a test can tell which engine it checks
+    target_compile_definitions(ableem PUBLIC ABLEEM_TEXT_RUST)
+endif()
+
 if (ABLEEM_SHARED)
     target_compile_definitions(ableem PUBLIC ABLEEM_SHARED)
 endif()
