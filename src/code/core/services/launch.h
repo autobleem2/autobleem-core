@@ -89,8 +89,8 @@ public:
     // its bilinear and every other filter (Sharp and on) its nearest
     static std::string pcsxAbFilter(int mode);
     // the game's filter mode from its pcsx.cfg (the game folder's; the save-state folder's for an internal
-    // game): 0 Nearest, 1 Linear, 2 Sharp, 3 Sharp (simple), 4 Quilez, 5 CRT (fast), 6 CRT-Pi; 0 when the
-    // cfg has no line or a value past those
+    // game): 0 Nearest, 1 Linear, 2 Sharp, 3 Sharp (simple), 4 Quilez, 5 CRT (fast), 6 CRT-Pi, 7 CRT (raster);
+    // 0 when the cfg has no line or a value past those
     static int filterModeFor(const PsGame &game);
 
     // what a launch runs, for either mode. The pcsx plan: the save-state folder, the disc image, the

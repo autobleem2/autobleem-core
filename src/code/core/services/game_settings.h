@@ -33,7 +33,7 @@ struct PcsxSettings {
     int smoothing = 0; // pcsx.cfg soft_filter, pcsx-abnxt's Smoothing: 0 none, 1 scale2x, 2 eagle2x, 3 hq2x, 4 hq3x
     int sonyHacks = 0; // pcsx.cfg sonyhacks, pcsx-abnxt only: Sony's per-title overrides for the disc's serial
     // pcsx.cfg plat_target.hwfilter, pcsx-abnxt's own numbering (ab_filter_names): 0 Nearest, 1 Linear, 2 Sharp,
-    // 3 Sharp (simple), 4 Quilez, 5 CRT (fast), 6 CRT-Pi
+    // 3 Sharp (simple), 4 Quilez, 5 CRT (fast), 6 CRT-Pi, 7 CRT (raster)
     int filter = 0;
     std::string gpu;
 };
@@ -147,7 +147,7 @@ public:
     void setGpuPlugin(GameSettings &s, const std::string &plugin); // USB only: "builtin_gpu" or "gpu_peops.so"
 
     // --- what a platform offers (Env::platformName(): psc, rpi, pcusb, win, pc) ---
-    // The Filter row's values, in order: pcsx-abnxt's ab_filter_names, all seven on every target today (its
+    // The Filter row's values, in order: pcsx-abnxt's ab_filter_names, all eight on every target today (its
     // GL pipeline has the same passes everywhere; on the console at 1080p CRT-Pi stays, the emulator's help
     // says it is too heavy there)
     static std::vector<int> filtersFor(const std::string &platform);
@@ -167,7 +167,7 @@ public:
     static const char *const SmoothingNames[SmoothingCount]; // "None", "Scale2x", "Eagle2x", "HQ2x", "HQ3x"
     static const int FrameskipCount = 5; // the emulators' men_frameskip: Auto, Off, 1, 2, 3
     static const int FrameskipOff = 1;
-    static const int FilterCount = 7;                      // pcsx-abnxt's AB_FILTER_COUNT
+    static const int FilterCount = 8;                      // pcsx-abnxt's AB_FILTER_COUNT
     static const int DitheringCount = 3;
     static const int ScanlineModes = 4; // off, 1, 2, 3
 

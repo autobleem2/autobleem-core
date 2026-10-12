@@ -56,10 +56,10 @@ bool listed(const vector<int> &values, int value) {
 vector<int> GameSettingsService::filtersFor(const string &platform) {
     // pcsx-abnxt's hwfilters per target: its GL pipeline (plat_autobleem.c, hwfilters = ab_filter_names) has
     // every pass on every one today. 0 Nearest, 1 Linear, 2 Sharp, 3 Sharp (simple), 4 Quilez, 5 CRT (fast),
-    // 6 CRT-Pi. A target that loses a pass drops it from its own line.
+    // 6 CRT-Pi, 7 CRT (raster). A target that loses a pass drops it from its own line.
     static const map<string, vector<int>> perPlatform = {
-        {"psc", {0, 1, 2, 3, 4, 5, 6}}, {"rpi", {0, 1, 2, 3, 4, 5, 6}}, {"pcusb", {0, 1, 2, 3, 4, 5, 6}},
-        {"win", {0, 1, 2, 3, 4, 5, 6}}, {"pc", {0, 1, 2, 3, 4, 5, 6}},
+        {"psc", {0, 1, 2, 3, 4, 5, 6, 7}}, {"rpi", {0, 1, 2, 3, 4, 5, 6, 7}}, {"pcusb", {0, 1, 2, 3, 4, 5, 6, 7}},
+        {"win", {0, 1, 2, 3, 4, 5, 6, 7}}, {"pc", {0, 1, 2, 3, 4, 5, 6, 7}},
     };
     auto it = perPlatform.find(platform);
     return it != perPlatform.end() ? it->second : firstValues(FilterCount);

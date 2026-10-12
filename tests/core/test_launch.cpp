@@ -203,7 +203,7 @@ TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg
 TEST_CASE("the classic pcsx-ab's -filter is the other way round and has only nearest and bilinear") {
     CHECK(LaunchService::pcsxAbFilter(0) == "1"); // Nearest -> nearest
     CHECK(LaunchService::pcsxAbFilter(1) == "0"); // Linear -> bilinear
-    for (int mode = 2; mode <= 6; mode++)         // Sharp .. CRT-Pi -> nearest
+    for (int mode = 2; mode <= 7; mode++)         // Sharp .. CRT (raster) -> nearest
         CHECK(LaunchService::pcsxAbFilter(mode) == "1");
 }
 
