@@ -11,7 +11,7 @@ using namespace std;
 
 namespace {
 
-const uint32_t TagCht2 = 0x43485432; // 'CHT2'
+const uint32_t TagCht2 = 0x43485432;   // 'CHT2'
 const uint32_t CodecCdzl = 0x6364726c; // 'cdzl'
 const uint8_t TypeCdzl = 0;            // the header's first compressor
 const uint8_t TypeStored = 4;          // COMPRESSION_NONE
@@ -194,7 +194,9 @@ string Sha1::hex(const uint8_t *digest) {
 //*******************************
 // ChdWriter: the parts
 //*******************************
-uint32_t ChdWriter::paddedFrames(uint32_t frames) { return (frames + TrackPadding - 1) / TrackPadding * TrackPadding; }
+uint32_t ChdWriter::paddedFrames(uint32_t frames) {
+    return (frames + TrackPadding - 1) / TrackPadding * TrackPadding;
+}
 
 uint32_t ChdWriter::totalFrames(const vector<Track> &tracks) {
     uint32_t total = 0;
@@ -284,7 +286,9 @@ vector<uint8_t> ChdWriter::packMap(const vector<HunkEntry> &hunks, uint64_t firs
 //*******************************
 // ChdWriter: the file
 //*******************************
-ChdWriter::~ChdWriter() { abort(); }
+ChdWriter::~ChdWriter() {
+    abort();
+}
 
 void ChdWriter::abort() {
     if (out_.is_open())

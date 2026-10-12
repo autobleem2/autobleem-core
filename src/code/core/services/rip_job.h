@@ -19,6 +19,7 @@
 #pragma once
 
 #include "core/services/disc_reader.h"
+#include "core/services/libcrypt.h"
 
 #include <atomic>
 #include <cstdint>
@@ -46,9 +47,16 @@ public:
         uint32_t sectors = 0;     // in the image (the lead-out's LBA)
         uint32_t badSectors = 0;  // unreadable after the retries, written as zeros
         int64_t firstBadLba = -1; // -1: none
+        std::string sbiFile;      // the <name>.sbi written (writeSbi), "" when none
+        int libcryptPlaces = 0;   // marked LibCrypt places (of 16); 0 = none or not asked
+        std::string sbiNote;      // plain words when the .sbi was asked for and not written for a reason (not an error)
     };
 
     static const int Retries = 3;
+
+    // set before start(): after the rip read the 16 LibCrypt places through the drive's Q channel and write the
+    // marks as <name>.sbi next to the CHD (nothing is written when there are none)
+    bool writeSbi = false;
 
     // Rips the disc in 'drive' (it reads the TOC itself) to outPath ("....chd"). progress may be empty; it is called
     // a few times a second and at the end.

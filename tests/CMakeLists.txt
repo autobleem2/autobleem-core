@@ -45,6 +45,16 @@ ab_add_test(test_image_cd_drive core/test_image_cd_drive.cpp LIBS ableem_lanserv
 ab_add_test(test_drive_watcher core/test_drive_watcher.cpp LIBS ableem_lanserver)
 ab_add_test(test_cdda_player core/test_cdda_player.cpp)
 ab_add_test(test_spectrum core/test_spectrum.cpp)
+# AUTOBLEEM-21: ripping a disc into a CHD (ChdWriter, RipJob) and LibCrypt's .sbi; the writer's output is read back
+# with the vendored libchdr
+ab_add_test(test_libcrypt core/test_libcrypt.cpp)
+if (AB_ENABLE_CHD)
+    ab_add_test(test_chd_writer core/test_chd_writer.cpp LIBS chdr)
+    ab_add_test(test_rip_job core/test_rip_job.cpp LIBS chdr)
+else()
+    ab_add_test(test_chd_writer core/test_chd_writer.cpp)
+    ab_add_test(test_rip_job core/test_rip_job.cpp)
+endif()
 if (NOT WIN32)
     # linux_cd_drive.cpp is not part of the Windows build
     ab_add_test(test_linux_cd_drive core/test_linux_cd_drive.cpp)

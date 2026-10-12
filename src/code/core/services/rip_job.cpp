@@ -61,7 +61,9 @@ struct Cleanup {
 //*******************************
 // RipJob: the helpers
 //*******************************
-uint64_t RipJob::neededBytes(const CdToc &toc) { return static_cast<uint64_t>(toc.leadout) * DiscReader::SectorSize; }
+uint64_t RipJob::neededBytes(const CdToc &toc) {
+    return static_cast<uint64_t>(toc.leadout) * DiscReader::SectorSize;
+}
 
 bool RipJob::hasFreeSpace(const string &dir, uint64_t needed, uint64_t *freeBytes) {
     uint64_t freeB = 0, totalB = 0;
@@ -191,6 +193,25 @@ RipJob::Result RipJob::start(CdDrive &drive, const string &outPath, const Progre
         return r;
     }
     cleanup.keep = true;
+    if (writeSbi) {
+        if (!drive.hasSubchannel()) {
+            r.sbiNote = "the drive gives no subchannel, no LibCrypt check";
+        } else {
+            const vector<LibCrypt::Mark> marks = LibCrypt::scan(drive, toc.leadout, &r.libcryptPlaces);
+            if (marks.empty()) {
+                r.sbiNote = "no LibCrypt marks on this disc";
+            } else {
+                const size_t dot = outPath.find_last_of('.');
+                const size_t sep = outPath.find_last_of("/\\");
+                const string base =
+                    dot != string::npos && (sep == string::npos || dot > sep) ? outPath.substr(0, dot) : outPath;
+                if (LibCrypt::writeSbi(base + ".sbi", marks))
+                    r.sbiFile = base + ".sbi";
+                else
+                    r.sbiNote = "cannot write " + base + ".sbi";
+            }
+        }
+    }
     report(toc.leadout, true);
     r.ok = true;
     r.file = outPath;

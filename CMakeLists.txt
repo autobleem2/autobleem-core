@@ -94,6 +94,7 @@ add_library(ab_core STATIC
         src/code/core/services/app_manifest.cpp
         src/code/core/services/app_settings.cpp
         src/code/core/services/cdda_player.cpp
+        src/code/core/services/chd_writer.cpp
         src/code/core/services/content_installer.cpp
         src/code/core/services/disc_game.cpp
         src/code/core/services/disc_identity.cpp
@@ -125,10 +126,12 @@ add_library(ab_core STATIC
         src/code/core/services/lightgun.cpp
         src/code/core/services/ra_options.cpp
         src/code/core/services/launch.cpp
+        src/code/core/services/libcrypt.cpp
         src/code/core/services/memcard.cpp
         src/code/core/services/platform_config.cpp
         src/code/core/services/process_runner.cpp
         src/code/core/services/resume_point.cpp
+        src/code/core/services/rip_job.cpp
         src/code/core/services/retroarch.cpp
         src/code/core/services/sbi_service.cpp
         src/code/core/services/scan_service.cpp
@@ -143,6 +146,9 @@ add_library(ab_core STATIC
         src/code/core/services/theme_zip_cache.cpp)
 target_link_libraries(ab_core ableem_engine ${CMAKE_DL_LIBS}) # dlopen: PluginLoader
 target_include_directories(ab_core PUBLIC src/code ${CMAKE_BINARY_DIR}/generated)
+# ChdWriter deflates with the engine's vendored miniz (a private header of ableem_engine)
+target_include_directories(ab_core PRIVATE lib_ableem/third_party/miniz)
+set_source_files_properties(src/code/core/services/chd_writer.cpp PROPERTIES COMPILE_DEFINITIONS "MINIZ_NO_TIME")
 if (AB_ONLINE_UPDATE)
     target_sources(ab_core PRIVATE src/code/core/services/update_service.cpp)
 endif()
