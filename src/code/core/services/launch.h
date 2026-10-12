@@ -9,6 +9,7 @@
 #include "../model/session.h"
 #include "app_manifest.h"
 #include "config.h"
+#include "disc_game.h"
 #include "memcard.h"
 #include "package_service.h"
 #include "process_runner.h"
@@ -39,6 +40,7 @@
 //
 // Owned by App (App::launcher()).
 struct OutputMode;
+class DriveWatcher;
 
 class LaunchService {
 public:
@@ -100,6 +102,18 @@ public:
     // PS1 core in direct mode), else a core path.
     LaunchPlan planPcsx(const PsGame &game, const std::string &discImage, const std::string &lang, int resumePoint,
                         const std::string &aspect, const std::string &filter) const;
+    // The same for the physical disc in drive /dev/sg<sgIndex> (docs/disc-drive-plan.md 5): pcsx-abnxt alone -
+    // the emulator that reads the drive - never pcsx-ab and never RetroArch, whatever config.ini's emulator says;
+    // -cdfile is DriveWatcher::cdfileFor(sgIndex). The plan has an empty exe when there is no pcsx-abnxt.
+    LaunchPlan planDisc(const PsGame &game, int sgIndex, const std::string &lang, int resumePoint,
+                        const std::string &aspect, const std::string &filter) const;
+    // <pcsxnxt dir>/pcsx-ab(.exe) (script mode: Autobleem/bin/emunxt/pcsx-ab) when it exists, else ""
+    std::string pcsxNxtExecutable() const;
+    // Plays the disc in the drive (docs/disc-drive-plan.md 5): its folder is made (DiscGame::ensureFolder), the
+    // watcher (may be null) is paused for the run and resumed after, and the play is recorded as the library
+    // game's when the disc matched one. False, nothing run, when the disc has no game, there is no pcsx-abnxt or
+    // the folder cannot be made.
+    bool launchDisc(DiscGame &disc, int resumePoint, DriveWatcher *watcher = nullptr);
     static LaunchPlan planRetroArch(const std::string &file, const std::string &core);
     static LaunchPlan planApp(const PsGame &game, const PackageEntry *package = nullptr);
     // the generic script a multi-platform App without a run.sh of its own is started through (rc/app_run.sh)
@@ -149,6 +163,10 @@ private:
     static std::string ps1RaCore(const PsGame &game);
 
     // --- PCSX ---
+    // planPcsx()/planDisc() both; nxtOnly: pcsx-abnxt or nothing
+    LaunchPlan planPcsxFor(const PsGame &game, const std::string &discImage, const std::string &lang, int resumePoint,
+                           const std::string &aspect, const std::string &filter, bool nxtOnly) const;
+    const DiscGame *disc_ = nullptr; // the disc launchDisc() is running, else nullptr
     // env: what the emulator is handed on top (AB_EXIT_DIR, AB_MEMCARD_DIR, AB_LOAD_STATE)
     void launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::Env &env);
     // (a config saved in the emulator is the game's own pcsx.custom.cfg, which the emulators write and

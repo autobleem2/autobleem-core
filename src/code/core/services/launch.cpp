@@ -10,6 +10,7 @@
 #include "system.h"
 #include "game_settings.h"
 #include "pcsx_config.h"
+#include "drive_watcher.h"
 
 #include <ableem/engine/config_file_editor.h>
 
@@ -119,6 +120,26 @@ string LaunchService::retroArchExecutable() {
 // memcards, sstates) and the BIOS are.
 LaunchPlan LaunchService::planPcsx(const PsGame &game, const string &discImage, const string &lang, int resumePoint,
                                    const string &aspect, const string &filter) const {
+    return planPcsxFor(game, discImage, lang, resumePoint, aspect, filter, false);
+}
+
+string LaunchService::pcsxNxtExecutable() const {
+    if (Env::directLaunch()) {
+        const string exe = pcsxBinaryIn(Env::pcsxNxtDir());
+        return !exe.empty() && DirEntry::exists(exe) ? exe : "";
+    }
+    const string exe = Env::getPathToAutobleemDir() + sep + "bin" + sep + "emunxt" + sep + "pcsx-ab";
+    return DirEntry::exists(exe) ? exe : "";
+}
+
+LaunchPlan LaunchService::planDisc(const PsGame &game, int sgIndex, const string &lang, int resumePoint,
+                                   const string &aspect, const string &filter) const {
+    return planPcsxFor(game, DriveWatcher::cdfileFor(sgIndex), lang, resumePoint, aspect, filter, true);
+}
+
+LaunchPlan LaunchService::planPcsxFor(const PsGame &game, const string &discImage, const string &lang,
+                                      int resumePoint, const string &aspect, const string &filter,
+                                      bool nxtOnly) const {
     LaunchPlan plan;
     if (!Env::directLaunch()) {
         plan.exe = pcsxLauncherScript();
@@ -131,11 +152,15 @@ LaunchPlan LaunchService::planPcsx(const PsGame &game, const string &discImage, 
                      aspect,
                      filter,
                      "NA", // pad mapping per-game was never wired up; this was always the fallback
-                     config_.inifile.values.at("emulator"),
+                     nxtOnly ? "pcsx-abnxt" : config_.inifile.values.at("emulator"),
                      config_.inifile.values.at("language")};
         return plan;
     }
-    plan.exe = pcsxExecutable();
+    plan.exe = nxtOnly ? pcsxNxtExecutable() : pcsxExecutable();
+    if (plan.exe.empty() && nxtOnly) {
+        PLOG_WARNING << "no pcsx-abnxt in " << Env::pcsxNxtDir() << " - a disc cannot be played";
+        return plan; // never pcsx-ab, never RetroArch: they cannot read the drive
+    }
     if (plan.exe.empty()) {
         // no PS1 emulator of our own on this machine: RetroArch's pcsx_rearmed core plays the game (it
         // cannot read our save-state slots, so a resume starts from the beginning) - launch.sh's fallback
@@ -179,6 +204,10 @@ LaunchPlan LaunchService::planPcsx(const PsGame &game, const string &discImage, 
 // LaunchService::pcsxDirForLaunch / pcsxFeatures / pcsxExitDir
 //*******************************
 string LaunchService::pcsxDirForLaunch() const {
+    if (disc_ != nullptr) {
+        const string exe = pcsxNxtExecutable();
+        return exe.empty() ? "" : exe.substr(0, exe.find_last_of('/'));
+    }
     if (Env::directLaunch()) {
         const string exe = pcsxExecutable();
         return exe.empty() ? "" : exe.substr(0, exe.find_last_of('/'));
@@ -675,7 +704,9 @@ void LaunchService::copyCfgAsLf(const string &src, const string &dst) {
 void LaunchService::launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::Env &env) {
     PLOG_INFO << "calling LaunchService::launchPcsx()";
 
-    recordLastPlayed(game);
+    if (disc_ == nullptr || disc_->sharesLibraryGame) {
+        recordLastPlayed(game); // a disc that matched a library game counts as that game's play
+    }
 
     string lastCDpoint = game.ssFolder + sep + "lastcdimg.txt";
     string lastCDpointX = game.ssFolder + sep + "lastcdimg." + to_string(resumePoint) + ".txt";
@@ -698,7 +729,9 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::
     if (!exitDir && DirEntry::exists(lastCDpoint))
         remove(lastCDpoint.c_str()); // (an emulator with an exit dir writes its own there, not here)
 
-    if (DirEntry::exists(lastCDpointX)) {
+    if (disc_ != nullptr) {
+        gameFile = DriveWatcher::cdfileFor(disc_->sgIndex); // the drive itself, not an image of the library game
+    } else if (DirEntry::exists(lastCDpointX)) {
         // resuming: the state's own record of which disc was in the drive is what PCSX must be given
         // (-cdfile below; the copy is for an emulator that reads it from its folder)
         if (!exitDir)
@@ -735,7 +768,7 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::
         }
     }
 
-    LaunchPlan plan = planPcsx(game, gameFile, langStr, resumePoint, aspect, filter);
+    LaunchPlan plan = planPcsxFor(game, gameFile, langStr, resumePoint, aspect, filter, disc_ != nullptr);
     plan.env.insert(plan.env.end(), env.begin(), env.end());
     // the old pcsx-ab started directly: its run directory as launch.sh lays it out - .pcsx the save-state
     // folder, bios the PS1 BIOS, plugins the emulator's - as directory links, cleared again after
@@ -763,6 +796,34 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::
         }
     }
     usleep(3 * 1000);
+}
+
+//*******************************
+// LaunchService::launchDisc
+//*******************************
+bool LaunchService::launchDisc(DiscGame &disc, int resumePoint, DriveWatcher *watcher) {
+    if (!disc.game) {
+        PLOG_WARNING << "launchDisc: the disc has no game";
+        return false;
+    }
+    if (pcsxNxtExecutable().empty()) {
+        PLOG_WARNING << "launchDisc: no pcsx-abnxt - a disc cannot be played";
+        return false;
+    }
+    if (!disc.ensureFolder()) {
+        PLOG_WARNING << "launchDisc: cannot make " << disc.game->ssFolder;
+        return false;
+    }
+    if (watcher != nullptr) {
+        watcher->pause(); // the emulator owns the drive for the run
+    }
+    disc_ = &disc;
+    launch(disc.game, EmuMode::Pcsx, resumePoint);
+    disc_ = nullptr;
+    if (watcher != nullptr) {
+        watcher->resume();
+    }
+    return true;
 }
 
 //*******************************

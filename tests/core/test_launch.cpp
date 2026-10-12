@@ -9,10 +9,12 @@
 #include "../support/string_maker.h"
 
 #include "core/services/app_settings.h"
+#include "core/services/drive_watcher.h"
 #include "core/services/launch.h"
 #include "core/services/package_service.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -1581,4 +1583,120 @@ TEST_CASE("the launch passes the picked entry to the App; a Packages-row entry r
     lib.service->launch(row, EmuMode::Launcher, -1, &entry);
     lib.service->launch(row, EmuMode::Pcsx, -1);
     CHECK(lib.runner.calls.empty());
+}
+
+// --- the physical disc (docs/disc-drive-plan.md 5) ---
+
+namespace {
+// a DiscGame over the fixture's Tekken 3 (sharing=true: it matched that library game) or over a game of its own
+struct DiscLaunching : DirectLaunching {
+    DiscGame discOf(bool sharing, int sgIndex = 2) {
+        DiscGame disc;
+        disc.game = usbGame();
+        disc.sgIndex = sgIndex;
+        disc.sharesLibraryGame = sharing;
+        if (!sharing) {
+            disc.game = std::make_shared<PsGame>(*disc.game);
+            disc.game->ssFolder = tmp.at("Games/disc-SCES-02835/sstates");
+        }
+        return disc;
+    }
+};
+
+string argAfter(const vector<string> &args, const string &flag) {
+    auto it = std::find(args.begin(), args.end(), flag);
+    return it != args.end() && it + 1 != args.end() ? *(it + 1) : "<none>";
+}
+} // namespace
+
+TEST_CASE("a disc is launched with pcsx-abnxt alone, -cdfile cdrom://drive<N>.cue, whatever config.ini's emulator is") {
+    DiscLaunching lib;
+    lib.configure("Emulator=pcsx-ab\n");
+    DiscGame disc = lib.discOf(true, 2);
+
+    LaunchPlan plan = lib.service->planDisc(*disc.game, 2, "2", -1, "0", "0");
+    CHECK(DirectLaunching::stem(plan.exe) == lib.tmp.at("program/emunxt/pcsx-ab"));
+    CHECK(plan.cwd == lib.tmp.at("program/emunxt"));
+    CHECK(argAfter(plan.args, "-cdfile") == "cdrom://drive2.cue");
+    CHECK(plan.args.back() == "cdrom://drive2.cue");
+    CHECK(lib.service->planDisc(*disc.game, 0, "2", -1, "0", "0").args.back() == "cdrom://drive0.cue");
+
+    SUBCASE("the library's own launch of the same game is unchanged") {
+        LaunchPlan own = lib.service->planPcsx(*disc.game, "x.cue", "2", -1, "0", "0");
+        CHECK(DirectLaunching::stem(own.exe) == lib.tmp.at("program/emu/pcsx-ab"));
+    }
+    SUBCASE("script mode names pcsx-abnxt to launch.sh") {
+        Env::setDirectLaunch(false);
+        LaunchPlan script = lib.service->planDisc(*disc.game, 3, "2", -1, "0", "0");
+        CHECK(script.exe == lib.rcScript("launch.sh"));
+        CHECK(script.args[1] == "cdrom://drive3.cue");
+        CHECK(script.args[9] == "pcsx-abnxt");
+        Env::setDirectLaunch(true);
+    }
+}
+
+TEST_CASE("with no pcsx-abnxt a disc is not played: no plan, no run, never pcsx-ab or RetroArch") {
+    DiscLaunching lib;
+    ableem::DirEntry::removeDirAndContents(lib.tmp.at("program/emunxt"));
+    DiscGame disc = lib.discOf(true);
+    CHECK(lib.service->planDisc(*disc.game, 2, "2", -1, "0", "0").exe.empty());
+    CHECK(lib.service->pcsxNxtExecutable().empty());
+    CHECK_FALSE(lib.service->launchDisc(disc, -1));
+    CHECK(lib.runner.calls.empty());
+}
+
+TEST_CASE("a disc without a game is refused") {
+    DiscLaunching lib;
+    DiscGame disc;
+    CHECK_FALSE(lib.service->launchDisc(disc, -1));
+    CHECK(lib.runner.calls.empty());
+}
+
+TEST_CASE("launchDisc runs the emulator on the drive, makes the folder and pauses the watcher around the run") {
+    DiscLaunching lib;
+    DiscGame disc = lib.discOf(false, 1);
+    CHECK_FALSE(ableem::DirEntry::exists(disc.game->ssFolder));
+    DriveWatcher watcher(DriveWatcher::defaultBackend("/nonexistent"), 1000); // never started
+    bool pausedDuring = false;
+    bool folderDuring = false;
+    lib.runner.whileRunning = [&] {
+        pausedDuring = watcher.paused();
+        folderDuring = ableem::DirEntry::isDirectory(disc.game->ssFolder);
+    };
+
+    CHECK(lib.service->launchDisc(disc, -1, &watcher));
+    const FakeProcessRunner::Call &call = lib.runner.only();
+    CHECK(DirectLaunching::stem(call.exe) == lib.tmp.at("program/emunxt/pcsx-ab"));
+    CHECK(argAfter(call.args, "-cdfile") == "cdrom://drive1.cue");
+    CHECK(argAfter(call.args, "-dotdir") == disc.game->ssFolder);
+    CHECK(pausedDuring);
+    CHECK(folderDuring);
+    CHECK_FALSE(watcher.paused());
+    // the next ordinary launch is the library's again
+    PsGamePtr game = lib.usbGame();
+    lib.runner.calls.clear();
+    lib.service->launch(game, EmuMode::Pcsx, -1);
+    CHECK(argAfter(lib.runner.only().args, "-cdfile") == lib.tmp.at("Games/Tekken 3/Tekken 3.cue"));
+}
+
+TEST_CASE("a disc that matched a library game counts as that game's play; one that did not records nothing") {
+    DiscLaunching lib;
+    DiscGame sharing = lib.discOf(true);
+    CHECK(lib.usbGame()->last_played == 0);
+    CHECK(lib.service->launchDisc(sharing, -1));
+    CHECK(lib.usbGame()->last_played > 0);
+
+    DiscLaunching other;
+    DiscGame alone = other.discOf(false);
+    CHECK(other.service->launchDisc(alone, -1));
+    CHECK(other.usbGame()->last_played == 0);
+}
+
+TEST_CASE("AB_FAKE_DRIVE: the disc's cdfile is the cue itself") {
+    DiscLaunching lib;
+    setenv("AB_FAKE_DRIVE", "/some/disc.cue", 1);
+    DiscGame disc = lib.discOf(true, 4);
+    LaunchPlan plan = lib.service->planDisc(*disc.game, 4, "2", -1, "0", "0");
+    unsetenv("AB_FAKE_DRIVE");
+    CHECK(argAfter(plan.args, "-cdfile") == "/some/disc.cue");
 }
