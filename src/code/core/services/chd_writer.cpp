@@ -194,6 +194,14 @@ string Sha1::hex(const uint8_t *digest) {
 //*******************************
 // ChdWriter: the parts
 //*******************************
+// C++14: the static constants are odr-used by the tests (a CHECK takes them by reference)
+const uint32_t ChdWriter::SectorBytes;
+const uint32_t ChdWriter::FrameBytes;
+const uint32_t ChdWriter::FramesPerHunk;
+const uint32_t ChdWriter::HunkBytes;
+const uint32_t ChdWriter::TrackPadding;
+const uint32_t ChdWriter::HeaderBytes;
+
 uint32_t ChdWriter::paddedFrames(uint32_t frames) {
     return (frames + TrackPadding - 1) / TrackPadding * TrackPadding;
 }

@@ -120,7 +120,7 @@ TEST_CASE("ChdWriter's parts") {
 }
 
 TEST_CASE("ChdWriter refuses an empty or incomplete image") {
-    TempDir dir;
+    TempDir dir("chd_empty");
     ChdWriter w;
     string error;
     CHECK_FALSE(w.open(dir.path() + "/a.chd", {}, error));
@@ -133,7 +133,7 @@ TEST_CASE("ChdWriter refuses an empty or incomplete image") {
 #ifndef AB_NO_CHD
 
 TEST_CASE("a two-track disc written by ChdWriter reads back sector by sector through libchdr") {
-    TempDir dir;
+    TempDir dir("chd_two_track");
     const string path = dir.path() + "/disc.chd";
     const uint32_t dataFrames = 40, audioFrames = 33;
     vector<ChdWriter::Track> tracks(2);
@@ -217,7 +217,7 @@ TEST_CASE("ChdWriter matches the file chdman wrote (tests/data/test.chd)") {
         tracks.push_back(t);
     }
 
-    TempDir dir;
+    TempDir dir("chd_chdman");
     const string path = dir.path() + "/copy.chd";
     ChdWriter w;
     string error;

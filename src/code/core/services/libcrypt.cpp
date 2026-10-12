@@ -30,6 +30,11 @@ bool readBadQ(CdDrive &drive, uint32_t lba, uint8_t *q, bool &bad) {
 
 } // namespace
 
+const int LibCrypt::Places;
+const uint32_t LibCrypt::PairDistance;
+const uint32_t LibCrypt::LeadIn;
+const int LibCrypt::Reads;
+
 uint32_t LibCrypt::placeMsf(int place) {
     return place >= 0 && place < Places ? Msf[place] : 0;
 }

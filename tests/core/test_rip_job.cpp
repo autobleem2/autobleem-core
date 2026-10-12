@@ -51,7 +51,7 @@ bool exists(const string &path) {
 } // namespace
 
 TEST_CASE("RipJob: a clean disc becomes a .chd and the drive is put back to 4x") {
-    TempDir dir;
+    TempDir dir("rip0");
     FakeCdDrive drive;
     makeDisc(drive, 40, 33);
     RipJob job;
@@ -77,7 +77,7 @@ TEST_CASE("RipJob: a clean disc becomes a .chd and the drive is put back to 4x")
 }
 
 TEST_CASE("RipJob: cancel leaves no file") {
-    TempDir dir;
+    TempDir dir("rip1");
     FakeCdDrive drive;
     makeDisc(drive, 100, 60);
     RipJob job;
@@ -101,7 +101,7 @@ TEST_CASE("RipJob: cancel leaves no file") {
 }
 
 TEST_CASE("RipJob: unreadable sectors are zeros, counted, with the first one's LBA") {
-    TempDir dir;
+    TempDir dir("rip2");
     FakeCdDrive drive;
     makeDisc(drive, 40, 33);
     drive.failing = {17, 50, 51};
@@ -137,7 +137,7 @@ TEST_CASE("RipJob: unreadable sectors are zeros, counted, with the first one's L
 }
 
 TEST_CASE("RipJob: nothing is left when the disc cannot be ripped") {
-    TempDir dir;
+    TempDir dir("rip3");
     FakeCdDrive drive; // no tracks
     RipJob job;
     RipJob::Result r = job.start(drive, dir.path() + "/Game.chd", nullptr);
@@ -147,7 +147,7 @@ TEST_CASE("RipJob: nothing is left when the disc cannot be ripped") {
 }
 
 TEST_CASE("RipJob: free space helpers") {
-    TempDir dir;
+    TempDir dir("rip4");
     CdToc toc;
     toc.leadout = 1000;
     CHECK(RipJob::neededBytes(toc) == 1000u * S);
@@ -156,7 +156,7 @@ TEST_CASE("RipJob: free space helpers") {
 }
 
 TEST_CASE("RipJob: the .sbi is written on request") {
-    TempDir dir;
+    TempDir dir("rip5");
     FakeCdDrive drive;
     makeDisc(drive, 16500, 20);
     // place 0 (LBA 13955 and 13960) has bad Q CRCs

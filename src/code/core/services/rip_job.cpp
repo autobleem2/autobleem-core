@@ -61,6 +61,8 @@ struct Cleanup {
 //*******************************
 // RipJob: the helpers
 //*******************************
+const int RipJob::Retries;
+
 uint64_t RipJob::neededBytes(const CdToc &toc) {
     return static_cast<uint64_t>(toc.leadout) * DiscReader::SectorSize;
 }
