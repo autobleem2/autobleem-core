@@ -592,6 +592,10 @@ void LaunchService::launch(PsGamePtr &game, EmuMode mode, int resumePoint, const
         const int scaler = scalerIndex(config_.inifile.values["scaler"]);
         if (has("scaler") && scaler >= 0)
             env.emplace_back("AB_SCALER", to_string(scaler));
+        // Options -> "Screen halo": the bands beside the picture filled with its glow (config.ini "screenhalo",
+        // "true"/"false"); sent either way, so the launcher's choice beats pcsx.cfg (not the game's own config)
+        if (has("screenhalo"))
+            env.emplace_back("AB_SCREEN_HALO", config_.inifile.values["screenhalo"] == "true" ? "1" : "0");
         PcsxConfig::migrateLegacy(*game); // what an older build left becomes the game's own config
         launchPcsx(*game, resumePoint, env);
         PcsxConfig::migrateLegacy(*game); // ...and what an older emulator left just now
