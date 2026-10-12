@@ -9,6 +9,8 @@
 #include <ableem/engine/ini_file.h>
 #include <ableem/engine/serial_scanner.h>
 
+#include <algorithm>
+
 using namespace std;
 
 namespace {
