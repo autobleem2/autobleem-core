@@ -129,13 +129,16 @@ bool InstallJobBase::downloadVerified(const UpdateFile &file, const string &dest
         return true;
     }
     say("  " + file.name + (file.size ? " (" + humanSize(file.size) + ")" : ""));
+    // a downloader that checks the file keeps its own <dest>.part (and continues it); any other gets ours
     const string part = dest + ".part";
     const bool checkedByDownloader = dl.expect(file.size, file.sha256);
-    const bool fetched = download(file.url, part, error);
+    const bool fetched = download(file.url, checkedByDownloader ? dest : part, error);
     dl.expect(0, "");
     if (!fetched)
         return false;
-    if (!checkedByDownloader && !file.sha256.empty() && Sha256::ofFile(part) != file.sha256) {
+    if (checkedByDownloader)
+        return true;
+    if (!file.sha256.empty() && Sha256::ofFile(part) != file.sha256) {
         DirEntry::removeFile(part);
         error = file.name + ": the download does not match its sha256";
         failKind = FailKind::Checksum;
@@ -221,7 +224,8 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
         const string part = dest + ".part";
         string why;
         const bool checkedByDownloader = dl.expect(it.size, it.sha);
-        bool ok = dl.fetch(it.url, part, [this](uint64_t, uint64_t) { return !(stop && stop()); }, why);
+        bool ok = dl.fetch(it.url, checkedByDownloader ? dest : part,
+                           [this](uint64_t, uint64_t) { return !(stop && stop()); }, why);
         dl.expect(0, "");
         bool mismatch = !ok && why.rfind(Downloader::ErrChecksum, 0) == 0;
         if (ok && !checkedByDownloader && Sha256::ofFile(part) != it.sha) {
@@ -229,7 +233,7 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
             mismatch = true;
             why = "checksum mismatch";
         }
-        if (ok) {
+        if (ok && !checkedByDownloader) {
             DirEntry::removeFile(dest);
             ok = DirEntry::renameFile(part, dest);
         }

@@ -122,7 +122,7 @@ bool CommandDownloader::fetch(const string &url, const string &destFile, const P
         while (!done) {
             for (unsigned waited = 0; waited < pollMs_ && !done; waited += 10)
                 this_thread::sleep_for(chrono::milliseconds(10));
-            const long long size = DirEntry::fileSize(part);
+            const long long size = DirEntry::liveFileSize(part);
             if (progress && !done && !progress(size > 0 ? static_cast<uint64_t>(size) : 0, wantSize))
                 stopped = true; // the command cannot be interrupted: it ends, and the part stays for the resume
         }
