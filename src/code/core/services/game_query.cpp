@@ -14,6 +14,7 @@
 #include <iostream>
 #include <memory>
 #include <set>
+#include <ableem/engine/clean_game_name.h>
 #include <ableem/engine/log.h>
 
 using namespace std;
@@ -49,6 +50,26 @@ bool GameQueryService::showInternalGames() const {
 #else
     return config_.inifile.values["origames"] == "true";
 #endif
+}
+
+//*******************************
+// GameQueryService::cleanGameNames
+//*******************************
+bool GameQueryService::cleanGameNames() const {
+    return config_.inifile.values["cleannames"] != "false";
+}
+
+//*******************************
+// GameQueryService::applyShownNames
+//*******************************
+void GameQueryService::applyShownNames(const PsGames &games) const {
+    bool clean = cleanGameNames();
+    for (const auto &game : games) {
+        if (!game->foreign || game->app)
+            continue;
+        string shown = clean ? ableem::cleanGameName(game->title) : string();
+        game->displayTitle = shown == game->title ? string() : shown;
+    }
 }
 
 //*******************************
@@ -95,6 +116,7 @@ PsGames GameQueryService::lightgunGames() {
                 games.emplace_back(game);
         }
     }
+    applyShownNames(games);
     sort(begin(games), end(games), byTitle);
     return games;
 }
@@ -145,7 +167,9 @@ PsGames GameQueryService::retroArchGames(const string &playlistName) {
     PLOG_INFO << "Getting RA games for playlist: " << playlistName;
     if (playlistName.empty() || retroArch_ == nullptr)
         return PsGames();
-    return retroArch_->gamesInPlaylist(playlistName);
+    PsGames games = retroArch_->gamesInPlaylist(playlistName);
+    applyShownNames(games);
+    return games;
 }
 
 //*******************************

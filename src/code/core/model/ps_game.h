@@ -31,6 +31,11 @@ public:
 
     std::string db_name;
 
+    // The name the lists show and sort by, when it is not `title` (a RetroArch game without its "(USA) [!]"
+    // tags, "Clean game names"). `title` stays the playlist label: art, metadata and history are found by it.
+    std::string displayTitle;
+    const std::string &shownTitle() const { return displayTitle.empty() ? title : displayTitle; }
+
     // a Packages row entry (docs/packages.md 7): game data, not a program - it opens the info view and is never
     // launched. `base` is the package's folder.
     bool package = false;

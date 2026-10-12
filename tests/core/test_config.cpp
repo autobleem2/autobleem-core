@@ -75,6 +75,20 @@ TEST_CASE("Config: covershine defaults on and keeps an explicit false") {
     CHECK(Config().inifile.values["covershine"] == "true");
 }
 
+TEST_CASE("Config: cleannames defaults on and keeps an explicit false") {
+    TempDir tmp("config_cleannames");
+    EnvFixture env;
+    env.setWorkingPath(tmp.path());
+
+    CHECK(Config().inifile.values["cleannames"] == "true");
+
+    tmp.writeFile("config.ini", "[General]\nCleanNames=false\n");
+    CHECK(Config().inifile.values["cleannames"] == "false");
+
+    tmp.writeFile("config.ini", "[General]\nCleanNames=no\n");
+    CHECK(Config().inifile.values["cleannames"] == "true");
+}
+
 TEST_CASE("Config keeps a known emulator and falls back to pcsx-abnxt for anything else") {
     TempDir tmp("config_emulator");
     EnvFixture env;

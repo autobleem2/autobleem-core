@@ -102,14 +102,18 @@ public:
     SetCounts setCounts(const std::vector<std::string> &playlistNames);
 
     bool showInternalGames() const; // config.ini "origames"
+    bool cleanGameNames() const;    // config.ini "cleannames"
 
     static bool byTitle(const PsGamePtr &l, const PsGamePtr &r) {
-        return ableem::lessCaseInsensitive(l->title, r->title);
+        return ableem::lessCaseInsensitive(l->shownTitle(), r->shownTitle());
     }
     // history is numbered 1..N with 1 the most recently played
     static bool byHistory(const PsGamePtr &l, const PsGamePtr &r) { return l->history < r->history; }
 
 private:
+    // sets (or, with the option off, clears) the shown name of the RetroArch games in a list
+    void applyShownNames(const PsGames &games) const;
+
     ableem::GameLibrary &library_;
     Config &config_;
     RetroArchGames *retroArch_ = nullptr;

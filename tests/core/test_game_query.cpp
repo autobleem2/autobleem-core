@@ -282,6 +282,41 @@ TEST_CASE("the RetroArch set comes from the playlist and is sorted by title") {
     CHECK(titlesOf(games) == vector<string>{"Altered Beast", "Sonic"});
 }
 
+TEST_CASE("Clean game names: the RetroArch lists show and sort by the name without tags, title stays the label") {
+    ThreeGames lib;
+    ConfigIn cfg(lib.tmp, "");
+    GameQueryService query(lib.library, *cfg);
+
+    FakeRetroArch retroArch;
+    retroArch.add("Sonic (Rev 1) [!]");
+    retroArch.add("Alien (USA)");
+    retroArch.add("Alien (Europe)"); // cleans to the same name: still its own entry
+    retroArch.add("(USA)");          // only tags: shown as it is
+    query.setRetroArchGames(&retroArch);
+
+    GameSetSelection selection;
+    selection.set = GameSet::RetroArch;
+    selection.raPlaylistName = "Sega - Mega Drive.lpl";
+
+    auto shown = [](const PsGames &games) {
+        vector<string> names;
+        for (const auto &g : games)
+            names.push_back(g->shownTitle());
+        return names;
+    };
+
+    PsGames games = query.gamesFor(selection);
+    CHECK(shown(games) == vector<string>{"(USA)", "Alien", "Alien", "Sonic"});
+    CHECK(games[3]->title == "Sonic (Rev 1) [!]");
+
+    // switched off: the whole name again, sorted by it
+    ConfigIn off(lib.tmp, "CleanNames=false\n");
+    GameQueryService plain(lib.library, *off);
+    plain.setRetroArchGames(&retroArch);
+    CHECK(shown(plain.gamesFor(selection)) ==
+          vector<string>{"(USA)", "Alien (Europe)", "Alien (USA)", "Sonic (Rev 1) [!]"});
+}
+
 TEST_CASE("the RetroArch history playlist keeps the order it arrived in") {
     ThreeGames lib;
     ConfigIn cfg(lib.tmp, "Origames=false\n");
