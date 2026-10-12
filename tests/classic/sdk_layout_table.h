@@ -1,7 +1,7 @@
 //
 // The SDK layout table: sizeof/offsetof of the classes an extension reaches through code compiled into the plugin
 // (inline accessors like app.audio(), members read by value). See "THE LAYOUT TABLE" in gui/extension.h.
-// Numbers for x86_64 Linux with libstdc++ (the C++11 string ABI), the only layout the test checks. AB_SDK_ABI 11.
+// Numbers for x86_64 Linux with libstdc++ (the C++11 string ABI), the only layout the test checks. AB_SDK_ABI 12.
 //
 #pragma once
 
