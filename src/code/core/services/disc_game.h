@@ -26,6 +26,11 @@ struct DiscGame {
 
     // Creates game->ssFolder (every level). Called at launch, never at construction: a scan or a boot writes
     // nothing to the stick. True when the folder exists afterwards.
+    // A disc no library game shares also gets its pcsx.cfg (the shipped default, SlowBoot = 1), Game.ini (title,
+    // serial, memcard=SONY) and cover.png, each only when missing - what the game options menu and the emulator
+    // read. ensureFolder() calls it.
+    void seedFiles() const;
+
     bool ensureFolder() const;
 };
 

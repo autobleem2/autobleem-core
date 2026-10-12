@@ -19,6 +19,7 @@ class PsGame : public ableem::GameRecord {
 public:
     bool foreign = false; // to state it is not PS1 game (RA)
     bool app = false;
+    bool physicalDisc = false; // a disc in a drive (DiscGameService): it always plays in pcsx-abnxt
 
     // RB and App params
     std::string core_path;

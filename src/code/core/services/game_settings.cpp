@@ -206,7 +206,7 @@ void GameSettingsService::replaceCfgLine(GameSettings &s, const string &property
         return; // locked: the emulator's own config speaks for the game, pcsx.cfg waits for an unlock
     }
     ConfigFileEditor processor;
-    processor.replace(s.ini.entry, cfgFolder(s), property, property + " = " + value, s.internal);
+    s.cfgMissing = !processor.replace(s.ini.entry, cfgFolder(s), property, property + " = " + value, s.internal);
     refreshPcsx(s);
 }
 
