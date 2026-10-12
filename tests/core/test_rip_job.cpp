@@ -10,6 +10,7 @@
 
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifndef AB_NO_CHD
@@ -129,7 +130,11 @@ TEST_CASE("RipJob: unreadable sectors are zeros, counted, with the first one's L
                 zero = zero && frame[i] == 0;
             CHECK(zero);
         } else {
-            CHECK(memcmp(frame, drive.sectors[lba].data(), S) == 0);
+            vector<uint8_t> want = drive.sectors[lba];
+            if (lba >= 40) // the audio track is stored big-endian, as chdman does
+                for (uint32_t i = 0; i + 1 < S; i += 2)
+                    swap(want[i], want[i + 1]);
+            CHECK(memcmp(frame, want.data(), S) == 0);
         }
     }
     chd_close(chd);

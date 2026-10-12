@@ -5,8 +5,11 @@
 //   header      124 bytes ("MComprHD", version 5), written last when the sizes and SHA1s are known
 //   hunks       8 frames of 2448 bytes (2352 sector + 96 subchannel). The subchannel is written as zeros: a
 //               drive's raw subchannel carries bad CRCs on scratches, and they would fake LibCrypt marks.
-//               Each hunk is "cdzl": a deflate of the 8 sectors and a deflate of the 8 subchannels (chdman's
-//               own codec); a hunk that does not shrink is stored as it is
+//               The header lists the three CD codecs as chdman does (cdlz, cdzl, cdfl) and every hunk takes the
+//               smallest of them: the 8 sectors with LZMA / deflate / FLAC (16-bit stereo, the bytes read
+//               big-endian), the 8 subchannels always deflated, laid out as libchdr's decoders read them; a hunk
+//               that none of them shrinks is stored as it is. A track of type AUDIO is stored big-endian too, as
+//               chdman does: writeSector() takes the drive's little-endian sector and swaps its byte pairs.
 //   map         the v5 compressed map (one huffman code for the compression types, then the length and the
 //               CRC-16 of every hunk)
 //   metadata    one CHT2 entry per track: TRACK / TYPE / SUBTYPE / FRAMES / PREGAP / PGTYPE / PGSUB / POSTGAP
@@ -19,6 +22,7 @@
 //
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -79,18 +83,25 @@ public:
     static uint32_t totalFrames(const std::vector<Track> &tracks); // padded, and rounded up to a whole hunk
     static std::string trackMetadata(const Track &track);          // the CHT2 text, without its NUL
     static uint16_t crc16(const uint8_t *data, size_t size);       // CRC-16/CCITT, start 0xffff, no final xor
-    // one hunk (HunkBytes) as cdzl; false when it does not get smaller than the hunk
+    // one hunk (HunkBytes) as cdlz, cdzl or cdfl; false when it does not get smaller than the hunk
+    static bool cdlzHunk(const uint8_t *hunk, std::vector<uint8_t> &out);
     static bool cdzlHunk(const uint8_t *hunk, std::vector<uint8_t> &out);
-    // the v5 map of the hunks: type 0 (cdzl) or 4 (stored), the lengths and CRCs; firstOffset = where hunk 0 is
+    static bool cdflHunk(const uint8_t *hunk, std::vector<uint8_t> &out);
+    // the smallest of the three in 'out' and its type (0 cdlz, 1 cdzl, 2 cdfl), or 4 (stored) and 'out' untouched
+    static uint8_t smallestHunk(const uint8_t *hunk, std::vector<uint8_t> &out);
+    // the v5 map of the hunks: type 0-2 (the header's cdlz, cdzl, cdfl) or 4 (stored), the lengths and CRCs;
+    // firstOffset = where hunk 0 is
     struct HunkEntry {
         uint8_t type = 4;
         uint32_t length = 0;
         uint16_t crc = 0;
     };
     static std::vector<uint8_t> packMap(const std::vector<HunkEntry> &hunks, uint64_t firstOffset);
+    // how many hunks of the image got this type (valid after finish)
+    uint32_t hunksOfType(uint8_t type) const { return type < hunksOfType_.size() ? hunksOfType_[type] : 0; }
 
 private:
-    bool pushFrame(const uint8_t *sector, std::string &error);
+    bool pushFrame(const uint8_t *sector, bool swapBytes, std::string &error);
     bool flushHunk(std::string &error);
     bool put(const uint8_t *data, size_t size, std::string &error);
 
@@ -103,6 +114,7 @@ private:
     uint32_t hunksDone_ = 0, hunkCount_ = 0;
     uint64_t logicalBytes_ = 0; // the padded tracks, as chdman: the last hunk may be only partly logical
     std::vector<HunkEntry> entries_;
+    std::array<uint32_t, 8> hunksOfType_{};
     uint64_t offset_ = 0;
     Sha1 raw_;
 };

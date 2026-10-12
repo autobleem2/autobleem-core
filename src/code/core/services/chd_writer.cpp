@@ -1,10 +1,17 @@
 #include "chd_writer.h"
 
+#include "flac_encoder.h"
+
 #include <miniz.h>
+
+#ifndef AB_NO_CHD
+#include <LzmaEnc.h>
+#endif
 
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 using namespace std;
@@ -12,9 +19,15 @@ using namespace std;
 namespace {
 
 const uint32_t TagCht2 = 0x43485432;   // 'CHT2'
+const uint32_t CodecCdlz = 0x63646c7a; // 'cdlz'
 const uint32_t CodecCdzl = 0x63647a6c; // 'cdzl'
-const uint8_t TypeCdzl = 0;            // the header's first compressor
-const uint8_t TypeStored = 4;          // COMPRESSION_NONE
+const uint32_t CodecCdfl = 0x6364666c; // 'cdfl'
+// a hunk's type is the slot of its codec in the header (cdlz, cdzl, cdfl, none), as chdman lists them for a CD
+const uint8_t TypeCdlz = 0;
+const uint8_t TypeCdzl = 1;
+const uint8_t TypeCdfl = 2;
+const uint8_t TypeStored = 4; // COMPRESSION_NONE
+const uint8_t FirstNonCodecType = 4;
 
 void be16(vector<uint8_t> &v, uint32_t x) {
     v.push_back(static_cast<uint8_t>(x >> 8));
@@ -74,6 +87,128 @@ int bitsFor(uint32_t value) {
 size_t rawDeflate(const uint8_t *src, size_t size, uint8_t *dest, size_t capacity) {
     const int flags = static_cast<int>(tdefl_create_comp_flags_from_zip_params(9, -15, MZ_DEFAULT_STRATEGY));
     return tdefl_compress_mem_to_mem(dest, capacity, src, size, flags);
+}
+
+#ifndef AB_NO_CHD
+void *lzmaAlloc(ISzAllocPtr, size_t size) {
+    return malloc(size);
+}
+
+void lzmaFree(ISzAllocPtr, void *address) {
+    free(address);
+}
+
+// The raw LZMA stream of a hunk's sectors, with the properties libchdr's decoder derives for itself (level 9,
+// the dictionary sized for the sector data of one hunk: it builds the decoder from the same call, because the
+// format carries no properties). The encoder is made once and reused for every hunk.
+class LzmaHunkEncoder {
+public:
+    LzmaHunkEncoder() {
+        alloc_.Alloc = lzmaAlloc;
+        alloc_.Free = lzmaFree;
+        CLzmaEncProps props;
+        LzmaEncProps_Init(&props);
+        props.level = 9;
+        props.reduceSize = ChdWriter::FramesPerHunk * ChdWriter::SectorBytes;
+        LzmaEncProps_Normalize(&props);
+        enc_ = LzmaEnc_Create(&alloc_);
+        if (enc_ != nullptr && LzmaEnc_SetProps(enc_, &props) != SZ_OK) {
+            LzmaEnc_Destroy(enc_, &alloc_, &alloc_);
+            enc_ = nullptr;
+        }
+    }
+    ~LzmaHunkEncoder() {
+        if (enc_ != nullptr)
+            LzmaEnc_Destroy(enc_, &alloc_, &alloc_);
+    }
+    LzmaHunkEncoder(const LzmaHunkEncoder &) = delete;
+    LzmaHunkEncoder &operator=(const LzmaHunkEncoder &) = delete;
+
+    // 0 when it does not fit in 'capacity' (or the encoder could not be made)
+    size_t encode(const uint8_t *src, size_t size, uint8_t *dest, size_t capacity) {
+        if (enc_ == nullptr)
+            return 0;
+        SizeT length = capacity;
+        if (LzmaEnc_MemEncode(enc_, dest, &length, src, size, 0, nullptr, &alloc_, &alloc_) != SZ_OK)
+            return 0;
+        return length;
+    }
+
+private:
+    ISzAlloc alloc_;
+    CLzmaEncHandle enc_ = nullptr;
+};
+#endif
+
+// the compression of one hunk's sector data and subcode, the parts every CD codec stores separately
+struct HunkParts {
+    explicit HunkParts(const uint8_t *hunk)
+        : base(ChdWriter::FramesPerHunk * ChdWriter::SectorBytes),
+          sub(ChdWriter::FramesPerHunk * (ChdWriter::FrameBytes - ChdWriter::SectorBytes)),
+          packedSub(ChdWriter::HunkBytes) {
+        const size_t subBytes = ChdWriter::FrameBytes - ChdWriter::SectorBytes;
+        for (uint32_t f = 0; f < ChdWriter::FramesPerHunk; f++) {
+            memcpy(&base[f * ChdWriter::SectorBytes], hunk + f * ChdWriter::FrameBytes, ChdWriter::SectorBytes);
+            memcpy(&sub[f * subBytes], hunk + f * ChdWriter::FrameBytes + ChdWriter::SectorBytes, subBytes);
+        }
+        packedSubBytes = rawDeflate(sub.data(), sub.size(), packedSub.data(), packedSub.size());
+    }
+    vector<uint8_t> base, sub, packedSub;
+    size_t packedSubBytes = 0; // 0: did not compress
+};
+
+// cdlz and cdzl: the ECC bitmap (nothing stripped), the length of the compressed sectors (2 bytes: a hunk is
+// under 64 KB), the compressed sectors, the deflated subcode - libchdr's cdlz_codec_decompress / cdzl_codec_decompress
+bool packCdBase(const HunkParts &parts, const uint8_t *packedBase, size_t baseBytes, vector<uint8_t> &out) {
+    const size_t header = (ChdWriter::FramesPerHunk + 7) / 8 + 2;
+    if (baseBytes == 0 || parts.packedSubBytes == 0 || baseBytes > 0xffff ||
+        header + baseBytes + parts.packedSubBytes >= ChdWriter::HunkBytes)
+        return false;
+    out.assign(header, 0);
+    out[header - 2] = static_cast<uint8_t>(baseBytes >> 8);
+    out[header - 1] = static_cast<uint8_t>(baseBytes);
+    out.insert(out.end(), packedBase, packedBase + baseBytes);
+    out.insert(out.end(), parts.packedSub.begin(), parts.packedSub.begin() + parts.packedSubBytes);
+    return true;
+}
+
+bool encodeCdzl(const HunkParts &parts, vector<uint8_t> &out) {
+    vector<uint8_t> packed(ChdWriter::HunkBytes);
+    const size_t b = rawDeflate(parts.base.data(), parts.base.size(), packed.data(), packed.size());
+    return packCdBase(parts, packed.data(), b, out);
+}
+
+bool encodeCdlz(const HunkParts &parts, vector<uint8_t> &out) {
+#ifdef AB_NO_CHD
+    (void)parts;
+    (void)out;
+    return false;
+#else
+    static thread_local LzmaHunkEncoder encoder;
+    vector<uint8_t> packed(ChdWriter::HunkBytes);
+    const size_t b = encoder.encode(parts.base.data(), parts.base.size(), packed.data(), packed.size());
+    return packCdBase(parts, packed.data(), b, out);
+#endif
+}
+
+// cdfl: the sectors as a FLAC stream of 16-bit stereo samples, then the deflated subcode up to the end of the
+// hunk's data - libchdr's cdfl_codec_decompress. The samples are the hunk's bytes read big-endian (what chdman
+// stores CD audio as); the block size is cdfl_codec_blocksize: the sector data in samples, halved to at most 2352.
+bool encodeCdfl(const HunkParts &parts, vector<uint8_t> &out) {
+    if (parts.packedSubBytes == 0)
+        return false;
+    const size_t samples = parts.base.size() / 4;
+    vector<int16_t> pcm(samples * 2);
+    for (size_t i = 0; i < pcm.size(); i++)
+        pcm[i] = static_cast<int16_t>((parts.base[2 * i] << 8) | parts.base[2 * i + 1]);
+    uint32_t blockSize = static_cast<uint32_t>(samples);
+    while (blockSize > ChdWriter::SectorBytes)
+        blockSize /= 2;
+    out = FlacEncoder::encode(pcm.data(), samples, blockSize);
+    if (out.size() + parts.packedSubBytes >= ChdWriter::HunkBytes)
+        return false;
+    out.insert(out.end(), parts.packedSub.begin(), parts.packedSub.begin() + parts.packedSubBytes);
+    return true;
 }
 
 const array<uint16_t, 256> &crcTable() {
@@ -228,25 +363,34 @@ uint16_t ChdWriter::crc16(const uint8_t *data, size_t size) {
     return crc;
 }
 
+bool ChdWriter::cdlzHunk(const uint8_t *hunk, vector<uint8_t> &out) {
+    return encodeCdlz(HunkParts(hunk), out);
+}
+
 bool ChdWriter::cdzlHunk(const uint8_t *hunk, vector<uint8_t> &out) {
-    const size_t sectors = FramesPerHunk * SectorBytes;
-    const size_t subs = FramesPerHunk * (FrameBytes - SectorBytes);
-    vector<uint8_t> base(sectors), sub(subs), packedBase(HunkBytes), packedSub(HunkBytes);
-    for (uint32_t f = 0; f < FramesPerHunk; f++) {
-        memcpy(&base[f * SectorBytes], hunk + f * FrameBytes, SectorBytes);
-        memcpy(&sub[f * (FrameBytes - SectorBytes)], hunk + f * FrameBytes + SectorBytes, FrameBytes - SectorBytes);
+    return encodeCdzl(HunkParts(hunk), out);
+}
+
+bool ChdWriter::cdflHunk(const uint8_t *hunk, vector<uint8_t> &out) {
+    return encodeCdfl(HunkParts(hunk), out);
+}
+
+uint8_t ChdWriter::smallestHunk(const uint8_t *hunk, vector<uint8_t> &out) {
+    const HunkParts parts(hunk);
+    uint8_t type = TypeStored;
+    vector<uint8_t> candidate;
+    // chdman's compressor keeps the first of the smallest, in the order of the header
+    const struct {
+        uint8_t type;
+        bool (*encode)(const HunkParts &, vector<uint8_t> &);
+    } codecs[] = {{TypeCdlz, encodeCdlz}, {TypeCdzl, encodeCdzl}, {TypeCdfl, encodeCdfl}};
+    for (const auto &c : codecs) {
+        if (c.encode(parts, candidate) && (type == TypeStored || candidate.size() < out.size())) {
+            type = c.type;
+            out.swap(candidate);
+        }
     }
-    const size_t b = rawDeflate(base.data(), base.size(), packedBase.data(), packedBase.size());
-    const size_t s = rawDeflate(sub.data(), sub.size(), packedSub.data(), packedSub.size());
-    const size_t header = (FramesPerHunk + 7) / 8 + 2; // the ECC bitmap (none stripped), the base length
-    if (b == 0 || s == 0 || header + b + s >= HunkBytes)
-        return false;
-    out.assign(header, 0);
-    out[header - 2] = static_cast<uint8_t>(b >> 8);
-    out[header - 1] = static_cast<uint8_t>(b);
-    out.insert(out.end(), packedBase.begin(), packedBase.begin() + b);
-    out.insert(out.end(), packedSub.begin(), packedSub.begin() + s);
-    return true;
+    return type;
 }
 
 vector<uint8_t> ChdWriter::packMap(const vector<HunkEntry> &hunks, uint64_t firstOffset) {
@@ -261,7 +405,7 @@ vector<uint8_t> ChdWriter::packMap(const vector<HunkEntry> &hunks, uint64_t firs
         be48(raw, at);
         be16(raw, h.crc);
         at += h.length;
-        if (h.type == TypeCdzl)
+        if (h.type < FirstNonCodecType)
             longest = max(longest, h.length);
     }
     const int lengthBits = max(1, bitsFor(longest));
@@ -273,7 +417,7 @@ vector<uint8_t> ChdWriter::packMap(const vector<HunkEntry> &hunks, uint64_t firs
     for (const HunkEntry &h : hunks)
         bits.put(h.type, 4);
     for (const HunkEntry &h : hunks) {
-        if (h.type == TypeCdzl)
+        if (h.type < FirstNonCodecType)
             bits.put(h.length, lengthBits);
         bits.put(h.crc, 16);
     }
@@ -341,6 +485,7 @@ bool ChdWriter::open(const string &path, const vector<Track> &tracks, string &er
     for (const Track &t : tracks_)
         logicalBytes_ += static_cast<uint64_t>(paddedFrames(t.frames)) * FrameBytes;
     entries_.clear();
+    hunksOfType_.fill(0);
     entries_.reserve(hunkCount_);
     raw_ = Sha1();
     offset_ = 0;
@@ -355,15 +500,15 @@ bool ChdWriter::flushHunk(string &error) {
     entry.crc = crc16(hunk_.data(), HunkBytes);
     vector<uint8_t> packed;
     bool ok;
-    if (cdzlHunk(hunk_.data(), packed)) {
-        entry.type = TypeCdzl;
+    entry.type = smallestHunk(hunk_.data(), packed);
+    if (entry.type != TypeStored) {
         entry.length = static_cast<uint32_t>(packed.size());
         ok = put(packed.data(), packed.size(), error);
     } else {
-        entry.type = TypeStored;
         entry.length = HunkBytes;
         ok = put(hunk_.data(), HunkBytes, error);
     }
+    hunksOfType_[entry.type]++;
     entries_.push_back(entry);
     hunksDone_++;
     fill(hunk_.begin(), hunk_.end(), 0);
@@ -371,9 +516,18 @@ bool ChdWriter::flushHunk(string &error) {
     return ok;
 }
 
-bool ChdWriter::pushFrame(const uint8_t *sector, string &error) {
-    if (sector != nullptr)
-        memcpy(&hunk_[frameInHunk_ * FrameBytes], sector, SectorBytes);
+bool ChdWriter::pushFrame(const uint8_t *sector, bool swapBytes, string &error) {
+    if (sector != nullptr) {
+        uint8_t *frame = &hunk_[frameInHunk_ * FrameBytes];
+        if (swapBytes) {
+            for (uint32_t i = 0; i < SectorBytes; i += 2) {
+                frame[i] = sector[i + 1];
+                frame[i + 1] = sector[i];
+            }
+        } else {
+            memcpy(frame, sector, SectorBytes);
+        }
+    }
     return ++frameInHunk_ < FramesPerHunk || flushHunk(error);
 }
 
@@ -382,11 +536,12 @@ bool ChdWriter::writeSector(const uint8_t *sector, string &error) {
         error = "more sectors than the tracks hold";
         return false;
     }
-    if (!pushFrame(sector, error))
+    // CD audio is stored big-endian, as chdman does (the drive delivers it little-endian)
+    if (!pushFrame(sector, tracks_[track_].type == "AUDIO", error))
         return false;
     if (++inTrack_ == tracks_[track_].frames) {
         for (uint32_t pad = paddedFrames(inTrack_) - inTrack_; pad > 0; pad--)
-            if (!pushFrame(nullptr, error))
+            if (!pushFrame(nullptr, false, error))
                 return false;
         track_++;
         inTrack_ = 0;
@@ -400,7 +555,7 @@ bool ChdWriter::finish(string &error) {
         return false;
     }
     while (frameInHunk_ != 0)
-        if (!pushFrame(nullptr, error))
+        if (!pushFrame(nullptr, false, error))
             return false;
 
     const uint64_t mapOffset = offset_;
@@ -445,9 +600,9 @@ bool ChdWriter::finish(string &error) {
     vector<uint8_t> header = {'M', 'C', 'o', 'm', 'p', 'r', 'H', 'D'};
     be32(header, HeaderBytes);
     be32(header, 5);
+    be32(header, CodecCdlz);
     be32(header, CodecCdzl);
-    be32(header, 0);
-    be32(header, 0);
+    be32(header, CodecCdfl);
     be32(header, 0);
     be64(header, logicalBytes_);
     be64(header, mapOffset);
