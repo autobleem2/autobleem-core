@@ -56,7 +56,7 @@ bool GameQueryService::showInternalGames() const {
 // GameQueryService::cleanGameNames
 //*******************************
 bool GameQueryService::cleanGameNames() const {
-    return config_.inifile.values["cleannames"] == "true"; // off by default (the owner, 12.10)
+    return config_.inifile.values["cleannames"] != "false";
 }
 
 //*******************************

@@ -153,9 +153,9 @@ Config::Config() {
         inifile.values["covershine"] = "true";
 
     // "Clean game names" (Options -> Library): RetroArch game lists show the name without the (region) [tags] of
-    // the file name, off unless switched on
-    if (inifile.values["cleannames"] != "true")
-        inifile.values["cleannames"] = "false";
+    // the file name, on unless switched off
+    if (inifile.values["cleannames"] != "false")
+        inifile.values["cleannames"] = "true";
 
     // "Show performance" (Options -> Diagnostics): the renderer's overlay, off unless asked for
     if (inifile.values["perfoverlay"] != "true")
