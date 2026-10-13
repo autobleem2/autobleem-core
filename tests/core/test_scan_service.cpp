@@ -562,6 +562,7 @@ TEST_CASE("the online pass fetches the box art of a ROM without one, once, and t
 
 TEST_CASE("a disc's box art is fetched once, only when online is on, and the launcher is told") {
     ScanServiceFixture fx;
+    fx.env.setRetroarchDir(fx.tmp.makeSubDir("retroarch"));
     fx.tmp.makeSubDir("retroarch/thumbnails");
     vector<string> commands;
     auto runner = [&commands](const string &commandLine) {
