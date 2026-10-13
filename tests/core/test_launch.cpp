@@ -559,6 +559,7 @@ TEST_CASE("rapersist=false: RetroArch is told not to save its config at exit; no
                                                               "menu_pixel_aspect = \"1.000000\"\n"
                                                               "menu_scale_factor = \"1.000000\"\n"
                                                               "menu_safe_margin = \"0\"\n"
+                                                              "input_menu_toggle_gamepad_combo = \"4\"\n"
                                                               "savestate_directory = \"" +
                                                                   lib.tmp.at("RetroArch/bin/savestates") +
                                                                   "\"\n"
@@ -1379,6 +1380,7 @@ TEST_CASE("RetroArch on the CRT mode (720x480): 1.5 aspect, no 16:9 viewport, no
     CHECK(contains(inPlay, "menu_pixel_aspect = \"0.888889\""));
     CHECK(contains(inPlay, "menu_scale_factor = \"1.300000\""));
     CHECK(contains(inPlay, "menu_safe_margin = \"10\""));
+    CHECK(contains(inPlay, "input_menu_toggle_gamepad_combo = \"4\"")); // Start+Select opens the menu
     CHECK_FALSE(contains(inPlay, "custom_viewport"));
     CHECK_FALSE(contains(inPlay, "menu_driver")); // XMB stays
     for (const char *key : {"aspect_ratio_index", "video_shader_enable", "video_scale_integer", "video_message_pos_x"})
@@ -1418,6 +1420,26 @@ TEST_CASE("RetroArch on a square-pixel 4:3 output (640x480): the CRT lines are t
     CHECK(contains(inPlay, "menu_pixel_aspect = \"1.000000\""));
     CHECK(contains(inPlay, "menu_scale_factor = \"1.000000\""));
     CHECK(contains(inPlay, "menu_safe_margin = \"0\""));
+    CHECK(contains(inPlay, "input_menu_toggle_gamepad_combo = \"4\"")); // on every output mode
+}
+
+TEST_CASE("RetroArch's menu combo is Start+Select for the run and the player's own comes back after it") {
+    Launching lib;
+    lib.configure("Raconfig=false\n");
+    PsGamePtr game = lib.foreignGame(false);
+    lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "input_menu_toggle_gamepad_combo = \"0\"\n"
+                                                     "menu_driver = \"xmb\"\n");
+    string inPlay;
+    lib.runner.whileRunning = [&] {
+        inPlay = lib.tmp.readFile("System/Runtime/ra-append.cfg");
+        // RetroArch saves every setting it holds, ours included
+        lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "input_menu_toggle_gamepad_combo = \"4\"\n"
+                                                         "menu_driver = \"xmb\"\n");
+    };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK(occurrences(inPlay, "input_menu_toggle_gamepad_combo =") == 1);
+    CHECK(contains(inPlay, "input_menu_toggle_gamepad_combo = \"4\""));
+    CHECK(contains(lib.tmp.readFile("RetroArch/bin/retroarch.cfg"), "input_menu_toggle_gamepad_combo = \"0\""));
 }
 
 // ---------------------------------------------------------------------------------------------------------

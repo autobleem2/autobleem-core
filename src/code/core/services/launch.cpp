@@ -1122,6 +1122,9 @@ void LaunchService::raMenuSettings(const OutputMode &mode, ConfigFileEditor::Cfg
     replaceLine(lines, "menu_pixel_aspect", mode.isCrt() ? "0.888889" : "1.000000");
     replaceLine(lines, "menu_scale_factor", mode.isCrt() ? "1.300000" : "1.000000");
     replaceLine(lines, "menu_safe_margin", to_string(margin));
+    // a short press of Start+Select opens RetroArch's menu on every pad (gamepad combo 4), as a short press of Home
+    // does through the pad's autoconfig; holding either for two seconds leaves RetroArch (rc/ab_exitwatch.sh)
+    replaceLine(lines, "input_menu_toggle_gamepad_combo", "4");
 }
 
 // the same setting in two spellings: RetroArch saves a float as "1.300000" whatever it was given ("1.3")
