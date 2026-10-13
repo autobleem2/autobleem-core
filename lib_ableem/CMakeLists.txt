@@ -91,7 +91,7 @@ target_include_directories(ableem_engine
 set_source_files_properties(third_party/sqlite/sqlite3ab.c PROPERTIES COMPILE_FLAGS "-w")
 set_source_files_properties(third_party/miniz/miniz.c PROPERTIES COMPILE_FLAGS "-w")
 set_source_files_properties(third_party/miniz/miniz.c src/engine/zip_archive.cpp src/engine/zip_writer.cpp src/engine/tar_archive.cpp
-        src/engine/crc32.cpp PROPERTIES COMPILE_DEFINITIONS "MINIZ_NO_TIME")
+        src/engine/crc32.cpp src/engine/image_pixels.cpp PROPERTIES COMPILE_DEFINITIONS "MINIZ_NO_TIME")
 
 find_package(Threads REQUIRED)
 target_link_libraries(ableem_engine PUBLIC Threads::Threads ${CMAKE_DL_LIBS})

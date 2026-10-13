@@ -24,4 +24,8 @@ bool readImagePixels(const std::string &path, ImagePixels &out);
 // untouched) when it cannot be read or is not a picture of those kinds. Never throws.
 bool readImageSize(const std::string &path, int &w, int &h);
 
+// Writes `in` (RGBA, as readImagePixels gives it) to `path` as a PNG, replacing the file. False when the picture is
+// empty or does not match its size, or the file cannot be written. Never throws.
+bool writePngPixels(const std::string &path, const ImagePixels &in);
+
 } // namespace ableem
