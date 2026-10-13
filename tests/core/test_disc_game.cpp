@@ -11,6 +11,7 @@
 
 #include <ableem/engine/config_file_editor.h>
 #include <ableem/engine/environment.h>
+#include <ableem/engine/game_database.h>
 #include <ableem/engine/ini_file.h>
 
 #include <string>
@@ -32,11 +33,36 @@ string makeRdbFile(const TempDir &tmp) {
     return writeRdb(tmp, "Sony - PlayStation.rdb", makeRdb(0, records));
 }
 
+// covers U db with the real schema and one game, its cover four bytes
+void makeCoversDb(const TempDir &tmp, const string &serial) {
+    ableem::GameDatabase db;
+    REQUIRE(db.open(tmp.at("db/coversU.db")));
+    REQUIRE(db.execute("CREATE TABLE GAME (ID INTEGER NOT NULL UNIQUE, TITLE TEXT NOT NULL, PUBLISHER TEXT NOT NULL, "
+                       "RELEASE INTEGER NOT NULL, PLAYERS INTEGER NOT NULL, COVER BLOB, PRIMARY KEY(ID))",
+                       "create GAME"));
+    REQUIRE(db.execute("CREATE TABLE SERIALS (SERIAL TEXT NOT NULL, GAME INTEGER NOT NULL, PRIMARY KEY(SERIAL))",
+                       "create SERIALS"));
+    REQUIRE(db.execute("INSERT INTO GAME VALUES (1, 'Crash Bandicoot', 'Sony', 1996, 1, X'89504E47')", "insert GAME"));
+    string insert = "INSERT INTO SERIALS VALUES ('" + serial + "', 1)";
+    REQUIRE(db.execute(insert.c_str(), "insert SERIALS"));
+}
+
 struct Rig {
     GameLibraryFixture lib;
+    string thumbDir;
     ableem::MetadataLookup metadata;
     DiscGameService service;
-    Rig() : metadata(lib.tmp.at("db"), makeRdbFile(lib.tmp)), service(lib.library, metadata) {}
+    explicit Rig(bool coversDb = false)
+        : thumbDir(setUpThumbnails(lib, coversDb)), metadata(lib.tmp.at("db"), makeRdbFile(lib.tmp)),
+          service(lib.library, metadata) {}
+
+    // RetroArch's thumbnails tree under the temp stick (and the covers db when asked), before the lookups read paths
+    static string setUpThumbnails(GameLibraryFixture &lib, bool coversDb) {
+        lib.env.setRetroarchDir(lib.tmp.at("retroarch"));
+        if (coversDb)
+            makeCoversDb(lib.tmp, "SCUS-94900");
+        return lib.tmp.makeSubDir("retroarch/thumbnails/Sony - PlayStation/Named_Boxarts");
+    }
 
     void addLibraryGame(int id, const string &title, const string &serial) {
         lib.addUsbGame(id, title, "MyCard");
@@ -114,6 +140,32 @@ TEST_CASE("metadata comes from the lookup; the volume label is the title when no
     CHECK(unknown.game->title == "SOME GAME");
     CHECK(unknown.game->region == "P");
     CHECK(unknown.cover.empty());
+}
+
+TEST_CASE("no covers db: the thumbnails tree's box art, by the rdb's record name, is the cover") {
+    Rig rig;
+    rig.lib.tmp.writeFile("retroarch/thumbnails/Sony - PlayStation/Named_Boxarts/Crash Bandicoot (USA).png", "BOXART");
+
+    DiscGame disc = rig.service.make("SCUS-94900", "U", "CRASH", 0);
+    CHECK(string(disc.cover.begin(), disc.cover.end()) == "BOXART");
+}
+
+TEST_CASE("no covers db and no thumbnail: no cover, the caller falls back to default.png") {
+    Rig rig;
+    DiscGame disc = rig.service.make("SCUS-94900", "U", "CRASH", 0);
+    CHECK(disc.inDatabase);
+    CHECK(disc.cover.empty());
+
+    DiscGame unknown = rig.service.make("SLES-55555", "P", "SOME GAME", 0);
+    CHECK(unknown.cover.empty());
+}
+
+TEST_CASE("the covers db's picture wins over the thumbnails tree") {
+    Rig rig(true);
+    rig.lib.tmp.writeFile("retroarch/thumbnails/Sony - PlayStation/Named_Boxarts/Crash Bandicoot (USA).png", "BOXART");
+
+    DiscGame disc = rig.service.make("SCUS-94900", "U", "CRASH", 0);
+    CHECK(string(disc.cover.begin(), disc.cover.end()) == "\x89PNG");
 }
 
 TEST_CASE("a disc no library game shares gets its pcsx.cfg, Game.ini and cover when the folder is made, once") {

@@ -560,6 +560,45 @@ TEST_CASE("the online pass fetches the box art of a ROM without one, once, and t
     CHECK(commands.size() == before); // the cover is there: no probe, no fetch
 }
 
+TEST_CASE("a disc's box art is fetched once, only when online is on, and the launcher is told") {
+    ScanServiceFixture fx;
+    fx.tmp.makeSubDir("retroarch/thumbnails");
+    vector<string> commands;
+    auto runner = [&commands](const string &commandLine) {
+        commands.push_back(commandLine);
+        size_t sp = commandLine.find(' ');
+        size_t sp2 = commandLine.find(' ', sp + 1);
+        string url = commandLine.substr(sp + 1, sp2 - sp - 1);
+        string out = commandLine.substr(sp2 + 1);
+        string expected = OnlineAssets::boxArtUrl("http://thumbs", "Sony - PlayStation", "Crash Bandicoot (USA)");
+        if (url != "http://thumbs/" && url != expected)
+            return 22;
+        std::ofstream o(out, std::ios::binary);
+        o << "png";
+        return 0;
+    };
+    OnlineAssets::Config online;
+    online.downloadCommand = "fetch %u %o";
+    online.thumbnailsBaseUrl = "http://thumbs";
+
+    fx.svc.setOnline(false, online, runner);
+    fx.svc.requestDiscBoxArt("Crash Bandicoot (USA)");
+    CHECK_FALSE(fx.svc.fetchDiscBoxArt());
+    CHECK(commands.empty());
+
+    fx.svc.setOnline(true, online, runner);
+    fx.svc.requestDiscBoxArt("Crash Bandicoot (USA)");
+    CHECK(fx.svc.fetchDiscBoxArt());
+    CHECK(ableem::DirEntry::exists(
+        fx.tmp.at("retroarch/thumbnails/Sony - PlayStation/Named_Boxarts/Crash Bandicoot (USA).png")));
+    CHECK(fx.svc.poll().boxArtFetched == 1);
+
+    size_t before = commands.size();
+    fx.svc.requestDiscBoxArt("Crash Bandicoot (USA)"); // asked once per run
+    CHECK_FALSE(fx.svc.fetchDiscBoxArt());
+    CHECK(commands.size() == before);
+}
+
 TEST_CASE("a folder the scan refuses is kept in regional.db with its reasons, for the Game Manager") {
     ScanServiceFixture fx;
     test_support::makeFakeGame(fx.gamesDir(), "Crash Bandicoot", "SLUS_012.34");
