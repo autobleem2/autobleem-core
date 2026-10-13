@@ -140,6 +140,11 @@ public:
     // means in direct mode; the console and the Pi leave the launcher and their rc/retroarch.sh does it)
     static LaunchPlan planRetroArchMenu();
     void launchRetroArchMenu();
+    // RetroArch's PS1 core for one of our games, as a core path: the user's pick for "PlayStation 1 Games" in the
+    // RetroArch cores window, else the platform's (pcsx_rearmed on the console, a Pi and a plain PC; SwanStation on
+    // a PC stick and Windows, the owner 2026-10-11), else the first installed core that plays PS1
+    // (Environment::getPathToPs1RetroarchCore). The game's pcsx GPU plugin does not pick it - it is PCSX's alone.
+    static std::string ps1RaCore(const PsGame &game);
 
 private:
     enum class Path { Pcsx, RetroArch, App };
@@ -157,12 +162,6 @@ private:
     static std::string discImageFor(const PsGame &game);
     // the image's base name with a .pbp extension dropped - what RetroArch names its saves after
     static std::string raBaseNameFor(const PsGame &game);
-    // RetroArch's PS1 core for one of our games, as a core path: the user's pick for "PlayStation 1 Games" in the
-    // RetroArch cores window, else the platform's (pcsx_rearmed on the console, a Pi and a plain PC; SwanStation on
-    // a PC stick and Windows, the owner 2026-10-11), else the first installed core that plays PS1
-    // (Environment::getPathToPs1RetroarchCore). The game's pcsx GPU plugin does not pick it - it is PCSX's alone.
-    static std::string ps1RaCore(const PsGame &game);
-
     // --- PCSX ---
     // planPcsx()/planDisc() both; nxtOnly: pcsx-abnxt or nothing
     LaunchPlan planPcsxFor(const PsGame &game, const std::string &discImage, const std::string &lang, int resumePoint,
