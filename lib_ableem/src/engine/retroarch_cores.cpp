@@ -212,6 +212,34 @@ CoreInfos CoreInfoTable::platformOrder(const string &dbName) const {
 }
 
 //*******************************
+// CoreInfoTable::ps1Cores / ps1Core
+//*******************************
+const char CoreInfoTable::Ps1Database[] = "Sony - PlayStation";
+
+CoreInfos CoreInfoTable::ps1Cores(const string &defaultCorePath) const {
+    CoreInfos out;
+    for (const CoreInfoPtr &info : cores_) {
+        if (find(info->databases.begin(), info->databases.end(), Ps1Database) != info->databases.end())
+            out.push_back(info);
+    }
+    stable_sort(out.begin(), out.end(), [](const CoreInfoPtr &i, const CoreInfoPtr &j) { return i->stem < j->stem; });
+    const string defaultStem = defaultCorePath.empty() ? "" : stemOf(defaultCorePath);
+    auto it = find_if(out.begin(), out.end(), [&](const CoreInfoPtr &info) { return info->stem == defaultStem; });
+    if (it != out.end())
+        rotate(out.begin(), it, it + 1);
+    return out;
+}
+
+CoreInfoPtr CoreInfoTable::ps1Core(const string &userPickStem, const string &defaultCorePath) const {
+    const CoreInfos all = ps1Cores(defaultCorePath);
+    for (const CoreInfoPtr &info : all) {
+        if (!userPickStem.empty() && info->stem == userPickStem)
+            return info;
+    }
+    return all.empty() ? nullptr : all.front();
+}
+
+//*******************************
 // CoreInfoTable::userPicks / saveUserPicks
 //*******************************
 map<string, string> CoreInfoTable::loadUserPicks(const string &path) {

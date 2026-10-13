@@ -41,7 +41,6 @@ int scalerIndex(const string &token) {
 
 const char *const RaNeonCore = "NEON";
 const char *const RaPeopsCore = "PEOPS";
-const char *const PcsxNeonGpu = "builtin_gpu";
 
 } // namespace
 
@@ -166,7 +165,7 @@ LaunchPlan LaunchService::planPcsxFor(const PsGame &game, const string &discImag
         // cannot read our save-state slots, so a resume starts from the beginning) - launch.sh's fallback
         PLOG_INFO << "no pcsx-ab in " << Env::pcsxDir() << " or " << Env::pcsxNxtDir()
                   << " - falling back to RetroArch's PS1 core";
-        return planRetroArch(discImage, RaNeonCore);
+        return planRetroArch(discImage, Env::getPathToPs1RetroarchCore());
     }
     const string emuDir = plan.exe.substr(0, plan.exe.find_last_of('/'));
     const bool nxt = !Env::pcsxNxtDir().empty() && emuDir == Env::pcsxNxtDir();
@@ -270,8 +269,9 @@ int LaunchService::filterModeFor(const PsGame &game) {
 //*******************************
 // LaunchService::planRetroArch
 //*******************************
-// script mode - args as rc/launch_rb.sh reads them: file, core. direct mode - retroarch --config <its cfg>
-// -L <core> --fullscreen <file>, with the platform's PS1 core for one of ours.
+// script mode - args as rc/launch_rb.sh reads them: file, core (a core path; "NEON"/"PEOPS" only from an old
+// resume slot). direct mode - retroarch --config <its cfg> -L <core> --fullscreen <file>, with the platform's PS1
+// core for an old slot's NEON/PEOPS.
 LaunchPlan LaunchService::planRetroArch(const string &file, const string &core) {
     LaunchPlan plan;
     if (!Env::directLaunch()) {
@@ -673,15 +673,11 @@ string LaunchService::raBaseNameFor(const PsGame &game) {
 //*******************************
 // LaunchService::ps1RaCore
 //*******************************
-string LaunchService::ps1RaCore(const PsGame &game) {
-    const string platformCore = Env::getPathToRetroarchCoreFile();
-    if (DirEntry::getFileNameFromPath(platformCore).compare(0, 12, "pcsx_rearmed") != 0)
-        return platformCore;
-    string gpu = Strings::trim(PcsxConfig::value(game, "gpu3")); // the game's own config's, when it has one
-    if (gpu.empty())
-        gpu = PcsxNeonGpu;
-    PLOG_INFO << "Using GPU plugin: " << gpu;
-    return gpu == PcsxNeonGpu ? RaNeonCore : RaPeopsCore;
+string LaunchService::ps1RaCore(const PsGame &) {
+    // not the game's pcsx GPU plugin (gpu3): that one is for PCSX only
+    const string core = Env::getPathToPs1RetroarchCore();
+    PLOG_INFO << "PS1 RetroArch core: " << core;
+    return core;
 }
 
 //*******************************
@@ -786,7 +782,7 @@ void LaunchService::launchPcsx(PsGame &game, int resumePoint, const LaunchPlan::
         if (!ok) {
             // no links on this file system (a FAT stick): the emulator would run with an empty profile
             PLOG_WARNING << "cannot lay out " << dir << " - RetroArch's PS1 core plays the game instead";
-            plan = planRetroArch(gameFile, RaNeonCore);
+            plan = planRetroArch(gameFile, Env::getPathToPs1RetroarchCore());
         }
     }
     runner_.run(plan);

@@ -331,21 +331,22 @@ TEST_CASE("the game's memory-card set is in play while PCSX runs and is written 
 
 // --- RetroArch ---
 
-TEST_CASE("RetroArch is started through rc/launch_rb.sh with the image and the core for the game's GPU plugin") {
+TEST_CASE("RetroArch is started through rc/launch_rb.sh with the image and the PS1 core, whatever the GPU plugin") {
     Launching lib;
     lib.configure("Raconfig=false\n");
     PsGamePtr game = lib.usbGame();
+    const string core = ableem::Environment::getPathToPs1RetroarchCore();
 
-    SUBCASE("no pcsx.cfg, or the built-in GPU: the NEON core") {
+    SUBCASE("no pcsx.cfg, or the built-in GPU: the PS1 core's path") {
         lib.service->launch(game, EmuMode::RetroArch, -1);
         const FakeProcessRunner::Call &call = lib.runner.only();
         CHECK(call.exe == lib.rcScript("launch_rb.sh"));
-        CHECK(call.args == vector<string>{lib.tmp.at("Games/Tekken 3/Tekken 3.cue"), "NEON"});
+        CHECK(call.args == vector<string>{lib.tmp.at("Games/Tekken 3/Tekken 3.cue"), core});
     }
-    SUBCASE("the P.E.Op.S. plugin: the PEOPS core") {
+    SUBCASE("the P.E.Op.S. plugin picks nothing in RetroArch: the same core") {
         lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "Gpu3 = gpu_peops.so\n");
         lib.service->launch(game, EmuMode::RetroArch, -1);
-        CHECK(lib.runner.only().args[1] == "PEOPS");
+        CHECK(lib.runner.only().args[1] == core);
     }
     SUBCASE("a multi-disc .m3u next to the image is preferred") {
         lib.tmp.writeFile("Games/Tekken 3/Tekken 3.m3u", "Tekken 3.cue\n");

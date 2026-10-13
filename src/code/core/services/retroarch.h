@@ -30,9 +30,12 @@ struct RAPlaylistInfo {
 //********************
 // RACorePlatform
 //********************
-// one row of the RetroArch cores window: a system two or more installed cores play
+// one row of the RetroArch cores window: a system two or more installed cores play - or PlayStation 1 (first), which
+// is there whenever one core plays it
 struct RACorePlatform {
-    std::string database;
+    std::string database; // ableem::CoreInfoTable::Ps1Database for the PlayStation 1 row
+    bool locked = false;  // one core only: shown, not changeable
+    bool isPs1() const { return database == ableem::CoreInfoTable::Ps1Database; }
     ableem::CoreInfos cores; // the platform file's own pick first (it is the one marked "(default)"), then by stem
     int current = 0;         // the index of the core in use: the user's choice, else 0
 };
@@ -86,13 +89,15 @@ public:
     // or the playlist cannot be found or written, with nothing changed.
     bool setGameCore(PsGame &game, const ableem::CoreInfoPtr &core);
 
-    // the RetroArch cores window: every system with two or more installed cores, by name
+    // the RetroArch cores window: the PlayStation 1 row first (every installed core that plays PS1, the platform's
+    // default first; locked with just one), then every system with two or more installed cores, by name
     std::vector<RACorePlatform> corePlatforms();
     // what the window saved: the user's file (<state>/cores.user.cfg) gets a line per system whose choice differs
     // from the platform's pick, a system set back loses its line, and for every system whose core changed the
     // playlist entries under the ROM folders that carried the OLD core move to the new one (hand picks with another
-    // core stay; Favorites, History and the PS1 export are not touched), here and in the loaded games. Returns how
-    // many systems changed.
+    // core stay; Favorites, History and the PS1 export are not touched), here and in the loaded games. The PS1 pick
+    // (database Sony - PlayStation) touches no ROM-folder playlist: it rewrites the core of every entry in the PS1
+    // export (AutoBleem.lpl) instead. Returns how many systems changed.
     int saveCorePicks(const std::vector<std::pair<std::string, ableem::CoreInfoPtr>> &choices);
     // <state>/cores.user.cfg
     static std::string userCoresCfgPath();
@@ -116,6 +121,9 @@ private:
     void loadCores();
     // the entries of the system's playlist under the ROM folders that name `from` name `to`
     void moveCore(const std::string &database, const ableem::CoreInfoPtr &from, const ableem::CoreInfoPtr &to);
+    // the PS1 export's entries all name `to`
+    void moveExportedPs1Core(const ableem::CoreInfoPtr &to);
+    ableem::CoreInfoPtr currentPs1Core() const;
     void loadPlaylists();
     void reloadFavorites();
     void reloadHistory();

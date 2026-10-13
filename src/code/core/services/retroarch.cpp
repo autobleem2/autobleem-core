@@ -6,6 +6,7 @@
 #include "../main.h"
 #include "scan_service.h"
 
+#include <ableem/engine/game_library.h>
 #include <ableem/engine/path_compare.h>
 #include <ableem/engine/rdb_reader.h>
 #include <ableem/engine/retroarch_playlist.h>
@@ -489,7 +490,17 @@ bool RetroArchService::setGameCore(PsGame &game, const ableem::CoreInfoPtr &core
 // RetroArchService::userCoresCfgPath
 //********************
 string RetroArchService::userCoresCfgPath() {
-    return Env::getPathToStateDir() + sep + "cores.user.cfg";
+    return Env::getPathToUserCoresCfg();
+}
+
+//********************
+// RetroArchService::currentPs1Core
+//********************
+// the user's PS1 pick (cores.user.cfg) if installed, else the platform's default, else the first PS1 core
+ableem::CoreInfoPtr RetroArchService::currentPs1Core() const {
+    const map<string, string> picks = ableem::CoreInfoTable::loadUserPicks(userCoresCfgPath());
+    const auto pick = picks.find(ableem::CoreInfoTable::Ps1Database);
+    return cores_.ps1Core(pick == picks.end() ? "" : pick->second, Env::getPathToRetroarchCoreFile());
 }
 
 //********************
@@ -498,10 +509,24 @@ string RetroArchService::userCoresCfgPath() {
 vector<RACorePlatform> RetroArchService::corePlatforms() {
     ensureLoaded();
     vector<RACorePlatform> out;
+    {
+        RACorePlatform ps1;
+        ps1.database = ableem::CoreInfoTable::Ps1Database;
+        ps1.cores = cores_.ps1Cores(Env::getPathToRetroarchCoreFile());
+        if (!ps1.cores.empty()) {
+            ps1.locked = ps1.cores.size() == 1;
+            const ableem::CoreInfoPtr now = currentPs1Core();
+            for (size_t i = 0; i < ps1.cores.size(); i++) {
+                if (ps1.cores[i] == now)
+                    ps1.current = static_cast<int>(i);
+            }
+            out.push_back(ps1);
+        }
+    }
     // the systems the scan makes no ROM folder for (PlayStation, the versioned MAME builds ...) have no games here
     const set<string> skip = ableem::RetroArchScanner::loadSkipList(ScanService::romsSkipListPath());
     for (const string &db : cores_.databases()) { // sorted
-        if (skip.count(toLowerCopy(db)))
+        if (skip.count(toLowerCopy(db)) || db == ableem::CoreInfoTable::Ps1Database)
             continue;
         RACorePlatform row;
         row.database = db;
@@ -530,10 +555,19 @@ int RetroArchService::saveCorePicks(const vector<pair<string, ableem::CoreInfoPt
     };
     vector<Move> moves;
     for (const auto &choice : choices) {
-        ableem::CoreInfoPtr now = cores_.coreForDatabase(choice.first);
+        const bool ps1 = choice.first == ableem::CoreInfoTable::Ps1Database;
+        ableem::CoreInfoPtr now = ps1 ? currentPs1Core() : cores_.coreForDatabase(choice.first);
         if (!choice.second || !now || now == choice.second)
             continue;
-        if (choice.second == cores_.platformCoreFor(choice.first))
+        if (ps1) {
+            const ableem::CoreInfos all = cores_.ps1Cores(Env::getPathToRetroarchCoreFile());
+            if (find(all.begin(), all.end(), choice.second) == all.end())
+                continue; // not a PS1 core
+            if (choice.second == all.front())
+                picks.erase(choice.first);
+            else
+                picks[choice.first] = choice.second->stem;
+        } else if (choice.second == cores_.platformCoreFor(choice.first))
             picks.erase(choice.first);
         else
             picks[choice.first] = choice.second->stem;
@@ -543,10 +577,43 @@ int RetroArchService::saveCorePicks(const vector<pair<string, ableem::CoreInfoPt
         return 0;
     if (!ableem::CoreInfoTable::saveUserPicks(userCoresCfgPath(), picks))
         PLOG_WARNING << "Could not write " << userCoresCfgPath();
-    for (const Move &move : moves)
-        moveCore(move.database, move.from, move.to);
+    for (const Move &move : moves) {
+        if (move.database == ableem::CoreInfoTable::Ps1Database)
+            moveExportedPs1Core(move.to);
+        else
+            moveCore(move.database, move.from, move.to);
+    }
     loadCores(); // the new picks are what coreForDatabase answers from now on
     return static_cast<int>(moves.size());
+}
+
+//********************
+// RetroArchService::moveExportedPs1Core
+//********************
+// The export lists nothing but our own PS1 games, all with the one PS1 core: no ROM-folder entry is looked at.
+void RetroArchService::moveExportedPs1Core(const ableem::CoreInfoPtr &to) {
+    const string playlistPath = Env::getPathToRetroarchPlaylistsDir() + sep + ableem::GameLibrary::ExportedPlaylistName;
+    ableem::RetroArchPlaylistEntries entries;
+    ableem::RetroArchPlaylistHeader header;
+    if (!ableem::RetroArchPlaylist::load(playlistPath, entries, &header))
+        return;
+    int moved = 0;
+    for (auto &entry : entries) {
+        if (entry.core_path == to->core_path)
+            continue;
+        entry.core_path = to->core_path;
+        entry.core_name = to->name;
+        moved++;
+    }
+    if (moved == 0)
+        return;
+    const string tempPath = playlistPath + ".tmp";
+    if (!ableem::RetroArchPlaylist::save(tempPath, entries, header) || !DirEntry::replaceFile(tempPath, playlistPath)) {
+        PLOG_WARNING << "Could not write " << playlistPath;
+        DirEntry::removeFile(tempPath);
+        return;
+    }
+    PLOG_INFO << "PS1 core: " << moved << " entries of the exported playlist moved to " << to->name;
 }
 
 //********************
