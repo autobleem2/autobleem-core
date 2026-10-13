@@ -116,6 +116,17 @@ string DiscGameService::folderForKey(const string &key) {
 }
 
 //*******************************
+// DiscGameService::thumbnailCover
+//*******************************
+vector<char> DiscGameService::thumbnailCover(const string &title, const string &recordName) {
+    const string path = thumbnails_->findBoxArt(ableem::ThumbnailLookup::PlayStationDbName, title, recordName);
+    string bytes;
+    if (path.empty() || !ableem::DirEntry::readFile(path, bytes))
+        return {};
+    return vector<char>(bytes.begin(), bytes.end());
+}
+
+//*******************************
 // DiscGameService::make
 //*******************************
 DiscGame DiscGameService::make(const string &serial, const string &region, const string &volumeLabel, int sgIndex) {
@@ -170,6 +181,9 @@ DiscGame DiscGameService::make(const string &serial, const string &region, const
         game->recordName = md.recordName;
         disc.cover = md.bytes;
         disc.inDatabase = true;
+        // no covers db: the box art the library games use, from the RetroArch thumbnails tree
+        if (disc.cover.empty())
+            disc.cover = thumbnailCover(md.title, md.recordName);
     } else {
         game->title = volumeLabel;
     }
