@@ -257,12 +257,12 @@ void UsbGame::recoverMissingFiles(MetadataLookup &metadata) {
     if (discs.size() > 0 && !coverImageFound) {
         automationUsed = true;
         PLOG_INFO << "Switching automation no image";
-        string destination = fullPath + sep + discs[0].diskName + coverExtensionFor(md.bytes);
         string serial = SerialScanner::readSerial(imageType, fullPath, firstBinPath);
         if (serial != "") {
             if (metadata.findBySerial(serial, md)) {
                 metadataLoaded = true;
                 if (!md.bytes.empty()) {
+                    string destination = fullPath + sep + discs[0].diskName + coverExtensionFor(md.bytes);
                     PLOG_WARNING << "Updating cover in recoverMissingFiles()" << destination;
                     ofstream coverFile;
                     coverFile.open(destination, ios::binary);

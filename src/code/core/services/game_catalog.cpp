@@ -17,14 +17,14 @@ using namespace std;
 
 namespace {
 
-// every cover image (.png, .jpg, .jpeg) under path, at any depth. The cover flush used nftw() for this; walking with DirEntry keeps
-// the service free of <ftw.h>, which is not portable, and makes it testable against a temp tree.
+// every cover image (.png, .jpg, .jpeg) under path, at any depth. The cover flush used nftw() for this; walking with
+// DirEntry keeps the service free of <ftw.h>, which is not portable, and makes it testable against a temp tree.
 int removeCoverFilesUnder(const string &path, int removed = 0) {
     for (auto &entry : DirEntry::diru(path)) {
         string child = path + sep + entry.name;
         if (DirEntry::isDirectory(child)) {
             removed = removeCoverFilesUnder(child, removed);
-        } else if (DirEntry::isCoverImageName(entry.name)) {
+        } else if (ableem::isCoverImageName(entry.name)) {
             if (DirEntry::removeFile(child))
                 ++removed;
         }

@@ -458,7 +458,8 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
                         if (game->discs.size() > 0) {
                             // all recovered :)
                             if (!game->coverImageFound && !md.bytes.empty()) {
-                                string newFilename = game->fullPath + sep + game->discs[0].cueName + coverExtensionFor(md.bytes);
+                                string newFilename =
+                                    game->fullPath + sep + game->discs[0].cueName + coverExtensionFor(md.bytes);
                                 PLOG_INFO << "Updating cover in scanGamesDirectory()" << newFilename;
                                 ofstream coverFile;
                                 coverFile.open(newFilename, ios::binary);
