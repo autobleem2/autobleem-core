@@ -48,6 +48,9 @@ TEST_CASE("the file is one line, rewritten at every phase change and by the hear
     }
     CHECK(seen == "phase 2/3|download-retroarch|50|200");
     CHECK(seen.find('\n') == string::npos);
+    // .tmp legitimately exists while a heartbeat write is in flight: look only once finish() has joined the writer
+    CHECK(file.finish(true, false, "") == 0);
+    CHECK(tmp.readFile("progress") == "end|ok");
     CHECK_FALSE(DirEntry::exists(path + ".tmp")); // renamed, not left
 }
 
