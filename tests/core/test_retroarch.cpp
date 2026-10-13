@@ -576,18 +576,20 @@ ableem::CoreInfoPtr coreNamed(const RACorePlatform &row, const string &stem) {
 
 TEST_CASE("PS1 core: the platform's default, then the first installed one") {
     RetroArchTree ra;
-    addPs1Cores(ra);
     PsGame game = someGame();
 
     SUBCASE("PCSX ReARMed is the default on the console, a Pi and a plain PC") {
+        addPs1Cores(ra);
         ra.env.setRetroarchCoreFile(ra.core("pcsx_rearmed_libretro"));
         CHECK(LaunchService::ps1RaCore(game) == ra.core("pcsx_rearmed_libretro"));
     }
     SUBCASE("SwanStation where the platform ini names it (a PC stick, Windows)") {
+        addPs1Cores(ra);
         ra.env.setRetroarchCoreFile(ra.core("swanstation_libretro"));
         CHECK(LaunchService::ps1RaCore(game) == ra.core("swanstation_libretro"));
     }
     SUBCASE("the default is not installed: the first installed PS1 core") {
+        ra.addCore("swanstation_libretro", "Sony - PlayStation (SwanStation)", "cue|chd", Ps1Db);
         ra.addCore("duckstation_libretro", "Sony - PlayStation (DuckStation)", "cue", Ps1Db);
         ra.env.setRetroarchCoreFile(ra.core("nothing_libretro"));
         CHECK(LaunchService::ps1RaCore(game) == ra.core("duckstation_libretro"));
