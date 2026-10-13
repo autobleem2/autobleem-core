@@ -9,6 +9,7 @@
 #include "../support/temp_dir.h"
 
 #include "core/services/environment.h"
+#include "core/services/launch.h"
 #include "core/services/retroarch.h"
 
 #include <ableem/engine/filesystem.h>
@@ -547,4 +548,138 @@ TEST_CASE("a pick moves the entries whose core or ROM path is the same file writ
     REQUIRE(entries.size() == 2);
     CHECK(entries[0].core_path == ra.core("snes9x_libretro"));
     CHECK(entries[1].core_path == ra.core("snes9x_libretro"));
+}
+
+// --- PlayStation 1: the core our own games play with in RetroArch ---
+
+namespace {
+const char *const Ps1Db = "Sony - PlayStation";
+
+void addPs1Cores(RetroArchTree &ra) {
+    ra.addCore("pcsx_rearmed_libretro", "Sony - PlayStation (PCSX ReARMed)", "cue|chd|pbp", Ps1Db);
+    ra.addCore("swanstation_libretro", "Sony - PlayStation (SwanStation)", "cue|chd", Ps1Db);
+}
+
+PsGame someGame() {
+    PsGame game;
+    game.title = "Tekken 3";
+    return game;
+}
+
+ableem::CoreInfoPtr coreNamed(const RACorePlatform &row, const string &stem) {
+    for (const auto &c : row.cores)
+        if (c->stem == stem)
+            return c;
+    return nullptr;
+}
+} // namespace
+
+TEST_CASE("PS1 core: the platform's default, then the first installed one") {
+    RetroArchTree ra;
+    PsGame game = someGame();
+
+    SUBCASE("PCSX ReARMed is the default on the console, a Pi and a plain PC") {
+        addPs1Cores(ra);
+        ra.env.setRetroarchCoreFile(ra.core("pcsx_rearmed_libretro"));
+        CHECK(LaunchService::ps1RaCore(game) == ra.core("pcsx_rearmed_libretro"));
+    }
+    SUBCASE("SwanStation where the platform ini names it (a PC stick, Windows)") {
+        addPs1Cores(ra);
+        ra.env.setRetroarchCoreFile(ra.core("swanstation_libretro"));
+        CHECK(LaunchService::ps1RaCore(game) == ra.core("swanstation_libretro"));
+    }
+    SUBCASE("the default is not installed: the first installed PS1 core") {
+        ra.addCore("swanstation_libretro", "Sony - PlayStation (SwanStation)", "cue|chd", Ps1Db);
+        ra.addCore("duckstation_libretro", "Sony - PlayStation (DuckStation)", "cue", Ps1Db);
+        ra.env.setRetroarchCoreFile(ra.core("nothing_libretro"));
+        CHECK(LaunchService::ps1RaCore(game) == ra.core("duckstation_libretro"));
+    }
+}
+
+TEST_CASE("PS1 core: without an installed PS1 core the platform's path, as before") {
+    RetroArchTree ra;
+    ra.env.setRetroarchCoreFile(ra.core("swanstation_libretro"));
+    CHECK(LaunchService::ps1RaCore(someGame()) == ra.core("swanstation_libretro"));
+}
+
+TEST_CASE("PS1 core: the PlayStation 1 row is first, always there, and locked with a single core") {
+    RetroArchTree ra;
+    ra.env.setRetroarchCoreFile(ra.core("swanstation_libretro"));
+
+    CHECK(ra.service.corePlatforms().size() == 1); // only the SNES row: no PS1 core yet
+
+    ra.addCore("pcsx_rearmed_libretro", "Sony - PlayStation (PCSX ReARMed)", "cue", Ps1Db);
+    RetroArchService one;
+    vector<RACorePlatform> rows = one.corePlatforms();
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].isPs1());
+    CHECK(rows[0].locked);
+    REQUIRE(rows[0].cores.size() == 1);
+    CHECK(rows[0].cores[0]->stem == "pcsx_rearmed");
+    CHECK_FALSE(rows[1].isPs1());
+
+    ra.addCore("swanstation_libretro", "Sony - PlayStation (SwanStation)", "cue", Ps1Db);
+    RetroArchService two;
+    rows = two.corePlatforms();
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].isPs1());
+    CHECK_FALSE(rows[0].locked);
+    REQUIRE(rows[0].cores.size() == 2);
+    CHECK(rows[0].cores[0]->stem == "swanstation"); // the platform's default first
+    CHECK(rows[0].current == 0);
+    CHECK(rows[1].database == "Nintendo - Super Nintendo Entertainment System");
+
+    // the scan's skip list (PlayStation is on it) does not hide the row
+    ra.tmp.writeFile("platform/roms_skip.cfg", string(Ps1Db) + "\n");
+    RetroArchService skipped;
+    CHECK(skipped.corePlatforms()[0].isPs1());
+}
+
+TEST_CASE("PS1 core: the user's pick is saved, wins, and rewrites the exported playlist but no ROM-folder one") {
+    RetroArchTree ra;
+    addPs1Cores(ra);
+    ra.env.setRetroarchCoreFile(ra.core("pcsx_rearmed_libretro"));
+    const string exported = "RetroArch/bin/playlists/AutoBleem.lpl";
+    const string console = "RetroArch/bin/playlists/Sony - PlayStation.lpl";
+    const RetroArchTree::Entry ours{"/media/RetroArch/roms/snes/Chrono Trigger.sfc", "Chrono Trigger",
+                                    ra.core("pcsx_rearmed_libretro"), "DETECT", "AutoBleem.lpl"};
+    ra.tmp.writeFile(exported, RetroArchTree::json({ours}));
+    ra.tmp.writeFile(console, RetroArchTree::json({ours}));
+    string consoleText;
+    REQUIRE(ableem::DirEntry::readFile(ra.tmp.at(console), consoleText));
+
+    vector<RACorePlatform> rows = ra.service.corePlatforms();
+    REQUIRE(rows[0].isPs1());
+    const ableem::CoreInfoPtr swan = coreNamed(rows[0], "swanstation");
+    REQUIRE(swan);
+    CHECK(ra.service.saveCorePicks({{Ps1Db, swan}}) == 1);
+
+    CHECK(ableem::CoreInfoTable::loadUserPicks(RetroArchService::userCoresCfgPath()) ==
+          std::map<string, string>{{Ps1Db, "swanstation"}});
+    CHECK(LaunchService::ps1RaCore(someGame()) == ra.core("swanstation_libretro"));
+    CHECK(ableem::Environment::getPathToPs1RetroarchCore() == ra.core("swanstation_libretro"));
+    ableem::RetroArchPlaylistEntries entries;
+    REQUIRE(ableem::RetroArchPlaylist::load(ra.tmp.at(exported), entries));
+    REQUIRE(entries.size() == 1);
+    CHECK(entries[0].core_path == ra.core("swanstation_libretro"));
+    string consoleAfter;
+    REQUIRE(ableem::DirEntry::readFile(ra.tmp.at(console), consoleAfter));
+    CHECK(consoleAfter == consoleText); // not the export: left as it was
+
+    // the window shows it
+    rows = ra.service.corePlatforms();
+    CHECK(rows[0].cores[0]->stem == "pcsx_rearmed");
+    CHECK(rows[0].cores[rows[0].current]->stem == "swanstation");
+    CHECK(ra.service.saveCorePicks({{Ps1Db, swan}}) == 0); // nothing changed
+
+    // a pick whose core is gone falls back to the default
+    ableem::DirEntry::removeFile(ra.core("swanstation_libretro"));
+    CHECK(LaunchService::ps1RaCore(someGame()) == ra.core("pcsx_rearmed_libretro"));
+    ra.tmp.writeFile("RetroArch/bin/cores/swanstation_libretro.so", "core");
+
+    // back to the default: the line and the file go, the export follows
+    CHECK(ra.service.saveCorePicks({{Ps1Db, rows[0].cores[0]}}) == 1);
+    CHECK_FALSE(ableem::DirEntry::exists(RetroArchService::userCoresCfgPath()));
+    REQUIRE(ableem::RetroArchPlaylist::load(ra.tmp.at(exported), entries));
+    CHECK(entries[0].core_path == ra.core("pcsx_rearmed_libretro"));
 }
