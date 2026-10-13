@@ -4,6 +4,7 @@
 //
 #include "doctest/doctest.h"
 
+#include "support/covers_db.h"
 #include "support/temp_dir.h"
 #include <ableem/lanserver/http_server.h>
 #include <ableem/lanserver/index_page.h>
@@ -582,4 +583,29 @@ TEST_CASE(
     CHECK(status(httpSend(c.port, "DELETE", "/upload/Gone", "", "secret"), 200));
     CHECK_FALSE(ableem::DirEntry::exists(g.tmp.at("Games/.uploading/Gone")));
     CHECK(httpSend(c.port, "POST", "/upload/Gone?commit", "", "secret").compare(0, 12, "HTTP/1.1 404") == 0);
+}
+
+TEST_CASE("the covers-db fallback is served as image/jpeg for a JPEG blob and image/png for a PNG blob") {
+    Games g;
+    g.tmp.makeSubDir("Games/Jpeg Game");
+    g.tmp.writeFile("Games/Jpeg Game/j.chd", "disc");
+    g.tmp.writeFile("Games/Jpeg Game/Game.ini", "[Game]\nSerial=SLUS-01234\n");
+    g.tmp.makeSubDir("Games/Png Game");
+    g.tmp.writeFile("Games/Png Game/p.chd", "disc");
+    g.tmp.writeFile("Games/Png Game/Game.ini", "[Game]\nSerial=SCES-01234\n");
+    test_support::makeCoversDbWithCover(g.tmp, "db", "U", "SLUS-01234", test_support::CoverJpegHex);
+    test_support::makeCoversDbWithCover(g.tmp, "db", "P", "SCES-01234", test_support::CoverPngHex);
+
+    LanLibrary::Config config = g.config();
+    config.coversDir = g.tmp.at("db");
+    LanLibrary library(config);
+    library.scan();
+
+    string bytes, type;
+    REQUIRE(library.cover("Jpeg Game", bytes, type));
+    CHECK(type == "image/jpeg");
+    CHECK(static_cast<unsigned char>(bytes[0]) == 0xFF);
+    REQUIRE(library.cover("Png Game", bytes, type));
+    CHECK(type == "image/png");
+    CHECK(static_cast<unsigned char>(bytes[0]) == 0x89);
 }

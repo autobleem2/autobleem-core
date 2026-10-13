@@ -25,7 +25,7 @@ struct GameRecord {
     std::string ssFolder; // !SaveStates folder.  ex: "/Games/!SaveStates/8", "/Games/!SaveStates/007 Racing"
 
     std::string base; // file name of the game.  not sure if extension is included.
-                      // code looks for .pbp extension and replaces it with cue.  but elsewhere .png is appended without
+                      // code looks for .pbp extension and replaces it with cue.  but elsewhere the cover extension is appended without
                       // removing extension.
 
     bool internal = false; // one of the console's built-in games (internal.db) rather than a USB game (regional.db)

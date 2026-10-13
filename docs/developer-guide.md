@@ -67,7 +67,7 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   **`RdbReader`** (`engine/rdb_reader.h`: the whole `.rdb` in memory, rmsgpack, indexed by serial and name,
   `findBySerial` also takes a suffixed serial like `SLUS-01251GH`; since 2026-09-19 also `crc`, `size`,
   `rom_name` with `findByCrc`/`findByRomName` for the other systems' databases), else the three covers dbs through
-  **`CoverDatabase`** - and the covers db is still asked for its PNG when the rdb answered, so a stick with
+  **`CoverDatabase`** - and the covers db is still asked for its cover when the rdb answered, so a stick with
   no thumbnails keeps its art. `GameMetadata::recordName` is the rdb's name (`"Crash Bandicoot (USA)"`),
   `title` has the trailing tags stripped, `lastRegion` ("U"/"P"/"J", what pcsx.cfg's region is set from)
   comes from the rdb's region, PAL countries included. `GameLibrary::metadata()` owns the launcher's; the
@@ -80,7 +80,7 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   own, `App::thumbnails()` is the launcher's, cleared when a game returns. `escapeName()` is the one file
   name rule (`RetroArchService::escapeName` delegates). The scanner resolves every game's cover and snap
   and caches them in Game.ini (`Thumbnail_record_name`, `Cached_cover_path`, `Cached_snap_path`, read back
-  onto `GameRecord::recordName/coverPath/snapPath`); the carousel's PS1 chain is the PNG next to the game
+  onto `GameRecord::recordName/coverPath/snapPath`); the carousel's PS1 chain is the cover image (.png, .jpg or .jpeg) next to the game
   -> the cached path while its file exists -> a fresh lookup (internal games) -> `default.png` drawn at
   draw time. **No `default.png` is copied next to a game any more** and a cover is not a verify()
   requirement; a placeholder byte-identical to `default.png` is removed by the scan once a thumbnail

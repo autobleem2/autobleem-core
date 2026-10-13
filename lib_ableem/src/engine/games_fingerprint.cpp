@@ -17,7 +17,7 @@ namespace {
 //*******************************
 // path is the directory being visited, relPath is its path relative to the scan root ("" at the root, no
 // trailing separator otherwise). allFiles records every file rather than the game images only.
-// matchExtension only knows three-letter extensions
+// matchExtension compares the whole extension, so ".jpeg" works too
 bool isPart(const string &name) {
     if (name.size() <= 5)
         return false;

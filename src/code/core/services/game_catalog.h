@@ -42,7 +42,7 @@ public:
     DeleteResult deleteUsbGame(const PsGame &game);
     bool removeSaveStateFolder(const std::string &ssFolder);
 
-    // Deletes every cover .png under the Games tree so the next scan fetches them again. Returns how many
+    // Deletes every cover image (.png, .jpg, .jpeg) under the Games tree so the next scan fetches them again. Returns how many
     // files were removed.
     int flushAllCovers();
 

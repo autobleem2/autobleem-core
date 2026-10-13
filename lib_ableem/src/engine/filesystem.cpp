@@ -630,17 +630,11 @@ string DirEntry::addDotToExtension(const std::string &ext) {
 //*******************************
 bool DirEntry::matchExtension(string path, string ext) {
     fixPath(path);
-    if (path.length() >= 4) {
-        string fileExt = path.substr(path.length() - 4, path.length()); // file extension includes the "."
-        if (fileExt[0] != '.') {
-            return false;
-        } else {
-            auto temp = addDotToExtension(ext);
-            return lcase(fileExt) == lcase(temp);
-        }
-    } else {
+    ext = addDotToExtension(ext);
+    if (path.length() < ext.length())
         return false;
-    };
+    string fileExt = path.substr(path.length() - ext.length()); // the whole extension, including the "."
+    return lcase(fileExt) == lcase(ext);
 }
 
 //*******************************
@@ -818,6 +812,36 @@ tuple<ImageType, string> DirEntry::getGameFile(const DirEntries &entries) {
         return make_tuple(getGameFileImageType(iter->name), iter->name);
     else
         return make_tuple(IMAGE_NO_GAME_FOUND, "");
+}
+
+//*******************************
+// coverExtensionFor
+//*******************************
+const char *coverExtensionFor(const std::vector<char> &bytes) {
+    auto at = [&bytes](size_t i) { return static_cast<unsigned char>(bytes[i]); };
+    if (bytes.size() >= 3 && at(0) == 0xFF && at(1) == 0xD8 && at(2) == 0xFF)
+        return EXT_JPG;
+    return EXT_PNG; // a PNG, and anything unrecognised
+}
+
+//*******************************
+// isCoverImageName
+//*******************************
+bool isCoverImageName(const string &name) {
+    return DirEntry::matchExtension(name, EXT_PNG) || DirEntry::matchExtension(name, EXT_JPG) ||
+           DirEntry::matchExtension(name, EXT_JPEG);
+}
+
+//*******************************
+// findGameCover
+//*******************************
+string findGameCover(const string &folder, const string &base) {
+    const string prefix = folder + sep + base;
+    for (const char *ext : {EXT_PNG, EXT_JPG, EXT_JPEG}) {
+        if (DirEntry::exists(prefix + ext))
+            return prefix + ext;
+    }
+    return "";
 }
 
 } // namespace ableem

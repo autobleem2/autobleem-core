@@ -19,7 +19,7 @@ public:
     std::string serial;
     std::string region; // from the serial: "US", "Europe-Aus", "Japan"
     int players = 0;
-    std::vector<char> bytes; // the cover PNG, empty if none
+    std::vector<char> bytes; // the cover (PNG or JPEG), empty if none
     bool valid = false;
 
     std::string lastRegion = "U"; // which covers db answered: "U", "P" or "J"

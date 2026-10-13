@@ -5,6 +5,7 @@
 //
 #include "doctest/doctest.h"
 
+#include "../support/covers_db.h"
 #include "../support/fake_game.h"
 #include "../support/game_library_fixture.h"
 #include "../support/rdb_builder.h"
@@ -1098,4 +1099,47 @@ TEST_CASE("without a PackageService the watcher never asks for ScanPackages and 
     fx.tmp.writeFile("Packages/Doom/DOOM2.WAD", "IWAD");
     CHECK(fx.svc.checkForChanges() == ScanNone);
     CHECK(fx.svc.checkForChanges() == ScanNone);
+}
+
+TEST_CASE("a cover from the covers db is written next to the game in its own format: JPEG as .jpg, PNG as .png") {
+    ScanServiceFixture fx;
+    test_support::makeCoversDbWithCover(fx.tmp, "db", "U", "SLUS-01234", test_support::CoverJpegHex);
+    test_support::makeCoversDbWithCover(fx.tmp, "db", "P", "SCES-01234", test_support::CoverPngHex);
+    test_support::makeFakeGame(fx.gamesDir(), "Crash Bandicoot", "SLUS_012.34");
+    test_support::makeFakeGame(fx.gamesDir(), "Tekken", "SCES_012.34");
+
+    ScanUpdate update = fx.runAndPoll();
+    REQUIRE(update.addedGames.size() == 2);
+
+    CHECK(ableem::DirEntry::exists(fx.tmp.at("Games/Crash Bandicoot/Crash Bandicoot.jpg")));
+    CHECK_FALSE(ableem::DirEntry::exists(fx.tmp.at("Games/Crash Bandicoot/Crash Bandicoot.png")));
+    CHECK(ableem::DirEntry::exists(fx.tmp.at("Games/Tekken/Tekken.png")));
+    CHECK_FALSE(ableem::DirEntry::exists(fx.tmp.at("Games/Tekken/Tekken.jpg")));
+}
+
+TEST_CASE("a .jpg next to the game counts as its cover: the covers db writes nothing, the .jpg stays") {
+    ScanServiceFixture fx;
+    test_support::makeCoversDbWithCover(fx.tmp, "db", "U", "SLUS-01234", test_support::CoverPngHex);
+    test_support::makeFakeGame(fx.gamesDir(), "Crash Bandicoot", "SLUS_012.34");
+    fx.tmp.writeFile("Games/Crash Bandicoot/Crash Bandicoot.jpg", "the user's own cover");
+
+    ScanUpdate update = fx.runAndPoll();
+    REQUIRE(update.addedGames.size() == 1);
+
+    CHECK_FALSE(ableem::DirEntry::exists(fx.tmp.at("Games/Crash Bandicoot/Crash Bandicoot.png")));
+    CHECK(fx.tmp.readFile("Games/Crash Bandicoot/Crash Bandicoot.jpg") == "the user's own cover");
+}
+
+TEST_CASE("the default.png placeholder cleanup never touches a .jpg cover") {
+    ScanServiceFixture fx;
+    fx.env.setRetroarchDir(fx.tmp.makeSubDir("retroarch"));
+    fx.tmp.writeFile("default.png", "placeholder png bytes");
+    fx.tmp.makeSubDir("retroarch/thumbnails/Sony - PlayStation/Named_Boxarts");
+    fx.tmp.writeFile("retroarch/thumbnails/Sony - PlayStation/Named_Boxarts/Spyro.png", "png");
+    test_support::makeFakeGame(fx.gamesDir(), "Spyro", "SLUS_012.35");
+    fx.tmp.writeFile("Games/Spyro/Spyro.jpg", "placeholder png bytes"); // same bytes, but not a .png
+
+    ScanUpdate update = fx.runAndPoll();
+    REQUIRE(update.addedGames.size() == 1);
+    CHECK(ableem::DirEntry::exists(fx.tmp.at("Games/Spyro/Spyro.jpg")));
 }

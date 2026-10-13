@@ -17,14 +17,14 @@ using namespace std;
 
 namespace {
 
-// every .png under path, at any depth. The cover flush used nftw() for this; walking with DirEntry keeps
+// every cover image (.png, .jpg, .jpeg) under path, at any depth. The cover flush used nftw() for this; walking with DirEntry keeps
 // the service free of <ftw.h>, which is not portable, and makes it testable against a temp tree.
-int removePngFilesUnder(const string &path, int removed = 0) {
+int removeCoverFilesUnder(const string &path, int removed = 0) {
     for (auto &entry : DirEntry::diru(path)) {
         string child = path + sep + entry.name;
         if (DirEntry::isDirectory(child)) {
-            removed = removePngFilesUnder(child, removed);
-        } else if (DirEntry::matchExtension(entry.name, EXT_PNG)) {
+            removed = removeCoverFilesUnder(child, removed);
+        } else if (DirEntry::isCoverImageName(entry.name)) {
             if (DirEntry::removeFile(child))
                 ++removed;
         }
@@ -118,5 +118,5 @@ int GameCatalogService::flushAllCovers() {
     string gamesDir = DirEntry::fixPath(Env::getPathToGamesDir());
     if (!DirEntry::exists(gamesDir))
         return 0;
-    return removePngFilesUnder(gamesDir);
+    return removeCoverFilesUnder(gamesDir);
 }

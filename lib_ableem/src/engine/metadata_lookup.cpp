@@ -79,7 +79,7 @@ bool MetadataLookup::fromRecord(const RdbReader::Record &rec, const string &seri
     md.bytes.clear();
     md.valid = true;
 
-    // the covers db's PNG is still the cover when no thumbnails tree has one
+    // the covers db's cover is still the cover when no thumbnails tree has one
     if (!md.serial.empty()) {
         GameMetadata fromDb;
         if (covers_.findBySerial(md.serial, fromDb))

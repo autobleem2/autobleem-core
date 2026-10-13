@@ -191,7 +191,9 @@ bool GameLibrary::writeEmulationStationGamelist() {
         xml << "\t\t<path>" << makeGamesPathRelative(game.folder) << "</path>" << endl;
         xml << "\t\t<name>" << game.title << "</name>" << endl;
         xml << "\t\t<desc>" << game.title << "</desc>" << endl;
-        string imagePath = game.folder + sep + game.base + ".png";
+        string imagePath = findGameCover(game.folder, game.base);
+        if (imagePath.empty())
+            imagePath = game.folder + sep + game.base + EXT_PNG;
         xml << "\t\t<image>" << makeGamesPathRelative(imagePath) << "</image>" << endl;
 
         xml << "\t</game>" << endl;
