@@ -1,6 +1,7 @@
 #include "installer/installer_job.h"
 #include "installer/install_job_base.h"
 #include "installer/legacy_layout.h"
+#include "installer/local_bundle.h"
 #include "core/services/default_theme.h"
 #include "core/services/extension_catalog.h"
 #include "core/services/processor_catalog.h"
@@ -70,6 +71,15 @@ const Bundle Bundles[] = {
     {"shaders_glsl", "shaders"},
 };
 
+// "PlayStation only" runs the BIOS step and nothing else
+bool biosOnly(const InstallOptions &opt) { return opt.bios && opt.ps1BiosOnly; }
+
+// the stick carries the package's version already: prepare, unpack and UpdateRoms have nothing to do
+bool skipsUnpack(const InstallOptions &opt, const StickInfo &info) {
+    return !opt.force && info.installed && !info.legacyLayout && !info.packageVersion.empty() &&
+           info.installedVersion == info.packageVersion;
+}
+
 //******************
 // Run
 //******************
@@ -102,11 +112,22 @@ public:
                 say("  RetroArch was not updated: " + error);
             return zipped;
         }
-        bool ok =
-            package(error) && prepare(error) && legacy(error) && unpack(error) && updateRoms(error) && covers(error);
-        if (ok && opt.retroarch)
-            ok = retroarch(error);
-        if (ok && opt.bios && (opt.retroarch || info.hasRetroArch))
+        bool ok = true;
+        if (!biosOnly(opt)) {
+            ok = package(error);
+            // the stick carries this very version: nothing of AutoBleem itself is unpacked again
+            if (ok && skipsUnpack(opt, info)) {
+                say("  the stick already has " + info.installedVersion +
+                    ", the same version as the package - not unpacking it again (force reinstalls)");
+                phases = InstallerJob::phasesFor(opt, info);
+                ok = covers(error);
+            } else {
+                ok = ok && prepare(error) && legacy(error) && unpack(error) && updateRoms(error) && covers(error);
+            }
+            if (ok && opt.retroarch)
+                ok = retroarch(error);
+        }
+        if (ok && opt.bios && (biosOnly(opt) || opt.retroarch || info.hasRetroArch))
             ok = bios(error);
         if (ok && opt.samples)
             ok = samples(error);
@@ -623,12 +644,12 @@ private:
             say("  RetroArch " + ra.version + " is on the stick already");
         } else {
             say("  RetroArch " + ra.version);
-            const string zip = scratch + "/" + ra.zip.name;
-            if (!downloadVerified(ra.zip, zip, error))
+            string zip;
+            if (!obtain(ra.zip, zip, error))
                 return false;
             if (!installZip(zip, ra.zip.name, error))
                 return false;
-            DirEntry::removeFile(zip);
+            discard(zip);
         }
         if (!writeRetroArchCfg(error))
             return false;
@@ -658,21 +679,24 @@ private:
                 continue;
             }
             say("  " + string(b.name));
-            const string zip = scratch + "/" + b.name + ".zip";
-            if (!download(opt.buildbotUrl + "/" + b.name + ".zip", zip, error)) {
-                say("  could not download " + string(b.name) + ".zip: " + error + " - going on without it");
+            UpdateFile file; // libretro publishes no checksum: a bundle's own manifest carries one
+            file.name = string(b.name) + ".zip";
+            file.url = opt.buildbotUrl + "/" + file.name;
+            string zip;
+            if (!obtain(file, zip, error)) {
+                say("  could not download " + file.name + ": " + error + " - going on without it");
                 error.clear();
                 if (string(b.name) == "assets")
                     assetsReady = false;
                 continue;
             }
             if (!ZipArchive::extract(zip, dest)) {
-                say("  could not unpack " + string(b.name) + ".zip - going on without it");
+                say("  could not unpack " + file.name + " - going on without it");
                 if (string(b.name) == "assets")
                     assetsReady = false;
             }
             error.clear();
-            DirEntry::removeFile(zip);
+            discard(zip);
         }
         return applyTheme(assetsReady, error) && stampVersion(error);
     }
@@ -832,13 +856,13 @@ private:
             return false;
         }
         say("  " + cat.file.name + (cat.count ? " (" + to_string(cat.count) + " " + what + ")" : ""));
-        const string tarball = scratch + "/" + cat.file.name;
-        if (!downloadVerified(cat.file, tarball, error))
+        string tarball;
+        if (!obtain(cat.file, tarball, error))
             return false;
         DirEntry::createDirs(dest);
         bool ok = untar(tarball, dest, error, filter);
         if (!keepDownloads)
-            DirEntry::removeFile(tarball);
+            discard(tarball);
         return ok;
     }
 
@@ -975,7 +999,15 @@ private:
         phase("BIOS files");
         if (stopped(error))
             return false;
-        return fetchBiosPack("psc/bios/latest.json", at("RetroArch/bios"), error);
+        if (opt.ps1BiosOnly)
+            say("  PlayStation only: the PlayStation BIOS files of the pack, not the rest");
+        const string biosDir = at("RetroArch/bios");
+        if (!fetchBiosPack("psc/bios/latest.json", biosDir, error,
+                           opt.ps1BiosOnly ? BiosFilter(isPs1PackFile) : BiosFilter()))
+            return false;
+        // the PlayStation emulator reads System/Bios/romw.bin and romJP.bin; an existing one is kept
+        installPs1Bios(biosDir, at("System/Bios"));
+        return true;
     }
 
     //******************
@@ -996,8 +1028,8 @@ private:
                 error = "samples/latest.json is not what was expected";
             return false;
         }
-        const string tarball = scratch + "/" + cat.file.name;
-        if (!downloadVerified(cat.file, tarball, error))
+        string tarball;
+        if (!obtain(cat.file, tarball, error))
             return false;
         // Games/ and SAMPLES.md as they are; the RetroArch part only with RetroArch on the stick, and laid
         // out the console's way: the pack's RetroArch/roms is RetroArch/roms, its RetroArch/thumbnails is
@@ -1007,7 +1039,7 @@ private:
         if (ok && withRetroArch)
             ok = untar(tarball, at("RetroArch/roms"), error, TarArchive::Filter(), "RetroArch/roms/") &&
                  untar(tarball, at("RetroArch/bin/thumbnails"), error, TarArchive::Filter(), "RetroArch/thumbnails/");
-        DirEntry::removeFile(tarball);
+        discard(tarball);
         if (!ok)
             return false;
         writeText(at(SamplesMarker), cat.file.name + "\n");
@@ -1015,8 +1047,36 @@ private:
         return true;
     }
 
+    // The console has no network, so the ROMs' names and box art come from a PC run of UpdateRoms: started
+    // here, after everything is on the stick, before the first boot. Optional - it needs the PC's network and
+    // may be missing or fail, and the stick boots without it (the launcher's own scan then does the work).
+    void scanGames() {
+        const string exe = at("UpdateRoms/UpdateRoms.exe");
+        if (!DirEntry::exists(exe)) {
+            say("  UpdateRoms is not on the stick - the launcher scans the games on its first start");
+            return;
+        }
+        InstallOptions::Runner runner = opt.programRunner;
+#ifdef _WIN32
+        if (!runner)
+            runner = [](const string &line) { return System::runShellCommand(line); };
+#endif
+        if (!runner) {
+            say("  UpdateRoms runs on Windows only - run it from the stick's UpdateRoms folder on a PC");
+            return;
+        }
+        say("  running UpdateRoms on the stick (box art needs this PC's network)");
+        say("  Running UpdateRoms - this can take several minutes");
+        const int status = runner("\"" + exe + "\" \"" + root + "\" --quiet");
+        if (status == 0)
+            say("  UpdateRoms scanned the games");
+        else
+            say("  UpdateRoms ended with " + to_string(status) + " - going on, the launcher scans on its first start");
+    }
+
     void finish() {
         phase("Finishing");
+        scanGames();
         out.onProgress(1, 1);
         say(info.installed ? "Updated. Put the stick into the console's second controller port and boot it."
                            : "Installed. Put the stick into the console's second controller port and boot it.");
@@ -1046,6 +1106,18 @@ private:
 };
 
 } // namespace
+
+//*******************************
+// Downloader::fetchResumable / localFile
+//*******************************
+bool Downloader::fetchResumable(const string &url, const string &destFile, const Progress &progress, string &error) {
+    return fetch(url, destFile, progress, error); // cannot continue a part: the file starts over
+}
+
+bool Downloader::localFile(const string &, string &, const Progress &, string &error) {
+    error.clear();
+    return false;
+}
 
 //*******************************
 // Downloader::fetchText
@@ -1087,6 +1159,24 @@ string InstallerJob::packageNextTo(const string &programPath) {
             best = e.name;
     }
     return best.empty() ? "" : dir + "/" + best;
+}
+
+//*******************************
+// InstallerJob::bundleNextTo / bundlePackage
+//*******************************
+string InstallerJob::bundleNextTo(const string &programPath) {
+    string dir = programPath;
+    replace(dir.begin(), dir.end(), '\\', '/');
+    size_t slash = dir.find_last_of('/');
+    dir = slash == string::npos ? "." : dir.substr(0, slash);
+    return DirEntry::exists(dir + "/payload/bundle.json") ? dir + "/payload" : "";
+}
+
+string InstallerJob::bundlePackage(const string &bundleDir) {
+    ableem::BundleCatalog catalog;
+    if (!catalog.load(normalizeRoot(bundleDir) + "/bundle.json") || catalog.package.empty())
+        return "";
+    return normalizeRoot(bundleDir) + "/" + catalog.package;
 }
 
 //*******************************
@@ -1169,6 +1259,22 @@ StickInfo InstallerJob::inspect(const InstallOptions &options) {
 vector<string> InstallerJob::phasesFor(const InstallOptions &options, const StickInfo &info) {
     if (!options.retroarchZip.empty())
         return {"RetroArch"};
+    if (biosOnly(options))
+        return {"BIOS files", "Finishing"};
+    if (skipsUnpack(options, info)) {
+        vector<string> kept{"Getting the package"};
+        if (options.coversJapan || options.coversUsa || options.coversPal)
+            kept.push_back("Cover databases");
+        if (options.retroarch)
+            for (const char *p : {"RetroArch", "RetroArch cores", "Runtime libraries", "Apps", "RetroArch assets"})
+                kept.push_back(p);
+        if (options.bios && (options.retroarch || info.hasRetroArch))
+            kept.push_back("BIOS files");
+        if (options.samples)
+            kept.push_back("Sample games");
+        kept.push_back("Finishing");
+        return kept;
+    }
     vector<string> phases{"Getting the package", info.installed ? "Preparing the update" : "Preparing the stick"};
     if (info.legacyLayout)
         phases.push_back("Bringing the old layout up to date");
@@ -1194,20 +1300,36 @@ bool InstallerJob::run(const InstallOptions &input, Downloader &downloader, Inst
                        const ShouldStop &shouldStop, string &error) {
     InstallOptions options = input;
     options.root = normalizeRoot(options.root);
+    // a bundled run: the packs come from the folder (LocalBundle, checked once), the rest from `downloader`
+    LocalBundle bundle(normalizeRoot(options.bundleDir), &downloader);
+    Downloader *source = &downloader;
+    if (!options.bundleDir.empty()) {
+        options.bundleDir = normalizeRoot(options.bundleDir);
+        if (!bundle.load(error))
+            return false;
+        source = &bundle;
+        if (options.packageFile.empty() && options.channel.empty() && !bundle.catalog().package.empty()) {
+            // the package is read before the run starts (its VERSION): checked against the manifest first
+            string checked;
+            if (!bundle.checkedPath(bundle.catalog().package, checked, Downloader::Progress(), error))
+                return false;
+            options.packageFile = checked;
+        }
+    }
     StickInfo info = inspect(options);
     if (!info.isStick) {
         error = "No such drive: " + options.root;
         return false;
     }
     if (!options.retroarchZip.empty()) { // the console's RetroArch update: no package, no channel
-        Run zipRun(options, info, downloader, listener, shouldStop);
+        Run zipRun(options, info, *source, listener, shouldStop);
         return zipRun.go(error);
     }
-    if (info.packageVersion.empty() && options.channel.empty()) { // a channel's package is read in the run
+    if (!biosOnly(options) && info.packageVersion.empty() && options.channel.empty()) { // a channel's package is read in the run
         error = info.error.empty() ? "The package has no VERSION" : info.error;
         return false;
     }
-    Run run(options, info, downloader, listener, shouldStop);
+    Run run(options, info, *source, listener, shouldStop);
     return run.go(error);
 }
 

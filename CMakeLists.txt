@@ -190,6 +190,7 @@ add_library(ab_installer STATIC
         src/code/installer/install_job_base.cpp
         src/code/installer/installer_job.cpp
         src/code/installer/legacy_layout.cpp
+        src/code/installer/local_bundle.cpp
         src/code/installer/windows_install_job.cpp
         src/code/installer/flasher_job.cpp
         src/code/installer/command_downloader.cpp

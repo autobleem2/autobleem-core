@@ -157,3 +157,30 @@ TEST_CASE("ChannelCatalog: the default channel follows how the program was built
     CHECK(small.defaultFor("v2.0.0-1-gabc", true, false) == "release");
     CHECK(ChannelCatalog().defaultFor("v2.0.0", false, false).empty());
 }
+
+TEST_CASE("BundleCatalog: the manifest of an installer download that carries its packs") {
+    const string sha(64, 'a');
+    ableem::BundleCatalog b;
+    REQUIRE(b.parse(R"({"format": 1, "version": "v2.0.0", "package": "/autobleem-psc-v2.0.0.tar.gz", "files": [
+        {"path": "autobleem-psc-v2.0.0.tar.gz", "size": 5, "sha256": ")" +
+                    sha + R"("},
+        {"path": "psc/cores/cores-psc-1.tar.gz", "size": 7, "sha256": ")" +
+                    sha + R"("}]})"));
+    CHECK(b.version == "v2.0.0");
+    CHECK(b.package == "autobleem-psc-v2.0.0.tar.gz"); // a leading slash is dropped
+    REQUIRE(b.files.size() == 2);
+    REQUIRE(b.find("psc/cores/cores-psc-1.tar.gz"));
+    CHECK(b.find("psc/cores/cores-psc-1.tar.gz")->size == 7);
+    CHECK_FALSE(b.find("psc/cores/other.tar.gz"));
+
+    // not trusted at all: a way out of the folder, a short checksum, an unknown format, a package not listed
+    ableem::BundleCatalog bad;
+    CHECK_FALSE(bad.parse(R"({"format": 1, "files": [{"path": "../x", "size": 1, "sha256": ")" + sha + R"("}]})"));
+    CHECK_FALSE(bad.parse(R"({"format": 1, "files": [{"path": "x", "size": 1, "sha256": "abc"}]})"));
+    CHECK_FALSE(bad.parse(R"({"format": 2, "files": [{"path": "x", "size": 1, "sha256": ")" + sha + R"("}]})"));
+    CHECK_FALSE(
+        bad.parse(R"({"format": 1, "package": "p", "files": [{"path": "x", "size": 1, "sha256": ")" + sha + R"("}]})"));
+    CHECK_FALSE(bad.parse("[]"));
+    CHECK_FALSE(bad.parse("not json"));
+    CHECK(bad.files.empty());
+}
