@@ -148,6 +148,12 @@ struct Reader {
         e.size = SzArEx_GetFileSize(&db, i);
         if (e.isDir && (e.name.empty() || e.name.back() != '/'))
             e.name += '/';
+        // p7zip keeps the Unix mode in the upper 16 bits of the attributes, flagged by 0x8000
+        if (SzBitWithVals_Check(&db.Attribs, i)) {
+            const UInt32 attrib = db.Attribs.Vals[i];
+            if ((attrib & 0x8000) != 0)
+                e.mode = (attrib >> 16) & 07777;
+        }
         return e;
     }
 };
@@ -236,6 +242,8 @@ bool SevenZipArchive::extract(const string &archivePath, const string &destDir, 
             ok = false;
             break;
         }
+        out.close();
+        DirEntry::applyMode(target, e.mode);
         if (progress)
             progress(done, total);
     }

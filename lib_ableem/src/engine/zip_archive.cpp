@@ -74,6 +74,9 @@ struct Reader {
             entry.name += '/';
         entry.crc = st.m_crc32;
         entry.size = st.m_uncomp_size;
+        // "made by" host 3 = Unix: the upper 16 bits of the external attributes are the st_mode
+        if ((st.m_version_made_by >> 8) == 3)
+            entry.mode = (st.m_external_attr >> 16) & 07777;
         return true;
     }
 };
@@ -211,13 +214,15 @@ bool ZipArchive::extract(const string &zipPath, const string &destDir, const Byt
     }
     const string dest = destDir + sep;
     for (unsigned i = 0; i < reader.count(); i++) {
-        string name;
-        bool isDir;
-        reader.name(i, name, isDir);
+        ZipEntry entry;
+        reader.stat(i, entry);
+        const string &name = entry.name;
         const string target = dest + name;
-        if (isDir) {
+        if (entry.isDir) {
             if (!createDirs(DirEntry::removeSeparatorFromEndOfPath(target)))
                 return false;
+            if (entry.mode != 0)
+                DirEntry::applyMode(DirEntry::removeSeparatorFromEndOfPath(target), entry.mode | 0700);
             continue;
         }
         size_t slash = target.find_last_of('/');
@@ -243,6 +248,8 @@ bool ZipArchive::extract(const string &zipPath, const string &destDir, const Byt
                        << mz_zip_get_error_string(mz_zip_get_last_error(&reader.zip)) << ")";
             return false;
         }
+        // no mode in the zip = the default stays; FAT/exFAT refuse chmod, which is fine
+        DirEntry::applyMode(target, entry.mode);
     }
     return true;
 }

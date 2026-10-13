@@ -14,6 +14,11 @@
 
 #include "support/tar_builder.h"
 #include "support/temp_dir.h"
+#include "support/zip_builder.h"
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -29,6 +34,7 @@ using namespace std;
 using ableem::DirEntry;
 using ableem::Sha256;
 using test_support::TarBuilder;
+using test_support::ZipBuilder;
 
 namespace {
 
@@ -957,6 +963,43 @@ TEST_CASE("the console's own RetroArch update lays the downloaded zip over the R
     REQUIRE_MESSAGE(fx.run(again), again);
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/assets/xmb/monochrome/png/setting.png.prab2") == "stock setting");
 }
+
+#ifndef _WIN32
+static bool isExecutable(const string &path) {
+    struct stat st;
+    return stat(path.c_str(), &st) == 0 && (st.st_mode & S_IXUSR) != 0;
+}
+
+TEST_CASE("the unpacked package keeps the executable bit of its scripts and binaries") {
+    Fixture fx;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    for (const char *rel :
+         {"Autobleem/bin/autobleem/autobleem-gui", "Autobleem/bin/emu/pcsx-ab", "Autobleem/rc/launch.sh",
+          "Autobleem/start.sh", "Apps/abflashkit/abflashkit", "Extensions/pscbios/bin/psc/pscbios.so"})
+        CHECK_MESSAGE(isExecutable(fx.root + "/" + rel), rel);
+    // a plain file stays plain
+    CHECK_FALSE(isExecutable(fx.root + "/Autobleem/bin/autobleem/config.ini"));
+}
+
+TEST_CASE("the console's RetroArch update keeps the executable bit of the retroarch binary") {
+    Fixture fx;
+    fx.options.packageFile.clear();
+    const string zip = fx.tmp.at("site/retroarch-modes.zip");
+    REQUIRE(ZipBuilder()
+                .file("retroarch", "ELF retroarch", 0755)
+                .file("VERSION", "v1.22.2-4\n")
+                .file("theme/OFL.txt", "ofl")
+                .write(zip));
+    fx.options.retroarchZip = zip;
+    fx.tmp.writeFile("stick/RetroArch/bin/retroarch", "ELF old");
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF retroarch");
+    CHECK(isExecutable(fx.root + "/RetroArch/bin/retroarch"));
+    CHECK_FALSE(isExecutable(fx.root + "/RetroArch/bin/fonts/OFL.txt"));
+}
+#endif
 
 TEST_CASE("the console's RetroArch update waits for the assets bundle and stamps the version last") {
     Fixture fx;
