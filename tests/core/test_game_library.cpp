@@ -59,3 +59,27 @@ TEST_CASE("without a RetroArch playlists dir the export writes nothing and says 
     CHECK_FALSE(lib.library.exportToRetroArchPlaylist());
     CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("RetroArch/bin/playlists/AutoBleem.lpl")));
 }
+
+TEST_CASE("the RetroArch playlist names the PS1 core: the user's pick, else the platform's default") {
+    GameLibraryFixture lib;
+    lib.addUsbGame(1, "Tekken 3");
+    for (const char *stem : {"pcsx_rearmed", "swanstation"}) {
+        lib.tmp.writeFile(string("RetroArch/bin/info/") + stem + "_libretro.info",
+                          "display_name = \"Sony - PlayStation (" + string(stem) +
+                              ")\"\nsupported_extensions = \"cue\"\ndatabase = \"Sony - PlayStation\"\n");
+        lib.tmp.writeFile(string("RetroArch/bin/cores/") + stem + "_libretro.so", "core");
+    }
+    ableem::Environment::setRetroarchCoreFile(lib.tmp.at("RetroArch/bin/cores/pcsx_rearmed_libretro.so"));
+    ableem::Environment::setStateDir(lib.tmp.path());
+    auto exportedCore = [&] {
+        lib.tmp.makeSubDir("RetroArch/bin/playlists");
+        REQUIRE(lib.library.exportToRetroArchPlaylist());
+        ableem::RetroArchPlaylistEntries entries;
+        REQUIRE(ableem::RetroArchPlaylist::load(lib.tmp.at("RetroArch/bin/playlists/AutoBleem.lpl"), entries));
+        REQUIRE(entries.size() == 1);
+        return entries[0].core_path;
+    };
+    CHECK(exportedCore() == lib.tmp.at("RetroArch/bin/cores/pcsx_rearmed_libretro.so"));
+    lib.tmp.writeFile("cores.user.cfg", "Sony - PlayStation=swanstation\n");
+    CHECK(exportedCore() == lib.tmp.at("RetroArch/bin/cores/swanstation_libretro.so"));
+}

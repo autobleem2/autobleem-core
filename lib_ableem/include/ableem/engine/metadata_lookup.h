@@ -1,6 +1,6 @@
 // lib_ableem - engine: where a game's title, publisher, year and player count come from. RetroArch's
 // "Sony - PlayStation.rdb" first when there is one, the covers*.db databases otherwise - and the covers db
-// is still asked for its PNG when the rdb answered, so a stick without a thumbnails tree keeps its art.
+// is still asked for its cover when the rdb answered, so a stick without a thumbnails tree keeps its art.
 #pragma once
 
 #include <string>
@@ -28,7 +28,7 @@ public:
 
     // md.title is the rdb name without its trailing "(USA)" / "(Disc 1)" tags, md.recordName the whole
     // name (what a thumbnail file is called); md.lastRegion is "U"/"P"/"J" from the rdb's region, else
-    // from the serial. md.bytes is the covers db's PNG when it has this serial, else empty.
+    // from the serial. md.bytes is the covers db's cover (PNG or JPEG) when it has this serial, else empty.
     bool findBySerial(const std::string &serial, GameMetadata &md);
     // the rdb by its exact name, else the covers db by title
     bool findByTitle(const std::string &title, GameMetadata &md);

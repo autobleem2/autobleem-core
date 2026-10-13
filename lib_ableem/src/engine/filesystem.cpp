@@ -100,7 +100,12 @@ void DirEntry::generateM3UForDirectory(std::string path, std::string basename) {
     if (files.size() <= 1)
         return;
 
-    sort(files.begin(), files.end());
+    // by the name without its extension: a plain sort puts "Title (Disc 2).chd" before "Title.chd" (a space is
+    // below a dot), and a disc copied from a drive is named "Title.chd" for disc 1, "Title (Disc N).chd" after
+    sort(files.begin(), files.end(), [](const string &a, const string &b) {
+        const string ba = getFileNameWithoutExtension(a), bb = getFileNameWithoutExtension(b);
+        return ba != bb ? ba < bb : a < b;
+    });
     const string m3uFile = basename + ".m3u";
     for (const DirEntry &entry : filesInPath) {
         if (Strings::compareCaseInsensitive(DirEntry::getFileExtension(entry.name), "m3u") && entry.name != m3uFile)
@@ -467,7 +472,30 @@ bool DirEntry::replaceFile(const std::string &pathFrom, const std::string &pathT
 //*******************************
 bool DirEntry::copyFile(const std::string &pathFrom, const std::string &pathTo) {
     // copy() answers true on success (2026-09-20: this used to compare it with 0 - and had no caller)
-    return DirEntry::copy(pathFrom, pathTo);
+    if (!DirEntry::copy(pathFrom, pathTo))
+        return false;
+#ifndef _WIN32
+    struct stat st;
+    if (stat(pathFrom.c_str(), &st) == 0)
+        chmod(pathTo.c_str(), st.st_mode & 07777); // best effort: a stick that cannot chmod still got its bytes
+#endif
+    return true;
+}
+
+//*******************************
+// DirEntry::applyMode
+//*******************************
+bool DirEntry::applyMode(const std::string &path, unsigned mode) {
+#ifdef _WIN32
+    (void)path;
+    (void)mode;
+    return true;
+#else
+    if ((mode & 07777) == 0)
+        return true;
+    // FAT/exFAT sticks refuse chmod; the mode means nothing there and the caller must not fail on it
+    return chmod(path.c_str(), static_cast<mode_t>(mode & 07777)) == 0;
+#endif
 }
 
 //*******************************
@@ -602,17 +630,11 @@ string DirEntry::addDotToExtension(const std::string &ext) {
 //*******************************
 bool DirEntry::matchExtension(string path, string ext) {
     fixPath(path);
-    if (path.length() >= 4) {
-        string fileExt = path.substr(path.length() - 4, path.length()); // file extension includes the "."
-        if (fileExt[0] != '.') {
-            return false;
-        } else {
-            auto temp = addDotToExtension(ext);
-            return lcase(fileExt) == lcase(temp);
-        }
-    } else {
+    ext = addDotToExtension(ext);
+    if (path.length() < ext.length())
         return false;
-    };
+    string fileExt = path.substr(path.length() - ext.length()); // the whole extension, including the "."
+    return lcase(fileExt) == lcase(ext);
 }
 
 //*******************************
@@ -790,6 +812,36 @@ tuple<ImageType, string> DirEntry::getGameFile(const DirEntries &entries) {
         return make_tuple(getGameFileImageType(iter->name), iter->name);
     else
         return make_tuple(IMAGE_NO_GAME_FOUND, "");
+}
+
+//*******************************
+// coverExtensionFor
+//*******************************
+const char *coverExtensionFor(const std::vector<char> &bytes) {
+    auto at = [&bytes](size_t i) { return static_cast<unsigned char>(bytes[i]); };
+    if (bytes.size() >= 3 && at(0) == 0xFF && at(1) == 0xD8 && at(2) == 0xFF)
+        return EXT_JPG;
+    return EXT_PNG; // a PNG, and anything unrecognised
+}
+
+//*******************************
+// isCoverImageName
+//*******************************
+bool isCoverImageName(const string &name) {
+    return DirEntry::matchExtension(name, EXT_PNG) || DirEntry::matchExtension(name, EXT_JPG) ||
+           DirEntry::matchExtension(name, EXT_JPEG);
+}
+
+//*******************************
+// findGameCover
+//*******************************
+string findGameCover(const string &folder, const string &base) {
+    const string prefix = folder + sep + base;
+    for (const char *ext : {EXT_PNG, EXT_JPG, EXT_JPEG}) {
+        if (DirEntry::exists(prefix + ext))
+            return prefix + ext;
+    }
+    return "";
 }
 
 } // namespace ableem

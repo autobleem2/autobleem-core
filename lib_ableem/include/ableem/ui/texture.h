@@ -75,7 +75,7 @@ public:
     // layout aligns to when the art sits inside a transparent margin; the whole image when it cannot be
     // read or has no alpha
     static Rect opaqueBounds(const std::string &path);
-    // decodes an in-memory image (e.g. a cover PNG blob read from a database)
+    // decodes an in-memory image (e.g. a cover PNG or JPEG blob read from a database)
     static Texture loadMemory(Renderer &renderer, const void *data, unsigned int size);
     // uploads an Image decoded earlier (on the render thread)
     static Texture fromImage(Renderer &renderer, const Image &image);

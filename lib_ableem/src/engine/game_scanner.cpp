@@ -410,7 +410,7 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
                     game->pcsxCfgFound = true;
                 }
 
-                if (DirEntry::matchExtension(file.name, EXT_PNG)) {
+                if (isCoverImageName(file.name)) {
                     game->coverImageFound = true;
                 }
             }
@@ -458,14 +458,15 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
                         if (game->discs.size() > 0) {
                             // all recovered :)
                             if (!game->coverImageFound && !md.bytes.empty()) {
-                                string newFilename = game->fullPath + sep + game->discs[0].cueName + EXT_PNG;
+                                string newFilename =
+                                    game->fullPath + sep + game->discs[0].cueName + coverExtensionFor(md.bytes);
                                 PLOG_INFO << "Updating cover in scanGamesDirectory()" << newFilename;
-                                ofstream pngFile;
-                                pngFile.open(newFilename, ios::binary);
-                                if (DirEntry::checkWritable(pngFile, newFilename)) {
-                                    pngFile.write(md.bytes.data(), md.bytes.size());
-                                    pngFile.flush();
-                                    pngFile.close();
+                                ofstream coverFile;
+                                coverFile.open(newFilename, ios::binary);
+                                if (DirEntry::checkWritable(coverFile, newFilename)) {
+                                    coverFile.write(md.bytes.data(), md.bytes.size());
+                                    coverFile.flush();
+                                    coverFile.close();
                                     game->automationUsed = false;
                                     game->coverImageFound = true;
                                 }
@@ -492,15 +493,16 @@ void GameScanner::scanGamesDirectory(GamesHierarchy &gamesHierarchy, MetadataLoo
                 ThumbnailLookup::PlayStationDbName, game->title,
                 game->discs.empty() ? "" : game->fullPath + sep + game->discs[0].cueName, game->recordName);
             // Scans before 2026-09 copied default.png next to a game that had no cover, and the carousel
-            // takes a PNG next to the game before anything else - so a thumbnail found now would stay
-            // hidden behind that placeholder. Take the placeholder away; a real cover is never touched.
+            // takes a cover next to the game before anything else - so a thumbnail found now would stay
+            // hidden behind that placeholder. Take the placeholder away; a real cover (a .jpg, or any
+            // .png that differs from default.png) is never touched.
             if (!game->coverPath.empty() && !game->discs.empty()) {
                 string gamePng = game->fullPath + sep + game->discs[0].diskName + EXT_PNG;
                 if (DirEntry::filesAreIdentical(gamePng, Environment::getWorkingPath() + sep + "default.png")) {
                     PLOG_INFO << "Removing the default.png placeholder " << gamePng
                               << " - the thumbnails tree has a cover";
                     DirEntry::removeFile(gamePng);
-                    game->coverImageFound = false;
+                    game->coverImageFound = !findGameCover(game->fullPath, game->discs[0].diskName).empty();
                 }
             }
 

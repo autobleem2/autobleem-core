@@ -439,6 +439,10 @@ void Platform::setPowerOffHandler(std::function<void()> handler) {
     impl->powerOffHandler = std::move(handler);
 }
 
+std::function<void()> Platform::powerOffHandler() const {
+    return impl->powerOffHandler;
+}
+
 void *Platform::nativeWindow() const {
     return impl->window;
 }

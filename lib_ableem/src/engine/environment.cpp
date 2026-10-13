@@ -1,6 +1,7 @@
 #include "ableem/engine/environment.h"
 #include "ableem/engine/filesystem.h"
 #include "ableem/engine/game_types.h"
+#include "ableem/engine/retroarch_cores.h"
 
 #include <climits>
 #include <unistd.h>
@@ -177,6 +178,18 @@ string Environment::getPathToRetroarchCoreFile() {
     if (!DirEntry::exists(retroarchCoreFile) && DirEntry::exists(pcsxRearmed))
         return pcsxRearmed;
     return retroarchCoreFile;
+}
+string Environment::getPathToUserCoresCfg() {
+    return getPathToStateDir() + sep + "cores.user.cfg";
+}
+string Environment::getPathToPs1RetroarchCore() {
+    const string platformCore = getPathToRetroarchCoreFile();
+    CoreInfoTable table;
+    table.load(getPathToRetroarchDir(), "");
+    const map<string, string> picks = CoreInfoTable::loadUserPicks(getPathToUserCoresCfg());
+    const auto pick = picks.find(CoreInfoTable::Ps1Database);
+    const CoreInfoPtr core = table.ps1Core(pick == picks.end() ? "" : pick->second, platformCore);
+    return core ? core->core_path : platformCore;
 }
 bool Environment::hasRetroBoot() {
     return DirEntry::exists(getPathToRetroarchDir() + sep + "retroboot");

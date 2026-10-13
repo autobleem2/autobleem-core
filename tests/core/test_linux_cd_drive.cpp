@@ -143,3 +143,31 @@ TEST_CASE("a shifted Q is read from another sector, the main channel stays at th
     CHECK_FALSE(p.mainWithSub);
     CHECK_FALSE(p.extraSubRead);
 }
+
+TEST_CASE("READ CD carries the transfer length of a batch in its three length bytes") {
+    uint8_t cdb[12];
+    LinuxCdDrive::readCdCommand(cdb, 0x010203, true, false, 24);
+    CHECK(cdb[0] == 0xbe);
+    CHECK(cdb[3] == 0x01);
+    CHECK(cdb[4] == 0x02);
+    CHECK(cdb[5] == 0x03);
+    CHECK(cdb[6] == 0);
+    CHECK(cdb[7] == 0);
+    CHECK(cdb[8] == 24);
+    LinuxCdDrive::readCdCommand(cdb, 0, false, false, 0x010203);
+    CHECK(cdb[6] == 0x01);
+    CHECK(cdb[7] == 0x02);
+    CHECK(cdb[8] == 0x03);
+    LinuxCdDrive::readCdCommand(cdb, 0, false, true); // the default is one sector
+    CHECK(cdb[8] == 1);
+    CHECK(cdb[10] == 0x01);
+}
+
+TEST_CASE("a read the drive delivers short is a failed command when it must be whole") {
+    CHECK(LinuxCdDrive::commandSucceeded(0, 0, true));
+    CHECK(LinuxCdDrive::commandSucceeded(0, 0, false));
+    CHECK_FALSE(LinuxCdDrive::commandSucceeded(0, 2352, true)); // one sector of the batch missing
+    CHECK(LinuxCdDrive::commandSucceeded(0, 2352, false));      // a short answer is fine for the TOC
+    CHECK_FALSE(LinuxCdDrive::commandSucceeded(1, 0, false));   // SG_INFO_CHECK
+    CHECK_FALSE(LinuxCdDrive::commandSucceeded(1, 0, true));
+}

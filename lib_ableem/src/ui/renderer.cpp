@@ -4,6 +4,7 @@
 #include <mutex>
 #include "ableem/ui/platform.h"
 #include "ableem/ui/texture.h"
+#include "font_atlas.h"
 #include "perf_overlay.h"
 #include "sdl_common.h"
 #include <ableem/engine/ext_trace.h>
@@ -449,6 +450,7 @@ void Renderer::release() {
     impl->marginSoft2 = Texture();
     impl->framing = false;
     if (impl->renderer) {
+        fontAtlasRelease(); // the glyph atlas's textures too
         SDL_DestroyRenderer(impl->renderer);
         impl->renderer = nullptr;
         impl->window = nullptr;
@@ -666,6 +668,7 @@ Renderer::~Renderer() {
     SDL_DelEventWatch(watchTargetsReset, &impl->targetsLost);
     impl->overlay.release();
     if (impl->renderer) {
+        fontAtlasRelease();
         SDL_DestroyRenderer(impl->renderer);
     }
     delete impl;

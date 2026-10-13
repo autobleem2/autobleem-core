@@ -25,6 +25,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -214,6 +215,12 @@ public:
     void setOnline(bool enabled, const OnlineAssets::Config &config,
                    OnlineAssets::CommandRunner runner = OnlineAssets::CommandRunner());
 
+    // the box art of the disc in the drive (label: the rdb record name, else the title), fetched by the worker
+    // into the thumbnails tree when online is on and the tree has none; BoxArtFetched follows. Once per label.
+    void requestDiscBoxArt(const std::string &label);
+    // the worker's side of it (public for the tests): the queued labels fetched now; true when there were any
+    bool fetchDiscBoxArt();
+
     // the scanner processors: see the class comment. Suspended, a running processor that modifies files is
     // stopped (its run is "interrupted", owed another) and none is started; resuming requests a scan when
     // one was held back.
@@ -367,6 +374,8 @@ private:
     bool onlineEnabled_ = false;
     OnlineAssets::Config onlineConfig_;
     OnlineAssets::CommandRunner onlineRunner_;
+    std::vector<std::string> discBoxArtPending_; // under onlineMutex_
+    std::set<std::string> discBoxArtAsked_;      // under onlineMutex_
 
     std::thread thread_;
     std::atomic<bool> stopping_{false};

@@ -7,6 +7,7 @@
 
 #include <ableem/engine/game_library.h>
 #include <ableem/engine/metadata_lookup.h>
+#include <ableem/engine/thumbnail_lookup.h>
 
 #include <string>
 #include <vector>
@@ -20,12 +21,18 @@ struct DiscGame {
     PsGamePtr game;
     bool physicalDisc = true;
     int sgIndex = -1;           // the drive's /dev/sgN
-    std::vector<char> cover;    // the covers db's PNG for the serial; empty when it has none
+    std::vector<char> cover;    // the covers db's PNG for the serial, else the thumbnails tree's box art; empty when none
     std::string keySerial;     // the set's: the first disc's serial when the disc sets say, else the disc's own
     bool sharesLibraryGame = false; // game->ssFolder is that of a game already in the library
+    bool inDatabase = false;        // the databases know the serial: the title is theirs, not the volume label
 
     // Creates game->ssFolder (every level). Called at launch, never at construction: a scan or a boot writes
     // nothing to the stick. True when the folder exists afterwards.
+    // A disc no library game shares also gets its pcsx.cfg (the shipped default, SlowBoot = 1), Game.ini (title,
+    // serial, memcard=SONY) and cover.png, each only when missing - what the game options menu and the emulator
+    // read. ensureFolder() calls it.
+    void seedFiles() const;
+
     bool ensureFolder() const;
 };
 
@@ -40,12 +47,19 @@ struct DiscGame {
 // own serial), passed through the same key - so any disc of a library game finds it.
 class DiscGameService {
 public:
-    DiscGameService(ableem::GameLibrary &library, ableem::MetadataLookup &metadata)
-        : library_(library), metadata_(metadata) {}
+    // thumbnails: the RetroArch thumbnails tree the library's covers come from (the app's lookup, to share its
+    // listings); null = a lookup of the service's own
+    DiscGameService(ableem::GameLibrary &library, ableem::MetadataLookup &metadata,
+                    ableem::ThumbnailLookup *thumbnails = nullptr)
+        : library_(library), metadata_(metadata), thumbnails_(thumbnails ? thumbnails : &ownThumbnails_) {}
 
     // serial: "SLUS-01234" (may be ""); region: "U"/"P"/"J" or "US"/... as the caller has it; volumeLabel: the
     // title when nothing knows the serial. Reads the databases; writes nothing.
     DiscGame make(const std::string &serial, const std::string &region, const std::string &volumeLabel, int sgIndex);
+
+    // the box art the library's games use for this title (rdb record name first) from the RetroArch thumbnails
+    // tree; empty when the tree has none
+    std::vector<char> thumbnailCover(const std::string &title, const std::string &recordName);
 
     // the set's serial: the first disc's, or `serial` itself
     std::string keySerial(const std::string &serial) const;
@@ -56,4 +70,6 @@ public:
 private:
     ableem::GameLibrary &library_;
     ableem::MetadataLookup &metadata_;
+    ableem::ThumbnailLookup ownThumbnails_;
+    ableem::ThumbnailLookup *thumbnails_;
 };

@@ -37,11 +37,11 @@ bool lineSetsProperty(const string &lcaseline, const string &lcasepattern) {
 // has no line for an option added later (SlowBoot), and the editor's change must still land. The file is
 // written once for the whole batch, and not at all when every line already says what it should
 // (DirEntry::writeFileIfChanged) - a launch or an editor key that changed nothing leaves it alone.
-void ConfigFileEditor::replaceProperties(const string &fullCfgFilePath, const CfgLines &properties) {
+bool ConfigFileEditor::replaceProperties(const string &fullCfgFilePath, const CfgLines &properties) {
     string text;
     if (!DirEntry::readFile(fullCfgFilePath, text)) {
-        PLOG_DEBUG << "  cfg file doesn't exist: " << fullCfgFilePath;
-        return;
+        PLOG_WARNING << "cfg file doesn't exist, nothing changed: " << fullCfgFilePath;
+        return false;
     }
 
     vector<string> lines;
@@ -91,6 +91,7 @@ void ConfigFileEditor::replaceProperties(const string &fullCfgFilePath, const Cf
     if (DirEntry::writeFileIfChanged(fullCfgFilePath, out) == DirEntry::WriteResult::Written) {
         PLOG_INFO << "Wrote " << fullCfgFilePath << " (" << properties.size() << " setting(s))";
     }
+    return true;
 }
 
 //*******************************
@@ -177,9 +178,9 @@ string ConfigFileEditor::getValue(string gamePath, string property) {
 // ConfigFileEditor::replaceInternal
 // example gamePathInSaveStates = "/media/Games/!SaveStates/12"
 //*******************************
-void ConfigFileEditor::replaceInternal(string gamePathInSaveStates, string property, string newline) {
+bool ConfigFileEditor::replaceInternal(string gamePathInSaveStates, string property, string newline) {
     string realCfgPath = gamePathInSaveStates + sep + PCSX_CFG;
-    replaceProperties(realCfgPath, {{property, newline}});
+    return replaceProperties(realCfgPath, {{property, newline}});
 }
 
 //*******************************
@@ -187,12 +188,15 @@ void ConfigFileEditor::replaceInternal(string gamePathInSaveStates, string prope
 // example entry = "Driver 2"
 // example gamePath = "/media/Games/Racing"
 //*******************************
-void ConfigFileEditor::replaceUsb(string entry, string gamePath, string property, string newline) {
+bool ConfigFileEditor::replaceUsb(string entry, string gamePath, string property, string newline) {
     string realCfgPath = gamePath + sep + entry + sep + PCSX_CFG;
-    replaceProperties(realCfgPath, {{property, newline}}); // in the game dir pcsx.cfg
+    bool done = replaceProperties(realCfgPath, {{property, newline}}); // in the game dir pcsx.cfg
 
     realCfgPath = Environment::getPathToSaveStatesDir() + sep + entry + sep + PCSX_CFG;
-    replaceProperties(realCfgPath, {{property, newline}}); // in the !SaveStates/game/pcsx.cfg
+    // (the same file for a disc's folder, which lives in !SaveStates)
+    if (realCfgPath != gamePath + sep + entry + sep + PCSX_CFG)
+        done = replaceProperties(realCfgPath, {{property, newline}}) || done; // in the !SaveStates/game/pcsx.cfg
+    return done;
 }
 
 //*******************************
@@ -201,18 +205,17 @@ void ConfigFileEditor::replaceUsb(string entry, string gamePath, string property
 // example gamePath = "/media/Games/Racing/Driver 2", internal = false
 // example gamePath = "/media/Games/!SaveStates/12", internal = true
 //*******************************
-void ConfigFileEditor::replace(string entry, string gamePath, string property, string newline, bool internal) {
+bool ConfigFileEditor::replace(string entry, string gamePath, string property, string newline, bool internal) {
     if (internal)
-        replaceInternal(gamePath, property, newline);
-    else
-        replaceUsb(entry, DirEntry::getDirNameFromPath(gamePath), property, newline);
+        return replaceInternal(gamePath, property, newline);
+    return replaceUsb(entry, DirEntry::getDirNameFromPath(gamePath), property, newline);
 }
 
 //*******************************
 // ConfigFileEditor::replaceInFile
 //*******************************
-void ConfigFileEditor::replaceInFile(std::string fullCfgFilePath, std::string property, std::string newline) {
-    replaceProperties(fullCfgFilePath, {{property, newline}});
+bool ConfigFileEditor::replaceInFile(std::string fullCfgFilePath, std::string property, std::string newline) {
+    return replaceProperties(fullCfgFilePath, {{property, newline}});
 }
 
 } // namespace ableem

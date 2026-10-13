@@ -82,6 +82,11 @@ struct Environment {
     // RetroArch's PS1 core for our own games (the platform ini's retroarch_core); pcsx_rearmed when that one is
     // not installed and pcsx_rearmed is
     static std::string getPathToRetroarchCoreFile();
+    // the PS1 core our own games play with in RetroArch, and the exported playlist names: the user's pick for PS1
+    // (cores.user.cfg) if that core is installed, else getPathToRetroarchCoreFile() if installed, else the first
+    // installed core that plays PS1; getPathToRetroarchCoreFile() when RetroArch has no such core
+    static std::string getPathToPs1RetroarchCore();
+    static std::string getPathToUserCoresCfg(); // <state>/cores.user.cfg - the cores the user picked per system
     static const std::string &getRetroarchCoreExtension(); // ".so" unless setRetroarchCoreExtension() said otherwise
     static bool hasRetroBoot();                     // <retroarch>/retroboot exists - RetroBoot's tree is still there
     static std::string getPathToRetroarchRomsDir(); // usb:/RetroArch/roms unless setRetroarchRomsDir() said

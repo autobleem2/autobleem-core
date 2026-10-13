@@ -230,7 +230,7 @@ TEST_CASE("removeSaveStateFolder deletes the folder it is handed") {
     CHECK_FALSE(ableem::DirEntry::exists(folder));
 }
 
-TEST_CASE("flushing covers removes every png under Games, at any depth") {
+TEST_CASE("flushing covers removes every cover image under Games, at any depth") {
     Catalog lib;
     lib.tmp.makeSubDir("Games/Tekken 3");
     lib.tmp.makeSubDir("Games/Racing/Gran Turismo");
@@ -247,6 +247,23 @@ TEST_CASE("flushing covers removes every png under Games, at any depth") {
     CHECK(ableem::DirEntry::exists(lib.tmp.at("Games/Tekken 3/Tekken 3.cue")));
     // the directories themselves survive - only the covers go
     CHECK(ableem::DirEntry::exists(lib.tmp.at("Games/Racing/Gran Turismo")));
+}
+
+TEST_CASE("flushing covers removes .jpg and .jpeg covers too") {
+    Catalog lib;
+    lib.tmp.makeSubDir("Games/Tekken 3");
+    lib.tmp.makeSubDir("Games/Racing/Gran Turismo");
+    lib.tmp.writeFile("Games/Tekken 3/Tekken 3.jpg", "cover");
+    lib.tmp.writeFile("Games/Racing/Gran Turismo/Gran Turismo.JPEG", "cover");
+    lib.tmp.writeFile("Games/Tekken 3/Tekken 3.png", "cover");
+    lib.tmp.writeFile("Games/Tekken 3/Tekken 3.cue", "cue"); // left alone
+
+    CHECK(lib.catalog->flushAllCovers() == 3);
+
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/Tekken 3/Tekken 3.jpg")));
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/Racing/Gran Turismo/Gran Turismo.JPEG")));
+    CHECK_FALSE(ableem::DirEntry::exists(lib.tmp.at("Games/Tekken 3/Tekken 3.png")));
+    CHECK(ableem::DirEntry::exists(lib.tmp.at("Games/Tekken 3/Tekken 3.cue")));
 }
 
 TEST_CASE("flushing covers with nothing to flush is zero, not an error") {

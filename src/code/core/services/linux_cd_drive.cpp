@@ -45,8 +45,7 @@ vector<int> LinuxCdDrive::findDrives(const string &sysfsRoot) {
         return found;
     while (const dirent *entry = readdir(dir)) {
         const string name = entry->d_name;
-        if (name.size() < 3 || name.compare(0, 2, "sg") != 0 ||
-            name.find_first_not_of("0123456789", 2) != string::npos)
+        if (name.size() < 3 || name.compare(0, 2, "sg") != 0 || name.find_first_not_of("0123456789", 2) != string::npos)
             continue;
         ifstream in(sysfsRoot + "/" + name + "/device/type");
         string type;
@@ -104,7 +103,7 @@ bool LinuxCdDrive::parseToc(const uint8_t *r, size_t size, bool msf, CdToc &toc,
     return true;
 }
 
-void LinuxCdDrive::readCdCommand(uint8_t *cdb, int32_t lba, bool audio, bool subchannel) {
+void LinuxCdDrive::readCdCommand(uint8_t *cdb, int32_t lba, bool audio, bool subchannel, uint32_t count) {
     memset(cdb, 0, 12);
     cdb[0] = 0xbe;
     cdb[1] = audio ? 0x04 : 0x00; // expected sector type: CD-DA, or any
@@ -113,7 +112,9 @@ void LinuxCdDrive::readCdCommand(uint8_t *cdb, int32_t lba, bool audio, bool sub
     cdb[3] = static_cast<uint8_t>(l >> 16);
     cdb[4] = static_cast<uint8_t>(l >> 8);
     cdb[5] = static_cast<uint8_t>(l);
-    cdb[8] = 1;                         // one sector
+    cdb[6] = static_cast<uint8_t>(count >> 16); // transfer length, 3 bytes
+    cdb[7] = static_cast<uint8_t>(count >> 8);
+    cdb[8] = static_cast<uint8_t>(count);
     cdb[9] = 0xf8;                      // sync, headers, user data, EDC/ECC: all 2352 bytes
     cdb[10] = subchannel ? 0x01 : 0x00; // raw P-W
 }
@@ -154,10 +155,26 @@ LinuxCdDrive::ReadPlan LinuxCdDrive::planRead(int32_t lba, int shift, bool wantQ
     return plan;
 }
 
+void LinuxCdDrive::setSpeedCommand(uint8_t *cdb, unsigned kbPerSecond) {
+    memset(cdb, 0, 12);
+    cdb[0] = 0xbb;
+    cdb[2] = static_cast<uint8_t>(kbPerSecond >> 8);
+    cdb[3] = static_cast<uint8_t>(kbPerSecond);
+    cdb[4] = 0xff; // write speed: unchanged / maximum
+    cdb[5] = 0xff;
+}
+
+bool LinuxCdDrive::decodeQ(const uint8_t *subcode96, uint8_t *q12) {
+    DiscReader::deinterleaveQ(subcode96, q12);
+    return DiscReader::qCrc(q12) == static_cast<uint16_t>(q12[10] << 8 | q12[11]);
+}
+
 //*******************************
 // LinuxCdDrive: the drive
 //*******************************
-LinuxCdDrive::~LinuxCdDrive() { close(); }
+LinuxCdDrive::~LinuxCdDrive() {
+    close();
+}
 
 bool LinuxCdDrive::open(int sgIndex, string &error) {
     close();
@@ -179,7 +196,11 @@ void LinuxCdDrive::close() {
     shift_ = 0;
 }
 
-bool LinuxCdDrive::command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, size_t size) {
+bool LinuxCdDrive::commandSucceeded(unsigned info, int resid, bool exact) {
+    return (info & SG_INFO_OK_MASK) == SG_INFO_OK && (!exact || resid == 0);
+}
+
+bool LinuxCdDrive::command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, size_t size, bool exact) {
     if (fd_ < 0)
         return false;
     uint8_t sense[32];
@@ -196,7 +217,7 @@ bool LinuxCdDrive::command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, siz
     hdr.timeout = TimeoutMs;
     if (ioctl(fd_, SG_IO, &hdr) != 0)
         return false;
-    return (hdr.info & SG_INFO_OK_MASK) == SG_INFO_OK;
+    return commandSucceeded(hdr.info, hdr.resid, exact);
 }
 
 bool LinuxCdDrive::testUnitReady() {
@@ -228,6 +249,20 @@ bool LinuxCdDrive::rawRead(int32_t lba, bool audio, uint8_t *buffer, bool subcha
     return command(cdb, 12, buffer, subchannel ? RawSize + SubSize : RawSize);
 }
 
+bool LinuxCdDrive::setSpeed(unsigned kbPerSecond) {
+    uint8_t cdb[12];
+    setSpeedCommand(cdb, kbPerSecond);
+    return command(cdb, 12, nullptr, 0);
+}
+
+bool LinuxCdDrive::readSubcode(uint32_t lba, bool audio, uint8_t *subcode96) {
+    uint8_t buffer[RawSize + SubSize];
+    if (!rawRead(static_cast<int32_t>(lba), audio, buffer, true))
+        return false;
+    memcpy(subcode96, buffer + RawSize, SubSize);
+    return true;
+}
+
 bool LinuxCdDrive::probeSubchannel(bool audio) {
     subchannel_ = Subchannel::None;
     shift_ = 0;
@@ -250,6 +285,15 @@ bool LinuxCdDrive::probeSubchannel(bool audio) {
         }
     }
     return false;
+}
+
+bool LinuxCdDrive::readSectors(uint32_t lba, uint32_t count, bool audio, uint8_t *data) {
+    if (count == 0)
+        return true;
+    uint8_t cdb[12];
+    readCdCommand(cdb, static_cast<int32_t>(lba), audio, false, count);
+    // a batch the drive delivers short is a failure: the caller then reads the sectors one by one
+    return command(cdb, 12, data, static_cast<size_t>(count) * RawSize, true);
 }
 
 bool LinuxCdDrive::readSector(uint32_t lba, bool audio, uint8_t *data, uint8_t *q) {

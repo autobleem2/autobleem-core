@@ -36,8 +36,8 @@
 // One of our PS1 games played in RetroArch (Square, or "play in RetroArch") keeps its RetroArch states in the same
 // four slots as PCSX's, in its own save-state folder (the owner, 2026-10-11): saveAfterLaunch(retroArch = true)
 // takes the run's <content>.state.auto (+ .png) from raStatesDir() as sstates/<content>.00<n>.res and the
-// picture, and slot.<n>.ra says which core wrote it (the core argument the launch was given: a core path, or
-// the console's NEON / PEOPS). Such a slot is resumed only in RetroArch with that core - the two emulators'
+// picture, and slot.<n>.ra says which core wrote it (the core argument the launch was given: a core path; older
+// builds wrote the console's NEON / PEOPS, the GPU plugin then picked the core). Such a slot is resumed only in RetroArch with that core - the two emulators'
 // states are not interchangeable - and the launcher marks each slot "RA" or "AB".
 //
 // An emulator that takes $AB_EXIT_DIR (abfeatures: exitdir - docs/quiet-stick-plan.md) writes the run's
@@ -108,7 +108,7 @@ public:
     // (no .info, or no such key: it does)
     bool raSupportsStates(const PsGame &game) const;
     // the same for a core given by its path (one of our PS1 games' core): its .info next to RetroArch's others;
-    // the console's NEON / PEOPS (pcsx_rearmed builds) can
+    // the NEON / PEOPS of a slot an older build wrote (pcsx_rearmed builds) can
     static bool raCoreSupportsStates(const std::string &core);
     // <raStatesDir()>/<content>.state.auto (raContentFor), "" for an App
     std::string raAutoState(const PsGame &game) const;

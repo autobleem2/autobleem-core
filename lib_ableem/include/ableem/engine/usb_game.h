@@ -79,7 +79,7 @@ public:
     void saveGameIni(const std::string &path);
     void applyIniValues(); // iniValues -> members (defaults where missing) and the disc list
 
-    // creates whatever is missing (cover .png, pcsx.cfg, the disc list) using the defaults in
+    // creates whatever is missing (cover .png or .jpg, pcsx.cfg, the disc list) using the defaults in
     // Environment::getWorkingPath() and the cover database
     void recoverMissingFiles(MetadataLookup &metadata);
     // every file a launchable game needs is present. the reasons are plain (untranslated) English.

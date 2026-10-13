@@ -40,6 +40,8 @@ protected:
     bool stopped(std::string &error);
     void phase(const std::string &title);
     void say(const std::string &line);
+    // failKind from a downloader's error text (Downloader::ErrNoNetwork / ErrChecksum prefixes, else Download)
+    void classifyFailure(const std::string &error);
 
     // a download with the progress on the phase's bar and the stop flag honoured
     bool download(const std::string &url, const std::string &dest, std::string &error);
@@ -79,4 +81,6 @@ protected:
     std::string logPath;
     std::vector<std::string> phases;
     int phaseIndex = 0;
+    // what the last failed download (or check) was, for the progress file's end|error|<code>
+    FailKind failKind = FailKind::None;
 };

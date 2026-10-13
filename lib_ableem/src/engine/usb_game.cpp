@@ -150,7 +150,7 @@ bool UsbGame::print() {
     PLOG_DEBUG << "GameData found: " << gameDataFound;
     PLOG_DEBUG << "Game.ini found: " << gameIniFound;
     PLOG_DEBUG << "Game.ini valid: " << gameIniValid;
-    PLOG_DEBUG << "PNG found:" << coverImageFound;
+    PLOG_DEBUG << "Cover image found:" << coverImageFound;
     PLOG_DEBUG << "pcsx.cfg found: " << pcsxCfgFound;
     PLOG_DEBUG << "TotalDiscs: " << discs.size();
     PLOG_DEBUG << "Favorite: " << favorite;
@@ -251,25 +251,25 @@ void UsbGame::recoverMissingFiles(MetadataLookup &metadata) {
         }
     }
 
-    // The cover: the covers db's PNG written next to the game when it has one. Nothing is written
+    // The cover: the covers db's cover (PNG or JPEG) written next to the game when it has one. Nothing is written
     // otherwise - the carousel finds the cover in RetroArch's thumbnails tree, or draws default.png -
     // where a copy of default.png used to be made, which then hid the thumbnail for good.
     if (discs.size() > 0 && !coverImageFound) {
         automationUsed = true;
         PLOG_INFO << "Switching automation no image";
-        string destination = fullPath + sep + discs[0].diskName + ".png";
         string serial = SerialScanner::readSerial(imageType, fullPath, firstBinPath);
         if (serial != "") {
             if (metadata.findBySerial(serial, md)) {
                 metadataLoaded = true;
                 if (!md.bytes.empty()) {
+                    string destination = fullPath + sep + discs[0].diskName + coverExtensionFor(md.bytes);
                     PLOG_WARNING << "Updating cover in recoverMissingFiles()" << destination;
-                    ofstream pngFile;
-                    pngFile.open(destination, ios::binary);
-                    if (DirEntry::checkWritable(pngFile, destination)) {
-                        pngFile.write(md.bytes.data(), md.bytes.size());
-                        pngFile.flush();
-                        pngFile.close();
+                    ofstream coverFile;
+                    coverFile.open(destination, ios::binary);
+                    if (DirEntry::checkWritable(coverFile, destination)) {
+                        coverFile.write(md.bytes.data(), md.bytes.size());
+                        coverFile.flush();
+                        coverFile.close();
                         automationUsed = false;
                         coverImageFound = true;
                     }

@@ -475,7 +475,8 @@ bool LanLibrary::cover(const string &id, string &bytes, string &contentType) {
         if (!metadata_->findBySerial(game.serial, md) || md.bytes.empty())
             return false;
         bytes.assign(md.bytes.begin(), md.bytes.end());
-        contentType = "image/png";
+        // the covers db holds PNG or JPEG blobs
+        contentType = string(ableem::coverExtensionFor(md.bytes)) == ableem::EXT_JPG ? "image/jpeg" : "image/png";
         return true;
     }
     return false;

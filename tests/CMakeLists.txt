@@ -46,6 +46,16 @@ ab_add_test(test_image_cd_drive core/test_image_cd_drive.cpp LIBS ableem_lanserv
 ab_add_test(test_drive_watcher core/test_drive_watcher.cpp LIBS ableem_lanserver)
 ab_add_test(test_cdda_player core/test_cdda_player.cpp)
 ab_add_test(test_spectrum core/test_spectrum.cpp)
+# AUTOBLEEM-21: ripping a disc into a CHD (ChdWriter, RipJob) and LibCrypt's .sbi; the writer's output is read back
+# with the vendored libchdr
+ab_add_test(test_libcrypt core/test_libcrypt.cpp)
+if (AB_ENABLE_CHD)
+    ab_add_test(test_chd_writer core/test_chd_writer.cpp LIBS chdr)
+    ab_add_test(test_rip_job core/test_rip_job.cpp LIBS chdr)
+else()
+    ab_add_test(test_chd_writer core/test_chd_writer.cpp)
+    ab_add_test(test_rip_job core/test_rip_job.cpp)
+endif()
 if (NOT WIN32)
     # linux_cd_drive.cpp is not part of the Windows build
     ab_add_test(test_linux_cd_drive core/test_linux_cd_drive.cpp)
@@ -249,6 +259,7 @@ ab_add_test(test_theme_zip_cache core/test_theme_zip_cache.cpp)
 ab_add_test(test_theme_spec core/test_theme_spec.cpp)
 ab_add_test(test_zip_writer core/test_zip_writer.cpp)
 ab_add_test(test_tar_archive core/test_tar_archive.cpp)
+ab_add_test(test_archive_mode core/test_archive_mode.cpp)
 ab_add_test(test_update_catalog_packs core/test_update_catalog_packs.cpp)
 ab_add_test(test_harness core/test_env_fixture.cpp)
 
@@ -268,3 +279,4 @@ ab_add_test(test_installer_core installer/test_installer_core.cpp LIBS ab_instal
 ab_add_test(test_windows_install_job installer/test_windows_install_job.cpp LIBS ab_installer)
 ab_add_test(test_flasher_job installer/test_flasher_job.cpp LIBS ab_installer)
 ab_add_test(test_command_downloader installer/test_command_downloader.cpp LIBS ab_installer)
+ab_add_test(test_progress_file installer/test_progress_file.cpp LIBS ab_installer)

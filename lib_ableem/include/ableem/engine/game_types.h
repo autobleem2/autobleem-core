@@ -1,6 +1,9 @@
 // lib_ableem - engine: the few constants every PS1-game-handling routine shares.
 #pragma once
 
+#include <string>
+#include <vector>
+
 namespace ableem {
 
 // how a game is stored on disk. the numeric values are written into Game.ini ("Imagetype=") and must not change.
@@ -17,6 +20,8 @@ const char GAME_DATA[] = "GameData"; // pre-0.5 layout: game files were one leve
 const char GAME_INI[] = "Game.ini";
 const char PCSX_CFG[] = "pcsx.cfg";
 const char EXT_PNG[] = ".png";
+const char EXT_JPG[] = ".jpg";
+const char EXT_JPEG[] = ".jpeg";
 const char EXT_PBP[] = ".pbp";
 const char EXT_ECM[] = ".ecm";
 const char EXT_BIN[] = ".bin";
@@ -24,6 +29,14 @@ const char EXT_IMG[] = ".img";
 const char EXT_CHD[] = ".chd";
 // const char EXT_ISO[] = ".iso";
 const char EXT_CUE[] = ".cue";
+
+// a cover is a PNG or a JPEG. The extension for the bytes of a cover (sniffed from the magic number):
+// ".jpg" for a JPEG, ".png" for everything else.
+const char *coverExtensionFor(const std::vector<char> &bytes);
+// true for a file name ending in .png, .jpg or .jpeg (case-insensitive)
+bool isCoverImageName(const std::string &name);
+// the first existing <folder>/<base>{.png,.jpg,.jpeg}, or "" when the game has no cover file
+std::string findGameCover(const std::string &folder, const std::string &base);
 
 // special sub-directories of the games dir that never hold a game
 const char SAVESTATES_DIR_NAME[] = "!SaveStates";

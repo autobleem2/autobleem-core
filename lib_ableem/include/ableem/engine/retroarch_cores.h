@@ -79,6 +79,16 @@ public:
     // pick first, then by file stem
     CoreInfos platformOrder(const std::string &dbName) const;
 
+    // PlayStation 1: the database every PS1 core lists, and the choice of the core our own PS1 games play with in
+    // RetroArch - not the platform's cores.cfg, not the game's pcsx GPU plugin
+    static const char Ps1Database[]; // "Sony - PlayStation"
+    // every installed core that lists Ps1Database: the one defaultCorePath names first when it is among them
+    // (the file stem is compared, so the way the path is written never matters), the rest by file stem
+    CoreInfos ps1Cores(const std::string &defaultCorePath) const;
+    // the PS1 core in use: the one the user picked (userPickStem, the cores.user.cfg value) if it is installed and
+    // plays PS1, else the default, else the first installed PS1 core; nullptr when no installed core plays PS1
+    CoreInfoPtr ps1Core(const std::string &userPickStem, const std::string &defaultCorePath) const;
+
 private:
     // the core a cores.cfg value names - see the class comment; nullptr when none matches
     CoreInfoPtr coreForCfgValue(const std::string &value) const;

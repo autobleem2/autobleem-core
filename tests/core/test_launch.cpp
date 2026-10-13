@@ -179,13 +179,13 @@ TEST_CASE("a launch before the clock is set leaves an earlier last-played time a
     CHECK(lib.usbGame()->last_played > 0);
 }
 
-TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg as pcsx-abnxt's 0..6") {
+TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg as pcsx-abnxt's 0..7") {
     Launching lib;
     lib.configure("Aspect=true\n");
     PsGamePtr game = lib.usbGame();
 
     // launch.sh gets pcsx-abnxt's numbering as is and converts it for the classic pcsx-ab itself
-    for (const char *mode : {"0", "1", "2", "3", "4", "5", "6"}) {
+    for (const char *mode : {"0", "1", "2", "3", "4", "5", "6", "7"}) {
         lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", string("plat_target.hwfilter = ") + mode + "\n");
         lib.runner.calls.clear();
         lib.service->launch(game, EmuMode::Pcsx, -1);
@@ -194,7 +194,7 @@ TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg
         CHECK(args[7] == mode);
     }
     // no line, or a value out of range: Off
-    lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "plat_target.hwfilter = 7\n");
+    lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "plat_target.hwfilter = 8\n");
     lib.runner.calls.clear();
     lib.service->launch(game, EmuMode::Pcsx, -1);
     CHECK(lib.runner.only().args[7] == "0");
@@ -203,7 +203,7 @@ TEST_CASE("the aspect comes from config.ini, the filter from the game's pcsx.cfg
 TEST_CASE("the classic pcsx-ab's -filter is the other way round and has only nearest and bilinear") {
     CHECK(LaunchService::pcsxAbFilter(0) == "1"); // Nearest -> nearest
     CHECK(LaunchService::pcsxAbFilter(1) == "0"); // Linear -> bilinear
-    for (int mode = 2; mode <= 6; mode++)         // Sharp .. CRT-Pi -> nearest
+    for (int mode = 2; mode <= 7; mode++)         // Sharp .. CRT (raster) -> nearest
         CHECK(LaunchService::pcsxAbFilter(mode) == "1");
 }
 
@@ -331,21 +331,22 @@ TEST_CASE("the game's memory-card set is in play while PCSX runs and is written 
 
 // --- RetroArch ---
 
-TEST_CASE("RetroArch is started through rc/launch_rb.sh with the image and the core for the game's GPU plugin") {
+TEST_CASE("RetroArch is started through rc/launch_rb.sh with the image and the PS1 core, whatever the GPU plugin") {
     Launching lib;
     lib.configure("Raconfig=false\n");
     PsGamePtr game = lib.usbGame();
+    const string core = ableem::Environment::getPathToPs1RetroarchCore();
 
-    SUBCASE("no pcsx.cfg, or the built-in GPU: the NEON core") {
+    SUBCASE("no pcsx.cfg, or the built-in GPU: the PS1 core's path") {
         lib.service->launch(game, EmuMode::RetroArch, -1);
         const FakeProcessRunner::Call &call = lib.runner.only();
         CHECK(call.exe == lib.rcScript("launch_rb.sh"));
-        CHECK(call.args == vector<string>{lib.tmp.at("Games/Tekken 3/Tekken 3.cue"), "NEON"});
+        CHECK(call.args == vector<string>{lib.tmp.at("Games/Tekken 3/Tekken 3.cue"), core});
     }
-    SUBCASE("the P.E.Op.S. plugin: the PEOPS core") {
+    SUBCASE("the P.E.Op.S. plugin picks nothing in RetroArch: the same core") {
         lib.tmp.writeFile("Games/Tekken 3/pcsx.cfg", "Gpu3 = gpu_peops.so\n");
         lib.service->launch(game, EmuMode::RetroArch, -1);
-        CHECK(lib.runner.only().args[1] == "PEOPS");
+        CHECK(lib.runner.only().args[1] == core);
     }
     SUBCASE("a multi-disc .m3u next to the image is preferred") {
         lib.tmp.writeFile("Games/Tekken 3/Tekken 3.m3u", "Tekken 3.cue\n");
@@ -558,6 +559,7 @@ TEST_CASE("rapersist=false: RetroArch is told not to save its config at exit; no
                                                               "menu_pixel_aspect = \"1.000000\"\n"
                                                               "menu_scale_factor = \"1.000000\"\n"
                                                               "menu_safe_margin = \"0\"\n"
+                                                              "input_menu_toggle_gamepad_combo = \"4\"\n"
                                                               "savestate_directory = \"" +
                                                                   lib.tmp.at("RetroArch/bin/savestates") +
                                                                   "\"\n"
@@ -1378,6 +1380,7 @@ TEST_CASE("RetroArch on the CRT mode (720x480): 1.5 aspect, no 16:9 viewport, no
     CHECK(contains(inPlay, "menu_pixel_aspect = \"0.888889\""));
     CHECK(contains(inPlay, "menu_scale_factor = \"1.300000\""));
     CHECK(contains(inPlay, "menu_safe_margin = \"10\""));
+    CHECK(contains(inPlay, "input_menu_toggle_gamepad_combo = \"4\"")); // Start+Select opens the menu
     CHECK_FALSE(contains(inPlay, "custom_viewport"));
     CHECK_FALSE(contains(inPlay, "menu_driver")); // XMB stays
     for (const char *key : {"aspect_ratio_index", "video_shader_enable", "video_scale_integer", "video_message_pos_x"})
@@ -1417,6 +1420,26 @@ TEST_CASE("RetroArch on a square-pixel 4:3 output (640x480): the CRT lines are t
     CHECK(contains(inPlay, "menu_pixel_aspect = \"1.000000\""));
     CHECK(contains(inPlay, "menu_scale_factor = \"1.000000\""));
     CHECK(contains(inPlay, "menu_safe_margin = \"0\""));
+    CHECK(contains(inPlay, "input_menu_toggle_gamepad_combo = \"4\"")); // on every output mode
+}
+
+TEST_CASE("RetroArch's menu combo is Start+Select for the run and the player's own comes back after it") {
+    Launching lib;
+    lib.configure("Raconfig=false\n");
+    PsGamePtr game = lib.foreignGame(false);
+    lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "input_menu_toggle_gamepad_combo = \"0\"\n"
+                                                     "menu_driver = \"xmb\"\n");
+    string inPlay;
+    lib.runner.whileRunning = [&] {
+        inPlay = lib.tmp.readFile("System/Runtime/ra-append.cfg");
+        // RetroArch saves every setting it holds, ours included
+        lib.tmp.writeFile("RetroArch/bin/retroarch.cfg", "input_menu_toggle_gamepad_combo = \"4\"\n"
+                                                         "menu_driver = \"xmb\"\n");
+    };
+    lib.service->launch(game, EmuMode::RetroArch, -1);
+    CHECK(occurrences(inPlay, "input_menu_toggle_gamepad_combo =") == 1);
+    CHECK(contains(inPlay, "input_menu_toggle_gamepad_combo = \"4\""));
+    CHECK(contains(lib.tmp.readFile("RetroArch/bin/retroarch.cfg"), "input_menu_toggle_gamepad_combo = \"0\""));
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -1694,9 +1717,17 @@ TEST_CASE("a disc that matched a library game counts as that game's play; one th
 
 TEST_CASE("AB_FAKE_DRIVE: the disc's cdfile is the cue itself") {
     DiscLaunching lib;
+#ifdef _WIN32
+    _putenv_s("AB_FAKE_DRIVE", "/some/disc.cue");
+#else
     setenv("AB_FAKE_DRIVE", "/some/disc.cue", 1);
+#endif
     DiscGame disc = lib.discOf(true, 4);
     LaunchPlan plan = lib.service->planDisc(*disc.game, 4, "2", -1, "0", "0");
+#ifdef _WIN32
+    _putenv_s("AB_FAKE_DRIVE", "");
+#else
     unsetenv("AB_FAKE_DRIVE");
+#endif
     CHECK(argAfter(plan.args, "-cdfile") == "/some/disc.cue");
 }

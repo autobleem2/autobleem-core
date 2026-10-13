@@ -60,7 +60,9 @@ public:
         return game.internal ? internalGames().reloadInternalGame(game) : usbGames().reloadUsbGame(game);
     }
 
-    // writes AutoBleem.lpl (every USB game, sorted by title) so RetroArch/RetroBoot can see the PS1 library
+    // writes AutoBleem.lpl (every USB game, sorted by title) so RetroArch/RetroBoot can see the PS1 library; each
+    // entry names the PS1 core in use (Environment::getPathToPs1RetroarchCore)
+    static const char ExportedPlaylistName[]; // "AutoBleem.lpl"
     bool exportToRetroArchPlaylist();
     // writes /Games/../retroboot/emulationstation/.../gamelists/psx/gamelist.xml for EmulationStation
     bool writeEmulationStationGamelist();

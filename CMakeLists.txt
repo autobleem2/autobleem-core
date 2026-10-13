@@ -94,6 +94,7 @@ add_library(ab_core STATIC
         src/code/core/services/app_manifest.cpp
         src/code/core/services/app_settings.cpp
         src/code/core/services/cdda_player.cpp
+        src/code/core/services/chd_writer.cpp
         src/code/core/services/content_installer.cpp
         src/code/core/services/disc_game.cpp
         src/code/core/services/disc_identity.cpp
@@ -101,6 +102,7 @@ add_library(ab_core STATIC
         src/code/core/services/downloader.cpp
         src/code/core/services/drive_watcher.cpp
         src/code/core/services/extension_catalog.cpp
+        src/code/core/services/flac_encoder.cpp
         src/code/core/services/image_cd_drive.cpp
         src/code/core/services/package_service.cpp
         src/code/core/services/package_table.cpp
@@ -125,10 +127,12 @@ add_library(ab_core STATIC
         src/code/core/services/lightgun.cpp
         src/code/core/services/ra_options.cpp
         src/code/core/services/launch.cpp
+        src/code/core/services/libcrypt.cpp
         src/code/core/services/memcard.cpp
         src/code/core/services/platform_config.cpp
         src/code/core/services/process_runner.cpp
         src/code/core/services/resume_point.cpp
+        src/code/core/services/rip_job.cpp
         src/code/core/services/retroarch.cpp
         src/code/core/services/sbi_service.cpp
         src/code/core/services/scan_service.cpp
@@ -143,6 +147,13 @@ add_library(ab_core STATIC
         src/code/core/services/theme_zip_cache.cpp)
 target_link_libraries(ab_core ableem_engine ${CMAKE_DL_LIBS}) # dlopen: PluginLoader
 target_include_directories(ab_core PUBLIC src/code ${CMAKE_BINARY_DIR}/generated)
+# ChdWriter deflates with the engine's vendored miniz (a private header of ableem_engine)
+target_include_directories(ab_core PRIVATE lib_ableem/third_party/miniz)
+if (AB_ENABLE_CHD)
+    # ... and compresses its CD hunks with LZMA (cdlz) through the LZMA SDK libchdr vendors (the encoder is in it)
+    target_link_libraries(ab_core lzma)
+endif()
+set_source_files_properties(src/code/core/services/chd_writer.cpp PROPERTIES COMPILE_DEFINITIONS "MINIZ_NO_TIME")
 if (AB_ONLINE_UPDATE)
     target_sources(ab_core PRIVATE src/code/core/services/update_service.cpp)
 endif()
@@ -181,8 +192,10 @@ add_library(ab_installer STATIC
         src/code/installer/legacy_layout.cpp
         src/code/installer/windows_install_job.cpp
         src/code/installer/flasher_job.cpp
-        src/code/installer/command_downloader.cpp)
-target_link_libraries(ab_installer ab_core)
+        src/code/installer/command_downloader.cpp
+        src/code/installer/progress_file.cpp
+        src/code/installer/retroarch_runner.cpp)
+target_link_libraries(ab_installer ab_core Threads::Threads)
 
 # ---- ab_gui: the AutoBleem User Interface Library (docs/ab-gui-plan.md) ---- (only with AB_CORE_UI)
 # The look and its primitives (abgui::Style), the classic panel (abgui::Panel), what they draw with (abgui::Context),

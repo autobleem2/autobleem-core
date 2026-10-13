@@ -1,0 +1,24 @@
+[package]
+name = "ab_text"
+version = "0.1.0"
+edition = "2021"
+description = "lib_ableem's text engine: shaping, font fallback, line breaking and a glyph atlas behind a small C ABI"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+cosmic-text = { version = "0.12", default-features = false, features = ["std", "swash"] }
+unicode-linebreak = "0.1.5"
+
+[profile.release]
+opt-level = "z"
+panic = "abort"
+lto = true
+codegen-units = 1
+debug = false
+
+[profile.dev]
+panic = "abort"

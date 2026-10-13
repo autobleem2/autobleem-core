@@ -67,7 +67,7 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   **`RdbReader`** (`engine/rdb_reader.h`: the whole `.rdb` in memory, rmsgpack, indexed by serial and name,
   `findBySerial` also takes a suffixed serial like `SLUS-01251GH`; since 2026-09-19 also `crc`, `size`,
   `rom_name` with `findByCrc`/`findByRomName` for the other systems' databases), else the three covers dbs through
-  **`CoverDatabase`** - and the covers db is still asked for its PNG when the rdb answered, so a stick with
+  **`CoverDatabase`** - and the covers db is still asked for its cover when the rdb answered, so a stick with
   no thumbnails keeps its art. `GameMetadata::recordName` is the rdb's name (`"Crash Bandicoot (USA)"`),
   `title` has the trailing tags stripped, `lastRegion` ("U"/"P"/"J", what pcsx.cfg's region is set from)
   comes from the rdb's region, PAL countries included. `GameLibrary::metadata()` owns the launcher's; the
@@ -80,7 +80,7 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   own, `App::thumbnails()` is the launcher's, cleared when a game returns. `escapeName()` is the one file
   name rule (`RetroArchService::escapeName` delegates). The scanner resolves every game's cover and snap
   and caches them in Game.ini (`Thumbnail_record_name`, `Cached_cover_path`, `Cached_snap_path`, read back
-  onto `GameRecord::recordName/coverPath/snapPath`); the carousel's PS1 chain is the PNG next to the game
+  onto `GameRecord::recordName/coverPath/snapPath`); the carousel's PS1 chain is the cover image (.png, .jpg or .jpeg) next to the game
   -> the cached path while its file exists -> a fresh lookup (internal games) -> `default.png` drawn at
   draw time. **No `default.png` is copied next to a game any more** and a cover is not a verify()
   requirement; a placeholder byte-identical to `default.png` is removed by the scan once a thumbnail
@@ -221,9 +221,27 @@ declarations - not `using namespace ableem`, because the app's `GuiScreen` share
   `loadFile(renderer, path, pixelScale)` for a high-resolution image - see "Output scale"), plus
   `PixelLock` (RAII `lock()`) for per-pixel `get/set` - replaces the old manual `SDL_LockTexture` +
   `SDL_AllocFormat`/`SDL_MapRGBA` dance (see `engine/cardedit.cpp`, the memory card icon renderer).
-- **`Font`** - shared handle over SDL_FontCache: `textSize/width/lineHeight/draw/drawAlign/drawColor`. The
-  app's own `Fonts`/`FontEnum` (`gui/gui_font.*`) is unchanged in spirit - it still maps FONT_15_BOLD etc to a
-  themed .ttf path, just building `ableem::Font`s now instead of `FC_Font_Shared`s.
+- **`Font`** - shared handle over a face at a size: `textSize/width/lineHeight/draw/drawAlign/drawColor`,
+  `wrappedText/columnHeight/drawColumn`. Two engines (2026-10-12):
+  - **Rust (`lib_ableem/rust/ab_text`)**, where the build has cargo (`ABLEEM_TEXT_RUST`, `rust/ab_text.cmake`):
+    cosmic-text shapes the text (kerning, ligatures), a character the font lacks comes from the fallback chain
+    (`Font::addFallback` - `Fonts::openAllFonts` adds Noto Sans SC and Open Sans, so Chinese, Japanese and Cyrillic
+    titles draw in every language), and lines break by Unicode rules (`Font::lineBreaks`, used by
+    `abgui::wrapText`: Chinese breaks between characters, never before "。"). Glyphs go into one atlas for every
+    font - 1024px RGBA pages, uploaded as SDL textures and drawn with one `SDL_RenderGeometry` per page per text;
+    a renderer reset (`Renderer::targetsLost`) uploads the pages again. Metrics are SDL_ttf's: the line height is
+    ascent + descent, the baseline `ascent` below the top, the point size the em in pixels. The C ABI is
+    `rust/ab_text/include/ab_text.h` (internal: only `font.cpp` and tests include it); `Font`'s layout did not
+    change (the Rust font sits behind the same `shared_ptr<void>`), so the SDK ABI did not either.
+  - **SDL_FontCache**, where there is no cargo (the tool repos' own builds, `make_psc.sh` on the bare server, a
+    native MSYS2 build - Rust's windows-gnu std is msvcrt, not the UCRT), or with `AB_TEXT=fc` in the
+    environment (a way back on a device for one release).
+  The Rust target comes from the compiler (`ab_text.cmake`: thumbv7neon gnueabihf for the console and the Pi,
+  aarch64, i586 for the PC stick - no SSE2 -, x86_64-pc-windows-gnu); `Cargo.lock` is committed, cargo runs
+  `--locked`, and the launcher's `docker/run.sh` mounts a crates cache. The crate's own tests: `cargo test` with
+  `AB_TEXT_FONTS` set to the launcher's `src/resources/fonts`; the launcher's `test_text_languages` runs every
+  language file through it. The app's own `Fonts`/`FontEnum` (`gui/gui_font.*`) maps FONT_15_BOLD etc to a
+  themed .ttf path and builds `ableem::Font`s.
 - **`Sound`/`Music`/`Audio`** - `Sound::play()` replaces `Mix_PlayChannel(-1, chunk, 0)`; `Audio::close()` is
   the old "close until `Mix_QuerySpec` fails" loop, now one call (`gui->audio().close()`).
 - **`Joystick`** (`ui/joystick.h`, 2026-09-18) - one device by index opened *raw*, for a pad-mapping wizard:

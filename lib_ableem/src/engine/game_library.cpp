@@ -16,8 +16,10 @@ using namespace std;
 
 namespace ableem {
 
+const char GameLibrary::ExportedPlaylistName[] = "AutoBleem.lpl";
+
 namespace {
-const char RA_PLAYLIST[] = "AutoBleem.lpl";
+const char *const RA_PLAYLIST = GameLibrary::ExportedPlaylistName;
 }
 
 //*******************************
@@ -108,6 +110,7 @@ bool GameLibrary::exportToRetroArchPlaylist() {
          [](const GameRecord &a, const GameRecord &b) { return lessCaseInsensitive(a.title, b.title); });
 
     RetroArchPlaylistEntries entries;
+    const string core = Environment::getPathToPs1RetroarchCore(); // the user's pick for PS1, else the default
     for (const GameRecord &game : games) {
         // a disc's base is the cue name without ".cue", but a PBP's or a CHD's is the whole file name -
         // only a cue game needs the extension put back (a CHD used to come out as "foo.chd.cue", NG's 8ee4fbea)
@@ -126,7 +129,7 @@ bool GameLibrary::exportToRetroArchPlaylist() {
         RetroArchPlaylistEntry entry;
         entry.path = gameFile;
         entry.label = game.title;
-        entry.core_path = Environment::getPathToRetroarchCoreFile();
+        entry.core_path = core;
         entry.core_name = "DETECT";
         entry.crc32 = "00000000|crc";
         entry.db_name = RA_PLAYLIST;
@@ -188,7 +191,9 @@ bool GameLibrary::writeEmulationStationGamelist() {
         xml << "\t\t<path>" << makeGamesPathRelative(game.folder) << "</path>" << endl;
         xml << "\t\t<name>" << game.title << "</name>" << endl;
         xml << "\t\t<desc>" << game.title << "</desc>" << endl;
-        string imagePath = game.folder + sep + game.base + ".png";
+        string imagePath = findGameCover(game.folder, game.base);
+        if (imagePath.empty())
+            imagePath = game.folder + sep + game.base + EXT_PNG;
         xml << "\t\t<image>" << makeGamesPathRelative(imagePath) << "</image>" << endl;
 
         xml << "\t</game>" << endl;

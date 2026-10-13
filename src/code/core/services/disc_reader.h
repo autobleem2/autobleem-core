@@ -47,6 +47,17 @@ public:
     // the sector could not be read.
     virtual bool readSector(uint32_t lba, bool audio, uint8_t *data, uint8_t *q) = 0;
     virtual bool hasSubchannel() const = 0;
+    // 'count' sectors from lba on, 2352 bytes each, no subchannel, all of one kind (audio or data) - the ripper's
+    // batch read. false: the batch failed (nothing says which sector). The default reads them one by one.
+    virtual bool readSectors(uint32_t lba, uint32_t count, bool audio, uint8_t *data) {
+        for (uint32_t i = 0; i < count; i++)
+            if (!readSector(lba + i, audio, data + static_cast<size_t>(i) * 2352, nullptr))
+                return false;
+        return true;
+    }
+    // The ripper (RipJob) asks for the drive's top speed while it reads and for 4x after; a drive that cannot
+    // change its speed (or is a file) just says false.
+    virtual bool setRipSpeed(bool /*maximum*/) { return false; }
 };
 
 //******************

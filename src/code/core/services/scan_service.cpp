@@ -148,6 +148,50 @@ void ScanService::setOnline(bool enabled, const OnlineAssets::Config &config, On
 }
 
 //*******************************
+// ScanService::requestDiscBoxArt
+//*******************************
+// Each label is asked for once per run; the worker takes it when no scan is due.
+void ScanService::requestDiscBoxArt(const string &label) {
+    if (label.empty())
+        return;
+    lock_guard<mutex> lock(onlineMutex_);
+    if (!onlineEnabled_ || !discBoxArtAsked_.insert(label).second)
+        return;
+    discBoxArtPending_.push_back(label);
+}
+
+//*******************************
+// ScanService::fetchDiscBoxArt
+//*******************************
+// The worker's side of requestDiscBoxArt: the same fetch the scan does for a game's cover, into the thumbnails
+// tree, and BoxArtFetched when one arrived. True when it had something to do.
+bool ScanService::fetchDiscBoxArt() {
+    vector<OnlineAssets::BoxArtRequest> requests;
+    unique_ptr<OnlineAssets> online;
+    {
+        lock_guard<mutex> lock(onlineMutex_);
+        if (discBoxArtPending_.empty())
+            return false;
+        for (const string &label : discBoxArtPending_)
+            requests.push_back({ableem::ThumbnailLookup::PlayStationDbName, label});
+        discBoxArtPending_.clear();
+        if (onlineEnabled_)
+            online = make_unique<OnlineAssets>(onlineConfig_, onlineRunner_);
+    }
+    if (!online)
+        return true;
+    int fetched = online->fetchMissingBoxArt(
+        requests, Env::getPathToRetroarchThumbnailsDir(), nullptr, [this]() { return stopping_.load(); }, nullptr);
+    if (fetched > 0) {
+        WorkerEvent event;
+        event.kind = WorkerEvent::Kind::BoxArtFetched;
+        event.boxArtFetched = fetched;
+        pushEvent(std::move(event));
+    }
+    return true;
+}
+
+//*******************************
 // ScanService::romScanStateFilePath
 //*******************************
 string ScanService::romScanStateFilePath() {
@@ -258,7 +302,7 @@ void ScanService::threadMain() {
         if (due != ScanNone) {
             runScan(due);
             lastWatchCheck = chrono::steady_clock::now(); // don't immediately re-check right after scanning
-        } else {
+        } else if (!fetchDiscBoxArt()) {
             this_thread::sleep_for(chrono::milliseconds(250));
         }
     }

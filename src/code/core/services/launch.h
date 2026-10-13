@@ -89,8 +89,8 @@ public:
     // its bilinear and every other filter (Sharp and on) its nearest
     static std::string pcsxAbFilter(int mode);
     // the game's filter mode from its pcsx.cfg (the game folder's; the save-state folder's for an internal
-    // game): 0 Nearest, 1 Linear, 2 Sharp, 3 Sharp (simple), 4 Quilez, 5 CRT (fast), 6 CRT-Pi; 0 when the
-    // cfg has no line or a value past those
+    // game): 0 Nearest, 1 Linear, 2 Sharp, 3 Sharp (simple), 4 Quilez, 5 CRT (fast), 6 CRT-Pi, 7 CRT (raster);
+    // 0 when the cfg has no line or a value past those
     static int filterModeFor(const PsGame &game);
 
     // what a launch runs, for either mode. The pcsx plan: the save-state folder, the disc image, the
@@ -98,8 +98,8 @@ public:
     // (its pcsx.cfg plat_target.hwfilter) as "0".."6" - pcsx-abnxt's -filter as is.
     // launch.sh converts it for the classic pcsx-ab itself (it may fall back to that emulator); a direct
     // launch of pcsx-ab gets pcsxAbFilter()'s value.
-    // The RetroArch plan: the file and the core - "NEON"/"PEOPS" for one of our PS1 games (the platform's
-    // PS1 core in direct mode), else a core path.
+    // The RetroArch plan: the file and the core path ("NEON"/"PEOPS" only from a resume slot an older build
+    // wrote - the rc script maps them, direct mode takes the platform's PS1 core).
     LaunchPlan planPcsx(const PsGame &game, const std::string &discImage, const std::string &lang, int resumePoint,
                         const std::string &aspect, const std::string &filter) const;
     // The same for the physical disc in drive /dev/sg<sgIndex> (docs/disc-drive-plan.md 5): pcsx-abnxt alone -
@@ -140,6 +140,11 @@ public:
     // means in direct mode; the console and the Pi leave the launcher and their rc/retroarch.sh does it)
     static LaunchPlan planRetroArchMenu();
     void launchRetroArchMenu();
+    // RetroArch's PS1 core for one of our games, as a core path: the user's pick for "PlayStation 1 Games" in the
+    // RetroArch cores window, else the platform's (pcsx_rearmed on the console, a Pi and a plain PC; SwanStation on
+    // a PC stick and Windows, the owner 2026-10-11), else the first installed core that plays PS1
+    // (Environment::getPathToPs1RetroarchCore). The game's pcsx GPU plugin does not pick it - it is PCSX's alone.
+    static std::string ps1RaCore(const PsGame &game);
 
 private:
     enum class Path { Pcsx, RetroArch, App };
@@ -157,11 +162,6 @@ private:
     static std::string discImageFor(const PsGame &game);
     // the image's base name with a .pbp extension dropped - what RetroArch names its saves after
     static std::string raBaseNameFor(const PsGame &game);
-    // RetroArch's PS1 core for one of our games: NEON / PEOPS (the game's pcsx GPU plugin picks the pcsx_rearmed
-    // build - the rc script and planRetroArch know them) while the platform's core is pcsx_rearmed, else that core's
-    // path (SwanStation on a PC stick and Windows, the owner 2026-10-11)
-    static std::string ps1RaCore(const PsGame &game);
-
     // --- PCSX ---
     // planPcsx()/planDisc() both; nxtOnly: pcsx-abnxt or nothing
     LaunchPlan planPcsxFor(const PsGame &game, const std::string &discImage, const std::string &lang, int resumePoint,

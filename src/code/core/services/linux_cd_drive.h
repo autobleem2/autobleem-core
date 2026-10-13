@@ -40,7 +40,20 @@ public:
     // CdDrive. readToc probes the subchannel (a new disc). q is filled only when subchannel() is RawPW.
     bool readToc(CdToc &toc, std::string &error) override;
     bool readSector(uint32_t lba, bool audio, uint8_t *data, uint8_t *q) override;
+    // one READ CD for 'count' sectors (2352 bytes each, no subchannel)
+    bool readSectors(uint32_t lba, uint32_t count, bool audio, uint8_t *data) override;
     bool hasSubchannel() const override { return subchannel_ == Subchannel::RawPW; }
+    // SET CD SPEED: the top speed while ripping, 4x after (the CdDrive hook RipJob calls)
+    bool setRipSpeed(bool maximum) override { return setSpeed(maximum ? MaxSpeed : Speed4x); }
+
+    enum : unsigned {
+        MaxSpeed = 0xffff, // "as fast as the drive goes"
+        Speed4x = 706      // kB/s, 4 * 176.4
+    };
+    bool setSpeed(unsigned kbPerSecond);
+    // the raw P-W subchannel of one sector, 96 bytes as the drive gives it (READ CD with sub-channel selection,
+    // no shift applied - readSector() is the shifted Q). The 2352 main bytes are read and dropped.
+    bool readSubcode(uint32_t lba, bool audio, uint8_t *subcode96);
 
     Subchannel subchannel() const { return subchannel_; }
     int shift() const { return shift_; }
@@ -52,8 +65,8 @@ public:
     // the pure parts
     // READ TOC format 0 response -> CdToc (the 0xAA descriptor is the lead-out); msf: the addresses are M:S:F
     static bool parseToc(const uint8_t *response, size_t size, bool msf, CdToc &toc, std::string &error);
-    // the 12-byte READ CD for one sector: 2352 bytes of main channel, and raw P-W after it when subchannel
-    static void readCdCommand(uint8_t *cdb, int32_t lba, bool audio, bool subchannel);
+    // the 12-byte READ CD for 'count' sectors: 2352 bytes of main channel each, and raw P-W after it when subchannel
+    static void readCdCommand(uint8_t *cdb, int32_t lba, bool audio, bool subchannel, uint32_t count = 1);
     // count Q channels (12 bytes each, de-interleaved) of the sectors firstLba...: every one ADR 1 with an
     // address within +-2 of its sector's, all the same shift -> true and shift (the Q says sector + shift)
     static bool decideShift(const uint8_t *qs, int count, uint32_t firstLba, int &shift);
@@ -68,9 +81,17 @@ public:
         int32_t subLba = 0;
     };
     static ReadPlan planRead(int32_t lba, int shift, bool wantQ);
+    // the 12-byte SET CD SPEED (0xBB), read speed in kB/s
+    static void setSpeedCommand(uint8_t *cdb, unsigned kbPerSecond);
+    // 96 raw P-W bytes -> Q's 12 bytes (de-interleaved); true when its CRC is right
+    static bool decodeQ(const uint8_t *subcode96, uint8_t *q12);
+
+    // did an SG_IO command succeed: no SG error flags (info), and for a read that must be whole (exact) nothing
+    // of the transfer left over (resid, bytes the drive did not deliver)
+    static bool commandSucceeded(unsigned info, int resid, bool exact);
 
 private:
-    bool command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, size_t size);
+    bool command(const uint8_t *cdb, int cdbSize, uint8_t *buffer, size_t size, bool exact = false);
     bool rawRead(int32_t lba, bool audio, uint8_t *buffer, bool subchannel);
 
     int fd_ = -1;

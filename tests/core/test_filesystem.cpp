@@ -9,6 +9,7 @@
 
 #include <fstream>
 #include <string>
+#include <vector>
 
 using ableem::DirEntry;
 using std::string;
@@ -55,6 +56,17 @@ TEST_CASE("generateM3UForDirectory strips the image extension a PBP or CHD base 
     tmp.writeFile("Chd/Chd (Disc 2).chd", "");
     DirEntry::generateM3UForDirectory(tmp.at("Chd"), "Chd (Disc 1).chd");
     CHECK(lines(tmp, "Chd/Chd (Disc 1).m3u") == "Chd (Disc 1).chd\nChd (Disc 2).chd\n");
+}
+
+TEST_CASE("generateM3UForDirectory puts a bare Title.chd before Title (Disc N).chd") {
+    // a disc copied from a drive: disc 1 is "Title.chd", the others "Title (Disc N).chd"; by plain string order
+    // the space sorts below the dot and disc 2 came first
+    TempDir tmp("m3u");
+    tmp.makeSubDir("Rip");
+    tmp.writeFile("Rip/Title (Disc 2).chd", "");
+    tmp.writeFile("Rip/Title.chd", "");
+    DirEntry::generateM3UForDirectory(tmp.at("Rip"), "Title.chd");
+    CHECK(lines(tmp, "Rip/Title.m3u") == "Title.chd\nTitle (Disc 2).chd\n");
 }
 
 TEST_CASE("copy and copyFile copy every byte of a file bigger than one buffer") {
@@ -150,4 +162,47 @@ TEST_CASE("getRetroArchContentBase: the content name RetroArch builds its state 
     CHECK(DirEntry::getRetroArchContentBase("/roms/Same.zip#Same.md") == "Same");
     CHECK(DirEntry::getRetroArchContentBase("/roms/Pack.zip#folder/Sonic 2.v1.md") == "Sonic 2.v1");
     CHECK(DirEntry::getRetroArchContentBase("/roms/My #1 Pack.zip#Sonic.md") == "Sonic");
+}
+
+TEST_CASE("matchExtension compares the whole extension, case-insensitively, with or without the dot") {
+    CHECK(DirEntry::matchExtension("cover.jpeg", ".jpeg"));
+    CHECK(DirEntry::matchExtension("Cover.JPEG", "jpeg"));
+    CHECK(DirEntry::matchExtension("cover.png", ".PNG"));
+    CHECK_FALSE(DirEntry::matchExtension("cover.jpeg", ".jpg"));
+    CHECK_FALSE(DirEntry::matchExtension("cover.jpg", ".jpeg"));
+    CHECK_FALSE(DirEntry::matchExtension("cover.png", ".jpeg"));
+    CHECK_FALSE(DirEntry::matchExtension("png", ".png"));
+}
+
+TEST_CASE("coverExtensionFor sniffs the bytes: JPEG is .jpg, PNG and anything else .png") {
+    const std::vector<char> jpeg{'\xFF', '\xD8', '\xFF', '\xE0'};
+    const std::vector<char> png{'\x89', 'P', 'N', 'G'};
+    CHECK(string(ableem::coverExtensionFor(jpeg)) == ".jpg");
+    CHECK(string(ableem::coverExtensionFor(png)) == ".png");
+    CHECK(string(ableem::coverExtensionFor({'G', 'I', 'F'})) == ".png");
+    CHECK(string(ableem::coverExtensionFor({'\xFF', '\xD8'})) == ".png"); // too short to tell
+    CHECK(string(ableem::coverExtensionFor({})) == ".png");
+}
+
+TEST_CASE("isCoverImageName accepts .png, .jpg and .jpeg in any case, nothing else") {
+    CHECK(ableem::isCoverImageName("a.png"));
+    CHECK(ableem::isCoverImageName("a.JPG"));
+    CHECK(ableem::isCoverImageName("a.Jpeg"));
+    CHECK_FALSE(ableem::isCoverImageName("a.cue"));
+    CHECK_FALSE(ableem::isCoverImageName("a.gif"));
+    CHECK_FALSE(ableem::isCoverImageName("jpg"));
+}
+
+TEST_CASE("findGameCover returns the first existing <base>.png, .jpg, .jpeg, or empty") {
+    TempDir tmp("findcover");
+    const string folder = tmp.makeSubDir("Game");
+    CHECK(ableem::findGameCover(folder, "Game").empty());
+
+    tmp.writeFile("Game/Game.jpeg", "c");
+    CHECK(ableem::findGameCover(folder, "Game") == folder + "/Game.jpeg");
+    tmp.writeFile("Game/Game.jpg", "c");
+    CHECK(ableem::findGameCover(folder, "Game") == folder + "/Game.jpg");
+    tmp.writeFile("Game/Game.png", "c");
+    CHECK(ableem::findGameCover(folder, "Game") == folder + "/Game.png");
+    CHECK(ableem::findGameCover(folder, "Other").empty());
 }
