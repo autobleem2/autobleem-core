@@ -472,7 +472,30 @@ bool DirEntry::replaceFile(const std::string &pathFrom, const std::string &pathT
 //*******************************
 bool DirEntry::copyFile(const std::string &pathFrom, const std::string &pathTo) {
     // copy() answers true on success (2026-09-20: this used to compare it with 0 - and had no caller)
-    return DirEntry::copy(pathFrom, pathTo);
+    if (!DirEntry::copy(pathFrom, pathTo))
+        return false;
+#ifndef _WIN32
+    struct stat st;
+    if (stat(pathFrom.c_str(), &st) == 0)
+        chmod(pathTo.c_str(), st.st_mode & 07777); // best effort: a stick that cannot chmod still got its bytes
+#endif
+    return true;
+}
+
+//*******************************
+// DirEntry::applyMode
+//*******************************
+bool DirEntry::applyMode(const std::string &path, unsigned mode) {
+#ifdef _WIN32
+    (void)path;
+    (void)mode;
+    return true;
+#else
+    if ((mode & 07777) == 0)
+        return true;
+    // FAT/exFAT sticks refuse chmod; the mode means nothing there and the caller must not fail on it
+    return chmod(path.c_str(), static_cast<mode_t>(mode & 07777)) == 0;
+#endif
 }
 
 //*******************************

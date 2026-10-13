@@ -258,6 +258,7 @@ ab_add_test(test_theme_zip_cache core/test_theme_zip_cache.cpp)
 ab_add_test(test_theme_spec core/test_theme_spec.cpp)
 ab_add_test(test_zip_writer core/test_zip_writer.cpp)
 ab_add_test(test_tar_archive core/test_tar_archive.cpp)
+ab_add_test(test_archive_mode core/test_archive_mode.cpp)
 ab_add_test(test_update_catalog_packs core/test_update_catalog_packs.cpp)
 ab_add_test(test_harness core/test_env_fixture.cpp)
 

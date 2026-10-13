@@ -320,6 +320,7 @@ bool TarArchive::extract(const string &tarPath, const string &destDir, string &e
                 ok = false;
                 return false;
             }
+            DirEntry::applyMode(target, e.mode | 0700); // never lock ourselves out of the folder
             return src.skip(padded);
         }
         size_t slash = target.find_last_of('/');
@@ -352,6 +353,8 @@ bool TarArchive::extract(const string &tarPath, const string &destDir, string &e
             ok = false;
             return false;
         }
+        // the entry's permission bits (the exec bit of scripts and binaries); FAT/exFAT refuse, which is fine
+        DirEntry::applyMode(target, e.mode);
         return src.skip(padded - e.size);
     });
     if (walked && ok && progress) {

@@ -20,6 +20,7 @@ struct ZipEntry {
     bool isDir = false;
     uint32_t crc = 0;  // crc32 of the uncompressed bytes, as the archiver recorded it
     uint64_t size = 0; // uncompressed
+    unsigned mode = 0; // Unix permission bits (07777) when the archiver was a Unix one; 0 = none recorded
 };
 
 //******************

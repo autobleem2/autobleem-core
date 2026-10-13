@@ -18,6 +18,7 @@ struct SevenZipEntry {
     std::string name; // forward slashes, directories as "name/"
     bool isDir = false;
     uint64_t size = 0; // unpacked
+    unsigned mode = 0; // Unix permission bits (07777) when the archiver recorded them; 0 = none
 };
 
 //******************

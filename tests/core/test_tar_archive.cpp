@@ -10,6 +10,10 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
+
 using namespace std;
 using ableem::TarArchive;
 using ableem::TarEntry;
@@ -115,3 +119,21 @@ TEST_CASE("TarArchive reports a file that is not an archive") {
     CHECK_FALSE(TarArchive::list(tmp.at("missing.tar.gz"), entries, error));
     CHECK(error.find("cannot open") != string::npos);
 }
+
+#ifndef _WIN32
+TEST_CASE("TarArchive::extract keeps the entry's mode: 0755 stays executable, 0644 does not become so") {
+    TempDir tmp("tar");
+    TarBuilder b;
+    b.dir("./bin");
+    b.file("./bin/run.sh", "#!/bin/sh\n", 0755);
+    b.file("./bin/data.txt", "x", 0644);
+    REQUIRE(b.writeTarGz(tmp.at("m.tar.gz")));
+    string error;
+    REQUIRE_MESSAGE(TarArchive::extract(tmp.at("m.tar.gz"), tmp.at("out"), error), error);
+    struct stat st;
+    REQUIRE(stat(tmp.at("out/bin/run.sh").c_str(), &st) == 0);
+    CHECK((st.st_mode & 0777) == 0755);
+    REQUIRE(stat(tmp.at("out/bin/data.txt").c_str(), &st) == 0);
+    CHECK((st.st_mode & 0111) == 0);
+}
+#endif

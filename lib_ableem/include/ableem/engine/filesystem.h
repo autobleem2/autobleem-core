@@ -100,7 +100,10 @@ public:
     // renameFile that replaces an existing pathTo, atomically where the OS can (rename(2) does; Windows
     // needs MoveFileEx) - how a file another program may be reading is rewritten: write next to it, then this
     static bool replaceFile(const std::string &pathFrom, const std::string &pathTo);
+    // copy() that also keeps the source's permission bits (POSIX; the exec bit of a script or binary)
     static bool copyFile(const std::string &pathFrom, const std::string &pathTo);
+    // chmod path to mode & 07777 (POSIX); a mode of 0 is "none recorded" and leaves the file alone. Windows: no-op.
+    static bool applyMode(const std::string &path, unsigned mode);
 
     // The one way a file that is rewritten over and over (config.ini, Game.ini, a cfg, a playlist, a
     // fingerprint) is written: when `path` already holds exactly `contents` nothing is touched - no write,
