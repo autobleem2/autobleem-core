@@ -67,6 +67,8 @@ if (AB_CORE_UI)
     ab_add_test(test_extension_runtime classic/test_extension_runtime.cpp LIBS ab_classic)
     # BUG-55: the sizeof/offsetof of what extensions reach, against tests/classic/sdk_layout_table.h
     ab_add_test(test_sdk_layout classic/test_sdk_layout.cpp LIBS ab_classic)
+    # BUG-10: the bases and virtual functions of the polymorphic SDK classes, against tests/classic/sdk_vtable_table.h
+    ab_add_test(test_sdk_vtables classic/test_sdk_vtables.cpp LIBS ab_classic)
     ab_add_test(test_hold_repeat classic/test_hold_repeat.cpp LIBS ab_gui)
     # UIREV-39: the surprise game's pure layout numbers (gui/surprise_layout.h, header-only)
     ab_add_test(test_surprise_layout classic/test_surprise_layout.cpp LIBS ab_classic)
