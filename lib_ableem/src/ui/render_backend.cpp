@@ -861,6 +861,28 @@ int SetTextureAlphaMod(SDL_Texture *t, Uint8 a) {
     return 0;
 }
 
+SDL_Texture *LoadTexture(SDL_Renderer *r, const char *file) {
+    if (!isGl(r))
+        return IMG_LoadTexture(r, file);
+    SDL_Surface *s = IMG_Load(file);
+    if (!s)
+        return nullptr;
+    SDL_Texture *t = CreateTextureFromSurface(r, s);
+    SDL_FreeSurface(s);
+    return t;
+}
+
+SDL_Texture *LoadTexture_RW(SDL_Renderer *r, SDL_RWops *src, int freesrc) {
+    if (!isGl(r))
+        return IMG_LoadTexture_RW(r, src, freesrc);
+    SDL_Surface *s = IMG_Load_RW(src, freesrc);
+    if (!s)
+        return nullptr;
+    SDL_Texture *t = CreateTextureFromSurface(r, s);
+    SDL_FreeSurface(s);
+    return t;
+}
+
 int GetTextureAlphaMod(SDL_Texture *t, Uint8 *a) {
     if (!g)
         return SDL_GetTextureAlphaMod(t, a);

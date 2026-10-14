@@ -69,6 +69,9 @@ int SetTextureColorMod(SDL_Texture *t, Uint8 red, Uint8 green, Uint8 blue);
 int GetTextureColorMod(SDL_Texture *t, Uint8 *red, Uint8 *green, Uint8 *blue);
 int SetTextureAlphaMod(SDL_Texture *t, Uint8 a);
 int GetTextureAlphaMod(SDL_Texture *t, Uint8 *a);
+// SDL_image's: decoded by SDL_image, uploaded through CreateTextureFromSurface
+SDL_Texture *LoadTexture(SDL_Renderer *r, const char *file);
+SDL_Texture *LoadTexture_RW(SDL_Renderer *r, SDL_RWops *src, int freesrc);
 
 } // namespace ableem::gl
 
@@ -112,6 +115,8 @@ int GetTextureAlphaMod(SDL_Texture *t, Uint8 *a);
 #define SDL_GetTextureColorMod ableem::gl::GetTextureColorMod
 #define SDL_SetTextureAlphaMod ableem::gl::SetTextureAlphaMod
 #define SDL_GetTextureAlphaMod ableem::gl::GetTextureAlphaMod
+#define IMG_LoadTexture ableem::gl::LoadTexture
+#define IMG_LoadTexture_RW ableem::gl::LoadTexture_RW
 #endif
 
 #endif // ABLEEM_RENDER_GL
