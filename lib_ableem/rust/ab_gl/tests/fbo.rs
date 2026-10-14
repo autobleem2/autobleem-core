@@ -126,7 +126,7 @@ fn draws_into_a_target_and_reads_it_back() {
         (api.set_clip)(c, &AbrRect { x: 0, y: 16, w: 4, h: 4 });
         (api.fill_rects)(c, &AbrFRect { x: 0.0, y: 16.0, w: 16.0, h: 16.0 }, 1, rgba(0, 255, 0, 255), 0);
         (api.set_clip)(c, std::ptr::null());
-        (api.draw_lines)(c, [AbrPoint { x: 30.0, y: 10.5 }, AbrPoint { x: 40.0, y: 10.5 }].as_ptr(), 1,
+        (api.draw_lines)(c, [AbrPoint { x: 30.0, y: 10.0 }, AbrPoint { x: 40.0, y: 10.0 }].as_ptr(), 1,
                          rgba(255, 0, 255, 255), 0);
 
         let mut out = vec![0u8; (W * H * 4) as usize];

@@ -562,8 +562,8 @@ int RenderDrawLine(SDL_Renderer *r, int x1, int y1, int x2, int y2) {
     if (!isGl(r))
         return SDL_RenderDrawLine(r, x1, y1, x2, y2);
     frame();
-    // through the pixels' centres, as SDL's GL renderers draw them
-    const AbrPoint points[2] = {{x1 + 0.5f, y1 + 0.5f}, {x2 + 0.5f, y2 + 0.5f}};
+    // pixels: the backend draws through their centres, both ends included
+    const AbrPoint points[2] = {{float(x1), float(y1)}, {float(x2), float(y2)}};
     g->api->draw_lines(g->ctx, points, 1, color(g->draw), toAbr(g->drawBlend));
     return 0;
 }
@@ -671,7 +671,12 @@ int RenderReadPixels(SDL_Renderer *r, const SDL_Rect *rect, Uint32 format, void 
     if (area.w <= 0 || area.h <= 0)
         return SDL_SetError("nothing to read");
     std::vector<unsigned char> rgba(static_cast<size_t>(area.w) * area.h * 4);
-    const AbrRect a = toRect(area);
+    // on the screen SDL reads within the viewport; the backend reads the whole screen
+    AbrRect a = toRect(area);
+    if (!g->target && g->hasViewport) {
+        a.x += g->viewport.x;
+        a.y += g->viewport.y;
+    }
     if (!g->api->read_pixels(g->ctx, &a, rgba.data(), area.w * 4))
         return SDL_SetError("the renderer backend could not read the pixels back");
     if (format == 0)
