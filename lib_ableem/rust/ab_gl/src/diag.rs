@@ -6,7 +6,8 @@
 //! - AB_GL_MIPMAPS=0: no mipmaps at all (every picture filtered linearly from its own pixels)
 //! - AB_GL_ANISO=0|2|4: the most anisotropic filtering a mipmapped picture gets (default 4; never past the GPU's)
 //! - AB_GL_STATS=1: one line a second for the log (Stats::line): frames, and per frame the draw calls, quads, uploads,
-//!   mipmaps made, target switches, readbacks, fence waits and why each batch was cut
+//!   flushes and vertex buffer uploads (bytes), mipmaps made, target switches, readbacks, fence waits and why each
+//!   batch was cut
 use std::time::{Duration, Instant};
 
 /// the file the console's knobs may be written in
@@ -82,6 +83,11 @@ pub struct Stats {
     pub quads: u64,
     pub uploads: u64,
     pub upload_bytes: u64,
+    /// the frame's recorded draws drawn (a target switch, a clear, a readback, the present), and the vertex buffer
+    /// uploads they made (one each) with their bytes
+    pub flushes: u64,
+    pub vbo_uploads: u64,
+    pub vbo_upload_bytes: u64,
     pub mipmaps: u64,
     pub target_switches: u64,
     pub readbacks: u64,
@@ -116,12 +122,16 @@ impl Stats {
         let per = |v: u64| v as f64 / n;
         let cuts: Vec<String> = CUT_NAMES.iter().zip(self.cuts).filter(|&(_, c)| c > 0).map(|(name, c)| format!("{name} {:.1}", per(c))).collect();
         format!(
-            "GL stats: {:.1} fps | per frame: {:.1} draws, {:.0} quads, {:.2} uploads ({:.0} KB), {:.2} mipmaps, {:.1} target \
+            "GL stats: {:.1} fps | per frame: {:.1} draws, {:.0} quads, {:.1} flushes, {:.1} vertex uploads ({:.0} KB), {:.2} \
+             uploads ({:.0} KB), {:.2} mipmaps, {:.1} target \
              switches, {:.2} readbacks ({:.0} KB), {:.2} finish, {:.2} fence waits ({:.2} ms), {:.1} viewport/clip sets \
              ({:.1} unchanged) | batches cut by: {}",
             self.frames as f64 / secs,
             per(self.draws),
             per(self.quads),
+            per(self.flushes),
+            per(self.vbo_uploads),
+            per(self.vbo_upload_bytes) / 1024.0,
             per(self.uploads),
             per(self.upload_bytes) / 1024.0,
             per(self.mipmaps),

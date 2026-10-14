@@ -140,17 +140,52 @@ struct Vertex {
     edge: f32,
 }
 
+/// what a draw is drawn with besides its texture and blend: the pixel transform, the GL viewport and the scissor
+/// (None = off), in GL's coordinates
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct DrawState {
+    xform: [f32; 4],
+    viewport: [i32; 4],
+    scissor: Option<[i32; 4]>,
+}
+
+/// a command's vertices: quads (four each, drawn with the static index buffer) or triangles (three each, geometry)
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Prim {
+    Quads,
+    Triangles,
+}
+
+/// a draw of the frame, replayed by flush_frame: `count` vertices of the frame's array from `first`
+struct Cmd {
+    first: usize,
+    count: usize,
+    prim: Prim,
+    tex: glow::Texture,
+    blend: Blend,
+    state: DrawState,
+}
+
+/// the quads one draw may have: the static index buffer's (u16 indices, 60000 vertices)
+const IBO_QUADS: usize = 15000;
+/// the vertex buffers a frame's flushes go round: each upload goes to one the GPU is not reading any more
+const VBO_RING: usize = 3;
+
 pub struct Gfx {
     pub gl: glow::Context,
     program: glow::Program,
     vao: glow::VertexArray,
-    vbo: glow::Buffer,
-    ibo: glow::Buffer,
+    vbos: [glow::Buffer; VBO_RING],
+    ring: usize,
     u_xform: Option<glow::UniformLocation>,
     white: Texture,
+    /// the frame's vertices and its draws so far: drawn by flush_frame, in one buffer upload
     verts: Vec<Vertex>,
-    indices: Vec<u16>,
-    bound: Option<(glow::Texture, Blend)>,
+    cmds: Vec<Cmd>,
+    /// the texture and blend of the last of `cmds` while it takes more vertices (None: the next draw starts one)
+    bound: Option<(glow::Texture, Blend, Prim)>,
+    /// the transform, viewport and scissor as set now: a new command draws with it
+    state: DrawState,
     /// the screen's drawable size, and where the 1280x720 canvas sits in it (letterboxed at its own shape)
     screen: (i32, i32),
     pub canvas_scale: f32,
@@ -228,19 +263,21 @@ impl Gfx {
         let program = program(&gl, &format!("{header}{VS}"), &format!("{header}{FS}"))?;
         let vao = gl.create_vertex_array()?;
         gl.bind_vertex_array(Some(vao));
-        let vbo = gl.create_buffer()?;
-        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-        let stride = std::mem::size_of::<Vertex>() as i32;
-        gl.enable_vertex_attrib_array(0);
-        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, stride, 0);
-        gl.enable_vertex_attrib_array(1);
-        gl.vertex_attrib_pointer_f32(1, 3, glow::FLOAT, false, stride, 8);
-        gl.enable_vertex_attrib_array(2);
-        gl.vertex_attrib_pointer_f32(2, 4, glow::FLOAT, false, stride, 20);
-        gl.enable_vertex_attrib_array(3);
-        gl.vertex_attrib_pointer_f32(3, 1, glow::FLOAT, false, stride, 36);
+        let vbos = [gl.create_buffer()?, gl.create_buffer()?, gl.create_buffer()?];
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbos[0]));
+        Self::vertex_pointers(&gl, 0);
+        for a in 0..4 {
+            gl.enable_vertex_attrib_array(a);
+        }
+        // the quads' indices, made once: 0,1,2, 2,1,3 and so on every four vertices
         let ibo = gl.create_buffer()?;
         gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ibo));
+        let mut quad_indices: Vec<u16> = Vec::with_capacity(IBO_QUADS * 6);
+        for k in 0..IBO_QUADS as u16 {
+            let b = k * 4;
+            quad_indices.extend_from_slice(&[b, b + 1, b + 2, b + 2, b + 1, b + 3]);
+        }
+        gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, bytes(&quad_indices), glow::STATIC_DRAW);
         gl.use_program(Some(program));
         gl.uniform_1_i32(gl.get_uniform_location(program, "u_tex").as_ref(), 0);
         let u_xform = gl.get_uniform_location(program, "u_xform");
@@ -260,13 +297,14 @@ impl Gfx {
             gl,
             program,
             vao,
-            vbo,
-            ibo,
+            vbos,
+            ring: 0,
             u_xform,
             white,
-            verts: Vec::with_capacity(4096),
-            indices: Vec::with_capacity(6144),
+            verts: Vec::with_capacity(16384),
+            cmds: Vec::with_capacity(256),
             bound: None,
+            state: DrawState { xform: [0.0; 4], viewport: [0, 0, CANVAS_W as i32, CANVAS_H as i32], scissor: None },
             screen: (CANVAS_W as i32, CANVAS_H as i32),
             canvas_scale: 1.0,
             canvas_offset: (0.0, 0.0),
@@ -381,7 +419,7 @@ impl Gfx {
 
     /// `t` drawn with nearest filtering from now on (SDL's scale quality "0" at the texture's creation)
     pub fn set_nearest(&mut self, t: &Texture) {
-        self.cut(diag::CUT_TEXTURE_OP);
+        self.touch(t.tex, diag::CUT_TEXTURE_OP);
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, Some(t.tex));
             self.gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
@@ -422,8 +460,10 @@ impl Gfx {
             gl.framebuffer_texture_2d(glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::TEXTURE_2D, Some(t.tex), 0);
             let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
             if status == glow::FRAMEBUFFER_COMPLETE {
-                // a new texture's pixels are undefined in GL; SDL's new target is transparent black
-                gl.disable(glow::SCISSOR_TEST);
+                // a new texture's pixels are undefined in GL; SDL's new target is transparent black. Nothing of the
+                // frame's draws reads it yet, so they stay recorded
+                self.gl_scissor(None);
+                let gl = &self.gl;
                 gl.clear_color(0.0, 0.0, 0.0, 0.0);
                 gl.clear(glow::COLOR_BUFFER_BIT);
             }
@@ -448,7 +488,8 @@ impl Gfx {
     /// `update` from rows `pitch` bytes apart (a part of a bigger picture: a streaming texture's buffer)
     #[allow(clippy::too_many_arguments)]
     pub fn update_pitch(&mut self, t: &Texture, x: u32, y: u32, w: u32, h: u32, rgba: &[u8], pitch: u32) {
-        self.cut(diag::CUT_TEXTURE_OP);
+        // the frame's earlier draws of it are drawn with its old pixels first
+        self.touch(t.tex, diag::CUT_TEXTURE_OP);
         self.bound = None;
         self.stats.uploads += 1;
         self.stats.upload_bytes += w as u64 * h as u64 * 4;
@@ -506,7 +547,12 @@ impl Gfx {
     }
 
     pub fn free(&mut self, t: Texture) {
-        self.cut(diag::CUT_TEXTURE_OP);
+        // the frame's draws of it, or into it, are drawn before it goes
+        if t.fbo.is_some_and(|f| self.targets.iter().any(|&(fbo, ..)| fbo == f)) {
+            self.flush_frame(diag::CUT_TEXTURE_OP);
+        } else {
+            self.touch(t.tex, diag::CUT_TEXTURE_OP);
+        }
         self.bound = None;
         self.alive = self.alive.saturating_sub(1);
         unsafe {
@@ -522,8 +568,27 @@ impl Gfx {
         }
     }
 
-    unsafe fn set_xform(&self, sx: f32, sy: f32, tx: f32, ty: f32) {
+    // the transform, viewport and scissor are set in GL at once (a clear sees them) and kept in `state`, which the
+    // frame's next command is recorded with
+    unsafe fn set_xform(&mut self, sx: f32, sy: f32, tx: f32, ty: f32) {
         self.gl.uniform_4_f32(self.u_xform.as_ref(), sx, sy, tx, ty);
+        self.state.xform = [sx, sy, tx, ty];
+    }
+
+    unsafe fn gl_viewport(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        self.gl.viewport(x, y, w, h);
+        self.state.viewport = [x, y, w, h];
+    }
+
+    unsafe fn gl_scissor(&mut self, r: Option<[i32; 4]>) {
+        match r {
+            Some([x, y, w, h]) => {
+                self.gl.enable(glow::SCISSOR_TEST);
+                self.gl.scissor(x, y, w, h);
+            }
+            None => self.gl.disable(glow::SCISSOR_TEST),
+        }
+        self.state.scissor = r;
     }
 
     /// the frame starts: the screen cleared to black, the 1280x720 canvas as large as fits, centred
@@ -539,10 +604,10 @@ impl Gfx {
         self.canvas_scale = k;
         self.canvas_offset = (ox, oy);
         unsafe {
+            self.gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+            self.gl_scissor(None);
+            self.gl_viewport(0, 0, w, h);
             let gl = &self.gl;
-            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-            gl.disable(glow::SCISSOR_TEST);
-            gl.viewport(0, 0, w, h);
             gl.clear_color(0.0, 0.0, 0.0, 1.0);
             gl.clear(glow::COLOR_BUFFER_BIT);
             gl.use_program(Some(self.program));
@@ -565,7 +630,7 @@ impl Gfx {
         self.screen
     }
 
-    unsafe fn screen_xform(&self) {
+    unsafe fn screen_xform(&mut self) {
         let (w, h) = (self.screen.0 as f32, self.screen.1 as f32);
         let k = self.canvas_scale;
         let (ox, oy) = self.canvas_offset;
@@ -581,16 +646,16 @@ impl Gfx {
 
     /// begin_target, cleared to `clear`: text's colour at alpha 0 keeps the edges blended into it from going dark
     pub fn begin_target_cleared(&mut self, t: &Texture, clear: Color) {
-        self.cut(diag::CUT_TARGET);
+        self.flush_frame(diag::CUT_TARGET);
         self.bound = None;
         self.stats.target_switches += 1;
         let (lw, lh) = t.size();
         let Some(fbo) = t.fbo else { return };
         self.targets.push((fbo, t.w as i32, t.h as i32, lw, lh));
         unsafe {
+            self.gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
+            self.gl_viewport(0, 0, t.w as i32, t.h as i32);
             let gl = &self.gl;
-            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
-            gl.viewport(0, 0, t.w as i32, t.h as i32);
             gl.clear_color(clear[0], clear[1], clear[2], clear[3]);
             gl.clear(glow::COLOR_BUFFER_BIT);
             self.set_xform(2.0 / lw, 2.0 / lh, -1.0, -1.0);
@@ -598,7 +663,7 @@ impl Gfx {
     }
 
     pub fn end_target(&mut self, t: &Texture) {
-        self.cut(diag::CUT_TARGET);
+        self.flush_frame(diag::CUT_TARGET);
         self.bound = None;
         self.stats.target_switches += 1;
         if t.fbo.is_some() {
@@ -608,21 +673,20 @@ impl Gfx {
             self.stats.mipmaps += 1;
         }
         unsafe {
-            let gl = &self.gl;
             if t.mipmaps {
-                gl.bind_texture(glow::TEXTURE_2D, Some(t.tex));
-                gl.generate_mipmap(glow::TEXTURE_2D);
+                self.gl.bind_texture(glow::TEXTURE_2D, Some(t.tex));
+                self.gl.generate_mipmap(glow::TEXTURE_2D);
                 t.mips.set(MIPS_OK);
             }
             match self.targets.last() {
                 Some(&(fbo, pw, ph, lw, lh)) => {
-                    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
-                    gl.viewport(0, 0, pw, ph);
+                    self.gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
+                    self.gl_viewport(0, 0, pw, ph);
                     self.set_xform(2.0 / lw, 2.0 / lh, -1.0, -1.0);
                 }
                 None => {
-                    gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-                    gl.viewport(0, 0, self.screen.0, self.screen.1);
+                    self.gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+                    self.gl_viewport(0, 0, self.screen.0, self.screen.1);
                     self.screen_xform();
                 }
             }
@@ -634,7 +698,7 @@ impl Gfx {
     /// a frame in output pixels starts on the screen of `w` x `h` (nothing cleared: the Renderer clears): no canvas
     /// mapping, no target, the viewport and clip rect as they were set
     pub fn begin_frame(&mut self, w: i32, h: i32) {
-        self.cut(diag::CUT_PRESENT);
+        self.flush_frame(diag::CUT_PRESENT);
         self.draw_calls = 0;
         self.screen = (w, h);
         self.canvas_scale = 1.0;
@@ -653,7 +717,7 @@ impl Gfx {
     /// draws into `t` (None: the screen) until the next set_target, nothing cleared - SDL_SetRenderTarget. A target
     /// is addressed from its top-left pixel; the screen through its viewport
     pub fn set_target(&mut self, t: Option<&Texture>) {
-        self.cut(diag::CUT_TARGET);
+        self.flush_frame(diag::CUT_TARGET);
         self.bound = None;
         self.stats.target_switches += 1;
         self.targets.clear();
@@ -710,19 +774,18 @@ impl Gfx {
     // binds the target on top of `targets` (or the screen), its viewport, scissor and pixel transform
     fn rebind_current(&mut self) {
         unsafe {
-            let gl = &self.gl;
             let (fb_h, ox, oy, w, h) = match self.targets.last() {
                 Some(&(fbo, pw, ph, lw, lh)) => {
-                    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
-                    gl.viewport(0, 0, pw, ph);
+                    self.gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
+                    self.gl_viewport(0, 0, pw, ph);
                     self.set_xform(2.0 / lw, 2.0 / lh, -1.0, -1.0);
                     (None, 0, 0, pw, ph)
                 }
                 None => {
-                    gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+                    self.gl.bind_framebuffer(glow::FRAMEBUFFER, None);
                     let [vx, vy, vw, vh] = self.viewport.unwrap_or([0, 0, self.screen.0, self.screen.1]);
                     // GL's window y runs up from the bottom
-                    gl.viewport(vx, self.screen.1 - vy - vh, vw, vh);
+                    self.gl_viewport(vx, self.screen.1 - vy - vh, vw, vh);
                     if self.canvas_scale == 1.0 && self.canvas_offset == (0.0, 0.0) {
                         self.set_xform(2.0 / vw as f32, -2.0 / vh as f32, -1.0, 1.0);
                     } else {
@@ -739,88 +802,201 @@ impl Gfx {
                     let x1 = (ox + cx + cw).min(ox + w);
                     let y1 = (oy + cy + ch).min(oy + h);
                     let (sw, sh) = ((x1 - x0).max(0), (y1 - y0).max(0));
-                    gl.enable(glow::SCISSOR_TEST);
                     match fb_h {
-                        Some(sh_total) => gl.scissor(x0, sh_total - y0 - sh, sw, sh),
-                        None => gl.scissor(x0, y0, sw, sh),
+                        Some(sh_total) => self.gl_scissor(Some([x0, sh_total - y0 - sh, sw, sh])),
+                        None => self.gl_scissor(Some([x0, y0, sw, sh])),
                     }
                 }
-                None => gl.disable(glow::SCISSOR_TEST),
+                None => self.gl_scissor(None),
             }
         }
     }
 
     /// clears all of what is drawn into to `c` (SDL_RenderClear: the whole target, past the viewport and the clip)
     pub fn clear(&mut self, c: Color) {
-        self.cut(diag::CUT_CLEAR);
+        self.flush_frame(diag::CUT_CLEAR);
         unsafe {
-            let gl = &self.gl;
-            gl.disable(glow::SCISSOR_TEST);
+            self.gl_scissor(None);
             let viewport = self.viewport.filter(|_| self.targets.is_empty());
             if viewport.is_some() {
-                gl.viewport(0, 0, self.screen.0, self.screen.1);
+                self.gl_viewport(0, 0, self.screen.0, self.screen.1);
             }
+            let gl = &self.gl;
             gl.clear_color(c[0], c[1], c[2], c[3]);
             gl.clear(glow::COLOR_BUFFER_BIT);
         }
         self.rebind_current();
     }
 
-    fn bind(&mut self, tex: glow::Texture, blend: Blend) {
-        if self.bound == Some((tex, blend)) && self.verts.len() < 60000 {
-            return;
-        }
-        self.cut(if self.bound == Some((tex, blend)) { diag::CUT_FULL } else { diag::CUT_TEXTURE });
-        unsafe {
-            let gl = &self.gl;
-            gl.bind_texture(glow::TEXTURE_2D, Some(tex));
-            match blend {
-                Blend::Blend => gl.blend_func_separate(
-                    glow::SRC_ALPHA,
-                    glow::ONE_MINUS_SRC_ALPHA,
-                    glow::ONE,
-                    glow::ONE_MINUS_SRC_ALPHA,
-                ),
-                Blend::Premultiplied => gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA),
-                Blend::None => gl.blend_func(glow::ONE, glow::ZERO),
-                Blend::Add => gl.blend_func_separate(glow::SRC_ALPHA, glow::ONE, glow::ZERO, glow::ONE),
-                Blend::Mod => gl.blend_func_separate(glow::ZERO, glow::SRC_COLOR, glow::ZERO, glow::ONE),
-                Blend::Mask => gl.blend_func_separate(glow::ZERO, glow::ONE, glow::ZERO, glow::SRC_ALPHA),
+    // the frame's next `n` vertices go to a command of `tex`, `blend` and `prim` drawn with the state as it is now:
+    // the last one goes on when it is the same and has room, else a new one starts
+    fn bind(&mut self, tex: glow::Texture, blend: Blend, prim: Prim, n: usize) {
+        let state = self.state;
+        if self.bound == Some((tex, blend, prim)) {
+            let last = self.cmds.last().unwrap();
+            if last.state != state {
+                self.cut(diag::CUT_STATE);
+            } else if prim == Prim::Triangles || last.count + n <= IBO_QUADS * 4 {
+                return;
+            } else {
+                self.cut(diag::CUT_FULL);
             }
+        } else {
+            self.cut(diag::CUT_TEXTURE);
         }
-        self.bound = Some((tex, blend));
+        self.cmds.push(Cmd { first: self.verts.len(), count: 0, prim, tex, blend, state });
+        self.bound = Some((tex, blend, prim));
     }
 
     /// draws what is batched
     pub fn flush(&mut self) {
-        self.cut(diag::CUT_PRESENT);
+        self.flush_frame(diag::CUT_PRESENT);
     }
 
-    // draws what is batched, for the reason `why` (diag::CUT_*: the stats say what ends the batches)
+    // ends the frame's command being added to, for the reason `why` (diag::CUT_*: the stats say what ends the
+    // batches) - drawn later, by flush_frame
     fn cut(&mut self, why: usize) {
-        if self.indices.is_empty() {
+        if self.bound.take().is_none() {
+            return;
+        }
+        let Some(c) = self.cmds.last() else { return };
+        if c.count == 0 {
+            self.cmds.pop();
             return;
         }
         self.stats.cuts[why] += 1;
         self.stats.draws += 1;
-        self.stats.quads += self.indices.len() as u64 / 6;
+        self.stats.quads += match c.prim {
+            Prim::Quads => c.count as u64 / 4,
+            Prim::Triangles => c.count as u64 / 6,
+        };
+    }
+
+    // cut, and the frame drawn first when one of its commands draws `tex` (it is about to change or go)
+    fn touch(&mut self, tex: glow::Texture, why: usize) {
+        self.cut(why);
+        if self.cmds.iter().any(|c| c.tex == tex) {
+            self.draw_frame();
+        }
+    }
+
+    // cut, and the frame's commands drawn: before a target switch, a clear, a readback, the present
+    fn flush_frame(&mut self, why: usize) {
+        self.cut(why);
+        self.draw_frame();
+    }
+
+    // the vertex attributes read from vertex `base` of the bound vertex buffer on
+    unsafe fn vertex_pointers(gl: &glow::Context, base: usize) {
+        let stride = std::mem::size_of::<Vertex>() as i32;
+        let o = (base * std::mem::size_of::<Vertex>()) as i32;
+        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, stride, o);
+        gl.vertex_attrib_pointer_f32(1, 3, glow::FLOAT, false, stride, o + 8);
+        gl.vertex_attrib_pointer_f32(2, 4, glow::FLOAT, false, stride, o + 20);
+        gl.vertex_attrib_pointer_f32(3, 1, glow::FLOAT, false, stride, o + 36);
+    }
+
+    // the recorded commands drawn in their order: the frame's vertices in one upload to the next buffer of the ring,
+    // then each command with its texture, blend and state set where they change from the one before
+    fn draw_frame(&mut self) {
+        if self.cmds.is_empty() {
+            self.verts.clear();
+            return;
+        }
+        let data = bytes(&self.verts);
+        self.stats.flushes += 1;
+        self.stats.vbo_uploads += 1;
+        self.stats.vbo_upload_bytes += data.len() as u64;
+        self.ring = (self.ring + 1) % VBO_RING;
         unsafe {
             let gl = &self.gl;
-            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
-            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&self.verts), glow::STREAM_DRAW);
-            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
-            gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, bytes(&self.indices), glow::STREAM_DRAW);
-            gl.draw_elements(glow::TRIANGLES, self.indices.len() as i32, glow::UNSIGNED_SHORT, 0);
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbos[self.ring]));
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, data, glow::STREAM_DRAW);
+            // the vertex the attribute pointers start at: a quad command draws from its index in the static index
+            // buffer, so they move only when one starts off the four-vertex grid or past the buffer's 60000 vertices
+            let mut base: Option<usize> = None;
+            let mut tex: Option<glow::Texture> = None;
+            let mut blend: Option<Blend> = None;
+            let mut state: Option<DrawState> = None;
+            for c in &self.cmds {
+                if tex != Some(c.tex) {
+                    gl.bind_texture(glow::TEXTURE_2D, Some(c.tex));
+                    tex = Some(c.tex);
+                }
+                if blend != Some(c.blend) {
+                    Self::blend_func(gl, c.blend);
+                    blend = Some(c.blend);
+                }
+                if state != Some(c.state) {
+                    Self::apply_state(gl, self.u_xform.as_ref(), &c.state, state.as_ref());
+                    state = Some(c.state);
+                }
+                match c.prim {
+                    Prim::Quads => {
+                        let fits = base.is_some_and(|b| (c.first - b) % 4 == 0 && (c.first - b + c.count) <= IBO_QUADS * 4);
+                        if !fits {
+                            Self::vertex_pointers(gl, c.first);
+                            base = Some(c.first);
+                        }
+                        let q0 = (c.first - base.unwrap()) / 4;
+                        gl.draw_elements(glow::TRIANGLES, (c.count / 4 * 6) as i32, glow::UNSIGNED_SHORT, (q0 * 12) as i32);
+                    }
+                    Prim::Triangles => {
+                        if base.is_none() {
+                            Self::vertex_pointers(gl, c.first);
+                            base = Some(c.first);
+                        }
+                        gl.draw_arrays(glow::TRIANGLES, (c.first - base.unwrap()) as i32, c.count as i32);
+                    }
+                }
+            }
+            // GL's state as it is set now again, for what comes before the next draw (a clear sees the scissor)
+            Self::apply_state(gl, self.u_xform.as_ref(), &self.state, state.as_ref());
         }
-        self.draw_calls += 1;
+        self.draw_calls += self.cmds.len() as u32;
+        self.cmds.clear();
         self.verts.clear();
-        self.indices.clear();
+    }
+
+    // `s` set in GL where it differs from `was` (None: all of it)
+    unsafe fn apply_state(gl: &glow::Context, u_xform: Option<&glow::UniformLocation>, s: &DrawState, was: Option<&DrawState>) {
+        if was.map(|w| w.xform) != Some(s.xform) {
+            let [sx, sy, tx, ty] = s.xform;
+            gl.uniform_4_f32(u_xform, sx, sy, tx, ty);
+        }
+        if was.map(|w| w.viewport) != Some(s.viewport) {
+            let [x, y, w, h] = s.viewport;
+            gl.viewport(x, y, w, h);
+        }
+        if was.map(|w| w.scissor) != Some(s.scissor) {
+            match s.scissor {
+                Some([x, y, w, h]) => {
+                    if !matches!(was, Some(DrawState { scissor: Some(_), .. })) {
+                        gl.enable(glow::SCISSOR_TEST);
+                    }
+                    gl.scissor(x, y, w, h);
+                }
+                None => gl.disable(glow::SCISSOR_TEST),
+            }
+        }
+    }
+
+    unsafe fn blend_func(gl: &glow::Context, blend: Blend) {
+        match blend {
+            Blend::Blend => gl.blend_func_separate(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA, glow::ONE, glow::ONE_MINUS_SRC_ALPHA),
+            Blend::Premultiplied => gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA),
+            Blend::None => gl.blend_func(glow::ONE, glow::ZERO),
+            Blend::Add => gl.blend_func_separate(glow::SRC_ALPHA, glow::ONE, glow::ZERO, glow::ONE),
+            Blend::Mod => gl.blend_func_separate(glow::ZERO, glow::SRC_COLOR, glow::ZERO, glow::ONE),
+            Blend::Mask => gl.blend_func_separate(glow::ZERO, glow::ONE, glow::ZERO, glow::SRC_ALPHA),
+        }
     }
 
     fn push_quad(&mut self, v: [Vertex; 4]) {
-        let base = self.verts.len() as u16;
         self.verts.extend_from_slice(&v);
-        self.indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 1, base + 3]);
+        if let Some(c) = self.cmds.last_mut() {
+            c.count += 4;
+        }
     }
 
     // an auto-mipmapped texture drawn `shrink` times smaller than its pixels: its mipmaps made (again) first
@@ -828,7 +1004,8 @@ impl Gfx {
         if !t.auto_mips || !self.knobs.mipmaps || shrink <= MIPS_AT || t.mips.get() == MIPS_OK {
             return;
         }
-        self.cut(diag::CUT_MIPMAPS);
+        // the frame's earlier draws of it are drawn without the new mipmaps
+        self.touch(t.tex, diag::CUT_MIPMAPS);
         self.bound = None;
         self.stats.mipmaps += 1;
         unsafe {
@@ -878,7 +1055,7 @@ impl Gfx {
         if flip_v {
             std::mem::swap(&mut v0, &mut v1);
         }
-        self.bind(t.tex, blend);
+        self.bind(t.tex, blend, Prim::Quads, 4);
         let [x, y, w, h] = dst;
         let (cx, cy) = match center {
             Some([cx, cy]) => (x + cx, y + cy),
@@ -910,7 +1087,7 @@ impl Gfx {
     /// a filled rect in a draw blend mode (SDL_SetRenderDrawBlendMode + SDL_RenderFillRect)
     pub fn fill_blend(&mut self, dst: Rect, color: Color, blend: Blend) {
         let white = self.white.tex;
-        self.bind(white, blend);
+        self.bind(white, blend, Prim::Quads, 4);
         let [x, y, w, h] = dst;
         let vert = |px: f32, py: f32| Vertex { pos: [px, py], uvq: [0.5, 0.5, 1.0], color, edge: -1.0 };
         self.push_quad([vert(x, y), vert(x + w, y), vert(x, y + h), vert(x + w, y + h)]);
@@ -930,7 +1107,7 @@ impl Gfx {
         let (dx, dy) = ((bx - ax) / len * 0.5, (by - ay) / len * 0.5);
         let (nx, ny) = (-dy, dx);
         let white = self.white.tex;
-        self.bind(white, blend);
+        self.bind(white, blend, Prim::Quads, 4);
         let vert = |px: f32, py: f32| Vertex { pos: [px, py], uvq: [0.5, 0.5, 1.0], color, edge: -1.0 };
         self.push_quad([
             vert(ax - dx + nx, ay - dy + ny),
@@ -947,30 +1124,30 @@ impl Gfx {
             return;
         }
         let tex = t.map(|t| t.tex).unwrap_or(self.white.tex);
-        self.bind(tex, blend);
-        if self.verts.len() + verts.len() > 65000 {
-            self.cut(diag::CUT_FULL);
-        }
-        let base = self.verts.len();
         let n = verts.len() as i32;
-        for v in verts {
+        let count = if indices.is_empty() { (n - n % 3) as usize } else { indices.len() - indices.len() % 3 };
+        if count == 0 {
+            return;
+        }
+        // triangles are drawn unindexed (the static index buffer is the quads'): each index's vertex in its place
+        self.bind(tex, blend, Prim::Triangles, count);
+        let textured = t.is_some();
+        let vertex = |v: &GeoVertex| {
             let c = v.color;
-            self.verts.push(Vertex {
+            Vertex {
                 pos: v.pos,
-                uvq: if t.is_some() { [v.uv[0], v.uv[1], 1.0] } else { [0.5, 0.5, 1.0] },
+                uvq: if textured { [v.uv[0], v.uv[1], 1.0] } else { [0.5, 0.5, 1.0] },
                 color: [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, c[3] as f32 / 255.0],
                 edge: -1.0,
-            });
-        }
-        let mut emit = |i: i32| self.indices.push((base as i32 + i.clamp(0, n - 1)) as u16);
+            }
+        };
         if indices.is_empty() {
-            for i in 0..(n - n % 3) {
-                emit(i);
-            }
+            self.verts.extend(verts[..count].iter().map(vertex));
         } else {
-            for &i in &indices[..indices.len() - indices.len() % 3] {
-                emit(i);
-            }
+            self.verts.extend(indices[..count].iter().map(|&i| vertex(&verts[i.clamp(0, n - 1) as usize])));
+        }
+        if let Some(c) = self.cmds.last_mut() {
+            c.count += count;
         }
     }
 
@@ -1017,7 +1194,7 @@ impl Gfx {
         if flip {
             std::mem::swap(&mut v0, &mut v1);
         }
-        self.bind(t.tex, blend);
+        self.bind(t.tex, blend, Prim::Quads, 4);
         // the texture coordinates times each edge's height: the shader divides them back, so 1/depth runs
         // linearly across the screen and the picture does not bend along the diagonal
         let vert = |e: &Edge, y: f32, u: f32, v: f32, q: f32, color: Color, edge: f32| Vertex {
@@ -1036,7 +1213,7 @@ impl Gfx {
 
     /// the back buffer as RGBA rows, top first
     pub fn read_screen(&mut self) -> (u32, u32, Vec<u8>) {
-        self.cut(diag::CUT_READBACK);
+        self.flush_frame(diag::CUT_READBACK);
         let (w, h) = (self.screen.0 as u32, self.screen.1 as u32);
         self.stats.readbacks += 1;
         self.stats.readback_bytes += w as u64 * h as u64 * 4;
@@ -1066,7 +1243,7 @@ impl Gfx {
     /// `r` (pixels, y down; None = all of it) of what is drawn into - the screen (past its viewport, as
     /// SDL_RenderReadPixels reads the whole output) or the target - as RGBA rows, top first, alpha as it is
     pub fn read_pixels(&mut self, r: Option<PixelRect>) -> (u32, u32, Vec<u8>) {
-        self.cut(diag::CUT_READBACK);
+        self.flush_frame(diag::CUT_READBACK);
         let on_screen = self.targets.is_empty();
         let (fw, fh) = match self.targets.last() {
             Some(&(_, w, h, ..)) => (w, h),
