@@ -44,6 +44,12 @@ public:
     // what can be told without loading: not built for this system, disabled, offline for Network=required
     static Refusal precheck(const ExtensionInfo &extension, bool networkUp);
 
+    // the SDK ABI number (the N of "sdk=N;" in AB_SDK_STAMP) compiled into the plugin file, read from its bytes
+    // without loading it; -1 when the file has no stamp or cannot be read. A plugin whose undefined symbols the
+    // launcher no longer has fails in dlopen, before ab_extension_abi() can be called - this is how the log still
+    // says which ABI it was built for (BUG-10)
+    static int abiInFile(const std::string &path);
+
     // loads and creates every Background=true extension that can run (the network is not asked: its poll()
     // waits for one itself). Called once, at start-up, after the crash guard had its say.
     void startBackground();
