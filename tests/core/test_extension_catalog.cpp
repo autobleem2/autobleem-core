@@ -7,6 +7,7 @@
 #include "../support/temp_dir.h"
 #include "core/services/extension_catalog.h"
 #include "core/main.h"
+#include "gui/extension.h"
 
 using namespace std;
 
@@ -211,6 +212,46 @@ TEST_CASE("ExtensionCatalog::findProvider: the first runnable extension that pro
     catalog.find("bnet")->loadProblem = "built for a different AutoBleem"; // the runtime refused it
     CHECK(catalog.findProvider("network") == nullptr);
     CHECK(catalog.findProvider("pads") == nullptr);
+}
+
+// BUG-10: the scan reads the plugin file's stamp, so a plugin of another SDK ABI is refused from the first frame
+TEST_CASE("ExtensionCatalog::scan marks a plugin file stamped for another SDK ABI, and offers the right one") {
+    TempDir tmp("extensions");
+    const string stamp = "sdk=" + to_string(AB_SDK_ABI);
+    extension(tmp, "old", "[extension]\nName=A old\nPlugin=bin/{key}/old\nProvides=store\n", {"psc"});
+    tmp.writeFile("Extensions/old/bin/psc/old.so", "ELF sdk=" + to_string(AB_SDK_ABI - 3) + ";cxx=gcc-6;cxx11abi=1");
+    extension(tmp, "good", "[extension]\nName=B good\nPlugin=bin/{key}/good\nProvides=store\n", {"psc"});
+    tmp.writeFile("Extensions/good/bin/psc/good.so", "ELF " + stamp + ";cxx=gcc-6;cxx11abi=1");
+    extension(tmp, "bare", "[extension]\nName=C bare\nPlugin=bin/{key}/bare\n", {"psc"}); // no stamp: dlopen decides
+    ExtensionCatalog catalog = catalogIn(tmp);
+    catalog.scan();
+
+    CHECK(catalog.find("old")->loadProblem == ExtensionInfo::WrongAbiProblem);
+    CHECK_FALSE(catalog.find("old")->runnable());
+    CHECK(catalog.find("old")->problem() == ExtensionProblem::WrongAbi);
+    CHECK(catalog.find("good")->runnable());
+    CHECK(catalog.find("bare")->runnable());
+    REQUIRE(catalog.findProvider("store") != nullptr);
+    CHECK(catalog.findProvider("store")->name == "good"); // the stale one is skipped though it comes first
+
+    // the line is written once, however often the folder is scanned or the runtime meets the file again
+    CHECK_FALSE(catalog.reportWrongAbi("old", 8));
+    catalog.scan();
+    catalog.scan();
+    CHECK(catalog.find("old")->loadProblem == ExtensionInfo::WrongAbiProblem);
+    CHECK_FALSE(catalog.reportWrongAbi("old", 8));
+    CHECK(catalog.reportWrongAbi("other", 8)); // another extension has its own line
+    CHECK_FALSE(catalog.reportWrongAbi("other", 8));
+}
+
+TEST_CASE("ExtensionCatalog::findProvider offers nothing when the only provider is stamped for another ABI") {
+    TempDir tmp("extensions");
+    extension(tmp, "store", "[extension]\nName=Store\nPlugin=bin/{key}/store\nProvides=store\n", {"psc"});
+    tmp.writeFile("Extensions/store/bin/psc/store.so", "sdk=" + to_string(AB_SDK_ABI - 3) + ";cxx=gcc-6;");
+    ExtensionCatalog catalog = catalogIn(tmp);
+    catalog.scan();
+    CHECK(catalog.findProvider("store") == nullptr);
+    REQUIRE(catalog.findUnavailableProvider("store") != nullptr); // the Extensions list still shows it, with why
 }
 
 TEST_CASE("ExtensionCatalog::findUnavailableProvider: a provider that cannot run, and why") {

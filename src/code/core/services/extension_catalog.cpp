@@ -3,9 +3,11 @@
 //
 #include "extension_catalog.h"
 #include "../main.h"
+#include "../../gui/extension.h"
 
 #include <algorithm>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <ableem/engine/log.h>
 
@@ -115,6 +117,15 @@ const vector<ExtensionInfo> &ExtensionCatalog::scan() {
         auto problem = problems.find(dir.name);
         if (problem != problems.end())
             e.loadProblem = problem->second;
+        // a plugin stamped for another SDK ABI is refused here, so no list ever offers it (BUG-10); one without a
+        // stamp (-1) is left to the loader
+        if (e.builtForThisSystem() && e.loadProblem.empty()) {
+            const int fileAbi = abiInFile(e.manifest.program);
+            if (fileAbi >= 0 && fileAbi != AB_SDK_ABI) {
+                e.loadProblem = ExtensionInfo::WrongAbiProblem;
+                reportWrongAbi(e.name, fileAbi);
+            }
+        }
         PLOG_INFO << "[" << e.name << "] extension " << e.title << " " << e.version
                   << (e.builtForThisSystem() ? "" : " - not built for this system: " + e.manifest.problem)
                   << (e.disabled ? " - disabled" : "");
@@ -123,6 +134,34 @@ const vector<ExtensionInfo> &ExtensionCatalog::scan() {
     sort(extensions_.begin(), extensions_.end(),
          [](const ExtensionInfo &a, const ExtensionInfo &b) { return lessCaseInsensitive(a.title, b.title); });
     return extensions_;
+}
+
+//*******************************
+// ExtensionCatalog::abiInFile / reportWrongAbi
+//*******************************
+int ExtensionCatalog::abiInFile(const string &path) {
+    ifstream in(path, ios::binary);
+    if (!in)
+        return -1;
+    const string content((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
+    const string marker = "sdk=";
+    for (size_t at = content.find(marker); at != string::npos; at = content.find(marker, at + 1)) {
+        size_t end = at + marker.size();
+        while (end < content.size() && content[end] >= '0' && content[end] <= '9')
+            end++;
+        // the stamp is "sdk=<n>;cxx=": anything else that says "sdk=" is not it
+        if (end > at + marker.size() && end < 10 + at + marker.size() && content.compare(end, 5, ";cxx=") == 0)
+            return stoi(content.substr(at + marker.size(), end - at - marker.size()));
+    }
+    return -1;
+}
+
+bool ExtensionCatalog::reportWrongAbi(const string &name, int fileAbi) {
+    if (!reportedWrongAbi_.insert(name).second)
+        return false;
+    PLOG_ERROR << "[" << name << "] not loaded: built for SDK ABI " << fileAbi << ", this AutoBleem is SDK ABI "
+               << AB_SDK_ABI << " - hidden";
+    return true;
 }
 
 //*******************************

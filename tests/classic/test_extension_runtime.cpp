@@ -238,6 +238,9 @@ TEST_CASE("ExtensionRuntime refuses a plugin file stamped for another SDK ABI wi
     CHECK(info->loadProblem == ExtensionInfo::WrongAbiProblem);
     CHECK_FALSE(info->runnable()); // hidden from what the launcher offers
     CHECK(info->problem() == ExtensionProblem::WrongAbi);
+    // marked by the scan already (which wrote the one log line): two attempts add none
+    CHECK(rt->run("store", true) == ExtensionRuntime::Refusal::WrongAbi);
+    CHECK_FALSE(t.catalog.reportWrongAbi("store", AB_SDK_ABI - 5));
 }
 
 TEST_CASE("ExtensionRuntime accepts a plugin file stamped for this SDK ABI") {

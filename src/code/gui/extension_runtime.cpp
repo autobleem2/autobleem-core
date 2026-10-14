@@ -38,20 +38,7 @@ ExtensionRuntime::Refusal ExtensionRuntime::precheck(const ExtensionInfo &extens
 // ExtensionRuntime::abiInFile
 //*******************************
 int ExtensionRuntime::abiInFile(const string &path) {
-    ifstream in(path, ios::binary);
-    if (!in)
-        return -1;
-    const string content((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
-    const string marker = "sdk=";
-    for (size_t at = content.find(marker); at != string::npos; at = content.find(marker, at + 1)) {
-        size_t end = at + marker.size();
-        while (end < content.size() && content[end] >= '0' && content[end] <= '9')
-            end++;
-        // the stamp is "sdk=<n>;cxx=": anything else that says "sdk=" is not it
-        if (end > at + marker.size() && end < 10 + at + marker.size() && content.compare(end, 5, ";cxx=") == 0)
-            return stoi(content.substr(at + marker.size(), end - at - marker.size()));
-    }
-    return -1;
+    return ExtensionCatalog::abiInFile(path);
 }
 
 //*******************************
@@ -98,8 +85,7 @@ ExtensionRuntime::Loaded *ExtensionRuntime::load(ExtensionInfo &extension, Refus
     // be there with another layout
     const int fileAbi = abiInFile(path);
     if (fileAbi >= 0 && fileAbi != AB_SDK_ABI) {
-        PLOG_ERROR << "[" << extension.name << "] not loaded: built for SDK ABI " << fileAbi
-                   << ", this AutoBleem is SDK ABI " << AB_SDK_ABI << " - hidden";
+        catalog_.reportWrongAbi(extension.name, fileAbi); // second defence: scan() logged it already
         extension.loadProblem = ExtensionInfo::WrongAbiProblem;
         why = Refusal::WrongAbi;
         return nullptr;
