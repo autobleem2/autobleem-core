@@ -673,8 +673,10 @@ impl Gfx {
     /// viewport apart
     pub fn set_viewport(&mut self, r: Option<PixelRect>) {
         self.stats.state_sets += 1;
+        // the same rect again (every frame, and around each overlay): the bound state is right, the batch goes on
         if self.viewport == r {
             self.stats.state_unchanged += 1;
+            return;
         }
         self.cut(diag::CUT_STATE);
         self.viewport = r;
@@ -687,6 +689,7 @@ impl Gfx {
         self.stats.state_sets += 1;
         if self.clip == r {
             self.stats.state_unchanged += 1;
+            return;
         }
         self.cut(diag::CUT_STATE);
         self.clip = r;
