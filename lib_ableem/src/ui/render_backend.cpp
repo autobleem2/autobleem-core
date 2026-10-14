@@ -605,7 +605,7 @@ int RenderCopy(SDL_Renderer *r, SDL_Texture *t, const SDL_Rect *src, const SDL_R
     return RenderCopyEx(r, t, src, dst, 0.0, nullptr, SDL_FLIP_NONE);
 }
 
-int RenderGeometryRaw(SDL_Renderer *r, SDL_Texture *t, const float *xy, int xyStride, const SDL_Color *color,
+int RenderGeometryRaw(SDL_Renderer *r, SDL_Texture *t, const float *xy, int xyStride, const GeometryColor *color,
                       int colorStride, const float *uv, int uvStride, int count, const void *indices, int indexCount,
                       int indexSize) {
     if (!isGl(r))
@@ -657,7 +657,8 @@ int RenderGeometry(SDL_Renderer *r, SDL_Texture *t, const SDL_Vertex *vertices, 
                    int indexCount) {
     if (!isGl(r))
         return SDL_RenderGeometry(r, t, vertices, count, indices, indexCount);
-    return RenderGeometryRaw(r, t, &vertices->position.x, sizeof(SDL_Vertex), &vertices->color, sizeof(SDL_Vertex),
+    return RenderGeometryRaw(r, t, &vertices->position.x, sizeof(SDL_Vertex),
+                             reinterpret_cast<const GeometryColor *>(&vertices->color), sizeof(SDL_Vertex),
                              &vertices->tex_coord.x, sizeof(SDL_Vertex), count, indices, indexCount, 4);
 }
 

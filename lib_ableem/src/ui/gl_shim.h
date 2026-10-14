@@ -52,7 +52,13 @@ int RenderCopyExF(SDL_Renderer *r, SDL_Texture *t, const SDL_Rect *src, const SD
                   const SDL_FPoint *center, SDL_RendererFlip flip);
 int RenderGeometry(SDL_Renderer *r, SDL_Texture *t, const SDL_Vertex *vertices, int count, const int *indices,
                    int indexCount);
-int RenderGeometryRaw(SDL_Renderer *r, SDL_Texture *t, const float *xy, int xyStride, const SDL_Color *color,
+// SDL 2.0.18 (the console's) takes the colours as ints, 2.0.20 on as SDL_Colors - the same four bytes each
+#if SDL_VERSION_ATLEAST(2, 0, 20)
+using GeometryColor = SDL_Color;
+#else
+using GeometryColor = int;
+#endif
+int RenderGeometryRaw(SDL_Renderer *r, SDL_Texture *t, const float *xy, int xyStride, const GeometryColor *color,
                       int colorStride, const float *uv, int uvStride, int count, const void *indices, int indexCount,
                       int indexSize);
 int RenderReadPixels(SDL_Renderer *r, const SDL_Rect *rect, Uint32 format, void *pixels, int pitch);
