@@ -4,6 +4,7 @@
 
 #include "theme_converter.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -236,6 +237,77 @@ bool writeStamp(const string &themeJson, int stamp) {
     const string sum = ableem::digestThemeJson(themeJson, OWNED_BLOCKS);
     return ableem::mergeThemeJson(themeJson, "{\"converter\":{\"stamp\":" + to_string(stamp) + ",\"sum\":" + quoted(sum) +
                                                  "}}");
+}
+
+//*******************************
+// the footer bar (UIREV-57)
+//*******************************
+// The 1.0 footers were drawn for the PSC's own hints; ours sit elsewhere and on half the pack read badly. The
+// converter bakes a bar under them into launcher_footer.png (the launcher draws it at the foot of the screen, as
+// 1.0 did): from BAR_X to the right edge, the derived sheet colour, a thin line in the edge role along its top,
+// the left end fading out so the logos and art many themes have bottom left stay visible.
+const int FOOTER_W = 1280;
+const int FOOTER_MIN_H = 100; // the image is at least this tall, so the bar's top lands at 720 - BAR_H
+const int BAR_H = 98;         // the hints are at 632..688
+const int BAR_X = 340;        // the hints start at 360
+const int BAR_FADE = 60;
+const int BAR_ALPHA = 192;
+const int BAR_LINE_H = 2;
+const int BAR_LINE_ALPHA = 230;
+const int FOOTER_BAR_STAMP = 2; // the stamp that brought the bar: a theme stamped below gets it on upgrade()
+
+// `c` at `alpha` over the straight-alpha RGBA pixel at `p`
+void blendOver(unsigned char *p, const ThemeRgb &c, int alpha) {
+    if (alpha <= 0)
+        return;
+    const double a = alpha / 255.0;
+    const double da = p[3] / 255.0;
+    const double oa = a + da * (1.0 - a);
+    const int rgb[3] = {c.r, c.g, c.b};
+    for (int i = 0; i < 3; i++)
+        p[i] = static_cast<unsigned char>((rgb[i] * a + p[i] * da * (1.0 - a)) / oa + 0.5);
+    p[3] = static_cast<unsigned char>(oa * 255.0 + 0.5);
+}
+
+// writes <images>/launcher_footer.png: `source` (the theme's footer, "" for none) with the bar over it. A source that
+// cannot be read or is not 1280 wide is left out - the bar alone. False when the file could not be written.
+bool bakeFooterBar(const string &images, const string &source, const ThemeColorRoles &roles) {
+    ableem::ImagePixels footer;
+    if (!source.empty() && (!ableem::readImagePixels(source, footer) || footer.width != FOOTER_W)) {
+        PLOG_INFO << "Theme footer " << source << " unreadable or not " << FOOTER_W << " wide - the bar alone";
+        footer = ableem::ImagePixels();
+    }
+    ableem::ImagePixels out;
+    out.width = FOOTER_W;
+    out.height = max(footer.height, FOOTER_MIN_H);
+    out.rgba.assign(static_cast<size_t>(out.width) * out.height * 4, 0);
+    // the theme's footer at the bottom, as the launcher would have drawn it
+    const int top = out.height - footer.height;
+    if (footer.height > 0)
+        copy(footer.rgba.begin(), footer.rgba.end(), out.rgba.begin() + static_cast<size_t>(top) * out.width * 4);
+    const int barTop = out.height - BAR_H;
+    for (int y = barTop; y < out.height; y++) {
+        const bool line = y < barTop + BAR_LINE_H;
+        for (int x = BAR_X; x < out.width; x++) {
+            const int ramp = min(x - BAR_X, BAR_FADE);
+            const int alpha = (line ? BAR_LINE_ALPHA : BAR_ALPHA) * ramp / BAR_FADE;
+            blendOver(&out.rgba[(static_cast<size_t>(y) * out.width + x) * 4], line ? roles.edge : roles.sheet, alpha);
+        }
+    }
+    DirEntry::createDirs(images);
+    if (!ableem::writePngPixels(images + "launcher_footer.png", out)) {
+        PLOG_WARNING << "Could not write " << images << "launcher_footer.png";
+        return false;
+    }
+    return true;
+}
+
+// the theme's footer for bakeFooterBar: the launcher_footer.png role's source
+string footerSource(const string &images) {
+    for (const ThemeConverter::Role &role : ThemeConverter::launcherRoles())
+        if (role.newName == "launcher_footer.png")
+            return roleSource(images, role);
+    return string();
 }
 
 } // namespace
@@ -503,11 +575,16 @@ bool ThemeConverter::upgrade(const string &themeDir, int stamp) {
     if (!spec.load(json))
         return false;
     PLOG_INFO << "Deriving the colours of " << themeDir << " again (converter stamp " << stamp << ")";
+    const int had = ableem::readThemeJsonInt(json, "/converter/stamp", 0);
     const ThemeColorRoles roles = rolesFor(themeDir, spec);
     if (!ableem::mergeThemeJson(json, bridgePatch(roles, string()))) {
         PLOG_WARNING << "Theme not upgraded, could not write " << THEME_JSON;
         return false;
     }
+    // the footer bar, once: the launcher_footer.png a theme stamped before it has is still the 1.0 footer
+    const string images = themeDir + sep + "images" + sep;
+    if (had < FOOTER_BAR_STAMP && stamp >= FOOTER_BAR_STAMP && bakeFooterBar(images, footerSource(images), roles))
+        ableem::mergeThemeJson(json, "{\"launcher\":{\"footer\":\"images/launcher_footer.png\"}}");
     return writeStamp(json, stamp);
 }
 
@@ -519,6 +596,13 @@ bool ThemeConverter::convert(const string &themeDir) {
     ThemeSpec spec = specFor(themeDir);
     // the colours come from the 1.0 files and the background, so before theme.ini and colors.ini go
     const ThemeColorRoles roles = rolesFor(themeDir, spec);
+
+    // the footer with the bar, as a new file: the 1.0 one under the old name goes with the cleanup (3.). One already
+    // under the new name has the bar (a folder converted before, converted again): never baked twice.
+    const string images = themeDir + sep + "images" + sep;
+    const string footer = footerSource(images);
+    if (footer != images + "launcher_footer.png" && bakeFooterBar(images, footer, roles))
+        spec.launcher.footer = "images/launcher_footer.png";
 
     // launcher.logo from the 1.0 Logo and Lposition keys - not for a theme with no logo file or an empty rect (shelves)
     const auto &logo = spec.classic.logo;
@@ -540,7 +624,6 @@ bool ThemeConverter::convert(const string &themeDir) {
     }
 
     // 2. the launcher images to their role names
-    const string images = themeDir + sep + "images" + sep;
     for (const Role &role : launcherRoles()) {
         if (DirEntry::exists(images + role.newName))
             continue;

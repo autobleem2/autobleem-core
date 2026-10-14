@@ -31,13 +31,15 @@
 // at run time: the colour roles of launcher.colors (ThemeColorDeriver, from the background and whatever colours the
 // 1.0 files held), the dark sheet under the panels (launcher.colors.sheet) and the disabled veil, launcher.frames
 // pointing at the ONE shared bridge set ("bridge:" paths, shipped in the resources), launcher.logo from the 1.0
-// Logo/Lposition keys, hints.square from GR/Squere_Btn_ICN.png, and a stamp ("converter": {"stamp", "sum"}). A theme
+// Logo/Lposition keys, hints.square from GR/Squere_Btn_ICN.png, launcher_footer.png as the 1.0 footer with a bar
+// under the hints baked in (sheet colour, an edge-role line on top; a theme with no footer gets the bar alone), and a stamp ("converter": {"stamp", "sum"}). A theme
 // whose stamp is below StampVersion is re-derived once (upgrade()) - but only when the blocks the converter wrote are
 // still what it wrote (the sum); a theme with no stamp, or one the user edited, is never touched.
 class ThemeConverter {
 public:
     // the number the converter's derivation is at: raise it, on purpose, to have stamped themes derived again
-    static constexpr int StampVersion = 1;
+    // (2: launcher_footer.png gets the footer bar under the hints, UIREV-57)
+    static constexpr int StampVersion = 2;
 
     // a folder with no theme.json that has a theme.ini, or launcher images under the old names
     static bool needsConversion(const std::string &themeDir);
