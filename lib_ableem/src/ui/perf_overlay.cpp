@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 namespace ableem {
 
@@ -84,6 +85,9 @@ void PerfOverlay::beforePresent(SDL_Renderer *renderer, long copies, float outpu
         sumWorkMs += workMs;
         maxWorkMs = std::max(maxWorkMs, workMs);
         sumCopies += copies;
+#ifdef ABLEEM_RENDER_GL
+        sumGlDraws += gl::lastFrameDrawCalls();
+#endif
     }
     lastPresent = now;
     if (windowStart == 0)
@@ -141,13 +145,20 @@ void PerfOverlay::rebuildText(SDL_Renderer *renderer) {
     previous = now;
     havePrevious = true;
 
-    char a[160], b[160];
+    char a[192], b[160];
     const double seconds = frames > 0 ? sumFrameMs / 1000.0 : 0;
     const double fps = seconds > 0 ? frames / seconds : 0;
-    if (frames > 0)
+    if (frames > 0) {
         snprintf(a, sizeof(a), "FPS %.0f  FRAME %.1f MS (MAX %.1f)  WORK %.1f MS (MAX %.1f)  %ld COPIES", fps,
                  sumFrameMs / frames, maxFrameMs, sumWorkMs / frames, maxWorkMs, sumCopies / frames);
-    else
+#ifdef ABLEEM_RENDER_GL
+        // the backend's draw calls: how many batches the copies became (the last frame's, so without this overlay)
+        if (gl::active()) {
+            const size_t n = strlen(a);
+            snprintf(a + n, sizeof(a) - n, "  %ld GL DRAWS", sumGlDraws / frames);
+        }
+#endif
+    } else
         snprintf(a, sizeof(a), "FPS -");
     std::string second;
     char part[64];
@@ -182,6 +193,7 @@ void PerfOverlay::rebuildText(SDL_Renderer *renderer) {
     frames = 0;
     sumFrameMs = maxFrameMs = sumWorkMs = maxWorkMs = 0;
     sumCopies = 0;
+    sumGlDraws = 0;
 }
 
 //*******************************

@@ -280,3 +280,13 @@ ab_add_test(test_windows_install_job installer/test_windows_install_job.cpp LIBS
 ab_add_test(test_flasher_job installer/test_flasher_job.cpp LIBS ab_installer)
 ab_add_test(test_command_downloader installer/test_command_downloader.cpp LIBS ab_installer)
 ab_add_test(test_progress_file installer/test_progress_file.cpp LIBS ab_installer)
+
+# the GLES 3 renderer backend's own Rust tests (rust/ab_gl/tests: draws into an FBO on a headless EGL context and
+# reads it back; says SKIP where the machine has no libEGL)
+if (ABLEEM_RENDER_GL AND NOT CMAKE_CROSSCOMPILING)
+    add_test(NAME ab_gl_cargo_test
+            COMMAND ${CMAKE_COMMAND} -E env "CARGO_TARGET_DIR=${CMAKE_BINARY_DIR}/ab_gl-test-target"
+                    "${ABLEEM_CARGO}" test --release --locked
+                    --manifest-path "${PROJECT_SOURCE_DIR}/lib_ableem/rust/ab_gl/Cargo.toml" -- --nocapture)
+    set_tests_properties(ab_gl_cargo_test PROPERTIES SKIP_REGULAR_EXPRESSION "SKIP: no headless")
+endif()
