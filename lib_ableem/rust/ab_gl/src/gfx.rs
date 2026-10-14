@@ -7,9 +7,15 @@
 //! colour on a draw is SDL's colour and alpha mod. A trapezoid's sloping top and bottom are smoothed in the shader
 //! (a pixel's coverage from fwidth): a turned cover has no stepped edges without multisampling, which the C++
 //! renderer got from a one-pixel skirt round each strip.
+//!
+//! The C++ launcher's backend (backend.rs) draws in output pixels instead of the 1280x720 canvas: begin_frame,
+//! set_target, set_viewport and set_clip, with SDL's other blend modes, lines, rotated copies and raw geometry. On a
+//! desktop GL context (3.3 core) the shaders get a `#version 330 core` header instead of ES 3.00's.
 use glow::HasContext;
+use std::cell::Cell;
 
-const VS: &str = r#"#version 300 es
+// the shaders without their #version line: ES 3.00 on GLES, 330 core on desktop GL
+const VS: &str = r#"
 layout(location = 0) in vec2 a_pos;
 layout(location = 1) in vec3 a_uvq;
 layout(location = 2) in vec4 a_color;
@@ -25,7 +31,7 @@ void main() {
     gl_Position = vec4(a_pos * u_xform.xy + u_xform.zw, 0.0, 1.0);
 }"#;
 
-const FS: &str = r#"#version 300 es
+const FS: &str = r#"
 precision mediump float;
 in vec3 v_uvq;
 in vec4 v_color;
@@ -49,7 +55,32 @@ pub enum Blend {
     Blend,
     /// SDL_BLENDMODE_BLEND_PREMULTIPLIED: the source's colour is already times its alpha
     Premultiplied,
+    /// SDL_BLENDMODE_NONE: the source replaces what is there, alpha too
+    None,
+    /// SDL_BLENDMODE_ADD: colour by source alpha added, alpha kept
+    Add,
+    /// SDL_BLENDMODE_MOD: colour times the source's, alpha kept
+    Mod,
+    /// lib_ableem's mask: colour kept, alpha times the source's
+    Mask,
 }
+
+/// a vertex of `geometry`: SDL_Vertex's fields (position, colour, texture coordinate)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct GeoVertex {
+    pub pos: [f32; 2],
+    pub color: [u8; 4],
+    pub uv: [f32; 2],
+}
+
+// Texture::mips: none made yet, made and current, made but the picture changed since
+const MIPS_NONE: u8 = 0;
+const MIPS_OK: u8 = 1;
+const MIPS_STALE: u8 = 2;
+
+/// a draw that shrinks a picture by more than this makes its mipmaps (auto_mips)
+const MIPS_AT: f32 = 1.5;
 
 /// A picture on the GPU. `w`/`h` are its pixels, `scale` its pixels per logical pixel (2 for a theme's @2x image, the
 /// output scale for a composed cover): source rects are given in logical pixels, as the C++ Texture's are.
@@ -61,12 +92,26 @@ pub struct Texture {
     fbo: Option<glow::Framebuffer>,
     /// end_target makes its mipmaps (a composed cover drawn small); a screen-sized picture needs none
     mipmaps: bool,
+    /// mipmaps made on the first draw that shrinks it by more than 1.5 (a cover, scaled art) - never for a picture
+    /// drawn at its size (a UI piece), so they cost memory only where they are seen
+    auto_mips: bool,
+    mips: Cell<u8>,
 }
 
 impl Texture {
     /// its size in logical pixels
     pub fn size(&self) -> (f32, f32) {
         (self.w as f32 / self.scale, self.h as f32 / self.scale)
+    }
+
+    /// a texture that can be drawn into (target)
+    pub fn is_target(&self) -> bool {
+        self.fbo.is_some()
+    }
+
+    /// whether its mipmaps are made (auto_mips: by a draw that shrank it)
+    pub fn has_mipmaps(&self) -> bool {
+        self.mips.get() != MIPS_NONE
     }
 }
 
@@ -81,6 +126,9 @@ pub struct Edge {
     pub top: f32,
     pub bottom: f32,
 }
+
+/// a rect of whole pixels: x, y, w, h (y down from the top of the screen or target)
+pub type PixelRect = [i32; 4];
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -114,12 +162,26 @@ pub struct Gfx {
     /// the targets being drawn into, the innermost last: end_target goes back to the one before (a cover composed
     /// while a screen's picture is drawn into a target), else to the screen
     targets: Vec<(glow::Framebuffer, i32, i32, f32, f32)>,
+    /// output-pixel mode (begin_frame): the screen's viewport (SDL_RenderSetViewport, None = all of it) and the clip
+    /// rect of whatever is drawn into (SDL_RenderSetClipRect), both in pixels
+    viewport: Option<PixelRect>,
+    clip: Option<PixelRect>,
+    /// the most anisotropy a texture may get (EXT_texture_filter_anisotropic), 0 without the extension
+    anisotropy: f32,
+    /// a desktop GL context (3.3 core) rather than GLES
+    desktop: bool,
 }
 
 /// end_frame: how many frames may be queued before the next one waits. A driver whose swap does not wait (Mesa's
 /// llvmpipe offscreen, a VM) otherwise takes frames faster than it draws them, and whatever has to wait for the GPU
 /// (a texture changed, mipmaps made) waits for the whole queue - seconds of it on the VM
 const FRAMES_IN_FLIGHT: usize = 2;
+
+// EXT_texture_filter_anisotropic's enums (not in GLES 3.0's core)
+const TEXTURE_MAX_ANISOTROPY: u32 = 0x84FE;
+const MAX_TEXTURE_MAX_ANISOTROPY: u32 = 0x84FF;
+/// the anisotropy a mipmapped texture gets at most: a turned cover's columns stay sharp, without the cost of 16
+const ANISOTROPY_CAP: f32 = 4.0;
 
 unsafe fn program(gl: &glow::Context, vs: &str, fs: &str) -> Result<glow::Program, String> {
     let p = gl.create_program()?;
@@ -154,7 +216,9 @@ pub const CANVAS_H: f32 = 720.0;
 
 impl Gfx {
     pub unsafe fn new(gl: glow::Context) -> Result<Gfx, String> {
-        let program = program(&gl, VS, FS)?;
+        let desktop = !gl.version().is_embedded;
+        let header = if desktop { "#version 330 core\n" } else { "#version 300 es\n" };
+        let program = program(&gl, &format!("{header}{VS}"), &format!("{header}{FS}"))?;
         let vao = gl.create_vertex_array()?;
         gl.bind_vertex_array(Some(vao));
         let vbo = gl.create_buffer()?;
@@ -177,7 +241,12 @@ impl Gfx {
         gl.disable(glow::CULL_FACE);
         gl.disable(glow::DEPTH_TEST);
         gl.active_texture(glow::TEXTURE0);
-        let white = Self::upload(&gl, 1, 1, &[255, 255, 255, 255], 1.0, false)?;
+        let anisotropy = if gl.supported_extensions().contains("GL_EXT_texture_filter_anisotropic") {
+            gl.get_parameter_f32(MAX_TEXTURE_MAX_ANISOTROPY).min(ANISOTROPY_CAP)
+        } else {
+            0.0
+        };
+        let white = Self::upload(&gl, 1, 1, &[255, 255, 255, 255], 1.0, false, 0.0)?;
         Ok(Gfx {
             gl,
             program,
@@ -196,9 +265,33 @@ impl Gfx {
             alive: 0,
             in_flight: std::collections::VecDeque::new(),
             targets: Vec::new(),
+            viewport: None,
+            clip: None,
+            anisotropy,
+            desktop,
         })
     }
 
+    /// GL_VERSION, GL_RENDERER and whether anisotropic filtering is there: the one line the backend logs at start
+    pub fn describe(&self) -> String {
+        unsafe {
+            let gl = &self.gl;
+            let aniso = if self.anisotropy > 0.0 {
+                format!("EXT_texture_filter_anisotropic (up to {}x used)", self.anisotropy)
+            } else {
+                "no EXT_texture_filter_anisotropic".to_string()
+            };
+            format!(
+                "{} | {} | {} | {}",
+                gl.get_parameter_string(glow::VERSION),
+                gl.get_parameter_string(glow::RENDERER),
+                if self.desktop { "desktop GL, GLSL 330 core" } else { "GLES, GLSL 300 es" },
+                aniso
+            )
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     unsafe fn upload(
         gl: &glow::Context,
         w: u32,
@@ -206,6 +299,7 @@ impl Gfx {
         rgba: &[u8],
         scale: f32,
         mipmaps: bool,
+        anisotropy: f32,
     ) -> Result<Texture, String> {
         let t = gl.create_texture()?;
         gl.bind_texture(glow::TEXTURE_2D, Some(t));
@@ -226,31 +320,49 @@ impl Gfx {
         gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
         gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
         gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
+        if mipmaps && anisotropy > 0.0 {
+            gl.tex_parameter_f32(glow::TEXTURE_2D, TEXTURE_MAX_ANISOTROPY, anisotropy);
+        }
         if mipmaps && !rgba.is_empty() {
             gl.generate_mipmap(glow::TEXTURE_2D);
         }
-        Ok(Texture { tex: t, w, h, scale, fbo: None, mipmaps })
+        let mips = Cell::new(if mipmaps && !rgba.is_empty() { MIPS_OK } else { MIPS_NONE });
+        Ok(Texture { tex: t, w, h, scale, fbo: None, mipmaps, auto_mips: false, mips })
     }
 
     /// an image (straight RGBA, rows top first) of `scale` pixels per logical pixel
     pub fn texture(&mut self, w: u32, h: u32, rgba: &[u8], scale: f32, mipmaps: bool) -> Result<Texture, String> {
         self.flush();
         self.bound = None;
-        let t = unsafe { Self::upload(&self.gl, w, h, rgba, scale, mipmaps) }?;
+        let t = unsafe { Self::upload(&self.gl, w, h, rgba, scale, mipmaps, self.anisotropy) }?;
         self.alive += 1;
+        Ok(t)
+    }
+
+    /// an image whose mipmaps are made only when a draw shrinks it by more than 1.5 (a cover, scaled art): a UI
+    /// piece drawn at its size never gets them
+    pub fn texture_auto_mips(&mut self, w: u32, h: u32, rgba: &[u8], scale: f32) -> Result<Texture, String> {
+        let mut t = self.texture(w, h, rgba, scale, false)?;
+        t.auto_mips = true;
         Ok(t)
     }
 
     /// an image scaled by whole pixels when drawn (nearest): the performance overlay's bitmap text
     pub fn texture_nearest(&mut self, w: u32, h: u32, rgba: &[u8]) -> Result<Texture, String> {
         let t = self.texture(w, h, rgba, 1.0, false)?;
+        self.set_nearest(&t);
+        Ok(t)
+    }
+
+    /// `t` drawn with nearest filtering from now on (SDL's scale quality "0" at the texture's creation)
+    pub fn set_nearest(&mut self, t: &Texture) {
+        self.flush();
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, Some(t.tex));
             self.gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
             self.gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
         }
         self.bound = None;
-        Ok(t)
     }
 
     /// a texture to draw into (`begin_target`), `w` x `h` logical pixels at `scale` pixels each, mipmapped
@@ -261,6 +373,14 @@ impl Gfx {
     /// a target without mipmaps, drawn at its own size: a screen's picture (the backdrop, a transition's two)
     pub fn target_plain(&mut self, w: f32, h: f32, scale: f32) -> Result<Texture, String> {
         self.make_target(w, h, scale, false)
+    }
+
+    /// a target of `w` x `h` pixels whose mipmaps are made only when a draw shrinks it (a composed cover in the C++
+    /// launcher); cleared to transparent black, as SDL's new targets are
+    pub fn target_auto_mips(&mut self, w: u32, h: u32) -> Result<Texture, String> {
+        let mut t = self.make_target(w as f32, h as f32, 1.0, false)?;
+        t.auto_mips = true;
+        Ok(t)
     }
 
     fn make_target(&mut self, w: f32, h: f32, scale: f32, mipmaps: bool) -> Result<Texture, String> {
@@ -276,10 +396,17 @@ impl Gfx {
             gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
             gl.framebuffer_texture_2d(glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::TEXTURE_2D, Some(t.tex), 0);
             let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
-            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+            if status == glow::FRAMEBUFFER_COMPLETE {
+                // a new texture's pixels are undefined in GL; SDL's new target is transparent black
+                gl.disable(glow::SCISSOR_TEST);
+                gl.clear_color(0.0, 0.0, 0.0, 0.0);
+                gl.clear(glow::COLOR_BUFFER_BIT);
+            }
+            self.rebind_current();
             if status != glow::FRAMEBUFFER_COMPLETE {
                 gl.delete_framebuffer(fbo);
                 gl.delete_texture(t.tex);
+                self.alive = self.alive.saturating_sub(1);
                 return Err(format!("framebuffer incomplete: 0x{status:x}"));
             }
             t.fbo = Some(fbo);
@@ -289,12 +416,19 @@ impl Gfx {
 
     /// replaces a rectangle of `t`'s pixels (RGBA rows of `w`, top first)
     pub fn update(&mut self, t: &Texture, x: u32, y: u32, w: u32, h: u32, rgba: &[u8]) {
+        self.update_pitch(t, x, y, w, h, rgba, w * 4);
+    }
+
+    /// `update` from rows `pitch` bytes apart (a part of a bigger picture: a streaming texture's buffer)
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_pitch(&mut self, t: &Texture, x: u32, y: u32, w: u32, h: u32, rgba: &[u8], pitch: u32) {
         self.flush();
         self.bound = None;
         unsafe {
             let gl = &self.gl;
             gl.bind_texture(glow::TEXTURE_2D, Some(t.tex));
             gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, (pitch / 4) as i32);
             gl.tex_sub_image_2d(
                 glow::TEXTURE_2D,
                 0,
@@ -306,6 +440,11 @@ impl Gfx {
                 glow::UNSIGNED_BYTE,
                 glow::PixelUnpackData::Slice(rgba),
             );
+            gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
+        }
+        // an auto-mipmapped picture makes them again on its next shrinking draw
+        if t.auto_mips && t.mips.get() == MIPS_OK {
+            t.mips.set(MIPS_STALE);
         }
     }
 
@@ -334,6 +473,11 @@ impl Gfx {
         self.alive = self.alive.saturating_sub(1);
         unsafe {
             if let Some(f) = t.fbo {
+                // drawing into it: back to the screen, as SDL does when a target is destroyed
+                if self.targets.iter().any(|&(fbo, ..)| fbo == f) {
+                    self.targets.retain(|&(fbo, ..)| fbo != f);
+                    self.rebind_current();
+                }
                 self.gl.delete_framebuffer(f);
             }
             self.gl.delete_texture(t.tex);
@@ -349,6 +493,8 @@ impl Gfx {
         self.draw_calls = 0;
         self.screen = (w, h);
         self.targets.clear();
+        self.viewport = None;
+        self.clip = None;
         let k = (w as f32 / CANVAS_W).min(h as f32 / CANVAS_H);
         let ox = ((w as f32 - CANVAS_W * k) / 2.0).floor();
         let oy = ((h as f32 - CANVAS_H * k) / 2.0).floor();
@@ -357,6 +503,7 @@ impl Gfx {
         unsafe {
             let gl = &self.gl;
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+            gl.disable(glow::SCISSOR_TEST);
             gl.viewport(0, 0, w, h);
             gl.clear_color(0.0, 0.0, 0.0, 1.0);
             gl.clear(glow::COLOR_BUFFER_BIT);
@@ -411,7 +558,6 @@ impl Gfx {
         }
     }
 
-
     pub fn end_target(&mut self, t: &Texture) {
         self.flush();
         self.bound = None;
@@ -423,6 +569,7 @@ impl Gfx {
             if t.mipmaps {
                 gl.bind_texture(glow::TEXTURE_2D, Some(t.tex));
                 gl.generate_mipmap(glow::TEXTURE_2D);
+                t.mips.set(MIPS_OK);
             }
             match self.targets.last() {
                 Some(&(fbo, pw, ph, lw, lh)) => {
@@ -437,6 +584,131 @@ impl Gfx {
                 }
             }
         }
+    }
+
+    // ---- output-pixel mode: what the C++ Renderer draws through (backend.rs) ----
+
+    /// a frame in output pixels starts on the screen of `w` x `h` (nothing cleared: the Renderer clears): no canvas
+    /// mapping, no target, the viewport and clip rect as they were set
+    pub fn begin_frame(&mut self, w: i32, h: i32) {
+        self.flush();
+        self.draw_calls = 0;
+        self.screen = (w, h);
+        self.canvas_scale = 1.0;
+        self.canvas_offset = (0.0, 0.0);
+        self.targets.clear();
+        unsafe {
+            self.gl.use_program(Some(self.program));
+            self.gl.bind_vertex_array(Some(self.vao));
+            self.gl.active_texture(glow::TEXTURE0);
+            self.gl.enable(glow::BLEND);
+        }
+        self.bound = None;
+        self.rebind_current();
+    }
+
+    /// draws into `t` (None: the screen) until the next set_target, nothing cleared - SDL_SetRenderTarget. A target
+    /// is addressed from its top-left pixel; the screen through its viewport
+    pub fn set_target(&mut self, t: Option<&Texture>) {
+        self.flush();
+        self.bound = None;
+        self.targets.clear();
+        if let Some(t) = t {
+            let Some(fbo) = t.fbo else { return self.rebind_current() };
+            self.targets.push((fbo, t.w as i32, t.h as i32, t.w as f32, t.h as f32));
+            // drawn into: the mipmaps made of it are out of date
+            if t.mips.get() == MIPS_OK {
+                t.mips.set(MIPS_STALE);
+            }
+        }
+        self.rebind_current();
+    }
+
+    /// the screen's viewport (SDL_RenderSetViewport): drawing on the screen goes to `r`, addressed from its top-left
+    /// corner, and stays inside it. None = the whole screen. Targets are always drawn whole, as SDL keeps a target's
+    /// viewport apart
+    pub fn set_viewport(&mut self, r: Option<PixelRect>) {
+        self.flush();
+        self.viewport = r;
+        self.rebind_current();
+    }
+
+    /// the clip rect (SDL_RenderSetClipRect): pixels of the current target (on the screen: of the viewport) outside
+    /// `r` are left alone. None = no clipping
+    pub fn set_clip(&mut self, r: Option<PixelRect>) {
+        self.flush();
+        self.clip = r;
+        self.rebind_current();
+    }
+
+    /// the size in pixels of what is drawn into: the target, or the screen's viewport
+    pub fn current_size(&self) -> (i32, i32) {
+        match self.targets.last() {
+            Some(&(_, w, h, ..)) => (w, h),
+            None => match self.viewport {
+                Some([_, _, w, h]) => (w, h),
+                None => self.screen,
+            },
+        }
+    }
+
+    // binds the target on top of `targets` (or the screen), its viewport, scissor and pixel transform
+    fn rebind_current(&mut self) {
+        unsafe {
+            let gl = &self.gl;
+            let (fb_h, ox, oy, w, h) = match self.targets.last() {
+                Some(&(fbo, pw, ph, lw, lh)) => {
+                    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
+                    gl.viewport(0, 0, pw, ph);
+                    self.set_xform(2.0 / lw, 2.0 / lh, -1.0, -1.0);
+                    (None, 0, 0, pw, ph)
+                }
+                None => {
+                    gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+                    let [vx, vy, vw, vh] = self.viewport.unwrap_or([0, 0, self.screen.0, self.screen.1]);
+                    // GL's window y runs up from the bottom
+                    gl.viewport(vx, self.screen.1 - vy - vh, vw, vh);
+                    if self.canvas_scale == 1.0 && self.canvas_offset == (0.0, 0.0) {
+                        self.set_xform(2.0 / vw as f32, -2.0 / vh as f32, -1.0, 1.0);
+                    } else {
+                        self.screen_xform();
+                    }
+                    (Some(self.screen.1), vx, vy, vw, vh)
+                }
+            };
+            match self.clip {
+                Some([cx, cy, cw, ch]) => {
+                    // the clip rect within the viewport (screen) or the target, cut to it
+                    let x0 = (ox + cx).max(ox);
+                    let y0 = (oy + cy).max(oy);
+                    let x1 = (ox + cx + cw).min(ox + w);
+                    let y1 = (oy + cy + ch).min(oy + h);
+                    let (sw, sh) = ((x1 - x0).max(0), (y1 - y0).max(0));
+                    gl.enable(glow::SCISSOR_TEST);
+                    match fb_h {
+                        Some(sh_total) => gl.scissor(x0, sh_total - y0 - sh, sw, sh),
+                        None => gl.scissor(x0, y0, sw, sh),
+                    }
+                }
+                None => gl.disable(glow::SCISSOR_TEST),
+            }
+        }
+    }
+
+    /// clears all of what is drawn into to `c` (SDL_RenderClear: the whole target, past the viewport and the clip)
+    pub fn clear(&mut self, c: Color) {
+        self.flush();
+        unsafe {
+            let gl = &self.gl;
+            gl.disable(glow::SCISSOR_TEST);
+            let viewport = self.viewport.filter(|_| self.targets.is_empty());
+            if viewport.is_some() {
+                gl.viewport(0, 0, self.screen.0, self.screen.1);
+            }
+            gl.clear_color(c[0], c[1], c[2], c[3]);
+            gl.clear(glow::COLOR_BUFFER_BIT);
+        }
+        self.rebind_current();
     }
 
     fn bind(&mut self, tex: glow::Texture, blend: Blend) {
@@ -455,6 +727,10 @@ impl Gfx {
                     glow::ONE_MINUS_SRC_ALPHA,
                 ),
                 Blend::Premultiplied => gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA),
+                Blend::None => gl.blend_func(glow::ONE, glow::ZERO),
+                Blend::Add => gl.blend_func_separate(glow::SRC_ALPHA, glow::ONE, glow::ZERO, glow::ONE),
+                Blend::Mod => gl.blend_func_separate(glow::ZERO, glow::SRC_COLOR, glow::ZERO, glow::ONE),
+                Blend::Mask => gl.blend_func_separate(glow::ZERO, glow::ONE, glow::ZERO, glow::SRC_ALPHA),
             }
         }
         self.bound = Some((tex, blend));
@@ -484,18 +760,75 @@ impl Gfx {
         self.indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 1, base + 3]);
     }
 
+    // an auto-mipmapped texture drawn `shrink` times smaller than its pixels: its mipmaps made (again) first
+    fn mips_for(&mut self, t: &Texture, shrink: f32) {
+        if !t.auto_mips || shrink <= MIPS_AT || t.mips.get() == MIPS_OK {
+            return;
+        }
+        self.flush();
+        self.bound = None;
+        unsafe {
+            let gl = &self.gl;
+            gl.bind_texture(glow::TEXTURE_2D, Some(t.tex));
+            gl.generate_mipmap(glow::TEXTURE_2D);
+            if t.mips.get() == MIPS_NONE {
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR_MIPMAP_LINEAR as i32);
+                if self.anisotropy > 0.0 {
+                    gl.tex_parameter_f32(glow::TEXTURE_2D, TEXTURE_MAX_ANISOTROPY, self.anisotropy);
+                }
+            }
+        }
+        t.mips.set(MIPS_OK);
+    }
+
     /// `src` of `t` (logical pixels of it; None = all of it) into `dst`, tinted (SDL's colour and alpha mod)
     pub fn copy(&mut self, t: &Texture, src: Option<Rect>, dst: Rect, tint: Color, blend: Blend) {
+        self.copy_ex(t, src, dst, tint, blend, 0.0, None, false, false);
+    }
+
+    /// `copy` turned by `angle` degrees clockwise about `center` (relative to dst's top-left; None = its middle), and
+    /// mirrored across or upside down - SDL_RenderCopyExF
+    #[allow(clippy::too_many_arguments)]
+    pub fn copy_ex(
+        &mut self,
+        t: &Texture,
+        src: Option<Rect>,
+        dst: Rect,
+        tint: Color,
+        blend: Blend,
+        angle: f64,
+        center: Option<[f32; 2]>,
+        flip_h: bool,
+        flip_v: bool,
+    ) {
         let (lw, lh) = t.size();
         let s = src.unwrap_or([0.0, 0.0, lw, lh]);
-        let (u0, v0, u1, v1) = (s[0] / lw, s[1] / lh, (s[0] + s[2]) / lw, (s[1] + s[3]) / lh);
+        if dst[2] != 0.0 && dst[3] != 0.0 {
+            let shrink = (s[2] * t.scale / dst[2].abs()).min(s[3] * t.scale / dst[3].abs());
+            self.mips_for(t, shrink);
+        }
+        let (mut u0, mut v0, mut u1, mut v1) = (s[0] / lw, s[1] / lh, (s[0] + s[2]) / lw, (s[1] + s[3]) / lh);
+        if flip_h {
+            std::mem::swap(&mut u0, &mut u1);
+        }
+        if flip_v {
+            std::mem::swap(&mut v0, &mut v1);
+        }
         self.bind(t.tex, blend);
         let [x, y, w, h] = dst;
-        let vert = |px: f32, py: f32, u: f32, v: f32| Vertex {
-            pos: [px, py],
-            uvq: [u, v, 1.0],
-            color: tint,
-            edge: -1.0,
+        let (cx, cy) = match center {
+            Some([cx, cy]) => (x + cx, y + cy),
+            None => (x + w / 2.0, y + h / 2.0),
+        };
+        let (sin, cos) = if angle == 0.0 { (0.0, 1.0) } else { (angle.to_radians().sin() as f32, angle.to_radians().cos() as f32) };
+        let vert = |px: f32, py: f32, u: f32, v: f32| {
+            let (dx, dy) = (px - cx, py - cy);
+            Vertex {
+                pos: [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos],
+                uvq: [u, v, 1.0],
+                color: tint,
+                edge: -1.0,
+            }
         };
         self.push_quad([
             vert(x, y, u0, v0),
@@ -507,11 +840,74 @@ impl Gfx {
 
     /// a filled rect (SDL_RenderFillRect with the Blend draw mode)
     pub fn fill(&mut self, dst: Rect, color: Color) {
+        self.fill_blend(dst, color, Blend::Blend);
+    }
+
+    /// a filled rect in a draw blend mode (SDL_SetRenderDrawBlendMode + SDL_RenderFillRect)
+    pub fn fill_blend(&mut self, dst: Rect, color: Color, blend: Blend) {
         let white = self.white.tex;
-        self.bind(white, Blend::Blend);
+        self.bind(white, blend);
         let [x, y, w, h] = dst;
         let vert = |px: f32, py: f32| Vertex { pos: [px, py], uvq: [0.5, 0.5, 1.0], color, edge: -1.0 };
         self.push_quad([vert(x, y), vert(x + w, y), vert(x, y + h), vert(x + w, y + h)]);
+    }
+
+    /// a one-pixel line from pixel `a` to pixel `b`, both ends drawn (SDL_RenderDrawLine)
+    pub fn line(&mut self, a: [f32; 2], b: [f32; 2], color: Color, blend: Blend) {
+        if a[1] == b[1] || a[0] == b[0] {
+            // across or down: the pixels' own rect
+            let (x0, x1) = (a[0].min(b[0]), a[0].max(b[0]));
+            let (y0, y1) = (a[1].min(b[1]), a[1].max(b[1]));
+            return self.fill_blend([x0, y0, x1 - x0 + 1.0, y1 - y0 + 1.0], color, blend);
+        }
+        // a slope: a quad a pixel wide through the pixels' centres, half a pixel past each end
+        let (ax, ay, bx, by) = (a[0] + 0.5, a[1] + 0.5, b[0] + 0.5, b[1] + 0.5);
+        let len = ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt();
+        let (dx, dy) = ((bx - ax) / len * 0.5, (by - ay) / len * 0.5);
+        let (nx, ny) = (-dy, dx);
+        let white = self.white.tex;
+        self.bind(white, blend);
+        let vert = |px: f32, py: f32| Vertex { pos: [px, py], uvq: [0.5, 0.5, 1.0], color, edge: -1.0 };
+        self.push_quad([
+            vert(ax - dx + nx, ay - dy + ny),
+            vert(bx + dx + nx, by + dy + ny),
+            vert(ax - dx - nx, ay - dy - ny),
+            vert(bx + dx - nx, by + dy - ny),
+        ]);
+    }
+
+    /// triangles of `t` (None: untextured), SDL_RenderGeometry: positions in pixels, uv 0..1 of the texture, the
+    /// colours multiplying it
+    pub fn geometry(&mut self, t: Option<&Texture>, verts: &[GeoVertex], indices: &[i32], blend: Blend) {
+        if verts.is_empty() || verts.len() > 60000 {
+            return;
+        }
+        let tex = t.map(|t| t.tex).unwrap_or(self.white.tex);
+        self.bind(tex, blend);
+        if self.verts.len() + verts.len() > 65000 {
+            self.flush();
+        }
+        let base = self.verts.len();
+        let n = verts.len() as i32;
+        for v in verts {
+            let c = v.color;
+            self.verts.push(Vertex {
+                pos: v.pos,
+                uvq: if t.is_some() { [v.uv[0], v.uv[1], 1.0] } else { [0.5, 0.5, 1.0] },
+                color: [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, c[3] as f32 / 255.0],
+                edge: -1.0,
+            });
+        }
+        let mut emit = |i: i32| self.indices.push((base as i32 + i.clamp(0, n - 1)) as u16);
+        if indices.is_empty() {
+            for i in 0..(n - n % 3) {
+                emit(i);
+            }
+        } else {
+            for &i in &indices[..indices.len() - indices.len() % 3] {
+                emit(i);
+            }
+        }
     }
 
     /// `src` of `t` mapped onto the trapezoid between two vertical edges, perspective-correct (each edge's height is
@@ -528,18 +924,36 @@ impl Gfx {
         bottom: Color,
         flip: bool,
     ) {
+        self.trapezoid_blend(t, src, left, right, top, bottom, flip, Blend::Blend);
+    }
+
+    /// `trapezoid` in a blend mode (the texture's own, in the C++ Renderer)
+    #[allow(clippy::too_many_arguments)]
+    pub fn trapezoid_blend(
+        &mut self,
+        t: &Texture,
+        src: Rect,
+        left: Edge,
+        right: Edge,
+        top: Color,
+        bottom: Color,
+        flip: bool,
+        blend: Blend,
+    ) {
         let lh = left.bottom - left.top;
         let rh = right.bottom - right.top;
         if (right.x - left.x).abs() < 1.0 / self.canvas_scale.max(0.01) || lh <= 0.0 || rh <= 0.0 {
             return;
         }
         let (tw, th) = t.size();
+        // a cover drawn smaller than its pixels (mostly on its height, the trapezoid's taller side)
+        self.mips_for(t, src[3] * t.scale / (lh.max(rh) * self.canvas_scale.max(0.01)));
         let (u0, u1) = (src[0] / tw, (src[0] + src[2]) / tw);
         let (mut v0, mut v1) = (src[1] / th, (src[1] + src[3]) / th);
         if flip {
             std::mem::swap(&mut v0, &mut v1);
         }
-        self.bind(t.tex, Blend::Blend);
+        self.bind(t.tex, blend);
         // the texture coordinates times each edge's height: the shader divides them back, so 1/depth runs
         // linearly across the screen and the picture does not bend along the diagonal
         let vert = |e: &Edge, y: f32, u: f32, v: f32, q: f32, color: Color, edge: f32| Vertex {
@@ -581,5 +995,45 @@ impl Gfx {
             p[3] = 255;
         }
         (w, h, flipped)
+    }
+
+    /// `r` (pixels, y down; None = all of it) of what is drawn into - the screen (past its viewport, as
+    /// SDL_RenderReadPixels reads the whole output) or the target - as RGBA rows, top first, alpha as it is
+    pub fn read_pixels(&mut self, r: Option<PixelRect>) -> (u32, u32, Vec<u8>) {
+        self.flush();
+        let on_screen = self.targets.is_empty();
+        let (fw, fh) = match self.targets.last() {
+            Some(&(_, w, h, ..)) => (w, h),
+            None => self.screen,
+        };
+        let [x, y, w, h] = r.unwrap_or([0, 0, fw, fh]);
+        let (w, h) = (w.max(0), h.max(0));
+        let mut px = vec![0u8; (w * h * 4) as usize];
+        if w == 0 || h == 0 {
+            return (0, 0, px);
+        }
+        let gl_y = if on_screen { fh - y - h } else { y };
+        unsafe {
+            self.gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
+            self.gl.read_pixels(
+                x,
+                gl_y,
+                w,
+                h,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelPackData::Slice(&mut px),
+            );
+        }
+        if on_screen {
+            // GL's rows run up from the bottom of the screen; a target's are already top first
+            let row = (w * 4) as usize;
+            let mut flipped = Vec::with_capacity(px.len());
+            for y in (0..h as usize).rev() {
+                flipped.extend_from_slice(&px[y * row..(y + 1) * row]);
+            }
+            px = flipped;
+        }
+        (w as u32, h as u32, px)
     }
 }
