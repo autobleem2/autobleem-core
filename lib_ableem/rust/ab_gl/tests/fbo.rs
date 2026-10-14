@@ -16,6 +16,7 @@ extern "C" {
 const RTLD_NOW: i32 = 2;
 const EGL_NONE: i32 = 0x3038;
 const EGL_RENDERABLE_TYPE: i32 = 0x3040;
+const EGL_SURFACE_TYPE: i32 = 0x3033;
 const EGL_OPENGL_ES3_BIT: i32 = 0x40;
 const EGL_CONTEXT_MAJOR_VERSION: i32 = 0x3098;
 const EGL_OPENGL_ES_API: u32 = 0x30A0;
@@ -66,7 +67,8 @@ unsafe fn headless_context() -> Result<(), String> {
     if bind_api(EGL_OPENGL_ES_API) == 0 {
         return Err("eglBindAPI(GLES) failed".into());
     }
-    let attrs = [EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, EGL_NONE];
+    // no surface type asked (the default is a window's, which the surfaceless platform has none of)
+    let attrs = [EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, EGL_SURFACE_TYPE, 0, EGL_NONE];
     let mut config = std::ptr::null_mut();
     let mut n = 0;
     if choose(dpy, attrs.as_ptr(), &mut config, 1, &mut n) == 0 || n < 1 {
