@@ -403,6 +403,7 @@ impl Gfx {
                 gl.clear(glow::COLOR_BUFFER_BIT);
             }
             self.rebind_current();
+            let gl = &self.gl;
             if status != glow::FRAMEBUFFER_COMPLETE {
                 gl.delete_framebuffer(fbo);
                 gl.delete_texture(t.tex);

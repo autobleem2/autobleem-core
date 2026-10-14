@@ -15,12 +15,7 @@ if (ABLEEM_RENDER_GL)
 
     set(_abg_dir "${CMAKE_CURRENT_SOURCE_DIR}/rust/ab_gl")
     set(_abg_out "${CMAKE_CURRENT_BINARY_DIR}/ab_gl-target")
-    set(_abg_args build --release --locked --manifest-path "${_abg_dir}/Cargo.toml")
-    if (NOT EXISTS "${_abg_dir}/Cargo.lock")
-        # TEMPORARY until the first build wrote the lock
-        set(_abg_args build --release --manifest-path "${_abg_dir}/Cargo.toml")
-    endif()
-    if (ABLEEM_RUST_TARGET)
+    set(_abg_args build --release --locked --manifest-path "${_abg_dir}/Cargo.toml")    if (ABLEEM_RUST_TARGET)
         list(APPEND _abg_args --target ${ABLEEM_RUST_TARGET})
         set(_abg_rel "${_abg_out}/${ABLEEM_RUST_TARGET}/release")
     else()
@@ -46,7 +41,7 @@ if (ABLEEM_RENDER_GL)
             COMMAND ${CMAKE_COMMAND} -E env "CARGO_TARGET_DIR=${_abg_out}" "${ABLEEM_CARGO}" ${_abg_args}
             COMMAND ${CMAKE_COMMAND} -E make_directory "${_abg_dest}"
             COMMAND ${CMAKE_COMMAND} -E copy "${_abg_built}" "${ABLEEM_RENDER_GL_LIBRARY}"
-            DEPENDS ${_abg_sources} "${_abg_dir}/Cargo.toml"
+            DEPENDS ${_abg_sources} "${_abg_dir}/Cargo.toml" "${_abg_dir}/Cargo.lock"
             COMMENT "cargo: ab_gl ${ABLEEM_RUST_TARGET} -> ${_abg_name}"
             VERBATIM)
     add_custom_target(ab_gl_cargo ALL DEPENDS "${ABLEEM_RENDER_GL_LIBRARY}")
