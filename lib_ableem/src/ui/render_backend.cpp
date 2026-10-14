@@ -55,6 +55,7 @@ struct Backend {
     SDL_Rect screenClip{}, targetClip{};
     bool inFrame = false;
     int outW = 0, outH = 0;
+    unsigned lastDrawCalls = 0; // the last presented frame's (lastFrameDrawCalls)
 };
 
 Backend *g = nullptr; // the backend while one draws; its address is the SDL_Renderer* handed out
@@ -276,6 +277,10 @@ bool active() {
     return g != nullptr;
 }
 
+unsigned lastFrameDrawCalls() {
+    return g != nullptr ? g->lastDrawCalls : 0;
+}
+
 Uint32 windowFlags() {
     for (const std::string &name : backendNames()) {
         const AbrApi *api = loadBackend(name);
@@ -393,9 +398,16 @@ void RenderPresent(SDL_Renderer *r) {
         return SDL_RenderPresent(r);
     frame();
     g->api->flush(g->ctx);
+    g->lastDrawCalls = g->api->draw_calls(g->ctx);
     SDL_GL_SwapWindow(g->window);
     g->api->end_frame(g->ctx);
     g->inFrame = false;
+    // AB_GL_STATS=1: the backend's line, once a second (a table from before `stats` has none)
+    if (g->api->size >= offsetof(AbrApi, stats) + sizeof(g->api->stats)) {
+        char line[1024];
+        if (g->api->stats(g->ctx, line, sizeof(line)) > 0)
+            PLOG_INFO << line;
+    }
 }
 
 int RenderClear(SDL_Renderer *r) {

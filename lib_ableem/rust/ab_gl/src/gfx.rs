@@ -11,6 +11,7 @@
 //! The C++ launcher's backend (backend.rs) draws in output pixels instead of the 1280x720 canvas: begin_frame,
 //! set_target, set_viewport and set_clip, with SDL's other blend modes, lines, rotated copies and raw geometry. On a
 //! desktop GL context (3.3 core) the shaders get a `#version 330 core` header instead of ES 3.00's.
+use crate::diag::{self, Knobs, Stats};
 use glow::HasContext;
 use std::cell::Cell;
 
@@ -170,6 +171,12 @@ pub struct Gfx {
     anisotropy: f32,
     /// a desktop GL context (3.3 core) rather than GLES
     desktop: bool,
+    /// the diagnostics knobs (diag.rs), read once here
+    pub knobs: Knobs,
+    /// the counters since the last stats line (knobs.stats)
+    pub stats: Stats,
+    /// the stats line a second of frames made, until the caller takes it (backend.rs: stats)
+    pub stats_line: Option<String>,
 }
 
 /// end_frame: how many frames may be queued before the next one waits. A driver whose swap does not wait (Mesa's
@@ -241,8 +248,10 @@ impl Gfx {
         gl.disable(glow::CULL_FACE);
         gl.disable(glow::DEPTH_TEST);
         gl.active_texture(glow::TEXTURE0);
-        let anisotropy = if gl.supported_extensions().contains("GL_EXT_texture_filter_anisotropic") {
-            gl.get_parameter_f32(MAX_TEXTURE_MAX_ANISOTROPY).min(ANISOTROPY_CAP)
+        let knobs = Knobs::read();
+        // AB_GL_ANISO=0 (or 1) leaves it off
+        let anisotropy = if knobs.aniso_cap > 1.0 && gl.supported_extensions().contains("GL_EXT_texture_filter_anisotropic") {
+            gl.get_parameter_f32(MAX_TEXTURE_MAX_ANISOTROPY).min(ANISOTROPY_CAP).min(knobs.aniso_cap)
         } else {
             0.0
         };
@@ -269,6 +278,9 @@ impl Gfx {
             clip: None,
             anisotropy,
             desktop,
+            knobs,
+            stats: Stats::default(),
+            stats_line: None,
         })
     }
 
@@ -279,14 +291,19 @@ impl Gfx {
             let aniso = if self.anisotropy > 0.0 {
                 format!("EXT_texture_filter_anisotropic (up to {}x used)", self.anisotropy)
             } else {
-                "no EXT_texture_filter_anisotropic".to_string()
+                "no anisotropic filtering".to_string()
             };
+            let k = &self.knobs;
             format!(
-                "{} | {} | {} | {}",
+                "{} | {} | {} | {} | knobs ({}): AB_GL_MIPMAPS={} AB_GL_ANISO={} AB_GL_STATS={}",
                 gl.get_parameter_string(glow::VERSION),
                 gl.get_parameter_string(glow::RENDERER),
                 if self.desktop { "desktop GL, GLSL 330 core" } else { "GLES, GLSL 300 es" },
-                aniso
+                aniso,
+                k.from,
+                k.mipmaps as u8,
+                k.aniso_cap,
+                k.stats as u8
             )
         }
     }
@@ -332,10 +349,18 @@ impl Gfx {
 
     /// an image (straight RGBA, rows top first) of `scale` pixels per logical pixel
     pub fn texture(&mut self, w: u32, h: u32, rgba: &[u8], scale: f32, mipmaps: bool) -> Result<Texture, String> {
-        self.flush();
+        self.cut(diag::CUT_TEXTURE_OP);
         self.bound = None;
+        let mipmaps = mipmaps && self.knobs.mipmaps;
         let t = unsafe { Self::upload(&self.gl, w, h, rgba, scale, mipmaps, self.anisotropy) }?;
         self.alive += 1;
+        if !rgba.is_empty() {
+            self.stats.uploads += 1;
+            self.stats.upload_bytes += rgba.len() as u64;
+            if mipmaps {
+                self.stats.mipmaps += 1;
+            }
+        }
         Ok(t)
     }
 
@@ -356,7 +381,7 @@ impl Gfx {
 
     /// `t` drawn with nearest filtering from now on (SDL's scale quality "0" at the texture's creation)
     pub fn set_nearest(&mut self, t: &Texture) {
-        self.flush();
+        self.cut(diag::CUT_TEXTURE_OP);
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, Some(t.tex));
             self.gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
@@ -389,7 +414,7 @@ impl Gfx {
         let mut t = self.texture(pw, ph, &[], scale, mipmaps)?;
         unsafe {
             let gl = &self.gl;
-            if mipmaps {
+            if t.mipmaps {
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR_MIPMAP_LINEAR as i32);
             }
             let fbo = gl.create_framebuffer()?;
@@ -423,8 +448,10 @@ impl Gfx {
     /// `update` from rows `pitch` bytes apart (a part of a bigger picture: a streaming texture's buffer)
     #[allow(clippy::too_many_arguments)]
     pub fn update_pitch(&mut self, t: &Texture, x: u32, y: u32, w: u32, h: u32, rgba: &[u8], pitch: u32) {
-        self.flush();
+        self.cut(diag::CUT_TEXTURE_OP);
         self.bound = None;
+        self.stats.uploads += 1;
+        self.stats.upload_bytes += w as u64 * h as u64 * 4;
         unsafe {
             let gl = &self.gl;
             gl.bind_texture(glow::TEXTURE_2D, Some(t.tex));
@@ -457,9 +484,19 @@ impl Gfx {
             }
             while self.in_flight.len() > FRAMES_IN_FLIGHT {
                 let f = self.in_flight.pop_front().unwrap();
+                let start = std::time::Instant::now();
                 // a second at most per call, so a lost GPU never hangs the shell
-                self.gl.client_wait_sync(f, glow::SYNC_FLUSH_COMMANDS_BIT, 1_000_000_000);
+                let r = self.gl.client_wait_sync(f, glow::SYNC_FLUSH_COMMANDS_BIT, 1_000_000_000);
+                if r != glow::ALREADY_SIGNALED {
+                    self.stats.fence_waits += 1;
+                    self.stats.fence_wait += start.elapsed();
+                }
                 self.gl.delete_sync(f);
+            }
+        }
+        if self.knobs.stats {
+            if let Some(line) = self.stats.frame_done() {
+                self.stats_line = Some(line);
             }
         }
     }
@@ -469,7 +506,7 @@ impl Gfx {
     }
 
     pub fn free(&mut self, t: Texture) {
-        self.flush();
+        self.cut(diag::CUT_TEXTURE_OP);
         self.bound = None;
         self.alive = self.alive.saturating_sub(1);
         unsafe {
@@ -544,8 +581,9 @@ impl Gfx {
 
     /// begin_target, cleared to `clear`: text's colour at alpha 0 keeps the edges blended into it from going dark
     pub fn begin_target_cleared(&mut self, t: &Texture, clear: Color) {
-        self.flush();
+        self.cut(diag::CUT_TARGET);
         self.bound = None;
+        self.stats.target_switches += 1;
         let (lw, lh) = t.size();
         let Some(fbo) = t.fbo else { return };
         self.targets.push((fbo, t.w as i32, t.h as i32, lw, lh));
@@ -560,10 +598,14 @@ impl Gfx {
     }
 
     pub fn end_target(&mut self, t: &Texture) {
-        self.flush();
+        self.cut(diag::CUT_TARGET);
         self.bound = None;
+        self.stats.target_switches += 1;
         if t.fbo.is_some() {
             self.targets.pop();
+        }
+        if t.mipmaps {
+            self.stats.mipmaps += 1;
         }
         unsafe {
             let gl = &self.gl;
@@ -592,7 +634,7 @@ impl Gfx {
     /// a frame in output pixels starts on the screen of `w` x `h` (nothing cleared: the Renderer clears): no canvas
     /// mapping, no target, the viewport and clip rect as they were set
     pub fn begin_frame(&mut self, w: i32, h: i32) {
-        self.flush();
+        self.cut(diag::CUT_PRESENT);
         self.draw_calls = 0;
         self.screen = (w, h);
         self.canvas_scale = 1.0;
@@ -611,8 +653,9 @@ impl Gfx {
     /// draws into `t` (None: the screen) until the next set_target, nothing cleared - SDL_SetRenderTarget. A target
     /// is addressed from its top-left pixel; the screen through its viewport
     pub fn set_target(&mut self, t: Option<&Texture>) {
-        self.flush();
+        self.cut(diag::CUT_TARGET);
         self.bound = None;
+        self.stats.target_switches += 1;
         self.targets.clear();
         if let Some(t) = t {
             let Some(fbo) = t.fbo else { return self.rebind_current() };
@@ -629,7 +672,11 @@ impl Gfx {
     /// corner, and stays inside it. None = the whole screen. Targets are always drawn whole, as SDL keeps a target's
     /// viewport apart
     pub fn set_viewport(&mut self, r: Option<PixelRect>) {
-        self.flush();
+        self.stats.state_sets += 1;
+        if self.viewport == r {
+            self.stats.state_unchanged += 1;
+        }
+        self.cut(diag::CUT_STATE);
         self.viewport = r;
         self.rebind_current();
     }
@@ -637,7 +684,11 @@ impl Gfx {
     /// the clip rect (SDL_RenderSetClipRect): pixels of the current target (on the screen: of the viewport) outside
     /// `r` are left alone. None = no clipping
     pub fn set_clip(&mut self, r: Option<PixelRect>) {
-        self.flush();
+        self.stats.state_sets += 1;
+        if self.clip == r {
+            self.stats.state_unchanged += 1;
+        }
+        self.cut(diag::CUT_STATE);
         self.clip = r;
         self.rebind_current();
     }
@@ -698,7 +749,7 @@ impl Gfx {
 
     /// clears all of what is drawn into to `c` (SDL_RenderClear: the whole target, past the viewport and the clip)
     pub fn clear(&mut self, c: Color) {
-        self.flush();
+        self.cut(diag::CUT_CLEAR);
         unsafe {
             let gl = &self.gl;
             gl.disable(glow::SCISSOR_TEST);
@@ -716,7 +767,7 @@ impl Gfx {
         if self.bound == Some((tex, blend)) && self.verts.len() < 60000 {
             return;
         }
-        self.flush();
+        self.cut(if self.bound == Some((tex, blend)) { diag::CUT_FULL } else { diag::CUT_TEXTURE });
         unsafe {
             let gl = &self.gl;
             gl.bind_texture(glow::TEXTURE_2D, Some(tex));
@@ -739,9 +790,17 @@ impl Gfx {
 
     /// draws what is batched
     pub fn flush(&mut self) {
+        self.cut(diag::CUT_PRESENT);
+    }
+
+    // draws what is batched, for the reason `why` (diag::CUT_*: the stats say what ends the batches)
+    fn cut(&mut self, why: usize) {
         if self.indices.is_empty() {
             return;
         }
+        self.stats.cuts[why] += 1;
+        self.stats.draws += 1;
+        self.stats.quads += self.indices.len() as u64 / 6;
         unsafe {
             let gl = &self.gl;
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
@@ -763,11 +822,12 @@ impl Gfx {
 
     // an auto-mipmapped texture drawn `shrink` times smaller than its pixels: its mipmaps made (again) first
     fn mips_for(&mut self, t: &Texture, shrink: f32) {
-        if !t.auto_mips || shrink <= MIPS_AT || t.mips.get() == MIPS_OK {
+        if !t.auto_mips || !self.knobs.mipmaps || shrink <= MIPS_AT || t.mips.get() == MIPS_OK {
             return;
         }
-        self.flush();
+        self.cut(diag::CUT_MIPMAPS);
         self.bound = None;
+        self.stats.mipmaps += 1;
         unsafe {
             let gl = &self.gl;
             gl.bind_texture(glow::TEXTURE_2D, Some(t.tex));
@@ -886,7 +946,7 @@ impl Gfx {
         let tex = t.map(|t| t.tex).unwrap_or(self.white.tex);
         self.bind(tex, blend);
         if self.verts.len() + verts.len() > 65000 {
-            self.flush();
+            self.cut(diag::CUT_FULL);
         }
         let base = self.verts.len();
         let n = verts.len() as i32;
@@ -973,8 +1033,10 @@ impl Gfx {
 
     /// the back buffer as RGBA rows, top first
     pub fn read_screen(&mut self) -> (u32, u32, Vec<u8>) {
-        self.flush();
+        self.cut(diag::CUT_READBACK);
         let (w, h) = (self.screen.0 as u32, self.screen.1 as u32);
+        self.stats.readbacks += 1;
+        self.stats.readback_bytes += w as u64 * h as u64 * 4;
         let mut px = vec![0u8; (w * h * 4) as usize];
         unsafe {
             self.gl.read_pixels(
@@ -1001,7 +1063,7 @@ impl Gfx {
     /// `r` (pixels, y down; None = all of it) of what is drawn into - the screen (past its viewport, as
     /// SDL_RenderReadPixels reads the whole output) or the target - as RGBA rows, top first, alpha as it is
     pub fn read_pixels(&mut self, r: Option<PixelRect>) -> (u32, u32, Vec<u8>) {
-        self.flush();
+        self.cut(diag::CUT_READBACK);
         let on_screen = self.targets.is_empty();
         let (fw, fh) = match self.targets.last() {
             Some(&(_, w, h, ..)) => (w, h),
@@ -1014,6 +1076,8 @@ impl Gfx {
             return (0, 0, px);
         }
         let gl_y = if on_screen { fh - y - h } else { y };
+        self.stats.readbacks += 1;
+        self.stats.readback_bytes += px.len() as u64;
         unsafe {
             self.gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
             self.gl.read_pixels(

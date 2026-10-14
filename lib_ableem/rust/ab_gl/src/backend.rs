@@ -134,6 +134,7 @@ pub struct AbrApi {
     pub draw_calls: unsafe extern "C" fn(*mut AbrContext) -> u32,
     pub textures_alive: unsafe extern "C" fn(*mut AbrContext) -> u32,
     pub flush: unsafe extern "C" fn(*mut AbrContext),
+    pub stats: unsafe extern "C" fn(*mut AbrContext, *mut c_char, i32) -> i32,
 }
 
 // the table is immutable and its name a static string
@@ -460,6 +461,15 @@ unsafe extern "C" fn textures_alive(c: *mut AbrContext) -> u32 {
     c.as_ref().map(|c| c.gfx.textures_alive()).unwrap_or(0)
 }
 
+// AB_GL_STATS=1: the line a second of frames made (taken: the next call answers 0 until the next second)
+unsafe extern "C" fn stats(c: *mut AbrContext, out: *mut c_char, size: i32) -> i32 {
+    let Some(c) = c.as_mut() else { return 0 };
+    match c.gfx.stats_line.take() {
+        Some(line) => put(&line, out, size),
+        None => 0,
+    }
+}
+
 static API: AbrApi = AbrApi {
     size: std::mem::size_of::<AbrApi>() as u32,
     version: ABR_API_VERSION,
@@ -486,6 +496,7 @@ static API: AbrApi = AbrApi {
     draw_calls,
     textures_alive,
     flush,
+    stats,
 };
 
 /// the backend's one export: its table

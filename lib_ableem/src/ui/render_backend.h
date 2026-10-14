@@ -139,6 +139,10 @@ typedef struct AbrApi {
     uint32_t (*textures_alive)(AbrContext *c); /* made and not destroyed */
     /* draws what is queued: before the caller swaps the buffers (end_frame comes after the swap) */
     void (*flush)(AbrContext *c);
+
+    /* added in version 1 (a table whose size ends before it has none): the backend's diagnostics line (AB_GL_STATS=1),
+     * once a second after end_frame; its length, 0 when none is due */
+    int32_t (*stats)(AbrContext *c, char *out, int32_t size);
 } AbrApi;
 
 typedef const AbrApi *(*AbrEntry)(void);

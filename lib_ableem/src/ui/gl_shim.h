@@ -21,6 +21,8 @@ namespace ableem::gl {
 Uint32 windowFlags();
 // a backend draws (the SDL_Renderer was not made)
 bool active();
+// the backend's draw calls in the last presented frame (the performance overlay); 0 without a backend
+unsigned lastFrameDrawCalls();
 // the backends to try, in order: setPreference's list, else AB_RENDERER, else the platform's ("gles3"); "sdl" ends it
 void setPreference(const std::string &commaList);
 
