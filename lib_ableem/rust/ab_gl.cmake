@@ -16,9 +16,18 @@ if (ABLEEM_RENDER_GL)
     set(_abg_dir "${CMAKE_CURRENT_SOURCE_DIR}/rust/ab_gl")
     set(_abg_out "${CMAKE_CURRENT_BINARY_DIR}/ab_gl-target")
     set(_abg_args build --release --locked --manifest-path "${_abg_dir}/Cargo.toml")
+    set(_abg_env "CARGO_TARGET_DIR=${_abg_out}")
     if (ABLEEM_RUST_TARGET)
         list(APPEND _abg_args --target ${ABLEEM_RUST_TARGET})
         set(_abg_rel "${_abg_out}/${ABLEEM_RUST_TARGET}/release")
+        # a shared library is linked by cargo (ab_text's static one never is): with this build's C compiler, as
+        # the host's cc knows nothing of the target
+        string(TOUPPER "${ABLEEM_RUST_TARGET}" _abg_triple)
+        string(REPLACE "-" "_" _abg_triple "${_abg_triple}")
+        list(APPEND _abg_env "CARGO_TARGET_${_abg_triple}_LINKER=${CMAKE_C_COMPILER}")
+        if (CMAKE_SYSROOT)
+            list(APPEND _abg_env "CARGO_TARGET_${_abg_triple}_RUSTFLAGS=-C link-arg=--sysroot=${CMAKE_SYSROOT}")
+        endif()
     else()
         set(_abg_rel "${_abg_out}/release")
     endif()
@@ -39,7 +48,7 @@ if (ABLEEM_RENDER_GL)
 
     file(GLOB _abg_sources "${_abg_dir}/src/*.rs")
     add_custom_command(OUTPUT "${ABLEEM_RENDER_GL_LIBRARY}"
-            COMMAND ${CMAKE_COMMAND} -E env "CARGO_TARGET_DIR=${_abg_out}" "${ABLEEM_CARGO}" ${_abg_args}
+            COMMAND ${CMAKE_COMMAND} -E env ${_abg_env} "${ABLEEM_CARGO}" ${_abg_args}
             COMMAND ${CMAKE_COMMAND} -E make_directory "${_abg_dest}"
             COMMAND ${CMAKE_COMMAND} -E copy "${_abg_built}" "${ABLEEM_RENDER_GL_LIBRARY}"
             DEPENDS ${_abg_sources} "${_abg_dir}/Cargo.toml" "${_abg_dir}/Cargo.lock"
