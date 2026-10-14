@@ -133,6 +133,7 @@ pub struct AbrApi {
     pub read_pixels: unsafe extern "C" fn(*mut AbrContext, *const AbrRect, *mut c_void, i32) -> i32,
     pub draw_calls: unsafe extern "C" fn(*mut AbrContext) -> u32,
     pub textures_alive: unsafe extern "C" fn(*mut AbrContext) -> u32,
+    pub flush: unsafe extern "C" fn(*mut AbrContext),
 }
 
 // the table is immutable and its name a static string
@@ -228,6 +229,12 @@ unsafe extern "C" fn end_frame(c: *mut AbrContext) {
     if let Some(c) = c.as_mut() {
         c.gfx.flush();
         c.gfx.end_frame();
+    }
+}
+
+unsafe extern "C" fn flush(c: *mut AbrContext) {
+    if let Some(c) = c.as_mut() {
+        c.gfx.flush();
     }
 }
 
@@ -478,6 +485,7 @@ static API: AbrApi = AbrApi {
     read_pixels,
     draw_calls,
     textures_alive,
+    flush,
 };
 
 /// the backend's one export: its table

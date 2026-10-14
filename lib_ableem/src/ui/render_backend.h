@@ -137,6 +137,8 @@ typedef struct AbrApi {
 
     uint32_t (*draw_calls)(AbrContext *c);     /* this frame's */
     uint32_t (*textures_alive)(AbrContext *c); /* made and not destroyed */
+    /* draws what is queued: before the caller swaps the buffers (end_frame comes after the swap) */
+    void (*flush)(AbrContext *c);
 } AbrApi;
 
 typedef const AbrApi *(*AbrEntry)(void);

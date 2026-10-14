@@ -88,6 +88,9 @@ SDL_Window *createWindowWith(const std::string &title, int w, int h, int &sample
     // launcher that hands the screen to an emulator and takes it back wants (a mode change would flash the
     // display twice per game, which is why the emulator is told the same mode - AB_OUTPUT_MODE)
     Uint32 flags = fullscreenFlag;
+#ifdef ABLEEM_RENDER_GL
+    flags |= gl::windowFlags(); // a GL backend's window: SDL_WINDOW_OPENGL, its context attributes set
+#endif
     if (Platform::startsHidden(headless))
         flags |= SDL_WINDOW_HIDDEN;
     if (samples > 0) {
@@ -186,6 +189,14 @@ Size Platform::largestMode(const std::vector<DisplayMode> &modes) {
 void Platform::setOutputMode(int w, int h) {
     outputModeW = w > 0 && h > 0 ? w : 0;
     outputModeH = w > 0 && h > 0 ? h : 0;
+}
+
+void Platform::setRendererBackends(const std::string &commaList) {
+#ifdef ABLEEM_RENDER_GL
+    gl::setPreference(commaList);
+#else
+    (void)commaList;
+#endif
 }
 
 int Platform::logicalWidth() const {

@@ -42,6 +42,13 @@ bool rustText() {
     static const bool on = [] {
         const char *e = getenv("AB_TEXT");
         bool rust = !(e && std::strcmp(e, "fc") == 0);
+#ifdef ABLEEM_RENDER_GL
+        // SDL_FontCache draws through SDL itself, past the renderer backend
+        if (!rust && gl::active()) {
+            PLOG_WARNING << "AB_TEXT=fc is ignored: the renderer backend draws, which only the Rust engine draws through";
+            rust = true;
+        }
+#endif
         PLOG_INFO << "Text engine: " << (rust ? "Rust (ab_text)" : "SDL_FontCache (AB_TEXT=fc)");
         return rust;
     }();

@@ -47,3 +47,8 @@ inline SDL_BlendMode maskBlendMode() {
     return SDL_BLENDMODE_MOD;
 #endif
 }
+
+// ABLEEM_RENDER_GL: the SDL_Renderer calls go through the loadable renderer backend, SDL_Renderer the fallback
+#ifdef ABLEEM_RENDER_GL
+#include "gl_shim.h"
+#endif
