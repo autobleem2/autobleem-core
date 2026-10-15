@@ -70,6 +70,21 @@ const Bundle Bundles[] = {
     {"shaders_glsl", "shaders"},
 };
 
+// the folders of RetroArch/bin a Remove takes (each renamed <name>.removing, then deleted); a Remove that was cut
+// off leaves the renamed ones, and the next Install or Remove finishes them
+const char *const RemovedDirs[] = {
+    "cores",
+    "info",
+    "assets",
+    "database",
+    "cheats",
+    "overlays",
+    "shaders",
+    "downloads",
+    "records",
+    "Retroarch themes",
+};
+
 //******************
 // Run
 //******************
@@ -163,11 +178,29 @@ public:
             ok = raUnpack(error);
         if (ok) {
             phase("merge-config");
-            ok = !stopped(error) && writeRetroArchCfg(error) && applyTheme(assetsReady, error);
+            out.onItem("retroarch.cfg", 1, 2, "items");
+            out.onProgress(0, 2);
+            ok = !stopped(error) && writeRetroArchCfg(error);
+            if (ok) {
+                out.onItem("theme", 2, 2, "items");
+                out.onProgress(1, 2);
+                ok = applyTheme(assetsReady, error);
+            }
+            if (ok)
+                out.onProgress(2, 2);
         }
         if (ok) {
             phase("install-binary");
-            ok = !stopped(error) && installBinary(error) && stampVersion(error);
+            out.onItem("retroarch", 1, 2, "items");
+            out.onProgress(0, 2);
+            ok = !stopped(error) && installBinary(error);
+            if (ok) {
+                out.onItem("version", 2, 2, "items");
+                out.onProgress(1, 2);
+                ok = stampVersion(error);
+            }
+            if (ok)
+                out.onProgress(2, 2);
         }
         if (ok) { // done: the downloads are of no use any more
             DirEntry::removeDirAndContents(scratch);
@@ -186,6 +219,9 @@ private:
     // allowance. Nothing is downloaded when the filesystem has less.
     bool raCheckSpace(const RetroArchOptions &ro, string &error) {
         phase("check-space");
+        // the four catalogs are the items of this phase
+        out.onItem("retroarch", 1, 4, "items");
+        out.onProgress(0, 4);
         string text;
         if (!fetchCatalog("psc/retroarch/latest.json", text, error) || !raCatalog.parse(text))
             return catalogLost("psc/retroarch/latest.json", error);
@@ -193,13 +229,18 @@ private:
         const pair<const char *, PackCatalog *> packs[] = {
             {"psc/cores/latest.json", &coresCatalog}, {"psc/libs/latest.json", &libsCatalog},
             {"psc/apps/latest.json", &appsCatalog}};
+        int caught = 1;
         for (const auto &p : packs) {
             if (stopped(error))
                 return false;
+            out.onItem(string(p.first).substr(4, string(p.first).find('/', 4) - 4), caught + 1, 4, "items");
+            out.onProgress(caught, 4);
             if (!fetchCatalog(p.first, text, error) || !p.second->parse(text))
                 return catalogLost(p.first, error);
             need += p.second->file.size * 2; // the download and what it unpacks to
+            caught++;
         }
+        out.onProgress(4, 4);
         need += raCatalog.zip.size * 2;
         for (const Bundle &b : Bundles)
             if (!DirEntry::exists(scratch + "/" + b.name + ".zip") && !bundleThere(b))
@@ -208,6 +249,13 @@ private:
         for (const UpdateFile *f : {&raCatalog.zip, &coresCatalog.file, &libsCatalog.file, &appsCatalog.file})
             if (DirEntry::exists(scratch + "/" + f->name))
                 need -= min<uint64_t>(need, f->size);
+        // a Remove that was cut off (power loss) left <name>.removing folders: this install finishes it
+        vector<string> leftovers{at("RetroArch/bios.removing")};
+        for (const char *d : RemovedDirs)
+            leftovers.push_back(at(string("RetroArch/bin/") + d + ".removing"));
+        for (const string &gone : leftovers)
+            if (DirEntry::isDirectory(gone))
+                DirEntry::removeDirAndContents(gone);
         uint64_t free = 0, total = 0;
         const bool known = ro.diskSpace ? ro.diskSpace(root, free, total) : System::diskSpace(root, free, total);
         const string room = known ? humanSize(free) + " free" : string("free space unknown");
@@ -243,25 +291,63 @@ private:
     bool raDownloadBundles(string &error) {
         phase("download-assets");
         assetsReady = true;
-        for (size_t i = 0; i < sizeof(Bundles) / sizeof(Bundles[0]); i++) {
-            const Bundle &b = Bundles[i];
+        assetsDone = 0;
+        // the zips still to fetch, and their sizes (HEAD) so one bar in bytes can run over all of them; when
+        // the server does not tell every size the phase counts the zips instead
+        vector<const Bundle *> todo;
+        for (const Bundle &b : Bundles)
+            if (!DirEntry::exists(scratch + "/" + b.name + ".zip") && !bundleThere(b))
+                todo.push_back(&b);
+        const int count = static_cast<int>(todo.size());
+        if (todo.empty()) {
+            out.onItem("", 0, 0, "items");
+            out.onProgress(1, 1);
+            return true;
+        }
+        uint64_t sum = 0;
+        bool sized = true;
+        DirEntry::createDirs(scratch);
+        for (const Bundle *b : todo) {
             if (stopped(error))
                 return false;
-            out.onProgress(i, sizeof(Bundles) / sizeof(Bundles[0]));
-            const string zip = scratch + "/" + b.name + ".zip";
-            if (DirEntry::exists(zip) || bundleThere(b))
-                continue;
-            say("  " + string(b.name));
-            if (!download(opt.buildbotUrl + "/" + b.name + ".zip", zip, error)) {
-                if (stopped(error))
-                    return false;
-                say("  could not download " + string(b.name) + ".zip: " + error + " - going on without it");
-                error.clear();
-                failKind = FailKind::None;
-                if (string(b.name) == "assets")
-                    assetsReady = false;
-            }
+            uint64_t size = 0;
+            if (dl.contentLength(opt.buildbotUrl + "/" + b->name + ".zip", scratch + "/size.txt", size))
+                sum += size;
+            else
+                sized = false;
         }
+        const char *unit = sized ? "bytes" : "items";
+        for (int i = 0; i < count; i++) {
+            const Bundle &b = *todo[i];
+            if (stopped(error))
+                return false;
+            const string zip = scratch + "/" + b.name + ".zip";
+            out.onItem(string(b.name) + ".zip", i + 1, count, unit);
+            progressBase = progressTotal = 0;
+            if (sized) {
+                progressTotal = sum;
+                progressBase = assetsDone;
+            }
+            out.onProgress(sized ? assetsDone : static_cast<uint64_t>(i), sized ? sum : static_cast<uint64_t>(count));
+            say("  " + string(b.name));
+            countOnly = !sized;
+            const bool fetched = download(opt.buildbotUrl + "/" + b.name + ".zip", zip, error);
+            countOnly = false;
+            progressTotal = 0;
+            if (fetched) {
+                assetsDone += sized ? static_cast<uint64_t>(max<long long>(0, DirEntry::fileSize(zip))) : 1;
+                continue;
+            }
+            if (stopped(error))
+                return false;
+            say("  could not download " + string(b.name) + ".zip: " + error + " - going on without it");
+            error.clear();
+            failKind = FailKind::None;
+            if (string(b.name) == "assets")
+                assetsReady = false;
+            assetsDone += sized ? 0 : 1;
+        }
+        out.onProgress(sized ? sum : static_cast<uint64_t>(count), sized ? sum : static_cast<uint64_t>(count));
         return true;
     }
 
@@ -271,7 +357,12 @@ private:
         if (stopped(error))
             return false;
         const string bin = at("RetroArch/bin");
-        if (!installZip(scratch + "/" + raCatalog.zip.name, raCatalog.zip.name, error))
+        int archives = 4; // the RetroArch zip, the three packs, and the bundles that were fetched
+        for (const Bundle &b : Bundles)
+            if (DirEntry::exists(scratch + "/" + b.name + ".zip"))
+                archives++;
+        int archive = 1;
+        if (!installZip(scratch + "/" + raCatalog.zip.name, raCatalog.zip.name, error, archive++, archives))
             return false;
         if (!DirEntry::exists(scratch + "/retroarch/retroarch")) {
             error = raCatalog.zip.name + " has no retroarch binary";
@@ -285,6 +376,9 @@ private:
             if (stopped(error))
                 return false;
             DirEntry::createDirs(p.second.first);
+            out.onItem(p.first->file.name, archive++, archives, "bytes");
+            out.onProgress(0, max<uint64_t>(1, static_cast<uint64_t>(max<long long>(
+                                                   0, DirEntry::fileSize(scratch + "/" + p.first->file.name)))));
             if (!untar(scratch + "/" + p.first->file.name, p.second.first, error, p.second.second))
                 return false;
         }
@@ -294,7 +388,10 @@ private:
             const string zip = scratch + "/" + b.name + ".zip";
             if (!DirEntry::exists(zip))
                 continue;
-            if (!ZipArchive::extract(zip, bin + "/" + b.dest)) {
+            out.onItem(string(b.name) + ".zip", archive++, archives, "files");
+            if (!ZipArchive::extractCounting(zip, bin + "/" + b.dest, [this](uint64_t done, uint64_t total) {
+                    out.onProgress(done, total ? total : 1);
+                })) {
                 say("  could not unpack " + string(b.name) + ".zip - going on without it");
                 DirEntry::removeFile(zip); // a broken zip would be unpacked again and again
                 if (string(b.name) == "assets")
@@ -682,11 +779,15 @@ private:
     // applyTheme and stampVersion. Every file goes in under a temporary name and is renamed over the old one, so
     // a write that fails half way leaves the old file; the zip is unpacked before anything on the stick is
     // touched. The console's own update (retroarchZip) and the PC installer share this.
-    bool installZip(const string &zip, const string &zipName, string &error) {
+    // the zip's files counted on the phase's bar (item `itemIndex` of `itemCount` of the phase)
+    bool installZip(const string &zip, const string &zipName, string &error, int itemIndex = 1, int itemCount = 1) {
         const string bin = at("RetroArch/bin");
         const string unpacked = scratch + "/retroarch";
         DirEntry::removeDirAndContents(unpacked);
-        if (!ZipArchive::extract(zip, unpacked)) {
+        out.onItem(zipName, itemIndex, itemCount, "files");
+        if (!ZipArchive::extractCounting(zip, unpacked, [this](uint64_t done, uint64_t total) {
+                out.onProgress(done, total ? total : 1);
+            })) {
             if (error.empty())
                 error = "cannot unpack " + zipName;
             DirEntry::removeDirAndContents(unpacked);
@@ -1041,6 +1142,7 @@ private:
     bool keepDownloads = false;
     bool deferBinary = false;
     bool assetsReady = true;
+    uint64_t assetsDone = 0; // download-assets: the bytes (or zips) finished so far
     ableem::PscRetroArchCatalog raCatalog;
     ableem::PackCatalog coresCatalog, libsCatalog, appsCatalog;
 };
@@ -1253,8 +1355,7 @@ RetroArchResult InstallerJob::retroarchRemove(const RetroArchOptions &ro, bool w
     // then these folders, each renamed <name>.removing and deleted. autoconfig, config, playlists, saves,
     // savestates, screenshots, thumbnails, roms, retroarch.cfg and the rest of the user's stay.
     vector<string> dirs;
-    for (const char *d : {"cores", "info", "assets", "database", "cheats", "overlays", "shaders", "downloads",
-                          "records", "Retroarch themes"})
+    for (const char *d : RemovedDirs)
         dirs.push_back(bin + "/" + d);
     if (withBios)
         dirs.push_back(ra + "/bios");
@@ -1268,25 +1369,19 @@ RetroArchResult InstallerJob::retroarchRemove(const RetroArchOptions &ro, bool w
     }
     const uint64_t total = files.size() + dirs.size() * 2;
     uint64_t done = 0;
-    auto stopNow = [&]() {
-        if (shouldStop && shouldStop()) {
-            result.stopped = true;
-            result.error = "Stopped";
-            return true;
-        }
-        return false;
-    };
+    // a Remove has no Stop: it runs to the end (the launcher offers none), so a SIGTERM does not cut it short
+    (void)shouldStop;
+    const auto nameOf = [](const string &path) { return path.substr(path.find_last_of('/') + 1); };
+    listener.onItem("", 0, 0, "items");
     listener.onProgress(0, total);
     for (const string &f : files) {
-        if (stopNow())
-            return result;
+        listener.onItem(nameOf(f), static_cast<int>(done + 1), static_cast<int>(total), "items");
         DirEntry::removeFile(f);
         listener.onProgress(++done, total);
     }
     // a run that was cut off left <name>.removing folders: they go with this one
     for (const string &d : dirs) {
-        if (stopNow())
-            return result;
+        listener.onItem(nameOf(d), static_cast<int>(done + 1), static_cast<int>(total), "items");
         const string gone = d + ".removing";
         if (DirEntry::isDirectory(gone))
             DirEntry::removeDirAndContents(gone);
@@ -1298,8 +1393,7 @@ RetroArchResult InstallerJob::retroarchRemove(const RetroArchOptions &ro, bool w
         listener.onProgress(++done, total);
     }
     for (const string &d : dirs) {
-        if (stopNow())
-            return result;
+        listener.onItem(nameOf(d), static_cast<int>(done + 1), static_cast<int>(total), "items");
         const string gone = d + ".removing";
         if (DirEntry::isDirectory(gone))
             DirEntry::removeDirAndContents(gone);

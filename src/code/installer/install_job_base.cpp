@@ -7,6 +7,7 @@
 #include <ableem/engine/strings.h>
 
 #include <fstream>
+#include <memory>
 #include <sstream>
 
 using namespace std;
@@ -103,7 +104,11 @@ bool InstallJobBase::download(const string &url, const string &dest, string &err
     bool ok = dl.fetch(
         url, dest,
         [this](uint64_t done, uint64_t total) {
-            out.onProgress(done, total);
+            // countOnly: the phase counts packages, not bytes - the finished ones are reported by the caller
+            if (!countOnly && progressTotal > 0) // one bar over several files: this file's bytes after the others
+                out.onProgress(progressBase + done, progressTotal);
+            else if (!countOnly)
+                out.onProgress(done, total ? total : expectTotal);
             return !(stop && stop());
         },
         error);
@@ -124,18 +129,26 @@ void InstallJobBase::classifyFailure(const string &error) {
 // InstallJobBase::downloadVerified
 //*******************************
 bool InstallJobBase::downloadVerified(const UpdateFile &file, const string &dest, string &error) {
+    out.onItem(file.name, 1, 1, "bytes");
     if (DirEntry::exists(dest) && !file.sha256.empty() && Sha256::ofFile(dest) == file.sha256) {
         say("  " + file.name + " is already there");
+        out.onProgress(file.size ? file.size : 1, file.size ? file.size : 1);
         return true;
     }
     say("  " + file.name + (file.size ? " (" + humanSize(file.size) + ")" : ""));
+    if (file.size)
+        out.onProgress(0, file.size);
     // a downloader that checks the file keeps its own <dest>.part (and continues it); any other gets ours
     const string part = dest + ".part";
     const bool checkedByDownloader = dl.expect(file.size, file.sha256);
+    expectTotal = file.size;
     const bool fetched = download(file.url, checkedByDownloader ? dest : part, error);
+    expectTotal = 0;
     dl.expect(0, "");
     if (!fetched)
         return false;
+    if (file.size)
+        out.onProgress(file.size, file.size);
     if (checkedByDownloader)
         return true;
     if (!file.sha256.empty() && Sha256::ofFile(part) != file.sha256) {
@@ -161,8 +174,19 @@ bool InstallJobBase::fetchCatalog(const string &rel, string &text, string &error
 
 bool InstallJobBase::untar(const string &tarball, const string &dest, string &error, const TarArchive::Filter &filter,
                            const string &prefix) {
+    // the extractor ends with a (1, 1); the bar of a package is its bytes read, so the end is "all of them"
+    auto lastTotal = make_shared<uint64_t>(0);
     return TarArchive::extract(
-        tarball, dest, error, filter, [this](uint64_t done, uint64_t total) { out.onProgress(done, total); }, prefix);
+        tarball, dest, error, filter,
+        [this, lastTotal](uint64_t done, uint64_t total) {
+            if (done == 1 && total == 1 && *lastTotal > 1) {
+                done = total = *lastTotal;
+            } else if (total > 0) {
+                *lastTotal = total;
+            }
+            out.onProgress(done, total);
+        },
+        prefix);
 }
 
 //*******************************
@@ -213,6 +237,7 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
         if (stopped(error))
             return false;
         const Item &it = items[i];
+        out.onItem(it.path, static_cast<int>(i + 1), static_cast<int>(items.size()), "files");
         out.onProgress(i, items.size());
         const string dest = dir + "/" + it.path;
         if (DirEntry::exists(dest) && static_cast<uint64_t>(DirEntry::fileSize(dest)) == it.size &&
@@ -254,7 +279,9 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
             say("  " + to_string(fetched) + " fetched, " + to_string(kept) + " kept, " + to_string(failed) +
                 " failed so far");
     }
-    out.onProgress(items.size(), items.size());
+    if (items.empty())
+        out.onItem("", 0, 0, "files");
+    out.onProgress(items.empty() ? 1 : items.size(), items.empty() ? 1 : items.size());
     say("  " + to_string(fetched) + " fetched, " + to_string(kept) + " already there, " + to_string(failed) +
         " failed");
     return true;

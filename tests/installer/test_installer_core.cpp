@@ -10,6 +10,7 @@
 
 #include <ableem/engine/filesystem.h>
 #include <ableem/engine/sha256.h>
+#include <ableem/engine/zip_archive.h>
 #include <ableem/engine/zip_writer.h>
 
 #include "support/tar_builder.h"
@@ -62,6 +63,15 @@ public:
         if (progress)
             progress(1, 1);
         return true;
+    }
+    // HEAD: the size of the file behind the url; `noHead` = a server that does not say
+    bool noHead = false;
+    bool contentLength(const string &url, const string &, uint64_t &size) override {
+        auto it = files.find(url);
+        if (noHead || it == files.end())
+            return false;
+        size = static_cast<uint64_t>(DirEntry::fileSize(it->second));
+        return size > 0;
     }
     int count(const string &urlPart) const {
         int n = 0;
@@ -1380,4 +1390,270 @@ TEST_CASE("RetroArch install: a stop keeps the .part, the second install continu
     CHECK(continued);
     CHECK(fx.tmp.readFile("stick/RetroArch/bin/retroarch") == "ELF retroarch");
     CHECK(fx.has("RetroArch/bin/cores/snes9x_libretro.so"));
+}
+
+//******************
+// The progress contract: every phase reports real movement (unit, item, a total above 0)
+//******************
+namespace {
+
+struct Report {
+    string phase, unit, item;
+    int itemIndex = 0, itemCount = 0;
+    uint64_t done = 0, total = 0;
+};
+
+// every onProgress of a run, tagged with the phase and the item it came in
+class ProgressRecorder : public Recorder {
+public:
+    vector<Report> reports;
+    void onPhase(int i, int n, const string &title) override {
+        Recorder::onPhase(i, n, title);
+        cur = Report();
+        cur.phase = title;
+    }
+    void onItem(const string &name, int index, int count, const string &unit) override {
+        cur.item = name;
+        cur.itemIndex = index;
+        cur.itemCount = count;
+        cur.unit = unit;
+    }
+    void onProgress(uint64_t done, uint64_t total) override {
+        cur.done = done;
+        cur.total = total;
+        reports.push_back(cur);
+    }
+    // the reports of a phase that a strict progress file would have written (a total above 0)
+    vector<Report> of(const string &phase) const {
+        vector<Report> r;
+        for (const Report &x : reports)
+            if (x.phase == phase && x.total > 0)
+                r.push_back(x);
+        return r;
+    }
+
+private:
+    Report cur;
+};
+
+size_t fileCountOf(const string &zip) {
+    vector<string> names;
+    ableem::ZipArchive::list(zip, names);
+    size_t n = 0;
+    for (const string &name : names)
+        if (!name.empty() && name.back() != '/')
+            n++;
+    return n;
+}
+
+} // namespace
+
+TEST_CASE("RetroArch install: every phase reports a unit, an item and a total above 0") {
+    Fixture fx;
+    ProgressRecorder rec;
+    RetroArchResult r = InstallerJob::retroarchInstall(raOptions(fx), true, fx.site, rec, NeverStop);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    for (const string &phase : rec.phases) {
+        const vector<Report> got = rec.of(phase);
+        INFO(phase);
+        REQUIRE_FALSE(got.empty());
+        for (const Report &x : got) {
+            CHECK((x.unit == "bytes" || x.unit == "files" || x.unit == "items"));
+            CHECK(x.done <= x.total);
+        }
+        CHECK(got.back().done == got.back().total); // each phase ends full
+    }
+}
+
+TEST_CASE("RetroArch install: downloads are in bytes with the package's name") {
+    Fixture fx;
+    ProgressRecorder rec;
+    REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, rec, NeverStop).ok);
+    const vector<Report> cores = rec.of("download-cores");
+    REQUIRE_FALSE(cores.empty());
+    CHECK(cores.back().unit == "bytes");
+    CHECK(cores.back().item == "cores-psc-20260920.tar.gz");
+    CHECK(cores.back().itemIndex == 1);
+    CHECK(cores.back().itemCount == 1);
+    CHECK(cores.back().total == static_cast<uint64_t>(DirEntry::fileSize(fx.tmp.at("site/cores-psc-20260920.tar.gz"))));
+    CHECK(rec.of("download-retroarch").back().item == "retroarch-psc-v1.22.2-4.zip");
+    // check-space counts the four catalogs
+    CHECK(rec.of("check-space").back().total == 4);
+}
+
+TEST_CASE("RetroArch install: download-assets is one bar in bytes over the zips when the server tells the sizes") {
+    Fixture fx;
+    ProgressRecorder rec;
+    REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, rec, NeverStop).ok);
+    const vector<Report> got = rec.of("download-assets");
+    REQUIRE_FALSE(got.empty());
+    uint64_t sum = 0;
+    for (const char *b : {"assets", "autoconfig", "database-rdb", "database-cursors", "cheats", "overlays",
+                          "shaders_glsl"})
+        sum += static_cast<uint64_t>(DirEntry::fileSize(fx.tmp.at(string("site/") + b + ".zip")));
+    for (const Report &x : got) {
+        CHECK(x.unit == "bytes");
+        CHECK(x.total == sum);
+        CHECK(x.itemCount == 7);
+    }
+    CHECK(got.back().item == "shaders_glsl.zip");
+    CHECK(got.back().itemIndex == 7);
+    CHECK(got.back().done == sum);
+}
+
+TEST_CASE("RetroArch install: download-assets counts the zips when the server does not tell a size") {
+    Fixture fx;
+    fx.site.noHead = true;
+    ProgressRecorder rec;
+    REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, rec, NeverStop).ok);
+    const vector<Report> got = rec.of("download-assets");
+    REQUIRE_FALSE(got.empty());
+    for (const Report &x : got) {
+        CHECK(x.unit == "items");
+        CHECK(x.total == 7);
+    }
+    CHECK(got.back().done == 7);
+}
+
+TEST_CASE("RetroArch install: unpack counts a tar.gz in bytes read and a zip in files, never 1 of 1") {
+    Fixture fx;
+    ProgressRecorder rec;
+    REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, rec, NeverStop).ok);
+    const vector<Report> got = rec.of("unpack");
+    REQUIRE_FALSE(got.empty());
+    bool zipSeen = false, tarSeen = false;
+    for (const Report &x : got) {
+        CHECK(x.itemCount == 11); // the RetroArch zip, three packs, seven bundles
+        if (x.item == "retroarch-psc-v1.22.2-4.zip") {
+            zipSeen = true;
+            CHECK(x.unit == "files");
+            CHECK(x.total == fileCountOf(fx.tmp.at("site/retroarch-psc-v1.22.2-4.zip")));
+            CHECK(x.total > 1);
+        }
+        if (x.item == "cores-psc-20260920.tar.gz") {
+            tarSeen = true;
+            CHECK(x.unit == "bytes");
+            CHECK(x.total == static_cast<uint64_t>(DirEntry::fileSize(fx.tmp.at("site/cores-psc-20260920.tar.gz"))));
+        }
+    }
+    CHECK(zipSeen);
+    CHECK(tarSeen);
+    // the zip's bar moved file by file: some report in the middle
+    bool middle = false;
+    for (const Report &x : got)
+        middle = middle || (x.item == "retroarch-psc-v1.22.2-4.zip" && x.done > 0 && x.done < x.total);
+    CHECK(middle);
+}
+
+TEST_CASE("RetroArch install: merge-config and install-binary count their steps as items") {
+    Fixture fx;
+    ProgressRecorder rec;
+    REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, rec, NeverStop).ok);
+    for (const char *phase : {"merge-config", "install-binary"}) {
+        const vector<Report> got = rec.of(phase);
+        REQUIRE_FALSE(got.empty());
+        for (const Report &x : got) {
+            CHECK(x.unit == "items");
+            CHECK(x.total == 2);
+        }
+    }
+    CHECK(rec.of("merge-config").front().item == "retroarch.cfg");
+}
+
+TEST_CASE("RetroArch install: the BIOS files are counted as files with their names") {
+    Fixture fx;
+    ProgressRecorder rec;
+    REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), true, fx.site, rec, NeverStop).ok);
+    const vector<Report> got = rec.of("download-bios");
+    REQUIRE_FALSE(got.empty());
+    CHECK(got.front().unit == "files");
+    CHECK(got.front().total == 2);
+    CHECK(got.front().item == "scph5501.bin");
+}
+
+TEST_CASE("RetroArch remove reports items, and has no stop: a stop flag does not cut it short") {
+    Fixture fx;
+    Recorder out;
+    REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, out, NeverStop).ok);
+    ProgressRecorder rm;
+    const InstallerJob::ShouldStop always = []() { return true; };
+    RetroArchResult r = InstallerJob::retroarchRemove(raOptions(fx), false, rm, always);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK_FALSE(r.stopped);
+    CHECK_FALSE(fx.has("RetroArch/bin/retroarch"));
+    CHECK_FALSE(fx.has("RetroArch/bin/cores"));
+    const vector<Report> got = rm.of("remove-files");
+    REQUIRE_FALSE(got.empty());
+    for (const Report &x : got)
+        CHECK(x.unit == "items");
+    CHECK(got.back().done == got.back().total);
+}
+
+TEST_CASE("RetroArch install finishes a Remove that was cut off: the .removing folders go") {
+    Fixture fx;
+    fx.tmp.writeFile("stick/RetroArch/bin/cores.removing/old.so", "left by a cut-off remove");
+    fx.tmp.writeFile("stick/RetroArch/bin/cheats.removing/a/b.cht", "left");
+    fx.tmp.writeFile("stick/RetroArch/bios.removing/scph.bin", "left");
+    Recorder out;
+    RetroArchResult r = InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, out, NeverStop);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK_FALSE(fx.has("RetroArch/bin/cores.removing"));
+    CHECK_FALSE(fx.has("RetroArch/bin/cheats.removing"));
+    CHECK_FALSE(fx.has("RetroArch/bios.removing"));
+    CHECK(fx.has("RetroArch/bin/cores/snes9x_libretro.so")); // the new cores are in
+}
+
+TEST_CASE("RetroArch remove after a cut-off remove: a folder renamed .removing is finished, a new one replaces it") {
+    Fixture fx;
+    Recorder out;
+    REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, out, NeverStop).ok);
+    // the power went while "cores" was being removed: it is renamed, its old copy half there, and a second
+    // folder was renamed already
+    fx.tmp.writeFile("stick/RetroArch/bin/cores.removing/half.so", "half");
+    fx.tmp.writeFile("stick/RetroArch/bin/info.removing/x.info", "x");
+    Recorder rm;
+    RetroArchResult r = InstallerJob::retroarchRemove(raOptions(fx), false, rm, NeverStop);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    for (const char *gone : {"cores", "cores.removing", "info", "info.removing", "cheats", "assets"})
+        CHECK_MESSAGE(!fx.has(string("RetroArch/bin/") + gone), gone);
+}
+
+TEST_CASE("ProgressFile (strict): no line while the total is 0, the 8-field line from the first real total") {
+    TempDir tmp("progress");
+    ProgressFile progress(tmp.at("p"), 0);
+    progress.setStrict(true);
+    progress.onPhase(2, 9, "download-cores");
+    progress.onProgress(0, 0);
+    CHECK_FALSE(DirEntry::exists(tmp.at("p")));
+    progress.onItem("cores-psc-20261003.tar.gz", 1, 1, "bytes");
+    progress.onProgress(0, 4096);
+    CHECK(tmp.readFile("p") == "phase 2/9|download-cores|0|4096|bytes|cores-psc-20261003.tar.gz|1|1");
+    CHECK(ProgressFile::phaseLine(3, 9, "download-libs", 1024, 4096) == "phase 3/9|download-libs|1024|4096");
+    // a '|' in a name cannot break the line
+    progress.onItem("a|b", 1, 2, "files");
+    progress.onProgress(1, 5);
+    CHECK(tmp.readFile("p") == "phase 2/9|download-cores|1|5|files|a_b|1|2");
+}
+
+TEST_CASE("ProgressFile (not strict): a job without items still writes the old 4-field line") {
+    TempDir tmp("progress");
+    ProgressFile progress(tmp.at("p"), 0);
+    progress.onPhase(1, 3, "Unpacking AutoBleem");
+    CHECK(tmp.readFile("p") == "phase 1/3|Unpacking AutoBleem|0|0");
+}
+
+TEST_CASE("CommandDownloader::contentLength: the %c slot takes --head, a template without it cannot ask") {
+    TempDir tmp("head");
+    string seen;
+    CommandDownloader dl("fetch %c -o \"%o\" \"%u\"", [&](const string &line) {
+        seen = line;
+        ofstream(tmp.at("size.txt")) << "6295495\n";
+        return 0;
+    });
+    uint64_t size = 0;
+    CHECK(dl.contentLength("http://site/assets.zip", tmp.at("size.txt"), size));
+    CHECK(size == 6295495);
+    CHECK(seen.find("--head") != string::npos);
+    CommandDownloader plain("curl -o \"%o\" \"%u\"", [](const string &) { return 0; });
+    CHECK_FALSE(plain.contentLength("http://site/assets.zip", tmp.at("size.txt"), size));
 }

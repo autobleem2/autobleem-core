@@ -5,6 +5,7 @@
 #include "byte_progress.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,10 @@ public:
     static bool extract(const std::string &zipPath, const std::string &destDir);
     // the same, reporting the bytes written so far against the sum of every entry's recorded size
     static bool extract(const std::string &zipPath, const std::string &destDir, const ByteProgress &progress);
+    // the same, reporting the files unpacked so far against the archive's file count (directories not counted);
+    // called with (0, count) before the first file and after every file
+    using FileProgress = std::function<void(uint64_t filesDone, uint64_t filesTotal)>;
+    static bool extractCounting(const std::string &zipPath, const std::string &destDir, const FileProgress &files);
 
     // true when extract() would find nothing wrong with the archive itself: it opens, every name is safe and
     // every entry unpacks with the CRC it records. Nothing is written - for telling a bad archive from a
@@ -49,6 +54,10 @@ public:
 
     // an entry name the extractor will accept: relative, forward slashes, no ".." segment
     static bool isSafeName(const std::string &name);
+
+private:
+    static bool extractImpl(const std::string &zipPath, const std::string &destDir, const ByteProgress &progress,
+                            const FileProgress &files);
 };
 
 } // namespace ableem

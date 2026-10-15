@@ -187,12 +187,21 @@ bool ZipArchive::extract(const string &zipPath, const string &destDir) {
 }
 
 bool ZipArchive::extract(const string &zipPath, const string &destDir, const ByteProgress &progress) {
+    return extractImpl(zipPath, destDir, progress, FileProgress());
+}
+
+bool ZipArchive::extractCounting(const string &zipPath, const string &destDir, const FileProgress &files) {
+    return extractImpl(zipPath, destDir, ByteProgress(), files);
+}
+
+bool ZipArchive::extractImpl(const string &zipPath, const string &destDir, const ByteProgress &progress,
+                             const FileProgress &files) {
     Reader reader(zipPath);
     if (!reader.open)
         return false;
 
     // check every name before writing anything, and add up what is to be written
-    uint64_t total = 0;
+    uint64_t total = 0, fileCount = 0, filesDone = 0;
     for (unsigned i = 0; i < reader.count(); i++) {
         ZipEntry entry;
         if (!reader.stat(i, entry)) {
@@ -203,10 +212,14 @@ bool ZipArchive::extract(const string &zipPath, const string &destDir, const Byt
             PLOG_INFO << "Refusing zip entry '" << entry.name << "' in " << zipPath;
             return false;
         }
-        if (!entry.isDir)
+        if (!entry.isDir) {
             total += entry.size;
+            fileCount++;
+        }
     }
     Sink sink{nullptr, 0, total, &progress};
+    if (files)
+        files(0, fileCount);
 
     if (!createDirs(destDir)) {
         PLOG_WARNING << "Could not create " << destDir;
@@ -250,6 +263,8 @@ bool ZipArchive::extract(const string &zipPath, const string &destDir, const Byt
         }
         // no mode in the zip = the default stays; FAT/exFAT refuse chmod, which is fine
         DirEntry::applyMode(target, entry.mode);
+        if (files)
+            files(++filesDone, fileCount);
     }
     return true;
 }

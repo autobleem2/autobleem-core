@@ -85,6 +85,14 @@ public:
         (void)sha256;
         return false;
     }
+    // the size of the file at `url` from a HEAD request (Content-Length), written through `scratchFile`; false when
+    // this downloader cannot ask or the server did not say
+    virtual bool contentLength(const std::string &url, const std::string &scratchFile, uint64_t &size) {
+        (void)url;
+        (void)scratchFile;
+        (void)size;
+        return false;
+    }
     // how a failed fetch's `error` starts when the machine has no network / the file is not what was published
     static constexpr const char *ErrNoNetwork = "no network";
     static constexpr const char *ErrChecksum = "checksum";
@@ -112,6 +120,15 @@ public:
     virtual void onPhase(int index, int total, const std::string &title) = 0; // 1-based
     virtual void onProgress(uint64_t done, uint64_t total) = 0;               // within the phase; 0/0 = unknown
     virtual void onLine(const std::string &line) = 0;
+    // the package the phase is on now: its name, which one of how many in the phase, and what onProgress counts
+    // from here on ("bytes", "files" or "items"). Resets the phase's done/total. A listener that does not show
+    // packages ignores it.
+    virtual void onItem(const std::string &name, int index, int count, const std::string &unit) {
+        (void)name;
+        (void)index;
+        (void)count;
+        (void)unit;
+    }
 };
 
 //******************

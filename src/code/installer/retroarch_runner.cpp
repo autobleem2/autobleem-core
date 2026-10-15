@@ -34,6 +34,7 @@ const char *RetroArchRunner::errorCode(FailKind kind) {
 int RetroArchRunner::run(const string &verb, const RetroArchOptions &options, bool withBios, Downloader &downloader,
                          ProgressFile &progress, const InstallerJob::ShouldStop &shouldStop) {
     RetroArchResult result;
+    progress.setStrict(true); // every phase of this runner gives a real total
     if (verb == "install") {
         result = InstallerJob::retroarchInstall(options, withBios, downloader, progress, shouldStop);
     } else if (verb == "remove") {
