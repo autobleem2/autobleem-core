@@ -151,6 +151,27 @@ struct Fixture {
         site.files[string(Site) + "/win/bios/latest.json"] = tmp.at("site/bios.json");
     }
 
+    // the BIOS pack's list with these exact manifest paths (a path as the manifest writes it, even a hostile one);
+    // each is served at Site/bios/<index> with the content "pack <path>"
+    void sitePackPaths(const vector<string> &paths) {
+        string list = "# the list\n";
+        for (size_t i = 0; i < paths.size(); i++) {
+            const string file = "site/packed" + to_string(i);
+            tmp.writeFile(file, "pack " + paths[i]);
+            const string url = string(Site) + "/bios/" + to_string(i);
+            site.files[url] = tmp.at(file);
+            list += Sha256::ofFile(tmp.at(file)) + " " + to_string(DirEntry::fileSize(tmp.at(file))) + " " + url + " " +
+                    paths[i] + "\n";
+        }
+        tmp.writeFile("site/biospack.txt", list);
+        site.files[string(Site) + "/win/bios/biospack.txt"] = tmp.at("site/biospack.txt");
+        string j = json("biospack.txt", tmp.at("site/biospack.txt"), ", \"count\": 3, \"total_bytes\": 48");
+        size_t at = j.find("http://site/biospack.txt");
+        j.replace(at, strlen("http://site/biospack.txt"), string(Site) + "/win/bios/biospack.txt");
+        tmp.writeFile("site/bios.json", j);
+        site.files[string(Site) + "/win/bios/latest.json"] = tmp.at("site/bios.json");
+    }
+
     // the site's own RetroArch build and cores pack
     void siteRetroArch() {
         REQUIRE(TarBuilder()
@@ -447,6 +468,155 @@ TEST_CASE("without RetroArch the BIOS step downloads nothing; the samples skip t
     CHECK(fx.has("Games/Tetrade/Tetrade.cue"));
     CHECK_FALSE(fx.has("RetroArch/roms/Nintendo - Nintendo Entertainment System/Nova.nes"));
     CHECK(fx.out.said("need RetroArch"));
+}
+
+TEST_CASE("the pack's romJP.bin is skipped too: its URL is never requested") {
+    Fixture fx;
+    fx.siteRetroArch();
+    fx.sitePackPaths({"scph5501.bin", "romJP.bin"});
+    fx.options.retroarch = true;
+    fx.options.bios = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.site.count("/bios/0") == 1);
+    CHECK(fx.site.count("/bios/1") == 0);
+    CHECK_FALSE(fx.has("RetroArch/bin/system/romJP.bin"));
+    CHECK(fx.out.said("1 files"));
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romJP.bin") == "openbios");
+}
+
+TEST_CASE("scph5501 reaches RetroArch while System/Bios stays untouched in the same run") {
+    Fixture fx;
+    fx.siteRetroArch();
+    fx.options.retroarch = true;
+    fx.options.bios = true;
+    fx.tmp.writeFile("Documents/AutoBleem/System/Bios/romw.bin", "my sony");
+    fx.tmp.writeFile("Documents/AutoBleem/System/Bios/romJP.bin", "my sony jp");
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/RetroArch/bin/system/scph5501.bin") == "bios scph5501.bin");
+    CHECK_FALSE(fx.has("System/Bios/scph5501.bin"));
+    CHECK_FALSE(fx.has("System/Bios/scph5500.bin"));
+    CHECK_FALSE(fx.has("System/Bios/disksys.rom"));
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romw.bin") == "my sony");
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romJP.bin") == "my sony jp");
+    // and System/Bios holds exactly the two names
+    int n = 0;
+    for (const DirEntry &e : DirEntry::diru(fx.root + "/System/Bios"))
+        n += e.isDir ? 0 : 1;
+    CHECK(n == 2);
+}
+
+TEST_CASE("a user's own Sony romJP.bin is kept, with the log saying so") {
+    Fixture fx;
+    fx.options.bios = true;
+    fx.tmp.writeFile("Documents/AutoBleem/System/Bios/romJP.bin", "my sony jp");
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romJP.bin") == "my sony jp");
+    CHECK(fx.out.said("keeping the existing romJP.bin"));
+    CHECK_FALSE(fx.out.said("keeping the existing romw.bin"));
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romw.bin") == "openbios");
+    CHECK(fx.out.said("OpenBIOS -> System/Bios/romw.bin"));
+    CHECK_FALSE(fx.out.said("OpenBIOS -> System/Bios/romJP.bin"));
+
+    // both there: both kept, nothing copied
+    Fixture both;
+    both.options.bios = true;
+    both.tmp.writeFile("Documents/AutoBleem/System/Bios/romw.bin", "a");
+    both.tmp.writeFile("Documents/AutoBleem/System/Bios/romJP.bin", "b");
+    REQUIRE_MESSAGE(both.run(error), error);
+    CHECK(both.out.said("keeping the existing romw.bin"));
+    CHECK(both.out.said("keeping the existing romJP.bin"));
+    CHECK_FALSE(both.out.said("OpenBIOS ->"));
+}
+
+TEST_CASE("without RetroArch there is no network call at all, update or not, bios or not") {
+    // bios on, an install and an update
+    for (bool update : {false, true}) {
+        Fixture fx;
+        fx.options.bios = true;
+        fx.options.update = update;
+        fx.options.coversJapan = fx.options.coversUsa = fx.options.coversPal = false;
+        string error;
+        REQUIRE_MESSAGE(fx.run(error), error);
+        CHECK(fx.site.fetched.empty());
+        CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romw.bin") == "openbios");
+    }
+    // bios off as well: the OpenBIOS still lands, and still nothing is asked for
+    for (bool update : {false, true}) {
+        Fixture fx;
+        fx.options.retroarch = false;
+        fx.options.bios = false;
+        fx.options.update = update;
+        fx.options.coversJapan = fx.options.coversUsa = fx.options.coversPal = false;
+        string error;
+        REQUIRE_MESSAGE(fx.run(error), error);
+        CHECK(fx.site.fetched.empty());
+        CHECK(fx.site.count("latest.json") == 0);
+        CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romw.bin") == "openbios");
+        CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romJP.bin") == "openbios");
+    }
+}
+
+TEST_CASE("case, subfolder and escaping variants of the skip names never reach System/Bios") {
+    Fixture fx;
+    fx.siteRetroArch();
+    // 0 ROMW.BIN, 1 sub/romw.bin, 2 and 3 climb out of the pack's folder, 4 absolute, 5 backslash, 6 the real one
+    fx.sitePackPaths({"ROMW.BIN", "sub/romw.bin", "../System/Bios/romw.bin", "../../../System/Bios/romJP.bin",
+                      "/System/Bios/romw.bin", "..\\..\\System\\Bios\\romw.bin", "romw.bin"});
+    fx.options.retroarch = true;
+    fx.options.bios = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    // the intended rule: the skip is for the exact names; a variant is an ordinary pack file in RetroArch's
+    // own system dir (and the Windows file system there is a different folder from System/Bios), while a path that
+    // leaves that dir is dropped unread
+    CHECK(fx.site.count("/bios/0") == 1);
+    CHECK(fx.site.count("/bios/1") == 1);
+    for (const char *dropped : {"/bios/2", "/bios/3", "/bios/4", "/bios/5", "/bios/6"})
+        CHECK_MESSAGE(fx.site.count(dropped) == 0, dropped);
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/RetroArch/bin/system/sub/romw.bin") == "pack sub/romw.bin");
+    // System/Bios: the OpenBIOS twice, nothing else
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romw.bin") == "openbios");
+    CHECK(fx.tmp.readFile("Documents/AutoBleem/System/Bios/romJP.bin") == "openbios");
+    int n = 0;
+    for (const DirEntry &e : DirEntry::diru(fx.root + "/System/Bios"))
+        n += e.isDir ? 0 : 1;
+    CHECK(n == 2);
+    CHECK_FALSE(fx.has("System/Bios/ROMW.BIN"));
+    CHECK_FALSE(fx.has("System/Bios/sub"));
+    CHECK_FALSE(fx.has("RetroArch/bin/System"));
+    CHECK_FALSE(fx.has("RetroArch/System"));
+}
+
+TEST_CASE("no openbios.bin shipped: the emulator's built-in BIOS, nothing written; a failed copy is said") {
+    Fixture fx;
+    fx.options.bios = true;
+    DirEntry::removeFile(fx.options.programDir + "/Bios/openbios.bin");
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK_FALSE(fx.has("System/Bios/romw.bin"));
+    CHECK_FALSE(fx.has("System/Bios/romJP.bin"));
+    CHECK(fx.out.said("no romw.bin - the PlayStation emulator will use its built-in BIOS"));
+    CHECK(fx.out.said("no romJP.bin - the PlayStation emulator will use its built-in BIOS"));
+
+    // no program folder at all: the same
+    Fixture none;
+    none.options.bios = true;
+    none.options.programDir.clear();
+    REQUIRE_MESSAGE(none.run(error), error);
+    CHECK(none.out.said("no romw.bin - the PlayStation emulator will use its built-in BIOS"));
+
+    // a copy that cannot be made: a directory stands where romw.bin would go? no - exists() would see it. A
+    // directory as the OpenBIOS path exists() but cannot be read as a file
+    Fixture bad;
+    bad.options.bios = true;
+    DirEntry::removeFile(bad.options.programDir + "/Bios/openbios.bin");
+    bad.tmp.makeSubDir("Program Files/AutoBleem/Bios/openbios.bin");
+    REQUIRE_MESSAGE(bad.run(error), error);
+    CHECK(bad.out.said("could not copy OpenBIOS to"));
+    CHECK_FALSE(bad.out.said("OpenBIOS -> System/Bios"));
 }
 
 TEST_CASE("a stop request and a missing site are reported") {

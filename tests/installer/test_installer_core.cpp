@@ -1242,6 +1242,38 @@ TEST_CASE("RetroArch alone: every key in order, and the binary is laid last") {
     CHECK(withBios.tmp.readFile("stick/RetroArch/bios/scph5501.bin") == "bios!");
 }
 
+TEST_CASE("RetroArch alone with --bios keeps a BIOS that is there and never fetches romw.bin / romJP.bin / openbios.bin") {
+    Fixture fx;
+    // the pack's list now also names the PlayStation emulator's files and the OpenBIOS
+    string list = "# the list\n";
+    for (const char *name : {"scph5501.bin", "romw.bin", "romJP.bin", "openbios.bin"}) {
+        fx.tmp.writeFile(string("site/") + name, string("pack ") + name);
+        fx.site.files[string(Site) + "/bios/" + name] = fx.tmp.at(string("site/") + name);
+        list += Sha256::ofFile(fx.tmp.at(string("site/") + name)) + " " +
+                to_string(DirEntry::fileSize(fx.tmp.at(string("site/") + name))) + " " + Site + "/bios/" + name + " " +
+                name + "\n";
+    }
+    fx.tmp.writeFile("site/biospack.txt", list);
+    string j = json("biospack.txt", fx.tmp.at("site/biospack.txt"), ", \"count\": 4, \"total_bytes\": 8");
+    j.replace(j.find("http://site/biospack.txt"), strlen("http://site/biospack.txt"),
+              string(Site) + "/psc/bios/biospack.txt");
+    fx.tmp.writeFile("site/bios.json", j);
+    // the user's files: one the pack has too (same bytes), the Sony romw.bin
+    fx.tmp.writeFile("stick/RetroArch/bios/scph5501.bin", "pack scph5501.bin");
+    fx.tmp.writeFile("stick/RetroArch/bios/romw.bin", "my sony");
+    Recorder out;
+    RetroArchResult r = InstallerJob::retroarchInstall(raOptions(fx), true, fx.site, out, NeverStop);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK(fx.tmp.readFile("stick/RetroArch/bios/romw.bin") == "my sony");
+    CHECK(fx.tmp.readFile("stick/RetroArch/bios/scph5501.bin") == "pack scph5501.bin");
+    CHECK_FALSE(fx.has("RetroArch/bios/romJP.bin"));
+    CHECK_FALSE(fx.has("RetroArch/bios/openbios.bin"));
+    CHECK(fx.site.count("/bios/scph5501.bin") == 0); // already there with the right hash
+    CHECK(fx.site.count("/bios/romw.bin") == 0);
+    CHECK(fx.site.count("/bios/romJP.bin") == 0);
+    CHECK(fx.site.count("/bios/openbios.bin") == 0);
+}
+
 TEST_CASE("RetroArch alone after a remove re-merges retroarch.cfg and keeps the user's keys") {
     Fixture fx;
     fx.tmp.writeFile("stick/RetroArch/bin/retroarch.cfg", "video_smooth = \"true\"\nxmb_theme = \"3\"\n");
