@@ -35,6 +35,8 @@ struct PcsxSettings {
     // pcsx.cfg plat_target.hwfilter, pcsx-abnxt's own numbering (ab_filter_names): 0 Nearest, 1 Linear, 2 Sharp,
     // 3 Sharp (simple), 4 Quilez, 5 CRT (fast), 6 CRT-Pi, 7 CRT (raster)
     int filter = 0;
+    // pcsx.cfg crt_mask, pcsx-abnxt's "CRT mask" (AB_CRT_MASK_*), CRT (raster) only: 0 Aperture, 1 Slot, 2 Delta, 3 Off
+    int crtMask = 0;
     std::string gpu;
 };
 
@@ -144,6 +146,9 @@ public:
     // it as -filter; the classic pcsx-ab knows only nearest and bilinear, and everything but Linear is
     // nearest there (LaunchService::pcsxAbFilter). The values a platform offers are filtersFor().
     void setFilter(GameSettings &s, int mode);                     // 0..FilterCount-1 (PcsxSettings::filter); clamped
+    // crt_mask: the phosphor mask pcsx-abnxt lays over CRT (raster) - the cfg line is all it reads, there is
+    // no launch flag. The editor greys the row with any other filter (the emulator does the same)
+    void setCrtMask(GameSettings &s, int mask); // 0..CrtMaskCount-1 (PcsxSettings::crtMask); clamped
     void setGpuPlugin(GameSettings &s, const std::string &plugin); // USB only: "builtin_gpu" or "gpu_peops.so"
 
     // --- what a platform offers (Env::platformName(): psc, rpi, pcusb, win, pc) ---
@@ -168,6 +173,8 @@ public:
     static const int FrameskipCount = 5; // the emulators' men_frameskip: Auto, Off, 1, 2, 3
     static const int FrameskipOff = 1;
     static const int FilterCount = 8;                      // pcsx-abnxt's AB_FILTER_COUNT
+    static const int CrtMaskCount = 4;                     // pcsx-abnxt's AB_CRT_MASK_COUNT
+    static const char *const CrtMaskNames[CrtMaskCount];   // "Aperture", "Slot", "Delta", "Off"
     static const int DitheringCount = 3;
     static const int ScanlineModes = 4; // off, 1, 2, 3
 

@@ -342,7 +342,26 @@ TEST_CASE("the filter is plat_target.hwfilter - pcsx-abnxt's eight, Nearest when
     CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "plat_target.hwfilter = 0"));
 }
 
-TEST_CASE("dithering is pcsx-abnxt's dithering2 - on where the game asks when the cfg has no line, clamped") {
+TEST_CASE("the CRT mask is crt_mask - Aperture when the cfg has no line, written to both cfgs, clamped") {
+    Editing lib;
+    lib.writeAllUsbCfgs(); // no crt_mask line
+    GameSettings s = lib.service->open(lib.usbGame());
+    CHECK(s.pcsx.crtMask == 0);
+
+    lib.service->setCrtMask(s, 2); // Delta
+    CHECK(s.pcsx.crtMask == 2);
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "crt_mask = 2"));
+    CHECK(contains(lib.tmp.readFile("Games/!SaveStates/Driver 2/pcsx.cfg"), "crt_mask = 2"));
+
+    lib.service->setCrtMask(s, 4); // past Off stays Off, below Aperture stays Aperture
+    CHECK(s.pcsx.crtMask == 3);
+    lib.service->setCrtMask(s, -1);
+    CHECK(s.pcsx.crtMask == 0);
+    CHECK(contains(lib.tmp.readFile("Games/Driver 2/pcsx.cfg"), "crt_mask = 0"));
+    CHECK(std::string(GameSettingsService::CrtMaskNames[1]) == "Slot");
+}
+
+TEST_CASE("dithering is pcsx-abnxt's dithering2- on where the game asks when the cfg has no line, clamped") {
     Editing lib;
     lib.writeAllUsbCfgs("psx_clock = 39\n"); // no dithering2 line, like every cfg from before
     GameSettings s = lib.service->open(lib.usbGame());
