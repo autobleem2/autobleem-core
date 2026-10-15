@@ -470,3 +470,144 @@ TEST_CASE("Theme::load() falls back to default when the picked zip is corrupt") 
     CHECK(theme.loadedPath() == tmp.at("themes/default"));
     CHECK(DirEntry::exists(tmp.at("themes/broken.zip.bad")));
 }
+
+//*******************************
+// UIREV-50 / UIREV-54: the reason for a fallback, and config.ini reset to what is really in use
+//*******************************
+TEST_CASE("prepare() says why a zip theme is not used") {
+    TempDir tmp("zipcache");
+    ProbeGuard guard;
+    makeNewTheme(tmp, "Neon");
+    tmp.writeFile("themes/junk.zip", "not an archive");
+
+    ThemeZipCache::Fallback why = ThemeZipCache::Fallback::CannotUnpack;
+    CHECK(ThemeZipCache::prepare(tmp.at("themes"), "default", &why).empty());
+    CHECK(why == ThemeZipCache::Fallback::None);
+
+    ThemeZipCache::setFreeSpaceProbe([](const string &) { return uint64_t(10); });
+    CHECK(ThemeZipCache::prepare(tmp.at("themes"), "Neon", &why).empty());
+    CHECK(why == ThemeZipCache::Fallback::NoSpace);
+    CHECK(DirEntry::exists(tmp.at("themes/Neon.zip")));
+    ThemeZipCache::setFreeSpaceProbe(nullptr);
+
+    CHECK(ThemeZipCache::prepare(tmp.at("themes"), "junk", &why).empty());
+    CHECK(why == ThemeZipCache::Fallback::Broken);
+    CHECK(DirEntry::exists(tmp.at("themes/junk.zip.bad")));
+
+    CHECK_FALSE(ThemeZipCache::prepare(tmp.at("themes"), "Neon", &why).empty());
+    CHECK(why == ThemeZipCache::Fallback::None);
+}
+
+TEST_CASE("Theme::load() with too little room keeps the zip, shows default, resets config.ini and says NoSpace") {
+    EnvFixture env;
+    TempDir tmp("zipcache");
+    ProbeGuard guard;
+    env.setWorkingPath(tmp.path());
+    env.setThemesDir(tmp.makeSubDir("themes"));
+    tmp.writeFile("themes/default/theme.json", "{ \"classic\": { \"menuLines\": 12 } }");
+    makeNewTheme(tmp, "Neon");
+    tmp.writeFile("config.ini", "Theme=Neon\n");
+    ThemeZipCache::setFreeSpaceProbe([](const string &) { return uint64_t(10); });
+    Theme::takeFallbackReason();
+
+    {
+        Config config;
+        Theme theme(config);
+        theme.load();
+        CHECK(theme.loadedPath() == tmp.at("themes/default"));
+        CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::NoSpace);
+        CHECK(config.inifile.values["theme"] == "default");
+    }
+    CHECK(DirEntry::exists(tmp.at("themes/Neon.zip")));
+    CHECK_FALSE(DirEntry::exists(tmp.at("themes/Neon.zip.bad")));
+
+    Config again;
+    CHECK(again.inifile.values["theme"] == "default");
+    Theme theme(again);
+    theme.load();
+    CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::None);
+}
+
+TEST_CASE("Theme::load() with a broken zip renames it .bad, resets config.ini and says Broken") {
+    EnvFixture env;
+    TempDir tmp("zipcache");
+    env.setWorkingPath(tmp.path());
+    env.setThemesDir(tmp.makeSubDir("themes"));
+    tmp.writeFile("themes/default/theme.json", "{ \"classic\": { \"menuLines\": 12 } }");
+    tmp.writeFile("themes/broken.zip", "not an archive");
+    tmp.writeFile("config.ini", "Theme=broken\n");
+    Theme::takeFallbackReason();
+
+    {
+        Config config;
+        Theme theme(config);
+        theme.load();
+        CHECK(theme.loadedPath() == tmp.at("themes/default"));
+        CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::Broken);
+        CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::None); // taking clears it
+        CHECK(config.inifile.values["theme"] == "default");
+    }
+    CHECK(DirEntry::exists(tmp.at("themes/broken.zip.bad")));
+
+    Config again;
+    CHECK(again.inifile.values["theme"] == "default");
+}
+
+// UIREV-54 (VM): the start-up load fell back, and a second load (the assets are loaded again) then saw the default
+// theme and wiped the reason before the launcher looked for it
+TEST_CASE("a later load() of the default theme does not wipe the reason of the fallback before it") {
+    EnvFixture env;
+    TempDir tmp("zipcache");
+    env.setWorkingPath(tmp.path());
+    env.setThemesDir(tmp.makeSubDir("themes"));
+    tmp.writeFile("themes/default/theme.json", "{ \"classic\": { \"menuLines\": 12 } }");
+    tmp.writeFile("themes/bad.zip", string(4096, 'x'));
+    tmp.writeFile("config.ini", "Theme=bad\n");
+    Theme::takeFallbackReason();
+
+    Config config;
+    Theme theme(config);
+    theme.load();
+    theme.load(); // config.ini says default now
+    CHECK(config.inifile.values["theme"] == "default");
+    CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::Broken);
+}
+
+TEST_CASE("Theme::load() of a theme that is gone (renamed .zip.bad, deleted) resets config.ini and says Missing") {
+    EnvFixture env;
+    TempDir tmp("zipcache");
+    env.setWorkingPath(tmp.path());
+    env.setThemesDir(tmp.makeSubDir("themes"));
+    tmp.writeFile("themes/default/theme.json", "{ \"classic\": { \"menuLines\": 12 } }");
+    tmp.writeFile("themes/bad.zip.bad", string(4096, 'x'));
+    tmp.writeFile("config.ini", "Theme=bad\n");
+    Theme::takeFallbackReason();
+
+    Config config;
+    Theme theme(config);
+    theme.load();
+    CHECK(theme.loadedPath() == tmp.at("themes/default"));
+    CHECK(config.inifile.values["theme"] == "default");
+    CHECK(tmp.readFile("config.ini").find("Theme=default") != string::npos);
+    CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::Missing);
+}
+
+TEST_CASE("Theme::load() falls back to the shipped ab2.0.0 theme when it is there") {
+    EnvFixture env;
+    TempDir tmp("zipcache");
+    env.setWorkingPath(tmp.path());
+    env.setThemesDir(tmp.makeSubDir("themes"));
+    tmp.writeFile("themes/default/theme.json", "{ \"classic\": { \"menuLines\": 12 } }");
+    tmp.writeFile("themes/ab2.0.0/theme.json", "{ \"classic\": { \"menuLines\": 7 } }");
+    tmp.writeFile("themes/bad.zip", string(4096, 'x'));
+    tmp.writeFile("config.ini", "Theme=bad\n");
+    Theme::takeFallbackReason();
+
+    Config config;
+    Theme theme(config);
+    theme.load();
+    CHECK(theme.loadedPath() == tmp.at("themes/ab2.0.0"));
+    CHECK(int(theme.classic().menuLines) == 7);
+    CHECK(config.inifile.values["theme"] == "ab2.0.0");
+    CHECK(Theme::takeFallbackReason() == ThemeZipCache::Fallback::Broken);
+}

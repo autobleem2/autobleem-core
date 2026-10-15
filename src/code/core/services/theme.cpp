@@ -3,6 +3,7 @@
 //
 
 #include "theme.h"
+#include "default_theme.h"
 #include "environment.h"
 #include "theme_converter.h"
 #include "theme_zip_cache.h"
@@ -14,6 +15,7 @@ using namespace std;
 
 namespace {
 const char *THEME_JSON = "theme.json";
+ThemeZipCache::Fallback fallback_ = ThemeZipCache::Fallback::None;
 } // namespace
 
 //*******************************
@@ -21,6 +23,15 @@ const char *THEME_JSON = "theme.json";
 //*******************************
 string Theme::defaultsPath() {
     return Env::getPathToThemesDir() + sep + "default";
+}
+
+//*******************************
+// Theme::takeFallbackReason
+//*******************************
+ThemeZipCache::Fallback Theme::takeFallbackReason() {
+    const ThemeZipCache::Fallback reason = fallback_;
+    fallback_ = ThemeZipCache::Fallback::None;
+    return reason;
 }
 
 //*******************************
@@ -44,16 +55,30 @@ string Theme::path() {
 void Theme::load() {
     // a picked <name>.zip is unpacked into themes/.cache/<name>/ (and converted there) first; whatever else
     // the cache holds - the previous zip theme, a leftover of a power cut - is removed
-    ThemeZipCache::prepare(Env::getPathToThemesDir(), config_.inifile.values["theme"]);
+    const string picked = config_.inifile.values["theme"];
+    ThemeZipCache::Fallback reason = ThemeZipCache::Fallback::None;
+    ThemeZipCache::prepare(Env::getPathToThemesDir(), picked, &reason);
 
     const string defaultsDir = defaultsPath();
     loadedPath_ = path();
 
     PLOG_INFO << "Loading UI theme:" << loadedPath_;
-    if (!ThemeConverter::isThemeFolder(loadedPath_)) {
-        loadedPath_ = defaultsDir;
-        config_.inifile.values["theme"] = "default";
-        config_.save();
+    // path() answers themes/default for a name it cannot find: that is a fallback too, unless "default" was picked
+    const bool gone = loadedPath_ == defaultsDir && !picked.empty() && picked != "default";
+    if (reason != ThemeZipCache::Fallback::None || gone || !ThemeConverter::isThemeFolder(loadedPath_)) {
+        const string shipped = Env::getPathToThemesDir() + sep + DefaultTheme::Name;
+        const string fallbackName = ThemeConverter::isThemeFolder(shipped) ? DefaultTheme::Name : "default";
+        // a name that is no zip problem and not the default itself: the theme is simply gone (renamed .zip.bad,
+        // deleted, a folder with no theme in it)
+        if (reason == ThemeZipCache::Fallback::None && !picked.empty() && picked != fallbackName && picked != "default")
+            reason = ThemeZipCache::Fallback::Missing;
+        if (reason != ThemeZipCache::Fallback::None)
+            fallback_ = reason;
+        loadedPath_ = fallbackName == "default" ? defaultsDir : shipped;
+        if (picked != fallbackName) {
+            config_.inifile.values["theme"] = fallbackName;
+            config_.save();
+        }
     }
 
     if (ThemeConverter::needsConversion(defaultsDir))
