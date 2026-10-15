@@ -8,6 +8,8 @@
 
 #include "core/services/theme_converter.h"
 
+#include <ableem/engine/image_pixels.h>
+
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -274,7 +276,12 @@ TEST_CASE("convert: the _AB variants win, and make the meta panel static") {
     REQUIRE(s.load(theme.dir + sep + "theme.json"));
     CHECK_FALSE(bool(s.launcher.metaPanelSlides));
     CHECK(tmp.readFile("evolution/images/launcher_background.png") == "ab bg");
-    CHECK(tmp.readFile("evolution/images/launcher_footer.png") == "ab footer");
+    // Footer_AB.png won too, but "ab footer" is no picture: the footer is the bar alone (UIREV-57)
+    int w = 0;
+    int h = 0;
+    CHECK(ableem::readImageSize(tmp.at("evolution/images/launcher_footer.png"), w, h));
+    CHECK(w == 1280);
+    CHECK(h == 100);
     CHECK(tmp.readFile("evolution/images/settings_panel.png") == "ab function");
     CHECK(tmp.readFile("evolution/images/play_button.png") == "stock GR/Acid_C_Btn.png");
     CHECK_FALSE(theme.has("images/GR")); // the stock JP_US_BG.png etc. went with the directory
@@ -313,7 +320,7 @@ TEST_CASE("convert: colors.ini feeds launcher.colors (the derived roles) and is 
     CHECK_FALSE(theme.has("colors.ini"));
 }
 
-TEST_CASE("convert: a partial theme stays partial, and a launcher image that is missing is not named") {
+TEST_CASE("convert: a partial theme stays partial, and a launcher image that is missing is not named (but the footer)") {
     TempDir tmp("theme_conv");
     tmp.makeSubDir("mini/images/GR");
     tmp.writeFile("mini/theme.ini", "[Theme]\nBackground=bg.png\nFsize=30\n");
@@ -329,7 +336,9 @@ TEST_CASE("convert: a partial theme stays partial, and a launcher image that is 
     CHECK(s.classic.font.file.empty());
     CHECK_FALSE(s.classic.menuPanel.set);
     CHECK(s.launcher.background == "images/launcher_background.png");
-    CHECK(s.launcher.footer.empty());
+    CHECK(s.launcher.footer == "images/launcher_footer.png"); // no 1.0 footer: the bar alone (UIREV-57)
+    CHECK(DirEntry::exists(tmp.at("mini/images/launcher_footer.png")));
+    CHECK(s.launcher.playButton.empty());
     CHECK(s.launcher.fonts.bold.empty());
     CHECK(s.sounds.cursor.empty());
     CHECK(DirEntry::exists(tmp.at("mini/images/launcher_background.png")));
@@ -657,4 +666,96 @@ TEST_CASE("convert: a button glyph that is a sprite strip, and a Play button wit
     REQUIRE(f.load(fine.json()));
     CHECK(f.launcher.playButton == "images/play_button.png");
     CHECK(f.launcher.hints.cross == "images/hint_cross.png");
+}
+
+//*******************************
+// the footer bar (UIREV-57)
+//*******************************
+namespace {
+
+// a 1280 x `h` footer, every pixel `r,g,b,a`
+void writeFooter(const string &path, int h, unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
+    ableem::ImagePixels p;
+    p.width = 1280;
+    p.height = h;
+    for (int i = 0; i < p.width * p.height; i++)
+        p.rgba.insert(p.rgba.end(), {r, g, b, a});
+    REQUIRE(ableem::writePngPixels(path, p));
+}
+
+// the RGBA pixel at (x, y)
+std::vector<int> pixelAt(const ableem::ImagePixels &p, int x, int y) {
+    const size_t i = (static_cast<size_t>(y) * p.width + x) * 4;
+    return {p.rgba[i], p.rgba[i + 1], p.rgba[i + 2], p.rgba[i + 3]};
+}
+
+} // namespace
+
+TEST_CASE("writePngPixels: what it writes reads back the same") {
+    TempDir tmp("theme_bar");
+    tmp.makeSubDir("p");
+    writeFooter(tmp.at("p/f.png"), 3, 10, 20, 30, 40);
+    ableem::ImagePixels back;
+    REQUIRE(ableem::readImagePixels(tmp.at("p/f.png"), back));
+    CHECK(back.width == 1280);
+    CHECK(back.height == 3);
+    CHECK(pixelAt(back, 7, 2) == std::vector<int>{10, 20, 30, 40});
+    ableem::ImagePixels empty;
+    CHECK_FALSE(ableem::writePngPixels(tmp.at("p/e.png"), empty));
+}
+
+TEST_CASE("convert: the footer gets the bar under the hints - the theme's own footer kept, its left side untouched") {
+    TempDir tmp("theme_bar");
+    PictureTheme theme(tmp, "bar", "dark.png", PLAIN_INI); // sheet #1d1f28, edge #e2701e
+    writeFooter(theme.dir + sep + "images/GR/Footer.png", 88, 255, 0, 0, 255);
+
+    REQUIRE(ThemeConverter::convert(theme.dir));
+
+    ThemeSpec s;
+    REQUIRE(s.load(theme.json()));
+    CHECK(s.launcher.footer == "images/launcher_footer.png");
+    CHECK_FALSE(theme.hasFile("images/GR"));
+    ableem::ImagePixels f;
+    REQUIRE(ableem::readImagePixels(theme.dir + sep + "images/launcher_footer.png", f));
+    CHECK(f.width == 1280);
+    CHECK(f.height == 100); // 88 grown to 100: the bar's top lands at 720 - 98
+    CHECK(pixelAt(f, 1000, 1)[3] == 0); // above both the footer (12..99) and the bar (2..99)
+    // the edge line along the bar's top (rows 2-3), over nothing
+    CHECK(pixelAt(f, 1000, 2) == std::vector<int>{0xe2, 0x70, 0x1e, 230});
+    CHECK(pixelAt(f, 1000, 3) == std::vector<int>{0xe2, 0x70, 0x1e, 230});
+    // the sheet at 192 over the red footer
+    CHECK(pixelAt(f, 1000, 99) == std::vector<int>{85, 23, 30, 255});
+    // left of the bar the footer is as the theme drew it; the fade in between
+    CHECK(pixelAt(f, 100, 99) == std::vector<int>{255, 0, 0, 255});
+    CHECK(pixelAt(f, 340, 99) == std::vector<int>{255, 0, 0, 255});
+    CHECK(pixelAt(f, 370, 5) == std::vector<int>{0x1d, 0x1f, 0x28, 96}); // half way in, over nothing
+
+    // converted again (forced): the bar is not baked a second time
+    const string once = tmp.readFile("bar/images/launcher_footer.png");
+    REQUIRE(ThemeConverter::convert(theme.dir));
+    CHECK(tmp.readFile("bar/images/launcher_footer.png") == once);
+}
+
+TEST_CASE("upgrade: a theme stamped before the bar gets it once, from the footer it already has") {
+    TempDir tmp("theme_bar");
+    PictureTheme theme(tmp, "old", "dark.png", PLAIN_INI);
+    REQUIRE(ThemeConverter::convert(theme.dir));
+    // as a stamp-1 conversion left it: the 1.0 footer renamed, no bar
+    writeFooter(theme.dir + sep + "images/launcher_footer.png", 88, 0, 0, 255, 255);
+    REQUIRE(ableem::mergeThemeJson(theme.json(), "{\"converter\":{\"stamp\":1}}"));
+    REQUIRE(ThemeConverter::needsUpgrade(theme.dir));
+
+    REQUIRE(ThemeConverter::upgrade(theme.dir));
+
+    ableem::ImagePixels f;
+    REQUIRE(ableem::readImagePixels(theme.dir + sep + "images/launcher_footer.png", f));
+    CHECK(f.height == 100);
+    CHECK(pixelAt(f, 100, 99) == std::vector<int>{0, 0, 255, 255});
+    CHECK(pixelAt(f, 1000, 2)[3] == 230);
+    CHECK(ableem::readThemeJsonInt(theme.json(), "/converter/stamp", 0) == ThemeConverter::StampVersion);
+
+    // a later bump re-derives the colours but leaves the footer alone
+    const string once = tmp.readFile("old/images/launcher_footer.png");
+    REQUIRE(ThemeConverter::upgrade(theme.dir, ThemeConverter::StampVersion + 1));
+    CHECK(tmp.readFile("old/images/launcher_footer.png") == once);
 }

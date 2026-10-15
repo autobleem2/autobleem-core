@@ -214,6 +214,55 @@ TEST_CASE("ExtensionRuntime: a library that will not load, or is not an extensio
     CHECK(t.catalog.find("stranger")->loadProblem == "not an AutoBleem extension");
 }
 
+TEST_CASE("ExtensionRuntime::abiInFile reads the SDK ABI out of a plugin's bytes") {
+    TempDir tmp("abi_in_file");
+    tmp.writeFile("a.so", string("ELF junk sdk=x sdk=6;cxx=gcc-6;cxx11abi=1;target=psc") + string(1, '\0') + "tail");
+    CHECK(ExtensionRuntime::abiInFile(tmp.at("a.so")) == 6);
+    tmp.writeFile("b.so", string("no stamp here, only sdk=7 and sdk=;cxx="));
+    CHECK(ExtensionRuntime::abiInFile(tmp.at("b.so")) == -1);
+    CHECK(ExtensionRuntime::abiInFile(tmp.at("missing.so")) == -1);
+}
+
+// BUG-10: a plugin built for an older SDK has symbols the launcher no longer exports, so dlopen fails before
+// ab_extension_abi() can be asked. The file's own stamp decides first: it is not opened, and it is hidden.
+TEST_CASE("ExtensionRuntime refuses a plugin file stamped for another SDK ABI without opening it") {
+    Tree t;
+    t.add("store", "", {goodAbi, createFake}); // the loader would take it - the file's stamp says otherwise
+    t.tmp.writeFile("Extensions/store/bin/psc/store.so",
+                    "sdk=" + to_string(AB_SDK_ABI - 5) + ";cxx=gcc-6;cxx11abi=1;target=psc");
+    auto rt = t.runtime();
+    CHECK(rt->run("store", true) == ExtensionRuntime::Refusal::WrongAbi);
+    CHECK(t.loader.opened.empty());
+    CHECK_FALSE(has("store:create"));
+    ExtensionInfo *info = t.catalog.find("store");
+    CHECK(info->loadProblem == ExtensionInfo::WrongAbiProblem);
+    CHECK_FALSE(info->runnable()); // hidden from what the launcher offers
+    CHECK(info->problem() == ExtensionProblem::WrongAbi);
+    // marked by the scan already (which wrote the one log line): two attempts add none
+    CHECK(rt->run("store", true) == ExtensionRuntime::Refusal::WrongAbi);
+    CHECK_FALSE(t.catalog.reportWrongAbi("store", AB_SDK_ABI - 5));
+}
+
+TEST_CASE("ExtensionRuntime accepts a plugin file stamped for this SDK ABI") {
+    Tree t;
+    t.add("store", "", {goodAbi, createFake});
+    t.tmp.writeFile("Extensions/store/bin/psc/store.so", string(AB_SDK_STAMP));
+    auto rt = t.runtime();
+    CHECK(rt->run("store", true) == ExtensionRuntime::Refusal::None);
+}
+
+TEST_CASE("ExtensionRuntime: a plugin that cannot be opened is hidden with the reason kept") {
+    Tree t;
+    t.add("store", "", {goodAbi, createFake});
+    t.loader.plugins.clear(); // dlopen: undefined symbol
+    auto rt = t.runtime();
+    CHECK(rt->run("store", true) == ExtensionRuntime::Refusal::LoadFailed);
+    ExtensionInfo *info = t.catalog.find("store");
+    CHECK(info->loadProblem == "no such plugin");
+    CHECK_FALSE(info->runnable());
+    CHECK(info->problem() == ExtensionProblem::LoadFailed);
+}
+
 TEST_CASE("ExtensionRuntime: an exception out of an extension is caught, logged, and it is not called again") {
     Tree t;
     t.add("thrower", "Background=true\n", {goodAbi, createThrowing});

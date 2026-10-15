@@ -60,6 +60,12 @@ or `Theme` moves `clock_`, `gui_` and `audio_` in `AppBase`, and a plugin built 
 When it fails: bump `AB_SDK_ABI`, add a history line in `extension.h`, then copy the printed numbers into the
 table. Never edit the table alone. The test only runs on x86_64 Linux with libstdc++'s C++11 ABI.
 Append new members last. A changed virtual or function signature an extension calls also needs a bump.
+`test_sdk_vtables` (`tests/classic/test_sdk_vtables.cpp`, table `tests/classic/sdk_vtable_table.h`) covers what sizes
+cannot: it reads the SDK headers of the polymorphic classes (Extension, ExtensionHost, the Gui* screens, the ab_gui
+widgets) and hashes each class's declaration (bases) and its `virtual`/`override`/`final` lines, so moving a
+class's virtuals into or out of a .cpp (its vtable moves from the plugin to the launcher or back; BUG-10, the Store
+failing with "undefined symbol: _ZTV13GuiActionMenu") fails until `AB_SDK_ABI` is bumped. Same procedure as above.
+At load the launcher also reads the `sdk=N;` stamp from the plugin file before `dlopen` and refuses another N.
 
 ## Logging
 

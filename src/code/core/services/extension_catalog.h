@@ -8,6 +8,7 @@
 
 #include "app_manifest.h"
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -45,7 +46,7 @@ struct ExtensionInfo {
     std::vector<std::string> provides;
     AppManifest manifest;    // Plugin= resolved for this machine's platform keys
     bool disabled = false;   // System/Extensions/disabled.txt names it
-    std::string loadProblem; // set by the runtime when loading failed or the ABI did not match
+    std::string loadProblem; // set by scan() (plugin stamped for another ABI) or the runtime (loading failed)
 
     // there is a library for this machine
     bool builtForThisSystem() const { return manifest.runnable(); }
@@ -77,6 +78,12 @@ public:
     const std::vector<ExtensionInfo> &extensions() const { return extensions_; }
     std::vector<ExtensionInfo> &extensions() { return extensions_; }
     ExtensionInfo *find(const std::string &name);
+    // the SDK ABI stamped into a plugin file ("sdk=<n>;cxx=...") read without loading it; -1 when the file has no
+    // stamp or cannot be read. scan() uses it to mark a plugin of another ABI (BUG-10)
+    static int abiInFile(const std::string &path);
+    // logs "not loaded: built for SDK ABI <n> ... hidden" - once per extension and process, whoever finds it first
+    // (scan(), or the runtime's own check); true when this call wrote the line
+    bool reportWrongAbi(const std::string &name, int fileAbi);
     // the first runnable extension (in title order) whose Provides= names the entry - what a launcher item
     // such as Network & Controllers opens, and whether it is shown at all; nullptr when there is none.
     // Answers from the last scan()
@@ -117,4 +124,5 @@ private:
     std::vector<std::string> keys_;
     std::string pluginExtension_;
     std::vector<ExtensionInfo> extensions_;
+    std::set<std::string> reportedWrongAbi_; // names already logged by reportWrongAbi()
 };

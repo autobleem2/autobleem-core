@@ -138,6 +138,11 @@ public:
     // to that size at displayModes()' refresh rate. A size the display does not list falls back to the
     // desktop's. Process-wide, so it can be set before the GuiBase that makes the first window exists.
     static void setOutputMode(int w, int h);
+    // The renderer backends to try, in order, from the next window on (a config.ini key's value, e.g. "gles3" or
+    // "gles3,sdl"): each a loadable library ab_render_<name>.so / .dll; "sdl" or the end of the list is SDL_Renderer.
+    // Without this, AB_RENDERER from the environment, else the platform's default. Nothing in a build without
+    // ABLEEM_RENDER_GL (SDL_Renderer only). Process-wide, like setOutputMode.
+    static void setRendererBackends(const std::string &commaList);
 
     // internal: used by Input to invoke the app's power-off handler and by Renderer/Texture/Font/Audio to
     // reach the underlying SDL objects without exposing them in a public header.

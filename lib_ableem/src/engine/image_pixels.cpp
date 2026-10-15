@@ -3,6 +3,9 @@
 #include <fstream>
 #include <iterator>
 
+// miniz's PNG encoder (vendored, third_party/miniz) for writePngPixels
+#include <miniz.h>
+
 // stb_image (public domain, third_party/stb), the decoders this needs only; the file is read here, not by stdio
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
@@ -70,6 +73,19 @@ bool readImagePixels(const string &path, ImagePixels &out) {
     out.rgba.assign(pixels, pixels + static_cast<size_t>(w) * static_cast<size_t>(h) * 4);
     stbi_image_free(pixels);
     return true;
+}
+
+bool writePngPixels(const string &path, const ImagePixels &in) {
+    if (in.width <= 0 || in.height <= 0 || in.rgba.size() != static_cast<size_t>(in.width) * in.height * 4)
+        return false;
+    size_t len = 0;
+    void *png = tdefl_write_image_to_png_file_in_memory_ex(in.rgba.data(), in.width, in.height, 4, &len, 6, MZ_FALSE);
+    if (!png)
+        return false;
+    ofstream out(path, ofstream::binary | ofstream::trunc);
+    const bool ok = out.is_open() && out.write(static_cast<const char *>(png), static_cast<streamsize>(len)).good();
+    mz_free(png);
+    return ok;
 }
 
 } // namespace ableem

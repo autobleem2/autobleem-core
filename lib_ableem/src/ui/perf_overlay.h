@@ -40,6 +40,7 @@ private:
     long frames = 0;
     double sumFrameMs = 0, maxFrameMs = 0, sumWorkMs = 0, maxWorkMs = 0;
     long sumCopies = 0;
+    long sumGlDraws = 0; // the renderer backend's draw calls (ABLEEM_RENDER_GL)
     Uint64 windowStart = 0;
     ProcessSample previous;
     bool havePrevious = false;

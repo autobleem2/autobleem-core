@@ -1,0 +1,24 @@
+[package]
+name = "ab_gl"
+version = "0.1.0"
+edition = "2021"
+description = "The launcher's OpenGL ES 3.0 renderer on glow, and lib_ableem's loadable renderer backend (ab_render_gles3)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+# rlib: the Rust shell's renderer (gfx); cdylib: ab_render_gles3.so / .dll, the backend lib_ableem loads
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+glow = "0.14"
+
+[profile.release]
+opt-level = "s"
+panic = "abort"
+lto = true
+codegen-units = 1
+debug = false
+
+[profile.dev]
+panic = "abort"

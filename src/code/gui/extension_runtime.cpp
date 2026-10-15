@@ -6,6 +6,8 @@
 #include <ableem/engine/ext_trace.h>
 #include <cstring>
 #include <exception>
+#include <fstream>
+#include <iterator>
 
 using namespace std;
 
@@ -30,6 +32,13 @@ ExtensionRuntime::Refusal ExtensionRuntime::precheck(const ExtensionInfo &extens
     if (extension.network == ExtensionNetwork::Required && !networkUp)
         return Refusal::Offline;
     return Refusal::None;
+}
+
+//*******************************
+// ExtensionRuntime::abiInFile
+//*******************************
+int ExtensionRuntime::abiInFile(const string &path) {
+    return ExtensionCatalog::abiInFile(path);
 }
 
 //*******************************
@@ -72,6 +81,15 @@ ExtensionRuntime::Loaded *ExtensionRuntime::load(ExtensionInfo &extension, Refus
 
     const string &path = extension.manifest.program;
     string error;
+    // a plugin of another SDK ABI is not even opened: its symbols may be gone (dlopen fails, BUG-10) or, worse, still
+    // be there with another layout
+    const int fileAbi = abiInFile(path);
+    if (fileAbi >= 0 && fileAbi != AB_SDK_ABI) {
+        catalog_.reportWrongAbi(extension.name, fileAbi); // second defence: scan() logged it already
+        extension.loadProblem = ExtensionInfo::WrongAbiProblem;
+        why = Refusal::WrongAbi;
+        return nullptr;
+    }
     // the hand-off trap (BUG-31, ext_trace.h): the load's steps with their timings
     if (ableem::ext_trace::enabled())
         ableem::ext_trace::line("[" + extension.name + "] load: dlopen " + path);
@@ -81,7 +99,9 @@ ExtensionRuntime::Loaded *ExtensionRuntime::load(ExtensionInfo &extension, Refus
         ableem::ext_trace::line("[" + extension.name + "] load: dlopen " + (handle ? "ok" : "FAILED") + ", took " +
                             to_string(ableem::ext_trace::nowMs() - openStart) + " ms");
     if (handle == nullptr) {
-        PLOG_ERROR << "[" << extension.name << "] cannot load " << path << ": " << error;
+        PLOG_ERROR << "[" << extension.name << "] not loaded: " << error << " (" << path << "; built for SDK ABI "
+                   << (fileAbi >= 0 ? to_string(fileAbi) : string("unknown")) << ", this AutoBleem is SDK ABI "
+                   << AB_SDK_ABI << ") - hidden";
         extension.loadProblem = error;
         why = Refusal::LoadFailed;
         return nullptr;
@@ -96,8 +116,8 @@ ExtensionRuntime::Loaded *ExtensionRuntime::load(ExtensionInfo &extension, Refus
     }
     const char *stamp = abi();
     if (stamp == nullptr || strcmp(stamp, AB_SDK_STAMP) != 0) {
-        PLOG_ERROR << "[" << extension.name << "] built for " << (stamp ? stamp : "(nothing)")
-                   << ", this AutoBleem is " << AB_SDK_STAMP << " - not loaded";
+        PLOG_ERROR << "[" << extension.name << "] not loaded: built for " << (stamp ? stamp : "(nothing)")
+                   << ", this AutoBleem is " << AB_SDK_STAMP << " (SDK ABI " << AB_SDK_ABI << ") - hidden";
         extension.loadProblem = ExtensionInfo::WrongAbiProblem;
         why = Refusal::WrongAbi;
         return nullptr;
