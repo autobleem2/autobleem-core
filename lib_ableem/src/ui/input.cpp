@@ -1010,6 +1010,13 @@ bool Input::pollEvent(Event &out) {
 
     if (e.type == SDL_QUIT) {
         PLOG_INFO << "Quit: SDL_QUIT (the window's close request)";
+        // a one-shot Quit closes only the innermost screen: on a dev host (Linux, Windows, the PC stick) the
+        // window's close is the persistent request, as power off and the DebugDriver's `quit` are (TOOLS-8).
+        // The console keeps it one-shot: its launcher reads an SDL_QUIT there as a lost display and rebuilds it
+        if (impl->platform.isDevHost()) {
+            impl->quitRequested = true;
+            impl->quitArmed = true; // this call hands out a Quit: the next one answers "nothing queued"
+        }
         out.type = Event::Type::Quit;
         return true;
     }
