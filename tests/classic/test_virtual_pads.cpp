@@ -164,6 +164,29 @@ TEST_CASE("the virtual pads work from another thread (the DebugDriver's) while t
     pollFor(in, 50);
 }
 
+// a window's close (Alt+F4) on a dev host is the persistent quit: a stack of screens, each eating one Quit,
+// all unwind, not only the innermost
+TEST_CASE("SDL_QUIT on a dev host is a persistent quit request: every nested screen sees Quit") {
+    MaybeGui mg;
+    if (!mg.available())
+        return;
+    Input &in = mg.input();
+    if (!mg.gui->platform().isDevHost())
+        return;
+    CHECK_FALSE(in.quitRequested());
+    SDL_Event q{};
+    q.type = SDL_QUIT;
+    SDL_PushEvent(&q);
+    Event e;
+    int quits = 0;
+    for (int i = 0; i < 12; i++) { // five "screens", each closing on the first Quit it polls
+        if (in.poll(e) && e.type == Event::Type::Quit)
+            quits++;
+    }
+    CHECK(quits >= 5);
+    CHECK(in.quitRequested());
+}
+
 #ifndef _WIN32
 TEST_CASE("SIGTERM is a quit request: every screen's loop sees Quit, and quitRequested() says so") {
     MaybeGui mg;
