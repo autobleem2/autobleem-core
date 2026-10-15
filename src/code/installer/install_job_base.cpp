@@ -192,7 +192,7 @@ bool InstallJobBase::untar(const string &tarball, const string &dest, string &er
 //*******************************
 // InstallJobBase::fetchBiosPack
 //*******************************
-bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, string &error, const BiosFilter &only) {
+bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, string &error) {
     string text;
     PackCatalog cat;
     if (!fetchCatalog(catalogRel, text, error) || !cat.parse(text)) {
@@ -224,14 +224,13 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
         it.size = strtoull(line.substr(a + 1, b - a - 1).c_str(), nullptr, 10);
         it.url = line.substr(b + 1, c - b - 1);
         it.path = line.substr(c + 1);
-        if (TarArchive::isSafeName(it.path) && (!only || only(it.path)))
+        // the PlayStation emulator's names under System/Bios and the OpenBIOS are never the pack's to give
+        if (it.path == "romw.bin" || it.path == "romJP.bin" || it.path == "openbios.bin")
+            continue;
+        if (TarArchive::isSafeName(it.path))
             items.push_back(it);
     }
-    if (only)
-        say("  " + to_string(items.size()) + " files - what is there already is kept");
-    else
-        say("  " + to_string(items.size()) + " files, " + humanSize(cat.totalBytes) +
-            " - what is there already is kept");
+    say("  " + to_string(items.size()) + " files, " + humanSize(cat.totalBytes) + " - what is there already is kept");
     int fetched = 0, kept = 0, failed = 0;
     for (size_t i = 0; i < items.size(); i++) {
         if (stopped(error))
@@ -288,45 +287,21 @@ bool InstallJobBase::fetchBiosPack(const string &catalogRel, const string &dir, 
 }
 
 //*******************************
-// InstallJobBase::isPs1BiosFile
-//*******************************
-bool InstallJobBase::isPs1BiosFile(const string &path) {
-    return path == "scph5501.bin" || path == "scph5500.bin";
-}
-
-//*******************************
 // InstallJobBase::installPs1Bios
 //*******************************
-bool InstallJobBase::isOpenBios(const string &path) {
-    string bytes;
-    return DirEntry::readFile(path, bytes) && bytes.size() >= 0x80 && bytes.compare(0x78, 8, "OpenBIOS") == 0;
-}
-
-void InstallJobBase::installPs1Bios(const string &systemDir, const string &biosDir, const string &openBios) {
+void InstallJobBase::installPs1Bios(const string &biosDir, const string &openBios) {
     DirEntry::createDirs(biosDir);
-    for (const auto &pair : {make_pair("romw.bin", "scph5501.bin"), make_pair("romJP.bin", "scph5500.bin")}) {
-        const string dest = biosDir + "/" + pair.first, src = systemDir + "/" + pair.second;
-        const bool there = DirEntry::exists(dest), ours = there && isOpenBios(dest);
-        if (there && !ours) {
-            say(string("  keeping the existing ") + pair.first);
-        } else if (DirEntry::exists(src)) {
-            if (DirEntry::copyFile(src, dest))
-                say(string("  PlayStation BIOS: ") + pair.second + " -> System/Bios/" + pair.first);
-            else
-                say(string("  could not copy ") + pair.second + " to " + dest);
+    for (const char *name : {"romw.bin", "romJP.bin"}) {
+        const string dest = biosDir + "/" + name;
+        if (DirEntry::exists(dest)) {
+            say(string("  keeping the existing ") + name);
         } else if (!openBios.empty() && DirEntry::exists(openBios)) {
-            string have, shipped;
-            if (ours && DirEntry::readFile(dest, have) && DirEntry::readFile(openBios, shipped) && have == shipped)
-                say(string("  keeping OpenBIOS as ") + pair.first + " (no Sony BIOS)");
-            else if (DirEntry::copyFile(openBios, dest))
-                say(string("  PlayStation BIOS: OpenBIOS -> System/Bios/") + pair.first + " (no Sony BIOS)");
+            if (DirEntry::copyFile(openBios, dest))
+                say(string("  PlayStation BIOS: OpenBIOS -> System/Bios/") + name);
             else
                 say(string("  could not copy OpenBIOS to ") + dest);
-        } else if (ours) {
-            say(string("  keeping OpenBIOS as ") + pair.first);
         } else {
-            say(string("  no ") + pair.second + " - the PlayStation emulator has no " + pair.first +
-                " and will use its built-in BIOS");
+            say(string("  no ") + name + " - the PlayStation emulator will use its built-in BIOS");
         }
     }
 }
