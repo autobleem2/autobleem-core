@@ -55,19 +55,13 @@ protected:
                const ableem::TarArchive::Filter &filter = ableem::TarArchive::Filter(), const std::string &prefix = "");
     // the BIOS pack: <catalogRel> (a PackCatalog naming the list) -> the list, one line per file
     // "<sha256> <size> <url> <path>" -> each file under `dir`, kept when size and sha256 match, a lost one
-    // reported and gone past; false only on a stop or a lost list. `only`, when given, picks the files by
-    // their path in the list (a PS1-only install wants the two PlayStation files, not the ~300 MB pack)
-    using BiosFilter = std::function<bool(const std::string &path)>;
-    bool fetchBiosPack(const std::string &catalogRel, const std::string &dir, std::string &error,
-                       const BiosFilter &only = BiosFilter());
-    // the two files pcsx-ab wants under System/Bios by the console's names - romw.bin (SCPH-5501, NTSC-U)
-    // for every game, romJP.bin (SCPH-5500) for a Japanese one - copied from the pack in `systemDir`
-    // unless the user has put their own there (the originals stay for RetroArch's cores). `openBios`, the
-    // OpenBIOS the package ships, fills a name the pack cannot, in place of the emulator's built-in (HLE)
-    // BIOS; a file with OpenBIOS's name at 0x78 is ours, so a Sony BIOS or a newer OpenBIOS replaces it
-    void installPs1Bios(const std::string &systemDir, const std::string &biosDir, const std::string &openBios = "");
-    static bool isOpenBios(const std::string &path);
-    static bool isPs1BiosFile(const std::string &path);
+    // reported and gone past; false only on a stop or a lost list. The pack's romw.bin / romJP.bin /
+    // openbios.bin are skipped: those names are the PlayStation emulator's, not RetroArch's
+    bool fetchBiosPack(const std::string &catalogRel, const std::string &dir, std::string &error);
+    // the two files pcsx-ab wants under System/Bios by the console's names, romw.bin and romJP.bin: any file
+    // already there (a Sony BIOS, a user's own, an OpenBIOS) is kept, whatever its age; otherwise `openBios`,
+    // the OpenBIOS the package ships, is copied in. Never from the BIOS pack
+    void installPs1Bios(const std::string &biosDir, const std::string &openBios = "");
     // <romsDir>/<system>/ - one empty folder per system in `listFile` (the shared platform/roms_systems.cfg,
     // RetroArch's database names), made only where missing, so a user has somewhere to drop each system's
     // games and Import Content -> Scan Directory sorts them into the matching playlist

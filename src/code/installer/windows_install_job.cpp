@@ -93,7 +93,7 @@ public:
         if (ok && opt.bios)
             ok = bios(error);
         else if (ok)
-            installPs1Bios(at("RetroArch/bin/system"), at("System/Bios"), openBios()); // no pack: OpenBIOS
+            installPs1Bios(at("System/Bios"), openBios()); // no pack: OpenBIOS
         if (ok && opt.samples)
             ok = samples(error);
         if (ok)
@@ -354,16 +354,15 @@ private:
         if (stopped(error))
             return false;
         // RetroArch's system directory is its own tree's: the cores look there. Without RetroArch nothing
-        // reads it but the PlayStation emulator's two files (installPs1Bios), so the rest of the pack is
-        // not fetched
+        // reads it, so nothing is fetched; the emulator's two files come from the shipped OpenBIOS only
         const bool withRetroArch = opt.retroarch || info.hasRetroArch;
-        if (!withRetroArch)
-            say("  PlayStation only (no RetroArch): just the two files the emulator needs");
-        const string systemDir = at("RetroArch/bin/system");
-        if (!fetchBiosPack("win/bios/latest.json", systemDir, error,
-                           withRetroArch ? BiosFilter() : BiosFilter(isPs1BiosFile)))
-            return false;
-        installPs1Bios(systemDir, at("System/Bios"), openBios());
+        if (withRetroArch) {
+            if (!fetchBiosPack("win/bios/latest.json", at("RetroArch/bin/system"), error))
+                return false;
+        } else {
+            say("  PlayStation only (no RetroArch): nothing to download");
+        }
+        installPs1Bios(at("System/Bios"), openBios());
         return true;
     }
 
