@@ -32,6 +32,9 @@ public:
     bool fetch(const std::string &url, const std::string &destFile, const Progress &progress,
                std::string &error) override;
     bool expect(uint64_t size, const std::string &sha256) override;
+    // HEAD for the size: the template's %c slot takes "--head" (abfetch --head -o FILE URL writes the
+    // Content-Length number to FILE); a template without %c cannot ask and says false
+    bool contentLength(const std::string &url, const std::string &scratchFile, uint64_t &size) override;
 
     // retries after a failed command, how long to wait for a network that is gone, how often the .part is
     // polled; `network` (default System::hasDefaultRoute) and `sleeper` (default a real sleep) for the tests

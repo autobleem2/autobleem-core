@@ -81,6 +81,9 @@ protected:
     std::string logPath;
     std::vector<std::string> phases;
     int phaseIndex = 0;
+    // download(): the total to report when the downloader does not know it; and, while progressTotal > 0, one bar
+    // over several files (progressBase = the bytes of the files already finished)
+    uint64_t expectTotal = 0, progressBase = 0, progressTotal = 0;
     // what the last failed download (or check) was, for the progress file's end|error|<code>
     FailKind failKind = FailKind::None;
 };

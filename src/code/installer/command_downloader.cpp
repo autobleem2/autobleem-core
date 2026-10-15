@@ -39,6 +39,30 @@ bool CommandDownloader::expect(uint64_t size, const string &sha256) {
     return true;
 }
 
+bool CommandDownloader::contentLength(const string &url, const string &scratchFile, uint64_t &size) {
+    if (template_.find("%c") == string::npos)
+        return false;
+    DirEntry::removeFile(scratchFile);
+    string command = template_;
+    Strings::replaceAll(command, "%c", "--head");
+    Strings::replaceAll(command, "%u", url);
+    Strings::replaceAll(command, "%o", scratchFile);
+    const int status = runner_ ? runner_(command) : System::runShellCommand(command, []() { return false; });
+    string text;
+    const bool read = status == 0 && DirEntry::readFile(scratchFile, text);
+    DirEntry::removeFile(scratchFile);
+    if (!read)
+        return false;
+    uint64_t value = 0;
+    size_t digits = 0;
+    for (; digits < text.size() && text[digits] >= '0' && text[digits] <= '9' && digits < 18; digits++)
+        value = value * 10 + static_cast<uint64_t>(text[digits] - '0');
+    if (digits == 0 || value == 0)
+        return false;
+    size = value;
+    return true;
+}
+
 void CommandDownloader::setRetry(int retries, unsigned networkWaitMs, unsigned pollMs) {
     retries_ = retries;
     networkWaitMs_ = networkWaitMs;
