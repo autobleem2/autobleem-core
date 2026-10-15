@@ -9,6 +9,7 @@
 #include "ableem/ui/input.h"
 #include "ableem/ui/pad_script.h"
 
+#include <SDL2/SDL.h>
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
