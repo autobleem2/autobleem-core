@@ -7,6 +7,7 @@
 #include <ableem/engine/strings.h>
 
 #include <fstream>
+#include <memory>
 #include <sstream>
 
 using namespace std;
@@ -103,9 +104,10 @@ bool InstallJobBase::download(const string &url, const string &dest, string &err
     bool ok = dl.fetch(
         url, dest,
         [this](uint64_t done, uint64_t total) {
-            if (progressTotal > 0) // one bar over several files: this file's bytes after the ones finished
+            // countOnly: the phase counts packages, not bytes - the finished ones are reported by the caller
+            if (!countOnly && progressTotal > 0) // one bar over several files: this file's bytes after the others
                 out.onProgress(progressBase + done, progressTotal);
-            else
+            else if (!countOnly)
                 out.onProgress(done, total ? total : expectTotal);
             return !(stop && stop());
         },
@@ -172,8 +174,19 @@ bool InstallJobBase::fetchCatalog(const string &rel, string &text, string &error
 
 bool InstallJobBase::untar(const string &tarball, const string &dest, string &error, const TarArchive::Filter &filter,
                            const string &prefix) {
+    // the extractor ends with a (1, 1); the bar of a package is its bytes read, so the end is "all of them"
+    auto lastTotal = make_shared<uint64_t>(0);
     return TarArchive::extract(
-        tarball, dest, error, filter, [this](uint64_t done, uint64_t total) { out.onProgress(done, total); }, prefix);
+        tarball, dest, error, filter,
+        [this, lastTotal](uint64_t done, uint64_t total) {
+            if (done == 1 && total == 1 && *lastTotal > 1) {
+                done = total = *lastTotal;
+            } else if (total > 0) {
+                *lastTotal = total;
+            }
+            out.onProgress(done, total);
+        },
+        prefix);
 }
 
 //*******************************

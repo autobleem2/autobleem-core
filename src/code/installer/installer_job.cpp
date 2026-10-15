@@ -330,7 +330,9 @@ private:
             }
             out.onProgress(sized ? assetsDone : static_cast<uint64_t>(i), sized ? sum : static_cast<uint64_t>(count));
             say("  " + string(b.name));
+            countOnly = !sized;
             const bool fetched = download(opt.buildbotUrl + "/" + b.name + ".zip", zip, error);
+            countOnly = false;
             progressTotal = 0;
             if (fetched) {
                 assetsDone += sized ? static_cast<uint64_t>(max<long long>(0, DirEntry::fileSize(zip))) : 1;
