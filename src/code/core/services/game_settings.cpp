@@ -20,6 +20,8 @@ const char *const GameSettingsService::PeopsGpu = "gpu_peops.so";
 const int GameSettingsService::SmoothingCount;
 const char *const GameSettingsService::SmoothingNames[SmoothingCount] = {"None", "Scale2x", "Eagle2x", "HQ2x", "HQ3x"};
 const int GameSettingsService::FilterCount;
+const int GameSettingsService::CrtMaskCount;
+const char *const GameSettingsService::CrtMaskNames[CrtMaskCount] = {"Aperture", "Slot", "Delta", "Off"};
 const int GameSettingsService::DitheringCount;
 const int GameSettingsService::ScanlineModes;
 
@@ -177,6 +179,9 @@ void GameSettingsService::refreshPcsx(GameSettings &s) const {
     // no line = Nearest; a value the platform does not list is Nearest too, as LaunchService passes it
     int filter = hexValue("plat_target.hwfilter", 0);
     p.filter = listed(filtersFor(platform), filter) ? filter : 0;
+    // no line = Aperture, the emulator's default; a value past Off is Aperture too, as it takes it
+    int crtMask = hexValue("crt_mask", 0);
+    p.crtMask = crtMask < 0 || crtMask >= CrtMaskCount ? 0 : crtMask;
 }
 
 //*******************************
@@ -424,6 +429,13 @@ void GameSettingsService::setSonyHacks(GameSettings &s, bool on) {
 //*******************************
 void GameSettingsService::setFilter(GameSettings &s, int mode) {
     replaceCfgLine(s, "plat_target.hwfilter", toHex(clampTo(mode, 0, FilterCount - 1)));
+}
+
+//*******************************
+// GameSettingsService::setCrtMask
+//*******************************
+void GameSettingsService::setCrtMask(GameSettings &s, int mask) {
+    replaceCfgLine(s, "crt_mask", toHex(clampTo(mask, 0, CrtMaskCount - 1)));
 }
 
 //*******************************
