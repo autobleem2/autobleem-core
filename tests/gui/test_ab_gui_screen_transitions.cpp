@@ -412,7 +412,7 @@ Color centreOf(GuiBase &gui, abgui::Screen &screen) {
     return Color(pixels[at + 2], pixels[at + 1], pixels[at + 0], 255);
 }
 
-bool near(const Color &a, int r, int g, int b, int tolerance = 3) {
+bool colorNear(const Color &a, int r, int g, int b, int tolerance = 3) {
     return abs(a.r - r) <= tolerance && abs(a.g - g) <= tolerance && abs(a.b - b) <= tolerance;
 }
 
@@ -439,19 +439,19 @@ TEST_CASE("ScreenStack: a screen that opens comes in over the picture under it; 
     Solid blue(*g.gui, p.ctx, Color(0, 0, 255, 255)); // declares nothing: a cross-fade
     p.screens().screenOpens(red);
     CHECK_FALSE(p.stack.bringsIn(red));
-    CHECK(near(centreOf(*g.gui, red), 255, 0, 0));
+    CHECK(colorNear(centreOf(*g.gui, red), 255, 0, 0));
 
     p.screens().screenOpens(blue);
     CHECK(p.stack.bringsIn(blue));
     CHECK_FALSE(p.stack.transitioning()); // armed: it starts with blue's first frame
     const int level = DebugDriver::busyLevel();
     // the first frame is the old picture (blue's alpha 0) - the screen changes only once the new one draws
-    CHECK(near(centreOf(*g.gui, blue), 255, 0, 0));
+    CHECK(colorNear(centreOf(*g.gui, blue), 255, 0, 0));
     CHECK(p.stack.transitioning());
     CHECK(DebugDriver::busyLevel() == level + 1);
     // half-way through the 200 ms: half and half - drawn from the two render targets
     p.now += 100;
-    CHECK(near(centreOf(*g.gui, blue), 127, 0, 128, 4));
+    CHECK(colorNear(centreOf(*g.gui, blue), 127, 0, 128, 4));
     // a screen resting between presses still gets every frame while it runs
     g.gui->input().setFrameNeed(ableem::Input::FrameNeed::Idle);
     g.gui->input().frameDue(); // (the "event since the last frame" one)
@@ -465,15 +465,15 @@ TEST_CASE("ScreenStack: a screen that opens comes in over the picture under it; 
     CHECK_FALSE(p.stack.transitioning());
     CHECK_FALSE(p.stack.bringsIn(blue));
     CHECK(DebugDriver::busyLevel() == level);
-    CHECK(near(centreOf(*g.gui, blue), 0, 0, 255));
+    CHECK(colorNear(centreOf(*g.gui, blue), 0, 0, 255));
 
     // blue closes: its last picture leaves (backwards), red is drawn live under it
     p.screens().screenCloses(blue);
-    CHECK(near(centreOf(*g.gui, red), 0, 0, 255));
+    CHECK(colorNear(centreOf(*g.gui, red), 0, 0, 255));
     p.now += 100;
-    CHECK(near(centreOf(*g.gui, red), 128, 0, 127, 4));
+    CHECK(colorNear(centreOf(*g.gui, red), 128, 0, 127, 4));
     p.now += 100;
-    CHECK(near(centreOf(*g.gui, red), 255, 0, 0));
+    CHECK(colorNear(centreOf(*g.gui, red), 255, 0, 0));
     CHECK_FALSE(p.stack.transitioning());
     p.screens().screenCloses(red);
 }
@@ -488,15 +488,15 @@ TEST_CASE("ScreenStack: with the animations off every change is instant and noth
     Solid red(*g.gui, p.ctx, Color(255, 0, 0, 255));
     Solid blue(*g.gui, p.ctx, Color(0, 0, 255, 255));
     p.screens().screenOpens(red);
-    CHECK(near(centreOf(*g.gui, red), 255, 0, 0));
+    CHECK(colorNear(centreOf(*g.gui, red), 255, 0, 0));
     const int redDrawn = red.drawn;
     p.screens().screenOpens(blue);
     CHECK_FALSE(p.stack.bringsIn(blue));
     CHECK(red.drawn == redDrawn); // no old picture taken
-    CHECK(near(centreOf(*g.gui, blue), 0, 0, 255));
+    CHECK(colorNear(centreOf(*g.gui, blue), 0, 0, 255));
     CHECK_FALSE(p.stack.transitioning());
     p.screens().screenCloses(blue);
-    CHECK(near(centreOf(*g.gui, red), 255, 0, 0));
+    CHECK(colorNear(centreOf(*g.gui, red), 255, 0, 0));
     p.screens().screenCloses(red);
 }
 
@@ -536,9 +536,9 @@ TEST_CASE("ScreenStack: the next screen over nothing takes the start transition 
     p.screens().screenOpens(launcher);
     CHECK(p.stack.bringsIn(launcher));
     // dropping in from the top over black: the top half is the launcher's bottom half first
-    CHECK(near(centreOf(*g.gui, launcher), 0, 0, 0));
+    CHECK(colorNear(centreOf(*g.gui, launcher), 0, 0, 0));
     p.now += 250;
-    CHECK(near(centreOf(*g.gui, launcher), 0, 255, 0));
+    CHECK(colorNear(centreOf(*g.gui, launcher), 0, 255, 0));
     p.screens().screenCloses(launcher);
     // once only
     p.screens().screenOpens(launcher);
@@ -572,7 +572,7 @@ TEST_CASE("ScreenStack: a silent snapshot of the screen under a closing menu is 
     p.screens().screenOpens(menu);
     menu.render();
     press(*g.gui);
-    CHECK(near(centreOf(*g.gui, menu), 255, 0, 255));
+    CHECK(colorNear(centreOf(*g.gui, menu), 255, 0, 255));
     // the menu closes and the launcher, before drawing a frame of its own, takes its backdrop snapshot (the launcher's
     // takeBackdrop before an extension): the capture is the launcher alone
     p.screens().screenCloses(menu);
@@ -581,7 +581,7 @@ TEST_CASE("ScreenStack: a silent snapshot of the screen under a closing menu is 
     ShowsCapture shows(*g.gui, p.ctx);
     p.screens().screenOpens(shows);
     p.stack.finishTransition();
-    CHECK(near(centreOf(*g.gui, shows), 0, 255, 0));
+    CHECK(colorNear(centreOf(*g.gui, shows), 0, 255, 0));
     p.screens().screenCloses(shows);
     p.stack.finishTransition();
     p.screens().screenCloses(launcher);
