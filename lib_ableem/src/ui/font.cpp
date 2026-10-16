@@ -121,8 +121,10 @@ struct AtlasTextures {
 };
 
 AtlasTextures &atlas() {
-    static AtlasTextures a;
-    return a;
+    // never destroyed: the atlas is first made on the first text, after the Gui static was built, so a static object
+    // would be destroyed before ~Renderer (in ~Gui) calls fontAtlasRelease() into it
+    static AtlasTextures *a = new AtlasTextures;
+    return *a;
 }
 
 // draws the text with its top-left at (x, y) output pixels; returns the number of glyphs drawn
