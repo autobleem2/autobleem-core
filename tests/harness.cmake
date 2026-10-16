@@ -24,14 +24,29 @@ target_include_directories(ab_test_support PUBLIC ${AB_CORE_TESTS_DIR}
         ${AB_CORE_ROOT}/lib_ableem/third_party/miniz)
 target_link_libraries(ab_test_support ableem_engine)
 
+# ab_test_path_define(TARGET MACRO ABS_DIR [TAIL]) - MACRO expands to the run-time path of ABS_DIR[/TAIL]
+# (support/ab_test_path.h: relative to the program's folder, which is the target's binary folder). The absolute
+# path is not on the command line, so the compiler cache (sccache) keys the same in every clone.
+function(ab_test_path_define target macro absdir)
+    file(RELATIVE_PATH rel "${CMAKE_CURRENT_BINARY_DIR}" "${absdir}")
+    if (rel STREQUAL "")
+        set(rel ".")
+    endif()
+    if (ARGC GREATER 3)
+        set(rel "${rel}/${ARGV3}")
+    endif()
+    target_compile_definitions(${target} PRIVATE "${macro}=ab_test_path(\"${rel}\")")
+endfunction()
+
 function(ab_add_test name)
     cmake_parse_arguments(AB_TEST "" "" "LIBS" ${ARGN})
     add_executable(${name} ${AB_TEST_UNPARSED_ARGUMENTS})
     # tests include app headers as "core/services/config.h"
     target_include_directories(${name} PRIVATE ${AB_CORE_ROOT}/src/code)
     # tests/data: checked-in fixtures (the test disc images, see tests/data/generate_test_files.sh)
-    target_compile_definitions(${name} PRIVATE AB_TEST_DATA_DIR="${AB_CORE_TESTS_DIR}/data"
-                                               AB_RESOURCES_DIR="${AB_CORE_ROOT}/src/resources")
+    ab_test_path_define(${name} AB_TEST_DATA_DIR "${AB_CORE_TESTS_DIR}/data")
+    ab_test_path_define(${name} AB_RESOURCES_DIR "${AB_CORE_ROOT}/src/resources")
+    target_compile_options(${name} PRIVATE "SHELL:-include support/ab_test_path.h")
     target_link_libraries(${name} doctest_main ab_test_support ab_core ${AB_TEST_LIBS})
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
