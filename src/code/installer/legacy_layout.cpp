@@ -4,15 +4,57 @@
 #include <ableem/engine/log.h>
 
 #include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <regex>
 #include <sstream>
 #include <vector>
 
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#ifdef _WIN32
+#define lstat stat // FAT and NTFS sticks carry no symlinks the installer could meet
+#endif
+
 using namespace std;
 using ableem::DirEntry;
 
 namespace {
+
+bool isSymlink(const string &path) {
+    struct stat st;
+    return lstat(path.c_str(), &st) == 0 && S_ISLNK(st.st_mode);
+}
+
+bool isRealDir(const string &path) {
+    struct stat st;
+    return lstat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+// removes `path` and what is in it without ever following a symlink: a link is unlinked, never entered (the
+// global DirEntry::rmDir stat()s and would walk into the link's target). Dotfiles included. Failures are left
+// in place; the first folder or file that could not go is in `failed`. True when `path` is gone.
+bool removeTree(const string &path, string &failed) {
+    if (isRealDir(path)) {
+        if (DIR *d = opendir(path.c_str())) {
+            vector<string> names;
+            while (struct dirent *p = readdir(d))
+                if (strcmp(p->d_name, ".") != 0 && strcmp(p->d_name, "..") != 0)
+                    names.push_back(p->d_name);
+            closedir(d);
+            for (const string &name : names)
+                removeTree(path + "/" + name, failed);
+        }
+        if (rmdir(path.c_str()) != 0 && failed.empty())
+            failed = path;
+    } else if (unlink(path.c_str()) != 0 && failed.empty()) {
+        failed = path;
+    }
+    struct stat st;
+    return lstat(path.c_str(), &st) != 0;
+}
 
 string readText(const string &path) {
     ifstream in(path, ios::binary);
@@ -93,12 +135,9 @@ bool moveMerge(const string &src, const string &dst, bool keepExisting, string &
     return true;
 }
 
-// removes `dir` when nothing is in it (DirEntry::rmDir would take the contents along)
+// removes `dir` when nothing is in it, dotfiles counted (rmdir itself refuses a folder with anything inside)
 bool removeIfEmpty(const string &dir) {
-    if (!DirEntry::diru(dir).empty())
-        return false;
-    DirEntry::rmDir(dir);
-    return !DirEntry::exists(dir);
+    return !isSymlink(dir) && rmdir(dir.c_str()) == 0;
 }
 
 // copies every file of src into dst that is not there yet
@@ -466,7 +505,11 @@ bool LegacyLayout::removeRetroBoot(const string &root, const Say &say) {
         return true;
     const string rb = findCi(bin, "retroboot");
     const string rbApps = findCi(bin, "apps");
-    const bool hasTree = !rb.empty() && DirEntry::isDirectory(rb);
+    if (!rb.empty() && isSymlink(rb)) {
+        say("  RetroBoot's tree kept: RetroArch/bin/retroboot is a link, not a folder");
+        return false;
+    }
+    const bool hasTree = !rb.empty() && isRealDir(rb);
     if (hasTree) {
         // every file migrate() copies must be on the stick where the launcher looks
         const string lib = root + "/Autobleem/lib";
@@ -497,11 +540,16 @@ bool LegacyLayout::removeRetroBoot(const string &root, const Say &say) {
                 return false;
             }
         }
-        DirEntry::removeDirAndContents(rb);
+        string failed;
+        if (!removeTree(rb, failed)) {
+            say("  RetroBoot's tree could not be removed completely: " + failed.substr(root.size() + 1) +
+                " stays (the rest may be gone)");
+            return false;
+        }
         say("  removed RetroArch/bin/retroboot (RetroBoot's own tree)");
     }
     // the apps folder: only the folders with nothing in them - an app that is not in Apps/ keeps its files
-    if (!rbApps.empty() && DirEntry::isDirectory(rbApps)) {
+    if (!rbApps.empty() && isRealDir(rbApps)) {
         for (const DirEntry &d : DirEntry::diru_DirsOnly(rbApps))
             removeIfEmpty(rbApps + "/" + d.name);
         if (removeIfEmpty(rbApps))

@@ -45,7 +45,9 @@ struct InstallOptions {
     bool bios = false; // needs retroarch (or RetroArch already on the stick)
     bool samples = false;
     // delete RetroBoot's leftovers (RetroArch/bin/retroboot, ~600 MB with EmulationStation, and the emptied
-    // RetroArch/bin/apps) after the update - the user's choice, never on by default
+    // RetroArch/bin/apps) after the update - the user's choice, never on by default. The question should say that
+    // the whole tree goes: EmulationStation with its settings and gamelists, RetroBoot's scripts and libraries
+    // (the libraries are already copied to Autobleem/lib); links inside are removed, never followed
     bool removeRetroBoot = false;
     // the console's own RetroArch update: a retroarch-psc-<v>.zip already downloaded and checked. The run then
     // does only that - the zip laid over the RetroArch that is on the stick (what the "RetroArch" phase does
