@@ -205,6 +205,11 @@ bool System::defaultRouteIn(const string &routeTable) {
 }
 
 bool System::hasDefaultRoute() {
+    // AB_FAKE_NO_ROUTE=1: a test switch like AB_FAKE_DRIVE - the sandbox shares the guest's network, so a check of
+    // the "No network" screens cannot drop the route itself
+    const char *noRoute = getenv("AB_FAKE_NO_ROUTE");
+    if (noRoute != nullptr && string(noRoute) == "1")
+        return false;
 #ifdef _WIN32
     return true; // Windows is asked by the download itself
 #else

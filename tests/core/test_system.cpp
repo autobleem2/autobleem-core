@@ -31,6 +31,17 @@ TEST_CASE("defaultRouteIn finds a default route that is up, on anything but the 
     CHECK_FALSE(System::defaultRouteIn(""));
 }
 
+#ifndef _WIN32
+TEST_CASE("AB_FAKE_NO_ROUTE=1 says there is no default route, any other value leaves the table alone") {
+    setenv("AB_FAKE_NO_ROUTE", "1", 1);
+    CHECK_FALSE(System::hasDefaultRoute());
+    setenv("AB_FAKE_NO_ROUTE", "0", 1);
+    const bool asked = System::hasDefaultRoute();
+    unsetenv("AB_FAKE_NO_ROUTE");
+    CHECK(System::hasDefaultRoute() == asked);
+}
+#endif
+
 TEST_CASE("diskSpace reports the filesystem a path is on, and nothing for a path that is not there") {
     TempDir tmp("disk_space");
     uint64_t freeBytes = 0, totalBytes = 0;

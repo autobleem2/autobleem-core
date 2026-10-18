@@ -96,6 +96,29 @@ TEST_CASE("Env::retroArchInstalled is true when any candidate binary exists") {
     CHECK(Environment::retroArchInstalled());
 }
 
+#ifndef _WIN32
+TEST_CASE("AB_FAKE_RA_BINARY: only that file says whether RetroArch is installed") {
+    TempDir tmp("rafake");
+    EnvFixture env;
+    env.setUsbRoot(tmp.path());
+    tmp.makeSubDir("RetroArch/bin");
+    tmp.writeFile("RetroArch/bin/retroarch", "#!/bin/sh\n");
+    PlatformConfig cfg;
+    cfg.retroarchBinaries = {"bin/retroarch"};
+    cfg.apply();
+    REQUIRE(Environment::retroArchInstalled());
+
+    // a switch that names a file that is not there: not installed, although the host has a binary
+    setenv("AB_FAKE_RA_BINARY", (tmp.path() + "/stamp/retroarch").c_str(), 1);
+    CHECK_FALSE(Environment::retroArchInstalled());
+    tmp.makeSubDir("stamp");
+    tmp.writeFile("stamp/retroarch", "");
+    CHECK(Environment::retroArchInstalled());
+    unsetenv("AB_FAKE_RA_BINARY");
+    CHECK(Environment::retroArchInstalled());
+}
+#endif
+
 TEST_CASE("EnvFixture restores the RetroArch core file and binaries") {
     EnvFixture outer;
     outer.setUsbRoot("/before");
