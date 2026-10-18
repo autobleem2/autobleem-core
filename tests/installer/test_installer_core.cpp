@@ -1798,6 +1798,6 @@ TEST_CASE("a removal that fails half way does not say removed") {
     for (const string &l : said)
         if (l.find("removed RetroArch/bin/retroboot") != string::npos)
             claimed = true;
-    CHECK((!claimed || !fx.has("RetroArch/bin/retroboot") == claimed));
+    CHECK((!claimed || !fx.has("RetroArch/bin/retroboot")));
 }
 #endif
