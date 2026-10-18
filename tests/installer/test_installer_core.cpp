@@ -1742,3 +1742,62 @@ TEST_CASE("CommandDownloader::contentLength: the %c slot takes --head, a templat
     CommandDownloader plain("curl -o \"%o\" \"%u\"", [](const string &) { return 0; });
     CHECK_FALSE(plain.contentLength("http://site/assets.zip", tmp.at("size.txt"), size));
 }
+
+#ifndef _WIN32
+// adversarial: removing RetroBoot's tree must never reach outside it
+TEST_CASE("removeRetroBoot does not delete what a symlink inside RetroBoot's tree points to") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/RetroArch/roms/snes/game.sfc", "rom");
+    REQUIRE(symlink((fx.root + "/RetroArch/roms").c_str(), (fx.root + "/RetroArch/bin/retroboot/emulationstation/roms").c_str()) == 0);
+    LegacyLayout::removeRetroBoot(fx.root, [](const string &) {});
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK(fx.has("RetroArch/roms/snes/game.sfc"));
+}
+
+TEST_CASE("removeRetroBoot does not delete through a symlinked retroboot folder") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("elsewhere/keep/me.txt", "mine");
+    DirEntry::removeDirAndContents(fx.root + "/RetroArch/bin/retroboot");
+    fx.tmp.makeSubDir("elsewhere/lib");
+    REQUIRE(symlink(fx.tmp.at("elsewhere").c_str(), (fx.root + "/RetroArch/bin/retroboot").c_str()) == 0);
+    LegacyLayout::removeRetroBoot(fx.root, [](const string &) {});
+    CHECK(fx.tmp.readFile("elsewhere/keep/me.txt") == "mine");
+}
+#endif
+
+TEST_CASE("an apps folder holding only a hidden file is not removed") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/RetroArch/bin/apps/mine/.config", "precious");
+    LegacyLayout::removeRetroBoot(fx.root, [](const string &) {});
+    CHECK(fx.has("RetroArch/bin/apps/mine/.config"));
+}
+
+#ifndef _WIN32
+TEST_CASE("a removal that fails half way does not say removed") {
+    if (geteuid() == 0)
+        return;
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    const string locked = fx.root + "/RetroArch/bin/retroboot/emulationstation/.emulationstation";
+    chmod(locked.c_str(), 0555);
+    vector<string> said;
+    LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); });
+    chmod(locked.c_str(), 0755);
+    bool claimed = false;
+    for (const string &l : said)
+        if (l.find("removed RetroArch/bin/retroboot") != string::npos)
+            claimed = true;
+    CHECK((!claimed || !fx.has("RetroArch/bin/retroboot") == claimed));
+}
+#endif
