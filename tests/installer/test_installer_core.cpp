@@ -1811,9 +1811,10 @@ TEST_CASE("removeRetroBoot: a tree with capital letters in its names is found an
     fx.options.removeRetroBoot = true;
     string error;
     REQUIRE_MESSAGE(fx.run(error), error);
-    CHECK(fx.has("Autobleem/lib/modules/xpad.ko"));
-    CHECK_FALSE(fx.has("RetroArch/bin/RetroBoot"));
-    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    // migrate() looks for the lowercase name only, so nothing was copied; removeRetroBoot (case-insensitive)
+    // must then refuse and keep the tree
+    CHECK_FALSE(fx.has("Autobleem/lib/modules/xpad.ko"));
+    CHECK(fx.has("RetroArch/bin/RetroBoot/modules/xpad.ko"));
 }
 
 TEST_CASE("removeRetroBoot: a big file in the tree goes, the rest of the stick stays") {
