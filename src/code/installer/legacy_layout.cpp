@@ -93,6 +93,14 @@ bool moveMerge(const string &src, const string &dst, bool keepExisting, string &
     return true;
 }
 
+// removes `dir` when nothing is in it (DirEntry::rmDir would take the contents along)
+bool removeIfEmpty(const string &dir) {
+    if (!DirEntry::diru(dir).empty())
+        return false;
+    DirEntry::rmDir(dir);
+    return !DirEntry::exists(dir);
+}
+
 // copies every file of src into dst that is not there yet
 void copyMissing(const string &src, const string &dst) {
     if (!DirEntry::isDirectory(src))
@@ -444,6 +452,19 @@ bool LegacyLayout::migrate(const string &root, const Say &say, string &error) {
                 if (endsWith(f.name, ".sh"))
                     rewriteFile(dir + "/" + f.name, f.name == "run.sh" ? rewriteRunScript : rewritePaths, say);
         }
+    }
+    // what RetroBoot left behind: the apps folder once every app in it has moved to Apps/ (empty folders
+    // only - an app that is not on the stick's Apps/ keeps its files), and its own tree, whose libraries were
+    // copied above (nothing reads it any more, and its presence makes the scan write EmulationStation's lists)
+    if (!rbApps.empty() && DirEntry::isDirectory(rbApps)) {
+        for (const DirEntry &d : DirEntry::diru_DirsOnly(rbApps))
+            removeIfEmpty(rbApps + "/" + d.name);
+        if (removeIfEmpty(rbApps))
+            say("  removed the emptied retroarch/apps");
+    }
+    if (DirEntry::isDirectory(rb)) {
+        DirEntry::removeDirAndContents(rb);
+        say("  removed RetroArch/bin/retroboot (RetroBoot's own tree)");
     }
     return true;
 }

@@ -700,6 +700,9 @@ TEST_CASE("an AutoBleem 1.0 / NG stick is brought to the new layout before the u
         launch ==
         "export LD_LIBRARY_PATH=\"/tmp/applib\"\ncd /media/Apps/eduke32\n./eduke32 > /media/System/Logs/duke3d.log\n");
     CHECK_FALSE(fx.has("Apps/retroboot"));
+    // RetroBoot's leftovers: its own tree and the emptied apps folder
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK_FALSE(fx.has("RetroArch/bin/apps"));
     // and the update itself went through, the old settings kept
     CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/autobleem-gui") == "ELF v2.0.0-pre0-abc1234");
     {

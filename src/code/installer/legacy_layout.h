@@ -13,6 +13,7 @@
 //   Apps/<name> reaching into retroarch/apps    ->  self-contained: the files moved in, the scripts pointed
 //                                                   at /media/Apps/<name>, /media/System/Logs and
 //                                                   Autobleem/rc/app_env.sh; Apps/retroboot removed
+//   RetroArch/bin/retroboot, the emptied apps/     ->  removed once the above is copied / moved
 //
 // The same steps as tools/install_autobleem.py's `layout` stage, which ran on the owner's stick first.
 //
