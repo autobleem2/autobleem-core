@@ -15,7 +15,7 @@
 #include <unistd.h>
 
 #ifdef _WIN32
-#define lstat stat // FAT and NTFS sticks carry no symlinks the installer could meet
+#include <windows.h>
 #endif
 
 using namespace std;
@@ -23,6 +23,32 @@ using ableem::DirEntry;
 
 namespace {
 
+#ifdef _WIN32
+// no lstat/S_ISLNK in mingw: a symlink, a junction or any other reparse point counts as a link, and is never entered
+DWORD winAttributes(const string &path) {
+    return GetFileAttributesA(path.c_str());
+}
+
+bool isSymlink(const string &path) {
+    const DWORD a = winAttributes(path);
+    return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+}
+
+bool isRealDir(const string &path) {
+    const DWORD a = winAttributes(path);
+    return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY) != 0 && (a & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+}
+
+// the link itself only (a directory link is removed as a directory, which does not touch its target)
+bool unlinkLink(const string &path) {
+    return (winAttributes(path) & FILE_ATTRIBUTE_DIRECTORY) ? RemoveDirectoryA(path.c_str()) != 0
+                                                             : DeleteFileA(path.c_str()) != 0;
+}
+
+bool gone(const string &path) {
+    return winAttributes(path) == INVALID_FILE_ATTRIBUTES;
+}
+#else
 bool isSymlink(const string &path) {
     struct stat st;
     return lstat(path.c_str(), &st) == 0 && S_ISLNK(st.st_mode);
@@ -32,6 +58,16 @@ bool isRealDir(const string &path) {
     struct stat st;
     return lstat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
+
+bool unlinkLink(const string &path) {
+    return unlink(path.c_str()) == 0;
+}
+
+bool gone(const string &path) {
+    struct stat st;
+    return lstat(path.c_str(), &st) != 0;
+}
+#endif
 
 // removes `path` and what is in it without ever following a symlink: a link is unlinked, never entered (the
 // global DirEntry::rmDir stat()s and would walk into the link's target). Dotfiles included. Failures are left
@@ -49,11 +85,10 @@ bool removeTree(const string &path, string &failed) {
         }
         if (rmdir(path.c_str()) != 0 && failed.empty())
             failed = path;
-    } else if (unlink(path.c_str()) != 0 && failed.empty()) {
+    } else if (!unlinkLink(path) && failed.empty()) {
         failed = path;
     }
-    struct stat st;
-    return lstat(path.c_str(), &st) != 0;
+    return gone(path);
 }
 
 string readText(const string &path) {
