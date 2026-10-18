@@ -1843,6 +1843,47 @@ TEST_CASE("removeRetroBoot: an Apps/ script without the .sh extension that names
     CHECK(fx.has("RetroArch/bin/retroboot"));
 }
 
+TEST_CASE("removeRetroBoot: the script scan skips a binary file") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/Apps/odd/tool", string("\x7f" "ELF\0\0 retroboot/bin/start", 24));
+    CHECK(LegacyLayout::removeRetroBoot(fx.root, [](const string &) {}));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+}
+
+TEST_CASE("removeRetroBoot: the script scan skips a file over 1 MiB and says so") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/Apps/odd/huge", "exec /media/RetroArch/bin/retroboot/bin/start\n" + string((1 << 20) + 1, '#'));
+    vector<string> said;
+    CHECK(LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); }));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    bool noted = false;
+    for (const string &l : said)
+        if (l.find("not scanned") != string::npos && l.find("huge") != string::npos)
+            noted = true;
+    CHECK(noted);
+}
+
+#ifndef _WIN32
+TEST_CASE("removeRetroBoot: the script scan does not follow a symlinked file") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("elsewhere/start.txt", "exec /media/RetroArch/bin/retroboot/bin/start\n");
+    fx.tmp.makeSubDir("stick/Apps/odd");
+    REQUIRE(symlink(fx.tmp.at("elsewhere/start.txt").c_str(), (fx.root + "/Apps/odd/launch").c_str()) == 0);
+    CHECK(LegacyLayout::removeRetroBoot(fx.root, [](const string &) {}));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK(fx.tmp.readFile("elsewhere/start.txt").find("retroboot/") != string::npos);
+}
+#endif
+
 TEST_CASE("removeRetroBoot: a library missing from Autobleem/lib keeps the whole tree (through the job)") {
     Fixture fx;
     retroBootStick(fx, false);

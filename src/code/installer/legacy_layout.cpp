@@ -4,7 +4,9 @@
 #include <ableem/engine/log.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
+#include <functional>
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -40,6 +42,11 @@ bool isRealDir(const string &path) {
 }
 
 // the link itself only (a directory link is removed as a directory, which does not touch its target)
+bool isRealFile(const string &path) {
+    const DWORD a = winAttributes(path);
+    return a != INVALID_FILE_ATTRIBUTES && (a & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) == 0;
+}
+
 bool unlinkLink(const string &path) {
     return (winAttributes(path) & FILE_ATTRIBUTE_DIRECTORY) ? RemoveDirectoryA(path.c_str()) != 0
                                                              : DeleteFileA(path.c_str()) != 0;
@@ -57,6 +64,11 @@ bool isSymlink(const string &path) {
 bool isRealDir(const string &path) {
     struct stat st;
     return lstat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+bool isRealFile(const string &path) {
+    struct stat st;
+    return lstat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 }
 
 bool unlinkLink(const string &path) {
@@ -98,6 +110,49 @@ string readText(const string &path) {
     stringstream ss;
     ss << in.rdbuf();
     return ss.str();
+}
+
+// the script scan of removeRetroBoot reads every regular file of a folder (any name, links never followed) up to this size
+const long long kScanLimit = 1024 * 1024;
+
+// true when a file of `dir` mentions retroboot/ ; sets `hit` to its path. Binaries (a NUL in the first 8 KiB) and
+// files over kScanLimit are skipped, the latter with a log line.
+bool folderMentionsRetroBoot(const string &dir, string &hit, const function<void(const string &)> &say) {
+    DIR *d = opendir(dir.c_str());
+    if (!d)
+        return false;
+    vector<string> names;
+    while (struct dirent *p = readdir(d))
+        if (strcmp(p->d_name, ".") != 0 && strcmp(p->d_name, "..") != 0)
+            names.push_back(p->d_name);
+    closedir(d);
+    for (const string &name : names) {
+        const string path = dir + "/" + name;
+        if (!isRealFile(path))
+            continue;
+        ifstream in(path, ios::binary);
+        if (!in)
+            continue;
+        in.seekg(0, ios::end);
+        const long long size = static_cast<long long>(in.tellg());
+        in.seekg(0, ios::beg);
+        if (size > kScanLimit) {
+            say("  not scanned (over 1 MiB): " + path);
+            continue;
+        }
+        stringstream ss;
+        ss << in.rdbuf();
+        const string text = ss.str();
+        if (text.substr(0, 8192).find('\0') != string::npos)
+            continue;
+        string low = text;
+        transform(low.begin(), low.end(), low.begin(), [](unsigned char c) { return static_cast<char>(tolower(c)); });
+        if (low.find("retroboot/") != string::npos) {
+            hit = path;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool writeText(const string &path, const string &text) {
@@ -561,17 +616,16 @@ bool LegacyLayout::removeRetroBoot(const string &root, const Say &say) {
             }
         }
         // a script of the stick that still starts something under retroboot/ would break
-        vector<string> scripts;
+        // (every regular file counts, whatever its name)
+        vector<string> folders;
         for (const DirEntry &app : DirEntry::diru_DirsOnly(root + "/Apps"))
-            for (const DirEntry &f : DirEntry::diru_FilesOnly(root + "/Apps/" + app.name))
-                if (endsWith(f.name, ".sh"))
-                    scripts.push_back(root + "/Apps/" + app.name + "/" + f.name);
-        for (const DirEntry &f : DirEntry::diru_FilesOnly(root + "/Autobleem/rc"))
-            if (endsWith(f.name, ".sh"))
-                scripts.push_back(root + "/Autobleem/rc/" + f.name);
-        for (const string &script : scripts) {
-            if (lower(readText(script)).find("retroboot/") != string::npos) {
-                say("  RetroBoot's tree kept: " + script.substr(root.size() + 1) + " still starts something in it");
+            if (!isSymlink(root + "/Apps/" + app.name))
+                folders.push_back(root + "/Apps/" + app.name);
+        folders.push_back(root + "/Autobleem/rc");
+        for (const string &folder : folders) {
+            string hit;
+            if (folderMentionsRetroBoot(folder, hit, say)) {
+                say("  RetroBoot's tree kept: " + hit.substr(root.size() + 1) + " still starts something in it");
                 return false;
             }
         }
