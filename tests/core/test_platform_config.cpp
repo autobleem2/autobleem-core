@@ -101,8 +101,8 @@ TEST_CASE("AB_FAKE_RA_BINARY: only that file says whether RetroArch is installed
     TempDir tmp("rafake");
     EnvFixture env;
     env.setUsbRoot(tmp.path());
-    tmp.makeSubDir("RetroArch/bin");
-    tmp.writeFile("RetroArch/bin/retroarch", "#!/bin/sh\n");
+    tmp.makeSubDir("RetroArch/bin/bin");
+    tmp.writeFile("RetroArch/bin/bin/retroarch", "#!/bin/sh\n");
     PlatformConfig cfg;
     cfg.retroarchBinaries = {"bin/retroarch"};
     cfg.apply();
