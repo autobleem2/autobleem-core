@@ -1801,3 +1801,56 @@ TEST_CASE("a removal that fails half way does not say removed") {
     CHECK((!claimed || !fx.has("RetroArch/bin/retroboot")));
 }
 #endif
+
+TEST_CASE("removeRetroBoot: a tree with capital letters in its names is found and removed") {
+    Fixture fx;
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF 1.0");
+    fx.tmp.writeFile("stick/retroarch/retroarch", "ELF 1.9.0");
+    fx.tmp.writeFile("stick/retroarch/retroarch.cfg", "xmb_theme = \"8\"\n");
+    fx.tmp.writeFile("stick/retroarch/RetroBoot/modules/xpad.ko", "ko");
+    fx.options.removeRetroBoot = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    // migrate() looks for the lowercase name only, so nothing was copied; removeRetroBoot (case-insensitive)
+    // must then refuse and keep the tree
+    CHECK_FALSE(fx.has("Autobleem/lib/modules/xpad.ko"));
+    CHECK(fx.has("RetroArch/bin/RetroBoot/modules/xpad.ko"));
+}
+
+TEST_CASE("removeRetroBoot: a big file in the tree goes, the rest of the stick stays") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    fx.options.removeRetroBoot = true;
+    {
+        ofstream big(fx.tmp.at("stick/retroarch/retroboot/emulationstation/big.bin"), ios::binary);
+        string chunk(1 << 20, 'x');
+        for (int i = 0; i < 64; i++)
+            big << chunk;
+    }
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK(fx.has("RetroArch/bin/retroarch"));
+}
+
+TEST_CASE("removeRetroBoot: an Apps/ script without the .sh extension that names retroboot/ blocks the removal") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/Apps/odd/launch", "#!/bin/sh\nexec /media/RetroArch/bin/retroboot/bin/start\n");
+    LegacyLayout::removeRetroBoot(fx.root, [](const string &) {});
+    CHECK(fx.has("RetroArch/bin/retroboot"));
+}
+
+TEST_CASE("removeRetroBoot: a library missing from Autobleem/lib keeps the whole tree (through the job)") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    fx.tmp.writeFile("stick/retroarch/retroboot/lib/libfoo.so", "so");
+    fx.tmp.writeFile("stick/Autobleem/lib/retroarch/libfoo.so", "different size");
+    fx.options.removeRetroBoot = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.has("RetroArch/bin/retroboot/lib/libfoo.so"));
+    CHECK(fx.has("Autobleem/lib/retroarch/libfoo.so"));
+}
