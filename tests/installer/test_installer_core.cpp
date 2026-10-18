@@ -700,9 +700,8 @@ TEST_CASE("an AutoBleem 1.0 / NG stick is brought to the new layout before the u
         launch ==
         "export LD_LIBRARY_PATH=\"/tmp/applib\"\ncd /media/Apps/eduke32\n./eduke32 > /media/System/Logs/duke3d.log\n");
     CHECK_FALSE(fx.has("Apps/retroboot"));
-    // RetroBoot's leftovers: its own tree and the emptied apps folder
-    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
-    CHECK_FALSE(fx.has("RetroArch/bin/apps"));
+    // RetroBoot's tree is the user's to delete: not asked, it stays whole
+    CHECK(fx.has("RetroArch/bin/retroboot/bin/launch_rfa.sh"));
     // and the update itself went through, the old settings kept
     CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/autobleem-gui") == "ELF v2.0.0-pre0-abc1234");
     {
@@ -718,6 +717,89 @@ TEST_CASE("an AutoBleem 1.0 / NG stick is brought to the new layout before the u
     Fixture again;
     again.options = fx.options;
     CHECK_FALSE(InstallerJob::inspect(again.options).legacyLayout);
+}
+
+// a RetroBoot stick with an app in retroarch/apps/ that Apps/ also has (moved by the migration) and, with
+// `strayApp`, one that Apps/ does not have
+static void retroBootStick(Fixture &fx, bool strayApp) {
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF 1.0");
+    fx.tmp.writeFile("stick/retroarch/retroarch", "ELF 1.9.0");
+    fx.tmp.writeFile("stick/retroarch/retroarch.cfg", "xmb_theme = \"8\"\n");
+    fx.tmp.writeFile("stick/retroarch/retroboot/assets/lib/libSDL2_image-2.0.so.0.0.1", "so");
+    fx.tmp.writeFile("stick/retroarch/retroboot/modules/xpad.ko", "ko");
+    fx.tmp.writeFile("stick/retroarch/retroboot/emulationstation/.emulationstation/es_settings.cfg", "es");
+    fx.tmp.writeFile("stick/retroarch/apps/eduke32/eduke32", "ELF");
+    fx.tmp.writeFile("stick/Apps/eduke32/app.ini", "Title=Duke\n");
+    fx.tmp.writeFile("stick/Apps/eduke32/run.sh", "sh \"/media/retroarch/apps/eduke32/launch.sh\"\n");
+    if (strayApp)
+        fx.tmp.writeFile("stick/retroarch/apps/doom/doom.wad", "wad");
+}
+
+TEST_CASE("RetroBoot's tree and apps folder stay when the user did not ask for their removal") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    REQUIRE_FALSE(fx.options.removeRetroBoot); // the default
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.has("RetroArch/bin/retroboot/emulationstation/.emulationstation/es_settings.cfg"));
+    CHECK(fx.has("RetroArch/bin/retroboot/modules/xpad.ko"));
+    CHECK(fx.has("Autobleem/lib/modules/xpad.ko")); // copied, the original untouched
+    CHECK_FALSE(fx.out.said("removed RetroArch/bin/retroboot"));
+}
+
+TEST_CASE("RetroBoot's tree is removed when the user asked, after its libraries are in Autobleem/lib") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    fx.options.removeRetroBoot = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.has("Autobleem/lib/apps/libSDL2_image-2.0.so.0.0.1"));
+    CHECK(fx.has("Autobleem/lib/modules/xpad.ko"));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK_FALSE(fx.has("RetroArch/bin/apps"));
+    CHECK(fx.has("Apps/eduke32/eduke32"));
+    CHECK(fx.has("RetroArch/bin/retroarch"));
+    CHECK(fx.out.said("removed RetroArch/bin/retroboot"));
+}
+
+TEST_CASE("nothing of RetroBoot is removed while a library of it is missing from Autobleem/lib") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    InstallerJob::inspect(fx.options);
+    // the migration has run; a module is lost from Autobleem/lib behind its back
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    REQUIRE(fx.has("RetroArch/bin/retroboot/modules/xpad.ko"));
+    REQUIRE(DirEntry::removeFile(fx.root + "/Autobleem/lib/modules/xpad.ko"));
+    vector<string> said;
+    CHECK_FALSE(LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); }));
+    CHECK(fx.has("RetroArch/bin/retroboot/modules/xpad.ko"));
+    CHECK(fx.has("RetroArch/bin/retroboot/emulationstation/.emulationstation/es_settings.cfg"));
+    REQUIRE(said.size() == 1);
+    CHECK(said[0].find("xpad.ko") != string::npos);
+    // a script still starting something in retroboot/ blocks it too
+    fx.tmp.writeFile("stick/Autobleem/lib/modules/xpad.ko", "ko");
+    fx.tmp.writeFile("stick/Apps/old/run.sh", "sh /media/RetroArch/bin/retroboot/bin/start.sh\n");
+    said.clear();
+    CHECK_FALSE(LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); }));
+    CHECK(fx.has("RetroArch/bin/retroboot"));
+    // and with both in order it goes
+    DirEntry::removeFile(fx.root + "/Apps/old/run.sh");
+    CHECK(LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); }));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+}
+
+TEST_CASE("an app in RetroArch/bin/apps that Apps/ does not have stays with its files") {
+    Fixture fx;
+    retroBootStick(fx, true);
+    fx.options.removeRetroBoot = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/apps/doom/doom.wad") == "wad");
+    CHECK_FALSE(fx.has("RetroArch/bin/apps/eduke32")); // moved to Apps/ by the migration
+    CHECK(fx.has("Apps/eduke32/eduke32"));
+    CHECK(fx.out.said("RetroArch/bin/apps kept"));
 }
 
 TEST_CASE("a new RetroArch build over a RetroBoot-era retroarch.cfg sets its own keys, keeps the rest") {

@@ -453,18 +453,61 @@ bool LegacyLayout::migrate(const string &root, const Say &say, string &error) {
                     rewriteFile(dir + "/" + f.name, f.name == "run.sh" ? rewriteRunScript : rewritePaths, say);
         }
     }
-    // what RetroBoot left behind: the apps folder once every app in it has moved to Apps/ (empty folders
-    // only - an app that is not on the stick's Apps/ keeps its files), and its own tree, whose libraries were
-    // copied above (nothing reads it any more, and its presence makes the scan write EmulationStation's lists)
+    return true;
+}
+
+//*******************************
+// LegacyLayout::removeRetroBoot
+//*******************************
+bool LegacyLayout::removeRetroBoot(const string &root, const Say &say) {
+    const string ra = findCi(root, "retroarch");
+    const string bin = ra.empty() ? "" : findCi(ra, "bin");
+    if (bin.empty())
+        return true;
+    const string rb = findCi(bin, "retroboot");
+    const string rbApps = findCi(bin, "apps");
+    const bool hasTree = !rb.empty() && DirEntry::isDirectory(rb);
+    if (hasTree) {
+        // every file migrate() copies must be on the stick where the launcher looks
+        const string lib = root + "/Autobleem/lib";
+        const struct {
+            string from, to;
+        } copies[] = {{rb + "/assets/lib", lib + "/apps"}, {rb + "/lib", lib + "/retroarch"}, {rb + "/modules", lib + "/modules"}};
+        for (const auto &c : copies) {
+            for (const DirEntry &f : DirEntry::diru_FilesOnly(c.from)) {
+                const string there = c.to + "/" + f.name;
+                if (!DirEntry::exists(there) || DirEntry::fileSize(there) != DirEntry::fileSize(c.from + "/" + f.name)) {
+                    say("  RetroBoot's tree kept: " + f.name + " is not in " + c.to.substr(root.size() + 1) + " yet");
+                    return false;
+                }
+            }
+        }
+        // a script of the stick that still starts something under retroboot/ would break
+        vector<string> scripts;
+        for (const DirEntry &app : DirEntry::diru_DirsOnly(root + "/Apps"))
+            for (const DirEntry &f : DirEntry::diru_FilesOnly(root + "/Apps/" + app.name))
+                if (endsWith(f.name, ".sh"))
+                    scripts.push_back(root + "/Apps/" + app.name + "/" + f.name);
+        for (const DirEntry &f : DirEntry::diru_FilesOnly(root + "/Autobleem/rc"))
+            if (endsWith(f.name, ".sh"))
+                scripts.push_back(root + "/Autobleem/rc/" + f.name);
+        for (const string &script : scripts) {
+            if (lower(readText(script)).find("retroboot/") != string::npos) {
+                say("  RetroBoot's tree kept: " + script.substr(root.size() + 1) + " still starts something in it");
+                return false;
+            }
+        }
+        DirEntry::removeDirAndContents(rb);
+        say("  removed RetroArch/bin/retroboot (RetroBoot's own tree)");
+    }
+    // the apps folder: only the folders with nothing in them - an app that is not in Apps/ keeps its files
     if (!rbApps.empty() && DirEntry::isDirectory(rbApps)) {
         for (const DirEntry &d : DirEntry::diru_DirsOnly(rbApps))
             removeIfEmpty(rbApps + "/" + d.name);
         if (removeIfEmpty(rbApps))
-            say("  removed the emptied retroarch/apps");
-    }
-    if (DirEntry::isDirectory(rb)) {
-        DirEntry::removeDirAndContents(rb);
-        say("  removed RetroArch/bin/retroboot (RetroBoot's own tree)");
+            say("  removed the emptied RetroArch/bin/apps");
+        else
+            say("  RetroArch/bin/apps kept: an app in it is not in Apps/");
     }
     return true;
 }

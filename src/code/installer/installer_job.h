@@ -44,6 +44,9 @@ struct InstallOptions {
     bool retroarch = false;
     bool bios = false; // needs retroarch (or RetroArch already on the stick)
     bool samples = false;
+    // delete RetroBoot's leftovers (RetroArch/bin/retroboot, ~600 MB with EmulationStation, and the emptied
+    // RetroArch/bin/apps) after the update - the user's choice, never on by default
+    bool removeRetroBoot = false;
     // the console's own RetroArch update: a retroarch-psc-<v>.zip already downloaded and checked. The run then
     // does only that - the zip laid over the RetroArch that is on the stick (what the "RetroArch" phase does
     // with a new build, minus the cores, libraries, apps and bundles); packageFile and channel are not used

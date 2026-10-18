@@ -125,6 +125,11 @@ public:
             ok = bios(error);
         if (ok && opt.samples)
             ok = samples(error);
+        if (ok && opt.removeRetroBoot) {
+            // the user's choice, last: everything the stick needs is in place by now; a refusal is a line, not a failure
+            say("RetroBoot's leftovers were asked to be removed");
+            LegacyLayout::removeRetroBoot(root, [this](const string &line) { say(line); });
+        }
         if (ok)
             finish();
         if (DirEntry::isDirectory(scratch) && opt.scratchDir.empty())
