@@ -478,6 +478,11 @@ const vector<string> &Env::retroArchBinaries() {
 }
 
 bool Env::retroArchInstalled() {
+    // AB_FAKE_RA_BINARY=<path>: a test switch - only that file says whether RetroArch is installed (the fake runner
+    // creates it on Install and deletes it on Remove), whatever binary the host has
+    const char *fake = getenv("AB_FAKE_RA_BINARY");
+    if (fake != nullptr && *fake != '\0')
+        return DirEntry::exists(fake);
     for (const string &path : retroArchBinaries_) {
         if (DirEntry::exists(path))
             return true;
