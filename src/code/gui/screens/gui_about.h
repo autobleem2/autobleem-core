@@ -5,6 +5,7 @@
 
 #include "../gui_screen.h"
 #include "../starfx.h"
+#include "gui_surprise.h"
 #include "../gui_font.h"
 #include <ableem/ui/texture.h>
 #include <ableem/ui/audio.h>
@@ -35,6 +36,7 @@ public:
 
 private:
     // Start opens the "Surprise" easter egg ("BleemStrike: Reloaded"), GuiSurprise, a screen of its own
+    SurpriseAssets surpriseAssets; // loaded by the first Start, kept for the next
     void drawCredits();
     // 4:3 output: the credits as pages of one column, text a size up (the 1280 two-column design is too small there)
     void drawCreditsNarrow();

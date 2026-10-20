@@ -398,7 +398,7 @@ void GuiAbout::loop() {
             }
             if (e.type == Event::Type::ButtonDown && e.button == Button::Start) {
                 // the surprise game is a screen of its own, dropping in from the top over the credits
-                GuiSurprise surprise(*gui);
+                GuiSurprise surprise(*gui, surpriseAssets);
                 surprise.show();
                 pageSince = gui->platform().ticks(); // the credits' page turns count from now
             } else if (e.type == Event::Type::ButtonDown && e.button == Button::Circle) {

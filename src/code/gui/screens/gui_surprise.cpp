@@ -40,6 +40,14 @@ void GuiSurprise::init() {
 // the game's sprites, lettering and sounds: loaded when the screen opens, not when About opens (they were ~90% of its
 // open time and the credits draw none of them)
 void GuiSurprise::loadGameAssets() {
+    if (assets.loaded) {
+        font = assets.font;
+        sprites = assets.sprites;
+        hud = assets.hud;
+        game.sounds = assets.sounds;
+        surpriseMusic = assets.music;
+        return;
+    }
     Stage whole("load game assets");
     string sdir = Env::getWorkingPath() + sep + "surprise_game" + sep;
     {
@@ -86,6 +94,12 @@ void GuiSurprise::loadGameAssets() {
         game.sounds.powerup = ableem::Sound::load(sdir + "sfx_powerup.ogg");
         surpriseMusic = ableem::Music::load(sdir + "music.ogg");
     }
+    assets.font = font;
+    assets.sprites = sprites;
+    assets.hud = hud;
+    assets.sounds = game.sounds;
+    assets.music = surpriseMusic;
+    assets.loaded = true;
 }
 
 //*******************************

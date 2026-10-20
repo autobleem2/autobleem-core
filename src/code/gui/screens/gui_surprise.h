@@ -12,11 +12,25 @@
 #include <ableem/ui/audio.h>
 
 //********************
+// SurpriseAssets
+//********************
+// the game's sprites, lettering and sounds. The screen that opens GuiSurprise owns one (GuiAbout), so a second Start
+// finds them loaded: the load is ~170 ms, more than the drop itself. All of them are cheap shared handles.
+struct SurpriseAssets {
+    bool loaded = false;
+    ableem::Font font; // the credits' face: the HUD's fallback
+    SurpriseSprites sprites;
+    SurpriseHud hud;
+    SurpriseSounds sounds;
+    ableem::Music music;
+};
+
+//********************
 // GuiSurprise
 //********************
 class GuiSurprise : public GuiScreen {
 public:
-    explicit GuiSurprise(ableem::GuiBase &_gui) : GuiScreen(_gui) {
+    GuiSurprise(ableem::GuiBase &_gui, SurpriseAssets &cache) : GuiScreen(_gui), assets(cache) {
         // the drop in from the top; the out is the in played backwards, a rise. Animations Off: the stack arms
         // nothing, the screen opens and closes instantly
         declareTransitions(abgui::ScreenTransitions(abgui::Transition::drop()));
@@ -31,6 +45,7 @@ public:
     void loop() override;
 
 private:
+    SurpriseAssets &assets;
     ableem::Font font; // the credits' face, the HUD's fallback
     bool crossHeld = false;
     SurpriseGame game;
