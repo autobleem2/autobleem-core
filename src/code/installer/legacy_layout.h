@@ -13,6 +13,7 @@
 //   Apps/<name> reaching into retroarch/apps    ->  self-contained: the files moved in, the scripts pointed
 //                                                   at /media/Apps/<name>, /media/System/Logs and
 //                                                   Autobleem/rc/app_env.sh; Apps/retroboot removed
+//   RetroArch/bin/retroboot, the emptied apps/     ->  kept; removeRetroBoot() removes them on the user's request
 //
 // The same steps as tools/install_autobleem.py's `layout` stage, which ran on the owner's stick first.
 //
@@ -37,6 +38,12 @@ public:
     // System"), merged into it when both exist (a file already there is kept). Safe on any stick, any number
     // of times (tools/install_autobleem.py's ROMS_LAYOUT_MAP). The number of folders converted.
     static int convertRomFolders(const std::string &romsDir, const Say &say);
+
+    // RetroArch/bin/retroboot (RetroBoot's tree, EmulationStation included) and the emptied RetroArch/bin/apps
+    // removed - ONLY when the user asked (InstallOptions::removeRetroBoot). Nothing is deleted when a library or
+    // module of the tree is not in Autobleem/lib yet, or when a script of Apps/ or Autobleem/rc still names
+    // retroboot/ (false, a line to `say` says which). apps/ goes only if every folder in it is empty.
+    static bool removeRetroBoot(const std::string &root, const Say &say);
 
     // the path rewrites for a text file (retroarch.cfg, a playlist, an app's script); the text as it
     // should be - the same when nothing applies

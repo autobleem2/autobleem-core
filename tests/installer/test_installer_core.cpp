@@ -700,6 +700,8 @@ TEST_CASE("an AutoBleem 1.0 / NG stick is brought to the new layout before the u
         launch ==
         "export LD_LIBRARY_PATH=\"/tmp/applib\"\ncd /media/Apps/eduke32\n./eduke32 > /media/System/Logs/duke3d.log\n");
     CHECK_FALSE(fx.has("Apps/retroboot"));
+    // RetroBoot's tree is the user's to delete: not asked, it stays whole
+    CHECK(fx.has("RetroArch/bin/retroboot/bin/launch_rfa.sh"));
     // and the update itself went through, the old settings kept
     CHECK(fx.tmp.readFile("stick/Autobleem/bin/autobleem/autobleem-gui") == "ELF v2.0.0-pre0-abc1234");
     {
@@ -715,6 +717,89 @@ TEST_CASE("an AutoBleem 1.0 / NG stick is brought to the new layout before the u
     Fixture again;
     again.options = fx.options;
     CHECK_FALSE(InstallerJob::inspect(again.options).legacyLayout);
+}
+
+// a RetroBoot stick with an app in retroarch/apps/ that Apps/ also has (moved by the migration) and, with
+// `strayApp`, one that Apps/ does not have
+static void retroBootStick(Fixture &fx, bool strayApp) {
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF 1.0");
+    fx.tmp.writeFile("stick/retroarch/retroarch", "ELF 1.9.0");
+    fx.tmp.writeFile("stick/retroarch/retroarch.cfg", "xmb_theme = \"8\"\n");
+    fx.tmp.writeFile("stick/retroarch/retroboot/assets/lib/libSDL2_image-2.0.so.0.0.1", "so");
+    fx.tmp.writeFile("stick/retroarch/retroboot/modules/xpad.ko", "ko");
+    fx.tmp.writeFile("stick/retroarch/retroboot/emulationstation/.emulationstation/es_settings.cfg", "es");
+    fx.tmp.writeFile("stick/retroarch/apps/eduke32/eduke32", "ELF");
+    fx.tmp.writeFile("stick/Apps/eduke32/app.ini", "Title=Duke\n");
+    fx.tmp.writeFile("stick/Apps/eduke32/run.sh", "sh \"/media/retroarch/apps/eduke32/launch.sh\"\n");
+    if (strayApp)
+        fx.tmp.writeFile("stick/retroarch/apps/doom/doom.wad", "wad");
+}
+
+TEST_CASE("RetroBoot's tree and apps folder stay when the user did not ask for their removal") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    REQUIRE_FALSE(fx.options.removeRetroBoot); // the default
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.has("RetroArch/bin/retroboot/emulationstation/.emulationstation/es_settings.cfg"));
+    CHECK(fx.has("RetroArch/bin/retroboot/modules/xpad.ko"));
+    CHECK(fx.has("Autobleem/lib/modules/xpad.ko")); // copied, the original untouched
+    CHECK_FALSE(fx.out.said("removed RetroArch/bin/retroboot"));
+}
+
+TEST_CASE("RetroBoot's tree is removed when the user asked, after its libraries are in Autobleem/lib") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    fx.options.removeRetroBoot = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.has("Autobleem/lib/apps/libSDL2_image-2.0.so.0.0.1"));
+    CHECK(fx.has("Autobleem/lib/modules/xpad.ko"));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK_FALSE(fx.has("RetroArch/bin/apps"));
+    CHECK(fx.has("Apps/eduke32/eduke32"));
+    CHECK(fx.has("RetroArch/bin/retroarch"));
+    CHECK(fx.out.said("removed RetroArch/bin/retroboot"));
+}
+
+TEST_CASE("nothing of RetroBoot is removed while a library of it is missing from Autobleem/lib") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    InstallerJob::inspect(fx.options);
+    // the migration has run; a module is lost from Autobleem/lib behind its back
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    REQUIRE(fx.has("RetroArch/bin/retroboot/modules/xpad.ko"));
+    REQUIRE(DirEntry::removeFile(fx.root + "/Autobleem/lib/modules/xpad.ko"));
+    vector<string> said;
+    CHECK_FALSE(LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); }));
+    CHECK(fx.has("RetroArch/bin/retroboot/modules/xpad.ko"));
+    CHECK(fx.has("RetroArch/bin/retroboot/emulationstation/.emulationstation/es_settings.cfg"));
+    REQUIRE(said.size() == 1);
+    CHECK(said[0].find("xpad.ko") != string::npos);
+    // a script still starting something in retroboot/ blocks it too
+    fx.tmp.writeFile("stick/Autobleem/lib/modules/xpad.ko", "ko");
+    fx.tmp.writeFile("stick/Apps/old/run.sh", "sh /media/RetroArch/bin/retroboot/bin/start.sh\n");
+    said.clear();
+    CHECK_FALSE(LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); }));
+    CHECK(fx.has("RetroArch/bin/retroboot"));
+    // and with both in order it goes
+    DirEntry::removeFile(fx.root + "/Apps/old/run.sh");
+    CHECK(LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); }));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+}
+
+TEST_CASE("an app in RetroArch/bin/apps that Apps/ does not have stays with its files") {
+    Fixture fx;
+    retroBootStick(fx, true);
+    fx.options.removeRetroBoot = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK(fx.tmp.readFile("stick/RetroArch/bin/apps/doom/doom.wad") == "wad");
+    CHECK_FALSE(fx.has("RetroArch/bin/apps/eduke32")); // moved to Apps/ by the migration
+    CHECK(fx.has("Apps/eduke32/eduke32"));
+    CHECK(fx.out.said("RetroArch/bin/apps kept"));
 }
 
 TEST_CASE("a new RetroArch build over a RetroBoot-era retroarch.cfg sets its own keys, keeps the rest") {
@@ -1217,8 +1302,7 @@ TEST_CASE("RetroArch alone: every key in order, and the binary is laid last") {
     RetroArchResult r = InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, out, NeverStop);
     REQUIRE_MESSAGE(r.ok, r.error);
     CHECK(out.phases == vector<string>{"check-space", "download-retroarch", "download-cores", "download-libs",
-                                       "download-apps", "download-assets", "unpack", "merge-config",
-                                       "install-binary"});
+                                       "download-apps", "download-assets", "unpack", "merge-config", "install-binary"});
     CHECK(out.binary == "old retroarch"); // not touched until the last phase
     CHECK(out.everythingElse);            // cores, cfg, assets and the theme were all in place by then
     CHECK_FALSE(out.versionStamped);      // the stamp follows the binary
@@ -1258,11 +1342,11 @@ TEST_CASE("RetroArch remove deletes RetroArch and keeps what is the user's") {
     Fixture fx;
     Recorder out;
     REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), true, fx.site, out, NeverStop).ok);
-    for (const char *keep : {"RetroArch/roms/nes/game.nes", "RetroArch/bin/playlists/a.lpl",
-                             "RetroArch/bin/thumbnails/x.png", "RetroArch/bin/saves/s.srm",
-                             "RetroArch/bin/savestates/s.state", "RetroArch/bin/screenshots/p.png",
-                             "RetroArch/bin/config/c.cfg", "RetroArch/bin/retroboot/r.txt", "Games/g/g.cue",
-                             "Autobleem/lib/own.so", "Apps/own/run.sh"})
+    for (const char *keep :
+         {"RetroArch/roms/nes/game.nes", "RetroArch/bin/playlists/a.lpl", "RetroArch/bin/thumbnails/x.png",
+          "RetroArch/bin/saves/s.srm", "RetroArch/bin/savestates/s.state", "RetroArch/bin/screenshots/p.png",
+          "RetroArch/bin/config/c.cfg", "RetroArch/bin/retroboot/r.txt", "Games/g/g.cue", "Autobleem/lib/own.so",
+          "Apps/own/run.sh"})
         fx.tmp.writeFile(string("stick/") + keep, "mine");
     fx.tmp.writeFile("stick/RetroArch/bin/cores.removing/old.so", "left by a cut-off run");
     REQUIRE(fx.has("RetroArch/bin/retroarch"));
@@ -1382,7 +1466,7 @@ TEST_CASE("RetroArch install: a stop keeps the .part, the second install continu
     ProgressFile again(fx.tmp.at("progress"), 0);
     CHECK(RetroArchRunner::run("install", raOptions(fx), false, dl, again, stop) == 0);
     CHECK(progressText(fx, "progress") == "end|ok");
-    CHECK(net.served.count(raUrl) == 0);                               // the finished zip was not fetched again
+    CHECK(net.served.count(raUrl) == 0);                              // the finished zip was not fetched again
     CHECK(net.served[coresUrl] == static_cast<size_t>(whole - half)); // only the rest of the cut one
     bool continued = false;
     for (const string &l : net.lines)
@@ -1488,8 +1572,8 @@ TEST_CASE("RetroArch install: download-assets is one bar in bytes over the zips 
     const vector<Report> got = rec.of("download-assets");
     REQUIRE_FALSE(got.empty());
     uint64_t sum = 0;
-    for (const char *b : {"assets", "autoconfig", "database-rdb", "database-cursors", "cheats", "overlays",
-                          "shaders_glsl"})
+    for (const char *b :
+         {"assets", "autoconfig", "database-rdb", "database-cursors", "cheats", "overlays", "shaders_glsl"})
         sum += static_cast<uint64_t>(DirEntry::fileSize(fx.tmp.at(string("site/") + b + ".zip")));
     for (const Report &x : got) {
         CHECK(x.unit == "bytes");
@@ -1656,4 +1740,161 @@ TEST_CASE("CommandDownloader::contentLength: the %c slot takes --head, a templat
     CHECK(seen.find("--head") != string::npos);
     CommandDownloader plain("curl -o \"%o\" \"%u\"", [](const string &) { return 0; });
     CHECK_FALSE(plain.contentLength("http://site/assets.zip", tmp.at("size.txt"), size));
+}
+
+#ifndef _WIN32
+// adversarial: removing RetroBoot's tree must never reach outside it
+TEST_CASE("removeRetroBoot does not delete what a symlink inside RetroBoot's tree points to") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/RetroArch/roms/snes/game.sfc", "rom");
+    REQUIRE(symlink((fx.root + "/RetroArch/roms").c_str(),
+                    (fx.root + "/RetroArch/bin/retroboot/emulationstation/roms").c_str()) == 0);
+    LegacyLayout::removeRetroBoot(fx.root, [](const string &) {});
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK(fx.has("RetroArch/roms/snes/game.sfc"));
+}
+
+TEST_CASE("removeRetroBoot does not delete through a symlinked retroboot folder") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("elsewhere/keep/me.txt", "mine");
+    DirEntry::removeDirAndContents(fx.root + "/RetroArch/bin/retroboot");
+    fx.tmp.makeSubDir("elsewhere/lib");
+    REQUIRE(symlink(fx.tmp.at("elsewhere").c_str(), (fx.root + "/RetroArch/bin/retroboot").c_str()) == 0);
+    LegacyLayout::removeRetroBoot(fx.root, [](const string &) {});
+    CHECK(fx.tmp.readFile("elsewhere/keep/me.txt") == "mine");
+}
+#endif
+
+TEST_CASE("an apps folder holding only a hidden file is not removed") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/RetroArch/bin/apps/mine/.config", "precious");
+    LegacyLayout::removeRetroBoot(fx.root, [](const string &) {});
+    CHECK(fx.has("RetroArch/bin/apps/mine/.config"));
+}
+
+#ifndef _WIN32
+TEST_CASE("a removal that fails half way does not say removed") {
+    if (geteuid() == 0)
+        return;
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    const string locked = fx.root + "/RetroArch/bin/retroboot/emulationstation/.emulationstation";
+    chmod(locked.c_str(), 0555);
+    vector<string> said;
+    LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); });
+    chmod(locked.c_str(), 0755);
+    bool claimed = false;
+    for (const string &l : said)
+        if (l.find("removed RetroArch/bin/retroboot") != string::npos)
+            claimed = true;
+    CHECK((!claimed || !fx.has("RetroArch/bin/retroboot")));
+}
+#endif
+
+TEST_CASE("removeRetroBoot: a tree with capital letters in its names is found and removed") {
+    Fixture fx;
+    fx.tmp.writeFile("stick/Autobleem/bin/autobleem/autobleem-gui", "ELF 1.0");
+    fx.tmp.writeFile("stick/retroarch/retroarch", "ELF 1.9.0");
+    fx.tmp.writeFile("stick/retroarch/retroarch.cfg", "xmb_theme = \"8\"\n");
+    fx.tmp.writeFile("stick/retroarch/RetroBoot/modules/xpad.ko", "ko");
+    fx.options.removeRetroBoot = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    // migrate() looks for the lowercase name only, so nothing was copied; removeRetroBoot (case-insensitive)
+    // must then refuse and keep the tree
+    CHECK_FALSE(fx.has("Autobleem/lib/modules/xpad.ko"));
+    CHECK(fx.has("RetroArch/bin/RetroBoot/modules/xpad.ko"));
+}
+
+TEST_CASE("removeRetroBoot: a big file in the tree goes, the rest of the stick stays") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    fx.options.removeRetroBoot = true;
+    {
+        ofstream big(fx.tmp.at("stick/retroarch/retroboot/emulationstation/big.bin"), ios::binary);
+        string chunk(1 << 20, 'x');
+        for (int i = 0; i < 64; i++)
+            big << chunk;
+    }
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK(fx.has("RetroArch/bin/retroarch"));
+}
+
+TEST_CASE("removeRetroBoot: an Apps/ script without the .sh extension that names retroboot/ blocks the removal") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/Apps/odd/launch", "#!/bin/sh\nexec /media/RetroArch/bin/retroboot/bin/start\n");
+    LegacyLayout::removeRetroBoot(fx.root, [](const string &) {});
+    CHECK(fx.has("RetroArch/bin/retroboot"));
+}
+
+TEST_CASE("removeRetroBoot: the script scan skips a binary file") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/Apps/odd/tool", string("\x7f"
+                                                   "ELF\0\0 retroboot/bin/start",
+                                                   24));
+    CHECK(LegacyLayout::removeRetroBoot(fx.root, [](const string &) {}));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+}
+
+TEST_CASE("removeRetroBoot: the script scan skips a file over 1 MiB and says so") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("stick/Apps/odd/huge",
+                     "exec /media/RetroArch/bin/retroboot/bin/start\n" + string((1 << 20) + 1, '#'));
+    vector<string> said;
+    CHECK(LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); }));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    bool noted = false;
+    for (const string &l : said)
+        if (l.find("not scanned") != string::npos && l.find("huge") != string::npos)
+            noted = true;
+    CHECK(noted);
+}
+
+#ifndef _WIN32
+TEST_CASE("removeRetroBoot: the script scan does not follow a symlinked file") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    fx.tmp.writeFile("elsewhere/start.txt", "exec /media/RetroArch/bin/retroboot/bin/start\n");
+    fx.tmp.makeSubDir("stick/Apps/odd");
+    REQUIRE(symlink(fx.tmp.at("elsewhere/start.txt").c_str(), (fx.root + "/Apps/odd/launch").c_str()) == 0);
+    CHECK(LegacyLayout::removeRetroBoot(fx.root, [](const string &) {}));
+    CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
+    CHECK(fx.tmp.readFile("elsewhere/start.txt").find("retroboot/") != string::npos);
+}
+#endif
+
+TEST_CASE("removeRetroBoot: a library missing from Autobleem/lib keeps the whole tree (through the job)") {
+    Fixture fx;
+    retroBootStick(fx, false);
+    fx.tmp.writeFile("stick/retroarch/retroboot/lib/libfoo.so", "so");
+    fx.tmp.writeFile("stick/Autobleem/lib/retroarch/libfoo.so", "different size");
+    fx.options.removeRetroBoot = true;
+    string error;
+    REQUIRE_MESSAGE(fx.run(error), error);
+    CHECK(fx.has("RetroArch/bin/retroboot/lib/libfoo.so"));
+    CHECK(fx.has("Autobleem/lib/retroarch/libfoo.so"));
 }

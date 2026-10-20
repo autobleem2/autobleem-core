@@ -73,16 +73,7 @@ const Bundle Bundles[] = {
 // the folders of RetroArch/bin a Remove takes (each renamed <name>.removing, then deleted); a Remove that was cut
 // off leaves the renamed ones, and the next Install or Remove finishes them
 const char *const RemovedDirs[] = {
-    "cores",
-    "info",
-    "assets",
-    "database",
-    "cheats",
-    "overlays",
-    "shaders",
-    "downloads",
-    "records",
-    "Retroarch themes",
+    "cores", "info", "assets", "database", "cheats", "overlays", "shaders", "downloads", "records", "Retroarch themes",
 };
 
 //******************
@@ -125,6 +116,12 @@ public:
             ok = bios(error);
         if (ok && opt.samples)
             ok = samples(error);
+        if (ok && opt.removeRetroBoot) {
+            // the user's choice, last: everything the stick needs is in place by now; a refusal is a line, not a
+            // failure
+            say("RetroBoot's leftovers were asked to be removed");
+            LegacyLayout::removeRetroBoot(root, [this](const string &line) { say(line); });
+        }
         if (ok)
             finish();
         if (DirEntry::isDirectory(scratch) && opt.scratchDir.empty())
@@ -157,9 +154,8 @@ public:
             phase("download-retroarch");
             ok = !stopped(error) && downloadVerified(raCatalog.zip, scratch + "/" + raCatalog.zip.name, error);
         }
-        const pair<const char *, const PackCatalog *> packs[] = {{"download-cores", &coresCatalog},
-                                                                  {"download-libs", &libsCatalog},
-                                                                  {"download-apps", &appsCatalog}};
+        const pair<const char *, const PackCatalog *> packs[] = {
+            {"download-cores", &coresCatalog}, {"download-libs", &libsCatalog}, {"download-apps", &appsCatalog}};
         for (const auto &p : packs) {
             if (!ok)
                 break;
@@ -226,9 +222,9 @@ private:
         if (!fetchCatalog("psc/retroarch/latest.json", text, error) || !raCatalog.parse(text))
             return catalogLost("psc/retroarch/latest.json", error);
         uint64_t need = 0;
-        const pair<const char *, PackCatalog *> packs[] = {
-            {"psc/cores/latest.json", &coresCatalog}, {"psc/libs/latest.json", &libsCatalog},
-            {"psc/apps/latest.json", &appsCatalog}};
+        const pair<const char *, PackCatalog *> packs[] = {{"psc/cores/latest.json", &coresCatalog},
+                                                           {"psc/libs/latest.json", &libsCatalog},
+                                                           {"psc/apps/latest.json", &appsCatalog}};
         int caught = 1;
         for (const auto &p : packs) {
             if (stopped(error))
@@ -785,9 +781,8 @@ private:
         const string unpacked = scratch + "/retroarch";
         DirEntry::removeDirAndContents(unpacked);
         out.onItem(zipName, itemIndex, itemCount, "files");
-        if (!ZipArchive::extractCounting(zip, unpacked, [this](uint64_t done, uint64_t total) {
-                out.onProgress(done, total ? total : 1);
-            })) {
+        if (!ZipArchive::extractCounting(
+                zip, unpacked, [this](uint64_t done, uint64_t total) { out.onProgress(done, total ? total : 1); })) {
             if (error.empty())
                 error = "cannot unpack " + zipName;
             DirEntry::removeDirAndContents(unpacked);

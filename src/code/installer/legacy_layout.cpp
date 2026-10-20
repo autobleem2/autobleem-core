@@ -4,15 +4,105 @@
 #include <ableem/engine/log.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstring>
+#include <functional>
 #include <fstream>
 #include <regex>
 #include <sstream>
 #include <vector>
 
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 using namespace std;
 using ableem::DirEntry;
 
 namespace {
+
+#ifdef _WIN32
+// no lstat/S_ISLNK in mingw: a symlink, a junction or any other reparse point counts as a link, and is never entered
+DWORD winAttributes(const string &path) {
+    return GetFileAttributesA(path.c_str());
+}
+
+bool isSymlink(const string &path) {
+    const DWORD a = winAttributes(path);
+    return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+}
+
+bool isRealDir(const string &path) {
+    const DWORD a = winAttributes(path);
+    return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY) != 0 &&
+           (a & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+}
+
+// the link itself only (a directory link is removed as a directory, which does not touch its target)
+bool isRealFile(const string &path) {
+    const DWORD a = winAttributes(path);
+    return a != INVALID_FILE_ATTRIBUTES && (a & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) == 0;
+}
+
+bool unlinkLink(const string &path) {
+    return (winAttributes(path) & FILE_ATTRIBUTE_DIRECTORY) ? RemoveDirectoryA(path.c_str()) != 0
+                                                            : DeleteFileA(path.c_str()) != 0;
+}
+
+bool gone(const string &path) {
+    return winAttributes(path) == INVALID_FILE_ATTRIBUTES;
+}
+#else
+bool isSymlink(const string &path) {
+    struct stat st;
+    return lstat(path.c_str(), &st) == 0 && S_ISLNK(st.st_mode);
+}
+
+bool isRealDir(const string &path) {
+    struct stat st;
+    return lstat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+bool isRealFile(const string &path) {
+    struct stat st;
+    return lstat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+
+bool unlinkLink(const string &path) {
+    return unlink(path.c_str()) == 0;
+}
+
+bool gone(const string &path) {
+    struct stat st;
+    return lstat(path.c_str(), &st) != 0;
+}
+#endif
+
+// removes `path` and what is in it without ever following a symlink: a link is unlinked, never entered (the
+// global DirEntry::rmDir stat()s and would walk into the link's target). Dotfiles included. Failures are left
+// in place; the first folder or file that could not go is in `failed`. True when `path` is gone.
+bool removeTree(const string &path, string &failed) {
+    if (isRealDir(path)) {
+        if (DIR *d = opendir(path.c_str())) {
+            vector<string> names;
+            while (struct dirent *p = readdir(d))
+                if (strcmp(p->d_name, ".") != 0 && strcmp(p->d_name, "..") != 0)
+                    names.push_back(p->d_name);
+            closedir(d);
+            for (const string &name : names)
+                removeTree(path + "/" + name, failed);
+        }
+        if (rmdir(path.c_str()) != 0 && failed.empty())
+            failed = path;
+    } else if (!unlinkLink(path) && failed.empty()) {
+        failed = path;
+    }
+    return gone(path);
+}
 
 string readText(const string &path) {
     ifstream in(path, ios::binary);
@@ -21,6 +111,50 @@ string readText(const string &path) {
     stringstream ss;
     ss << in.rdbuf();
     return ss.str();
+}
+
+// the script scan of removeRetroBoot reads every regular file of a folder (any name, links never followed) up to this
+// size
+const long long kScanLimit = 1024 * 1024;
+
+// true when a file of `dir` mentions retroboot/ ; sets `hit` to its path. Binaries (a NUL in the first 8 KiB) and
+// files over kScanLimit are skipped, the latter with a log line.
+bool folderMentionsRetroBoot(const string &dir, string &hit, const function<void(const string &)> &say) {
+    DIR *d = opendir(dir.c_str());
+    if (!d)
+        return false;
+    vector<string> names;
+    while (struct dirent *p = readdir(d))
+        if (strcmp(p->d_name, ".") != 0 && strcmp(p->d_name, "..") != 0)
+            names.push_back(p->d_name);
+    closedir(d);
+    for (const string &name : names) {
+        const string path = dir + "/" + name;
+        if (!isRealFile(path))
+            continue;
+        ifstream in(path, ios::binary);
+        if (!in)
+            continue;
+        in.seekg(0, ios::end);
+        const long long size = static_cast<long long>(in.tellg());
+        in.seekg(0, ios::beg);
+        if (size > kScanLimit) {
+            say("  not scanned (over 1 MiB): " + path);
+            continue;
+        }
+        stringstream ss;
+        ss << in.rdbuf();
+        const string text = ss.str();
+        if (text.substr(0, 8192).find('\0') != string::npos)
+            continue;
+        string low = text;
+        transform(low.begin(), low.end(), low.begin(), [](unsigned char c) { return static_cast<char>(tolower(c)); });
+        if (low.find("retroboot/") != string::npos) {
+            hit = path;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool writeText(const string &path, const string &text) {
@@ -91,6 +225,11 @@ bool moveMerge(const string &src, const string &dst, bool keepExisting, string &
     }
     DirEntry::rmDir(src);
     return true;
+}
+
+// removes `dir` when nothing is in it, dotfiles counted (rmdir itself refuses a folder with anything inside)
+bool removeIfEmpty(const string &dir) {
+    return !isSymlink(dir) && rmdir(dir.c_str()) == 0;
 }
 
 // copies every file of src into dst that is not there yet
@@ -444,6 +583,73 @@ bool LegacyLayout::migrate(const string &root, const Say &say, string &error) {
                 if (endsWith(f.name, ".sh"))
                     rewriteFile(dir + "/" + f.name, f.name == "run.sh" ? rewriteRunScript : rewritePaths, say);
         }
+    }
+    return true;
+}
+
+//*******************************
+// LegacyLayout::removeRetroBoot
+//*******************************
+bool LegacyLayout::removeRetroBoot(const string &root, const Say &say) {
+    const string ra = findCi(root, "retroarch");
+    const string bin = ra.empty() ? "" : findCi(ra, "bin");
+    if (bin.empty())
+        return true;
+    const string rb = findCi(bin, "retroboot");
+    const string rbApps = findCi(bin, "apps");
+    if (!rb.empty() && isSymlink(rb)) {
+        say("  RetroBoot's tree kept: RetroArch/bin/retroboot is a link, not a folder");
+        return false;
+    }
+    const bool hasTree = !rb.empty() && isRealDir(rb);
+    if (hasTree) {
+        // every file migrate() copies must be on the stick where the launcher looks
+        const string lib = root + "/Autobleem/lib";
+        const struct {
+            string from, to;
+        } copies[] = {{rb + "/assets/lib", lib + "/apps"},
+                      {rb + "/lib", lib + "/retroarch"},
+                      {rb + "/modules", lib + "/modules"}};
+        for (const auto &c : copies) {
+            for (const DirEntry &f : DirEntry::diru_FilesOnly(c.from)) {
+                const string there = c.to + "/" + f.name;
+                if (!DirEntry::exists(there) ||
+                    DirEntry::fileSize(there) != DirEntry::fileSize(c.from + "/" + f.name)) {
+                    say("  RetroBoot's tree kept: " + f.name + " is not in " + c.to.substr(root.size() + 1) + " yet");
+                    return false;
+                }
+            }
+        }
+        // a script of the stick that still starts something under retroboot/ would break
+        // (every regular file counts, whatever its name)
+        vector<string> folders;
+        for (const DirEntry &app : DirEntry::diru_DirsOnly(root + "/Apps"))
+            if (!isSymlink(root + "/Apps/" + app.name))
+                folders.push_back(root + "/Apps/" + app.name);
+        folders.push_back(root + "/Autobleem/rc");
+        for (const string &folder : folders) {
+            string hit;
+            if (folderMentionsRetroBoot(folder, hit, say)) {
+                say("  RetroBoot's tree kept: " + hit.substr(root.size() + 1) + " still starts something in it");
+                return false;
+            }
+        }
+        string failed;
+        if (!removeTree(rb, failed)) {
+            say("  RetroBoot's tree could not be removed completely: " + failed.substr(root.size() + 1) +
+                " stays (the rest may be gone)");
+            return false;
+        }
+        say("  removed RetroArch/bin/retroboot (RetroBoot's own tree)");
+    }
+    // the apps folder: only the folders with nothing in them - an app that is not in Apps/ keeps its files
+    if (!rbApps.empty() && isRealDir(rbApps)) {
+        for (const DirEntry &d : DirEntry::diru_DirsOnly(rbApps))
+            removeIfEmpty(rbApps + "/" + d.name);
+        if (removeIfEmpty(rbApps))
+            say("  removed the emptied RetroArch/bin/apps");
+        else
+            say("  RetroArch/bin/apps kept: an app in it is not in Apps/");
     }
     return true;
 }
