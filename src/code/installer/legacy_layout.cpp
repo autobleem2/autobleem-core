@@ -38,7 +38,8 @@ bool isSymlink(const string &path) {
 
 bool isRealDir(const string &path) {
     const DWORD a = winAttributes(path);
-    return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY) != 0 && (a & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+    return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY) != 0 &&
+           (a & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
 }
 
 // the link itself only (a directory link is removed as a directory, which does not touch its target)
@@ -49,7 +50,7 @@ bool isRealFile(const string &path) {
 
 bool unlinkLink(const string &path) {
     return (winAttributes(path) & FILE_ATTRIBUTE_DIRECTORY) ? RemoveDirectoryA(path.c_str()) != 0
-                                                             : DeleteFileA(path.c_str()) != 0;
+                                                            : DeleteFileA(path.c_str()) != 0;
 }
 
 bool gone(const string &path) {
@@ -112,7 +113,8 @@ string readText(const string &path) {
     return ss.str();
 }
 
-// the script scan of removeRetroBoot reads every regular file of a folder (any name, links never followed) up to this size
+// the script scan of removeRetroBoot reads every regular file of a folder (any name, links never followed) up to this
+// size
 const long long kScanLimit = 1024 * 1024;
 
 // true when a file of `dir` mentions retroboot/ ; sets `hit` to its path. Binaries (a NUL in the first 8 KiB) and
@@ -605,11 +607,14 @@ bool LegacyLayout::removeRetroBoot(const string &root, const Say &say) {
         const string lib = root + "/Autobleem/lib";
         const struct {
             string from, to;
-        } copies[] = {{rb + "/assets/lib", lib + "/apps"}, {rb + "/lib", lib + "/retroarch"}, {rb + "/modules", lib + "/modules"}};
+        } copies[] = {{rb + "/assets/lib", lib + "/apps"},
+                      {rb + "/lib", lib + "/retroarch"},
+                      {rb + "/modules", lib + "/modules"}};
         for (const auto &c : copies) {
             for (const DirEntry &f : DirEntry::diru_FilesOnly(c.from)) {
                 const string there = c.to + "/" + f.name;
-                if (!DirEntry::exists(there) || DirEntry::fileSize(there) != DirEntry::fileSize(c.from + "/" + f.name)) {
+                if (!DirEntry::exists(there) ||
+                    DirEntry::fileSize(there) != DirEntry::fileSize(c.from + "/" + f.name)) {
                     say("  RetroBoot's tree kept: " + f.name + " is not in " + c.to.substr(root.size() + 1) + " yet");
                     return false;
                 }

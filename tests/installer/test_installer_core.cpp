@@ -1302,8 +1302,7 @@ TEST_CASE("RetroArch alone: every key in order, and the binary is laid last") {
     RetroArchResult r = InstallerJob::retroarchInstall(raOptions(fx), false, fx.site, out, NeverStop);
     REQUIRE_MESSAGE(r.ok, r.error);
     CHECK(out.phases == vector<string>{"check-space", "download-retroarch", "download-cores", "download-libs",
-                                       "download-apps", "download-assets", "unpack", "merge-config",
-                                       "install-binary"});
+                                       "download-apps", "download-assets", "unpack", "merge-config", "install-binary"});
     CHECK(out.binary == "old retroarch"); // not touched until the last phase
     CHECK(out.everythingElse);            // cores, cfg, assets and the theme were all in place by then
     CHECK_FALSE(out.versionStamped);      // the stamp follows the binary
@@ -1343,11 +1342,11 @@ TEST_CASE("RetroArch remove deletes RetroArch and keeps what is the user's") {
     Fixture fx;
     Recorder out;
     REQUIRE(InstallerJob::retroarchInstall(raOptions(fx), true, fx.site, out, NeverStop).ok);
-    for (const char *keep : {"RetroArch/roms/nes/game.nes", "RetroArch/bin/playlists/a.lpl",
-                             "RetroArch/bin/thumbnails/x.png", "RetroArch/bin/saves/s.srm",
-                             "RetroArch/bin/savestates/s.state", "RetroArch/bin/screenshots/p.png",
-                             "RetroArch/bin/config/c.cfg", "RetroArch/bin/retroboot/r.txt", "Games/g/g.cue",
-                             "Autobleem/lib/own.so", "Apps/own/run.sh"})
+    for (const char *keep :
+         {"RetroArch/roms/nes/game.nes", "RetroArch/bin/playlists/a.lpl", "RetroArch/bin/thumbnails/x.png",
+          "RetroArch/bin/saves/s.srm", "RetroArch/bin/savestates/s.state", "RetroArch/bin/screenshots/p.png",
+          "RetroArch/bin/config/c.cfg", "RetroArch/bin/retroboot/r.txt", "Games/g/g.cue", "Autobleem/lib/own.so",
+          "Apps/own/run.sh"})
         fx.tmp.writeFile(string("stick/") + keep, "mine");
     fx.tmp.writeFile("stick/RetroArch/bin/cores.removing/old.so", "left by a cut-off run");
     REQUIRE(fx.has("RetroArch/bin/retroarch"));
@@ -1467,7 +1466,7 @@ TEST_CASE("RetroArch install: a stop keeps the .part, the second install continu
     ProgressFile again(fx.tmp.at("progress"), 0);
     CHECK(RetroArchRunner::run("install", raOptions(fx), false, dl, again, stop) == 0);
     CHECK(progressText(fx, "progress") == "end|ok");
-    CHECK(net.served.count(raUrl) == 0);                               // the finished zip was not fetched again
+    CHECK(net.served.count(raUrl) == 0);                              // the finished zip was not fetched again
     CHECK(net.served[coresUrl] == static_cast<size_t>(whole - half)); // only the rest of the cut one
     bool continued = false;
     for (const string &l : net.lines)
@@ -1573,8 +1572,8 @@ TEST_CASE("RetroArch install: download-assets is one bar in bytes over the zips 
     const vector<Report> got = rec.of("download-assets");
     REQUIRE_FALSE(got.empty());
     uint64_t sum = 0;
-    for (const char *b : {"assets", "autoconfig", "database-rdb", "database-cursors", "cheats", "overlays",
-                          "shaders_glsl"})
+    for (const char *b :
+         {"assets", "autoconfig", "database-rdb", "database-cursors", "cheats", "overlays", "shaders_glsl"})
         sum += static_cast<uint64_t>(DirEntry::fileSize(fx.tmp.at(string("site/") + b + ".zip")));
     for (const Report &x : got) {
         CHECK(x.unit == "bytes");
@@ -1751,7 +1750,8 @@ TEST_CASE("removeRetroBoot does not delete what a symlink inside RetroBoot's tre
     string error;
     REQUIRE_MESSAGE(fx.run(error), error);
     fx.tmp.writeFile("stick/RetroArch/roms/snes/game.sfc", "rom");
-    REQUIRE(symlink((fx.root + "/RetroArch/roms").c_str(), (fx.root + "/RetroArch/bin/retroboot/emulationstation/roms").c_str()) == 0);
+    REQUIRE(symlink((fx.root + "/RetroArch/roms").c_str(),
+                    (fx.root + "/RetroArch/bin/retroboot/emulationstation/roms").c_str()) == 0);
     LegacyLayout::removeRetroBoot(fx.root, [](const string &) {});
     CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
     CHECK(fx.has("RetroArch/roms/snes/game.sfc"));
@@ -1848,7 +1848,9 @@ TEST_CASE("removeRetroBoot: the script scan skips a binary file") {
     retroBootStick(fx, false);
     string error;
     REQUIRE_MESSAGE(fx.run(error), error);
-    fx.tmp.writeFile("stick/Apps/odd/tool", string("\x7f" "ELF\0\0 retroboot/bin/start", 24));
+    fx.tmp.writeFile("stick/Apps/odd/tool", string("\x7f"
+                                                   "ELF\0\0 retroboot/bin/start",
+                                                   24));
     CHECK(LegacyLayout::removeRetroBoot(fx.root, [](const string &) {}));
     CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
 }
@@ -1858,7 +1860,8 @@ TEST_CASE("removeRetroBoot: the script scan skips a file over 1 MiB and says so"
     retroBootStick(fx, false);
     string error;
     REQUIRE_MESSAGE(fx.run(error), error);
-    fx.tmp.writeFile("stick/Apps/odd/huge", "exec /media/RetroArch/bin/retroboot/bin/start\n" + string((1 << 20) + 1, '#'));
+    fx.tmp.writeFile("stick/Apps/odd/huge",
+                     "exec /media/RetroArch/bin/retroboot/bin/start\n" + string((1 << 20) + 1, '#'));
     vector<string> said;
     CHECK(LegacyLayout::removeRetroBoot(fx.root, [&](const string &l) { said.push_back(l); }));
     CHECK_FALSE(fx.has("RetroArch/bin/retroboot"));
