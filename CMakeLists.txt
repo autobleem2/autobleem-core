@@ -261,6 +261,7 @@ add_library(ab_classic STATIC
         src/code/gui/screens/gui_hardware_info.cpp
         src/code/gui/screens/gui_keyboard.cpp
         src/code/gui/screens/gui_splash.cpp
+        src/code/gui/screens/gui_surprise.cpp
         src/code/gui/screens/gui_text_page.cpp
         src/code/gui/starfx.cpp
         src/code/gui/surprise_art.cpp
