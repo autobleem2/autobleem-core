@@ -539,6 +539,14 @@ RetroArchScanResult RetroArchScanner::scan(const Options &options, const RetroAr
     // playlist could not be handled records nothing, so it is looked at again next time)
     const map<string, string> lastState = loadScanState(options.stateFile);
     map<string, string> newState;
+    // The digest takes the playlist's size, and two folders may feed one playlist (or a later folder rewrite
+    // it): a digest taken when its own folder was done would be stale by the end of the run and the folder
+    // looked at again next time for nothing. So the digests are taken once all folders are done.
+    struct Settled {
+        string name, fingerprint, playlistPath, rdbPath, targetFolder;
+        const RetroArchSystem *system;
+    };
+    vector<Settled> settled;
 
     int index = 0;
     RdbReader rdb;
@@ -585,7 +593,7 @@ RetroArchScanResult RetroArchScanner::scan(const Options &options, const RetroAr
                 result.systemsScanned++;
                 result.systemsSkipped++;
                 result.gamesFound += countOurs(entries);
-                newState[name] = last->second;
+                settled.push_back({name, folderFingerprint, playlistPath, rdbPath, targetFolder, &system});
                 continue;
             }
         }
@@ -670,10 +678,12 @@ RetroArchScanResult RetroArchScanner::scan(const Options &options, const RetroAr
                 result.playlistsWritten.push_back(written);
         }
 
-        // the digest is taken with the playlist as it is now, so the next scan finds it unchanged
+        // the digest is taken with the playlists as they end up, so the next scan finds them unchanged
         if (!options.stateFile.empty())
-            newState[name] = folderDigest(folderFingerprint, playlistPath, rdbPath, targetFolder, system);
+            settled.push_back({name, folderFingerprint, playlistPath, rdbPath, targetFolder, &system});
     }
+    for (const Settled &s : settled)
+        newState[s.name] = folderDigest(s.fingerprint, s.playlistPath, s.rdbPath, s.targetFolder, *s.system);
 
     if (!options.stateFile.empty() && newState != lastState)
         saveScanState(options.stateFile, newState);
