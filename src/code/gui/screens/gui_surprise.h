@@ -4,6 +4,7 @@
 //
 #pragma once
 
+#include <string>
 #include "../gui_screen.h"
 #include "../starfx.h"
 #include "../surprise_game.h"
@@ -14,15 +15,24 @@
 //********************
 // SurpriseAssets
 //********************
-// the game's sprites, lettering and sounds. The screen that opens GuiSurprise owns one (GuiAbout), so a second Start
-// finds them loaded: the load is ~170 ms, more than the drop itself. All of them are cheap shared handles.
+// the game's sprites, lettering and sounds. The screen that opens GuiSurprise owns one (GuiAbout), so a Start finds
+// them loaded: the load is ~170 ms on the PC (about a second on the PSC), more than the drop itself. GuiAbout feeds
+// loadStep() one small portion a frame while it is open; GuiSurprise finishes whatever is left. All of them are cheap
+// shared handles. Held while About is open: ~17 MB (sky 8.6 MB, the two belts 6.9 MB as RGBA textures, sounds and
+// fonts ~1-2 MB); release() gives it all back when About closes.
 struct SurpriseAssets {
     bool loaded = false;
+    int step = 0; // the next portion of loadStep()
     ableem::Font font; // the credits' face: the HUD's fallback
     SurpriseSprites sprites;
     SurpriseHud hud;
     SurpriseSounds sounds;
     ableem::Music music;
+
+    static constexpr int Steps = 8;
+    // loads the next portion (a few ms each, 40 ms at most on the PC); true once everything is loaded
+    bool loadStep(ableem::Renderer &renderer, const std::string &language);
+    void release() { *this = SurpriseAssets(); }
 };
 
 //********************

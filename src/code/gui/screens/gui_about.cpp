@@ -374,9 +374,15 @@ void GuiAbout::drawCreditsNarrow() {
 void GuiAbout::loop() {
     std::shared_ptr<Gui> gui(Gui::getInstance());
     menuVisible = true;
+    // the surprise game's assets load in the background, one small portion a frame once About's own opening has
+    // settled, so Start finds them there (UIREV-53); the Animations Off path is the same, it just has them earlier
+    const unsigned int openedAt = gui->platform().ticks();
     while (menuVisible) {
         const unsigned int ticks = gui->platform().ticks();
         render();
+        if (!surpriseAssets.loaded && ticks - openedAt >= PreloadDelayMs) {
+            surpriseAssets.loadStep(renderer, app.config().inifile.values["language"]);
+        }
         Event e;
         while (gui->input().poll(e)) {
             // this is for pc Only
@@ -407,4 +413,5 @@ void GuiAbout::loop() {
             }
         }
     }
+    surpriseAssets.release(); // ~17 MB of textures, sounds and fonts, not kept past About
 }

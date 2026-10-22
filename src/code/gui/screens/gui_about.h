@@ -36,7 +36,8 @@ public:
 
 private:
     // Start opens the "Surprise" easter egg ("BleemStrike: Reloaded"), GuiSurprise, a screen of its own
-    SurpriseAssets surpriseAssets; // loaded by the first Start, kept for the next
+    SurpriseAssets surpriseAssets; // preloaded in the background while About is open, freed when it closes
+    static constexpr unsigned int PreloadDelayMs = 500; // About's own opening settles first
     void drawCredits();
     // 4:3 output: the credits as pages of one column, text a size up (the 1280 two-column design is too small there)
     void drawCreditsNarrow();

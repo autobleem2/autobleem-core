@@ -48,10 +48,38 @@ void GuiSurprise::loadGameAssets() {
         surpriseMusic = assets.music;
         return;
     }
+    // what About's idle frames did not get to
     Stage whole("load game assets");
-    string sdir = Env::getWorkingPath() + sep + "surprise_game" + sep;
-    {
-        Stage spritesStage("init sprites (12 png)");
+    while (!assets.loadStep(renderer, app.config().inifile.values["language"])) {
+    }
+    font = assets.font;
+    sprites = assets.sprites;
+    hud = assets.hud;
+    game.sounds = assets.sounds;
+    surpriseMusic = assets.music;
+}
+
+//*******************************
+// SurpriseAssets::loadStep
+//*******************************
+// one small portion of the load (each is 40 ms at most on the PC, the belts and the sky the biggest), so the UI loop
+// that feeds it one a frame never blocks
+bool SurpriseAssets::loadStep(ableem::Renderer &renderer, const std::string &language) {
+    if (loaded)
+        return true;
+    const string sdir = Env::getWorkingPath() + sep + "surprise_game" + sep;
+    switch (step) {
+    case 0: {
+        // the game's own lettering: Oxanium (a language the theme's fonts cannot draw gets the CJK font for all of it);
+        // the credits' face stands in for a file that did not open
+        Stage stage("init Oxanium fonts");
+        font = Fonts::openNewSharedCachedFont(Fonts::defaultClassicFontPath(), 15, renderer);
+        hud.fonts.load(renderer, Env::getPathToFontsDir(), Fonts::cjkFontFor(language), renderer.fourByThreeOutput());
+        hud.fallback = font;
+        break;
+    }
+    case 1: {
+        Stage stage("init sprites (7 png)");
         sprites.ship = ableem::Texture::loadFile(renderer, sdir + "ship.png");
         sprites.enemy1 = ableem::Texture::loadFile(renderer, sdir + "enemy1.png");
         sprites.enemy2 = ableem::Texture::loadFile(renderer, sdir + "enemy2.png");
@@ -59,47 +87,51 @@ void GuiSurprise::loadGameAssets() {
         sprites.laserPlayer = ableem::Texture::loadFile(renderer, sdir + "laser_player.png");
         sprites.laserPierce = ableem::Texture::loadFile(renderer, sdir + "laser_pierce.png");
         sprites.laserEnemy = ableem::Texture::loadFile(renderer, sdir + "laser_enemy.png");
+        break;
+    }
+    case 2: {
+        Stage stage("init sprites (5 png)");
         sprites.powerupRapid = ableem::Texture::loadFile(renderer, sdir + "powerup_rapid.png");
         sprites.powerupSpread = ableem::Texture::loadFile(renderer, sdir + "powerup_spread.png");
         sprites.powerupPower = ableem::Texture::loadFile(renderer, sdir + "powerup_power.png");
         sprites.powerupLife = ableem::Texture::loadFile(renderer, sdir + "powerup_life.png");
         sprites.explosion = ableem::Texture::loadFile(renderer, sdir + "explosion.png");
-        {
-            Stage stage("init sky.jpg");
-            sprites.sky = ableem::Texture::loadFile(renderer, sdir + "sky.jpg"); // missing = the old dark backdrop
-        }
-        {
-            Stage stage("init belt (2 png)");
-            sprites.beltFar = ableem::Texture::loadFile(renderer, sdir + "belt_far.png"); // missing = no belt drawn
-            sprites.beltNear = ableem::Texture::loadFile(renderer, sdir + "belt_near.png");
-        }
+        break;
     }
-
-    // the game's own lettering: Oxanium (a language the theme's fonts cannot draw gets the CJK font for all of it);
-    // the credits' face stands in for a file that did not open
-    {
-        Stage stage("init Oxanium fonts");
-        hud.fonts.load(renderer, Env::getPathToFontsDir(), Fonts::cjkFontFor(app.config().inifile.values["language"]),
-                       renderer.fourByThreeOutput());
-        hud.fallback = font;
+    case 3: {
+        Stage stage("init sky.jpg");
+        sprites.sky = ableem::Texture::loadFile(renderer, sdir + "sky.jpg"); // missing = the old dark backdrop
+        break;
     }
-
-    {
-        Stage soundsStage("init sounds+music");
-        game.sounds.playerShoot = ableem::Sound::load(sdir + "sfx_player_shoot.ogg");
-        game.sounds.enemyShoot = ableem::Sound::load(sdir + "sfx_enemy_shoot.ogg");
-        game.sounds.explosion = ableem::Sound::load(sdir + "sfx_explosion.ogg");
-        game.sounds.playerHit = ableem::Sound::load(sdir + "sfx_player_hit.ogg");
-        game.sounds.waveClear = ableem::Sound::load(sdir + "sfx_wave_clear.ogg");
-        game.sounds.powerup = ableem::Sound::load(sdir + "sfx_powerup.ogg");
-        surpriseMusic = ableem::Music::load(sdir + "music.ogg");
+    case 4: {
+        Stage stage("init belt_far.png");
+        sprites.beltFar = ableem::Texture::loadFile(renderer, sdir + "belt_far.png"); // missing = no belt drawn
+        break;
     }
-    assets.font = font;
-    assets.sprites = sprites;
-    assets.hud = hud;
-    assets.sounds = game.sounds;
-    assets.music = surpriseMusic;
-    assets.loaded = true;
+    case 5: {
+        Stage stage("init belt_near.png");
+        sprites.beltNear = ableem::Texture::loadFile(renderer, sdir + "belt_near.png");
+        break;
+    }
+    case 6: {
+        Stage stage("init sounds");
+        sounds.playerShoot = ableem::Sound::load(sdir + "sfx_player_shoot.ogg");
+        sounds.enemyShoot = ableem::Sound::load(sdir + "sfx_enemy_shoot.ogg");
+        sounds.explosion = ableem::Sound::load(sdir + "sfx_explosion.ogg");
+        sounds.playerHit = ableem::Sound::load(sdir + "sfx_player_hit.ogg");
+        sounds.waveClear = ableem::Sound::load(sdir + "sfx_wave_clear.ogg");
+        sounds.powerup = ableem::Sound::load(sdir + "sfx_powerup.ogg");
+        break;
+    }
+    default: {
+        Stage stage("init music");
+        music = ableem::Music::load(sdir + "music.ogg");
+        loaded = true;
+        break;
+    }
+    }
+    step++;
+    return loaded;
 }
 
 //*******************************
