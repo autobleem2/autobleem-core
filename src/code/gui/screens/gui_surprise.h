@@ -22,7 +22,7 @@
 // fonts ~1-2 MB); release() gives it all back when About closes.
 struct SurpriseAssets {
     bool loaded = false;
-    int step = 0; // the next portion of loadStep()
+    int step = 0;      // the next portion of loadStep()
     ableem::Font font; // the credits' face: the HUD's fallback
     SurpriseSprites sprites;
     SurpriseHud hud;
